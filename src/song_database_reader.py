@@ -296,8 +296,6 @@ class App:
         
         self.ui.song_key_menu.addItems(keys_list)
  
-        self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
-            self.songsSelectionChangedCallback )
         
         self._in_song_text_changed = False
         self.previous_song_text = None # Song text before last user's edit operation
@@ -354,6 +352,8 @@ class App:
         for index in selected_row_indecies:
             self.ui.songs_view.selectRow(index.row())
 
+        self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
+            self.songsSelectionChangedCallback )
 
     def keyPressEvent(self, event):
         """
@@ -402,15 +402,12 @@ class App:
         for index in self.ui.songs_view.selectionModel().selectedRows():
             song_id = self.songs_model.data(index).toInt()[0]
             
-
             query = QtSql.QSqlQuery("SELECT title, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id)
             query.next()
             song_title = query.value(0).toString()
-            song_key_note_id = query.value(1).toInt()[0]
-            song_key_is_major = query.value(2).toBoolean()
-            print 'song_title:', song_title
-            print 'song_key_note_id:', song_key_note_id
-            print 'song_key_is_major:', song_key_is_major
+            song_text = query.value(1).toString()
+            song_key_note_id = query.value(2).toInt()[0]
+            song_key_is_major = query.value(3).toInt()[0]
             
             if not self._in_song_text_changed:
                 self.ui.song_text_edit.setPlainText(song_text)
@@ -456,9 +453,11 @@ class App:
             self.previous_song_text = None
             self.ui.song_text_edit.setEnabled(False)
             self.ui.song_title_ef.setText("")
+            self.ui.song_key_menu.setCurrentIndex(0) # FIXME should be "None"
         else:
             self.ui.song_text_edit.setEnabled(True)
             self.ui.song_title_ef.setText(self.current_song.title)
+            self.ui.song_key_menu.setCurrentIndex( song_key_note_id*2 + song_key_is_major )
         #self.ui.song_title_ef.setEnabled(False)
             
         self.print_widget.repaint()
@@ -512,8 +511,6 @@ class App:
         # Compare the new text to the previous text:
         
         if self.previous_song_text and self.previous_song_text != song_text:
-            #print '\nOLD TEXT:', self.previous_song_text
-            #print 'NEW TEXT:', song_text
             
             # For each character: key: old position, value: new position
             renumber_map = {}
@@ -599,11 +596,10 @@ class App:
                     "PDF format (*.pdf)",
         )
         if outfile: 
-            print 'selected file:', outfile
+            print 'outfile:', outfile
     
 
     def currentSongTitleEdited(self, new_title):
-        print 'new title:', new_title
 
         query = QtSql.QSqlQuery()
         out = query.exec_('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
@@ -613,16 +609,18 @@ class App:
     
 
     def currentSongKeyChanged(self, new_key_index):
-        print 'new key index:', new_key_index
-        
-        print '  note_id:', new_key_index / 2
-        print '  is_major:', new_key_index % 2
+        song_id = self.current_song.id
 
-        #query = QtSql.QSqlQuery()
-        #out = query.exec_('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+        note_id = new_key_index / 2
+        is_major = new_key_index % 2
         
-        # Update the song table from database:
-        self.createSongsModel()
+        if note_id != self.current_song.key_note_id and is_major != self.current_song.key_is_major:
+            # Do not run this code if the value of the menu is first initialized
+            query = QtSql.QSqlQuery()
+            out = query.exec_('UPDATE songs SET key_note_id=%i, key_is_major=%i WHERE id=%i' % (note_id, is_major, song_id))
+            
+            # Update the song table from database:
+            self.createSongsModel()
     
     
     def createNewSong(self):
@@ -635,7 +633,6 @@ class App:
 
         out = query.exec_("INSERT INTO songs (id, text, title) " + \
                         'VALUES (%i, "%s", "%s")' % (id, song_text, song_title))
-        print 'add new song out:', out
         
         # Update the song table from database:
         self.createSongsModel()
