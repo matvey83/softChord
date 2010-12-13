@@ -219,6 +219,7 @@ class PrintWidget(QtGui.QWidget):
     def __init__(self, app):
         QtGui.QWidget.__init__(self, app.ui)
         self.app = app
+        self.dragging_chord = -1
     
     def paintEvent(self, ignored_event):
         """
@@ -249,7 +250,14 @@ class PrintWidget(QtGui.QWidget):
             letter_tuple = self.app.determineClickedLetter(localx, localy)
             if letter_tuple:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
-                self.app.selected_char_num = song_char_num
+                if self.dragging_chord != -1:
+                    #print 'dragging'
+                    if song_char_num != self.dragging_chord:
+                        #print '  moving chord', self.dragging_chord, 'to', song_char_num
+                        self.app.moveChord(self.dragging_chord, song_char_num)
+                        self.dragging_chord = song_char_num
+                else:
+                    self.app.selected_char_num = song_char_num
             else:
                 self.app.selected_char_num = None
             self.app.print_widget.repaint()
@@ -266,12 +274,42 @@ class PrintWidget(QtGui.QWidget):
             letter_tuple = self.app.determineClickedLetter(localx, localy)
             if letter_tuple:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
-                self.app.selected_char_num = song_char_num
+                
+                if self.app.selected_char_num == song_char_num and is_chord:
+                    # User clicked on the selected chord
+                    #print 'clicked on selected, starting drag'
+                    self.dragging_chord = song_char_num
+                else:
+                    self.app.selected_char_num = song_char_num
+                    self.dragging_chord = -1
             else:
                 self.app.selected_char_num = None
             self.app.print_widget.repaint()
+    
 
-
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            localx = event.pos().x()
+            localy = event.pos().y()
+            letter_tuple = self.app.determineClickedLetter(localx, localy)
+            if letter_tuple:
+                (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
+                
+                if self.dragging_chord != -1:
+                    self.dragging_chord = -1
+                    #print 'dropped'
+                
+                if self.app.selected_char_num == song_char_num and is_chord:
+                    # User clicked on the selected chord
+                    #print 'clicked on selected, starting drag'
+                    self.dragging_chord = song_char_num
+                else:
+                    self.app.selected_char_num = song_char_num
+                    self.dragging_chord = -1
+            else:
+                self.app.selected_char_num = None
+            self.app.print_widget.repaint()
+    
     def mouseDoubleClickEvent(self, event):
         """
         Called when mouse is DOUBLE-CLICKED in the song chords widget.
@@ -738,6 +776,29 @@ class App:
         self._in_song_lyrics_changed = False
     
 
+    def moveChord(self, song_char_num, new_song_char_num):
+        """
+        Move the specified chord to a new position.
+        If new_song_char_num == -1, then the chord is deleted.
+        """
+        
+        # Renumber the chords:
+        song_id = self.current_song.id
+        query = QtSql.QSqlQuery("SELECT id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
+        query.next()
+        id = query.value(0).toInt()[0]
+        
+        if new_song_char_num == -1:
+            # Delete
+            query2 = QtSql.QSqlQuery()
+            out = query2.exec_("DELETE FROM song_chord_link WHERE id=%i" % id)
+        else:
+            # Move
+            query2 = QtSql.QSqlQuery()
+            out = query2.exec_("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
+        self.updateCurrentSongFromDatabase()
+    
+    
     def transposeUp(self):
         self._transposeCurrentSong(1)
 
@@ -910,12 +971,24 @@ class App:
             if y < chords_top or y > lyrics_bottom:
                 continue # Not this line
             
+            
+            # Figure out the lyric letter for the mouse location:
+            song_char_num = -1
+            for line_char_num in range(len(line_text)):
+                left = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num] )
+                right = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num+1] )
+                if x > left and x < right:
+                    song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
+                    break
+            
+            #print 'song_char_num:', song_char_num
+            
             if y < chords_bottom:
                 is_chord = True
                 
                 # Figure out if a chord is attached to this letter:
-                for song_char_num, chord in self.current_song.all_chords.iteritems():
-                    chord_linenum, line_char_num = self.current_song.songCharToLineChar(song_char_num)
+                for chord_song_char_num, chord in self.current_song.all_chords.iteritems():
+                    chord_linenum, line_char_num = self.current_song.songCharToLineChar(chord_song_char_num)
                     if chord_linenum != linenum:
                         continue
 
@@ -931,19 +1004,28 @@ class App:
                     chord_right = chord_middle + (chord_width/2)
                     
                     if x > chord_left and x < chord_right:
-                        song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
-                        return (is_chord, linenum, line_char_num, song_char_num)
-
-
-
+                        chord_song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
+                        # Location is on an existing chord
+                        return (is_chord, linenum, line_char_num, chord_song_char_num)
+                
+                # Location is NOT on an existing chord
+                if song_char_num == -1:
+                    return None
+                return (is_chord, None, None, song_char_num)
+            
+            
             elif y > lyrics_top:
+                # Location is above a lyric letter
                 is_chord = False
-                for line_char_num in range(len(line_text)):
-                    left = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num] )
-                    right = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num+1] )
-                    if x > left and x < right:
-                        song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
-                        return (is_chord, linenum, line_char_num, song_char_num)
+                if song_char_num == -1:
+                    return None
+                return (is_chord, None, None, song_char_num)
+                #for line_char_num in range(len(line_text)):
+                #    left = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num] )
+                #    right = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num+1] )
+                #    if x > left and x < right:
+                #        song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
+                #        return (is_chord, linenum, line_char_num, song_char_num)
         
         return None
 
