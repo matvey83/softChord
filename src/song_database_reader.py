@@ -35,9 +35,18 @@ chord_dialog_ui_file = "song_database_reader_chord_dialog.ui"
 
 
 def tr(text):
+    """
+    Returns translated GUI text.
+    """
     return text
 
+
 class SongChord:
+    """
+    Class that stores specific chord information. This chord is for a
+    specific letter in a specific song.
+    """
+    
     def __init__(self, app, id, song_id, character_num, note_id, chord_type_id, bass_note_id):
         self.app = app
         self.id = id
@@ -48,6 +57,10 @@ class SongChord:
         self.bass_note_id = bass_note_id
 
     def transpose(self, steps):
+        """
+        Transpose this chord the specified number of steps up.
+        <steps> can be negative.
+        """
         self.note_id += steps
         if self.note_id < 0:
             self.note_id += 12
@@ -67,6 +80,10 @@ class SongChord:
         
     
     def _getNoteString(self, note_id):
+        """
+        Returns the specified note as a string, using sharps vs flats
+        as appropriate.
+        """
         query = QtSql.QSqlQuery("SELECT text, alt_text FROM notes WHERE id=%i" % note_id)
         query.next()
         note_text = query.value(0).toString()
@@ -78,6 +95,10 @@ class SongChord:
             return note_alt_text
         
     def getChordString(self):
+        """
+        Returns string of the chord.
+        For example, "Fm" or "Bbsus4"
+        """
         note_text = self._getNoteString(self.note_id)
         
         query = QtSql.QSqlQuery("SELECT print FROM chord_types WHERE id=%i" % self.chord_type_id)
@@ -94,6 +115,9 @@ class SongChord:
     
 
 class Song:
+    """
+    Stores information for a particular song.
+    """
     def __init__(self, id, title, text, key_note_id, key_is_major, chords_dict):
         self.id = id
         self.title = title
@@ -130,6 +154,9 @@ class Song:
     
 
     def getNumLines(self):
+        """
+        Returns the number of lines in this song.
+        """
         return len(self._lines_list)
     
     def getLineText(self, linenum):
@@ -139,6 +166,9 @@ class Song:
         return self._lines_list[linenum]
     
     def iterateOverLines(self):
+        """
+        Iterate over each the lines in this song.
+        """
         for line in self._lines_list:
             yield line
 
@@ -183,11 +213,17 @@ class Song:
 
 
 class PrintWidget(QtGui.QWidget):
+    """
+    Widget for painting the current song.
+    """
     def __init__(self, app):
         QtGui.QWidget.__init__(self, app.ui)
         self.app = app
     
     def paintEvent(self, ignored_event):
+        """
+        Called when the widget needs to draw the current song.
+        """
         
         painter = QtGui.QPainter()
         painter.begin(self)
@@ -196,7 +232,6 @@ class PrintWidget(QtGui.QWidget):
         rect = self.rect()
         
         bgbrush = QtGui.QBrush(QtGui.QColor("white"))
-        #painter.setBackground(bgbrush)
         painter.fillRect(rect, bgbrush)
         
         self.app.drawSongToRect(painter, rect)
@@ -205,6 +240,9 @@ class PrintWidget(QtGui.QWidget):
     
     
     def mouseMoveEvent(self, event):
+        """
+        Called when mouse is DRAGGED in the song chords widget.
+        """
         if self.geometry().contains(event.pos()):
             localx = event.pos().x()
             localy = event.pos().y()
@@ -219,6 +257,9 @@ class PrintWidget(QtGui.QWidget):
 
 
     def mousePressEvent(self, event):
+        """
+        Called when mouse is CLICKED in the song chords widget.
+        """
         if event.button() == Qt.LeftButton:
             localx = event.pos().x()
             localy = event.pos().y()
@@ -232,6 +273,9 @@ class PrintWidget(QtGui.QWidget):
 
 
     def mouseDoubleClickEvent(self, event):
+        """
+        Called when mouse is DOUBLE-CLICKED in the song chords widget.
+        """
         if event.button() == Qt.LeftButton:
             localx = event.pos().x()
             localy = event.pos().y()
@@ -248,10 +292,13 @@ class PrintWidget(QtGui.QWidget):
 
 
 class ChordDialog:
+    """
+    Dialog for allowing the user to set the chord note & type.
+    """
+
     def c(self, widget, signal_str, slot):
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
     def __init__(self, app):
-        #QtGui.QDialog.__init__(self, app.ui)
         self.app = app
         self.ui = uic.loadUi(chord_dialog_ui_file)
         
@@ -301,7 +348,11 @@ class ChordDialog:
             # Cancel pressed
             return None
 
+
 class App:
+    """
+    The main application class.
+    """
     def c(self, widget, signal_str, slot):
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
     def __init__(self):
@@ -367,14 +418,14 @@ class App:
         self.ui.song_key_menu.addItems(keys_list)
  
         
-        self._in_song_text_changed = False
+        self._in_song_lyrics_changed = False
         self.previous_song_text = None # Song text before last user's edit operation
         self.c( self.ui.song_text_edit, "textChanged()", self.songTextChanged )
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
         self.c( self.ui.chord_font_button, "clicked()", self.changeChordFont )
-        self.c( self.ui.text_font_button, "clicked()", self.changeTextFont )
+        self.c( self.ui.text_font_button, "clicked()", self.changeLyricsFont )
         self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         
@@ -387,14 +438,12 @@ class App:
         
         self.current_song = None
         self.selected_char_num = None
-        # Wipe the ligand 2D image:
-        #self.print_widget.repaint()
-            
-        self.text_font = QtGui.QFont("Times", 14)
-        self.text_font_metrics = QtGui.QFontMetrics(self.text_font)
+        
+        self.lyrics_font = QtGui.QFont("Times", 14)
+        self.lyrics_font_metrics = QtGui.QFontMetrics(self.lyrics_font)
         self.chord_font = QtGui.QFont("Times", 10, QtGui.QFont.Bold)
         self.chord_font_metrics = QtGui.QFontMetrics(self.chord_font)
-        self.ui.song_text_edit.setFont(self.text_font)
+        self.ui.song_text_edit.setFont(self.lyrics_font)
         
         self._orig_keyPressEvent = self.ui.keyPressEvent
         self.ui.keyPressEvent = self.keyPressEvent
@@ -404,6 +453,10 @@ class App:
     
     
     def createSongsModel(self):
+        """
+        Re-create the songs model to re-read it from the database.
+        THERE MUST BE A BETTER WAY TO UPDATE THE MODEL?
+        """
         
         if hasattr(self, "songs_model"):
             selected_row_indecies = self.ui.songs_view.selectionModel().selectedRows()
@@ -444,6 +497,9 @@ class App:
             self._orig_keyPressEvent(event)
     
     def deleteSelectedChord(self):
+        """
+        Deletes the currently selected chord from the song.
+        """
         
         if self.selected_char_num != None and self.current_song:
             song_char_num = self.selected_char_num
@@ -471,12 +527,17 @@ class App:
 
 
     def songsSelectionChangedCallback(self, selected=None, deselected=None):
-        self.selected_char_num = None # Remove the selection
+        """
+        Called when the song selection changes.
+        """
         self.selected_char_num = None # Remove the selection
         self.updateCurrentSongFromDatabase()
     
 
     def updateCurrentSongFromDatabase(self):
+        """
+        Re-reads the current song from the database.
+        """
         self.current_song = None
 
         for index in self.ui.songs_view.selectionModel().selectedRows():
@@ -489,7 +550,7 @@ class App:
             song_key_note_id = query.value(2).toInt()[0]
             song_key_is_major = query.value(3).toInt()[0]
             
-            if not self._in_song_text_changed:
+            if not self._in_song_lyrics_changed:
                 self.ui.song_text_edit.setPlainText(song_text)
                 self.previous_song_text = song_text
             
@@ -518,12 +579,12 @@ class App:
             line_left = 20
 
             for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
-                chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
-                line_right = line_left + self.text_font_metrics.width(line_text)
+                chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.getLineHeights(linenum)
+                line_right = line_left + self.lyrics_font_metrics.width(line_text)
                 if line_right > widget_width:
                     widget_width = line_right
-                if text_bottom > widget_height:
-                    widget_height = text_bottom
+                if lyrics_bottom > widget_height:
+                    widget_height = lyrics_bottom
             
             self.print_widget.resize(widget_width, widget_height)
                 
@@ -569,24 +630,29 @@ class App:
             return 1 # sharp
 
 
-    def songChordLinkDataChanged(self, topLeft, bottomRight):
-        self.updateCurrentSongFromDatabase()
+    #def songChordLinkDataChanged(self, topLeft, bottomRight):
+    #    self.updateCurrentSongFromDatabase()
 
-    def transposeCurrentSong(self, steps):
+    def _transposeCurrentSong(self, steps):
+        """
+        Transpose the current song up by the specified number of steps.
+        """
         
         for character_num, chord in self.current_song.all_chords.iteritems():
             chord.transpose(steps)
         self.updateCurrentSongFromDatabase()
     
     def songTextChanged(self):
-        if self._in_song_text_changed:
+        """
+        Called when the song lyric text is modified by the user.
+        """
+        if self._in_song_lyrics_changed:
             return
         if not self.current_song:
             return
         
-        self._in_song_text_changed = True
+        self._in_song_lyrics_changed = True
         
-        #song_text = str(self.ui.song_text_edit.toPlainText())
         song_text = self.ui.song_text_edit.toPlainText()
         
         # Compare the new text to the previous text:
@@ -669,31 +735,42 @@ class App:
         
         self.updateCurrentSongFromDatabase()
         
-        self._in_song_text_changed = False
+        self._in_song_lyrics_changed = False
     
 
     def transposeUp(self):
-        self.transposeCurrentSong(1)
+        self._transposeCurrentSong(1)
 
     def transposeDown(self):
-        self.transposeCurrentSong(-1)
+        self._transposeCurrentSong(-1)
     
     def changeChordFont(self):
+        """
+        Brings up a dialog to let the user modify the chords font.
+        """
         new_font, ok = QtGui.QFontDialog.getFont(self.chord_font, self.ui)
         if ok:
             self.chord_font = new_font
             self.chord_font_metrics = QtGui.QFontMetrics(self.chord_font)
             self.print_widget.repaint()
 
-    def changeTextFont(self):
-        new_font, ok = QtGui.QFontDialog.getFont(self.text_font, self.ui)
+    def changeLyricsFont(self):
+        """
+        Brings up a dialog to let the user modify the lyrics font.
+        """
+        new_font, ok = QtGui.QFontDialog.getFont(self.lyrics_font, self.ui)
         if ok:
-            self.text_font = new_font
-            self.text_font_metrics = QtGui.QFontMetrics(self.text_font)
-            self.ui.song_text_edit.setFont(self.text_font)
+            self.lyrics_font = new_font
+            self.lyrics_font_metrics = QtGui.QFontMetrics(self.lyrics_font)
+            self.ui.song_text_edit.setFont(self.lyrics_font)
             self.print_widget.repaint()
     
     def exportToPdf(self):
+        """
+        Exports the selected songs to a PDF file.
+        """
+        # FIXME
+
         outfile = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save PDF file as:",
                     ".", # initial dir
@@ -704,6 +781,9 @@ class App:
     
 
     def currentSongTitleEdited(self, new_title):
+        """
+        Called when the user modifies the selected song's title.
+        """
         if self.current_song:
             query = QtSql.QSqlQuery()
             out = query.exec_('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
@@ -713,6 +793,9 @@ class App:
         
 
     def currentSongKeyChanged(self, new_key_index):
+        """
+        Called when the user modifies the selected song's key.
+        """
         song_id = self.current_song.id
 
         note_id = new_key_index / 2
@@ -728,6 +811,9 @@ class App:
     
     
     def createNewSong(self):
+        """
+        Add a new song to the database and the songs table, and select it.
+        """
         song_text = ""
         song_title = ""
         
@@ -760,21 +846,21 @@ class App:
 
         for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
             
-            chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
+            chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.getLineHeights(linenum)
             
             if self.selected_char_num != None:
                 selected_linenum, selected_line_char_num = self.current_song.songCharToLineChar(self.selected_char_num)
                 if selected_linenum == linenum:
-                    letter_left = line_left + self.text_font_metrics.width( line_text[:selected_line_char_num] )
-                    letter_right = line_left + self.text_font_metrics.width( line_text[:selected_line_char_num+1] )
+                    letter_left = line_left + self.lyrics_font_metrics.width( line_text[:selected_line_char_num] )
+                    letter_right = line_left + self.lyrics_font_metrics.width( line_text[:selected_line_char_num+1] )
             
                     # Draw a selection rectangle:
-                    painter.fillRect(letter_left, text_top, letter_right-letter_left, text_bottom-text_top, selection_brush)
+                    painter.fillRect(letter_left, lyrics_top, letter_right-letter_left, lyrics_bottom-lyrics_top, selection_brush)
             
             
-            painter.setFont(self.text_font)
-            line_right = line_left + self.text_font_metrics.width(line_text)
-            painter.drawText(line_left, text_top, line_right-line_left, text_bottom-text_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, line_text)
+            painter.setFont(self.lyrics_font)
+            line_right = line_left + self.lyrics_font_metrics.width(line_text)
+            painter.drawText(line_left, lyrics_top, line_right-line_left, lyrics_bottom-lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, line_text)
 
             painter.setFont(self.chord_font)
 
@@ -784,8 +870,8 @@ class App:
                 if chord_linenum != linenum:
                     continue
 
-                letter_left = line_left + self.text_font_metrics.width( line_text[:line_char_num] )
-                letter_right = line_left + self.text_font_metrics.width( line_text[:line_char_num+1] )
+                letter_left = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num] )
+                letter_right = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num+1] )
                 chord_middle = (letter_left + letter_right) / 2 # Average of left and right
                 
                 chord_text = chord.getChordString()
@@ -805,6 +891,11 @@ class App:
 
     
     def determineClickedLetter(self, x, y):
+        """
+        Determine where the specified (local) mouse coordinates position.
+        That is, which lyric or chord letter was the mouse above when this
+        event happened.
+        """
         
         if not self.current_song:
             return None
@@ -814,9 +905,9 @@ class App:
         for linenum in range(self.current_song.getNumLines()):
             line_text = self.current_song.getLineText(linenum)
             
-            chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
+            chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.getLineHeights(linenum)
             
-            if y < chords_top or y > text_bottom:
+            if y < chords_top or y > lyrics_bottom:
                 continue # Not this line
             
             if y < chords_bottom:
@@ -829,8 +920,8 @@ class App:
                         continue
 
                     # Figure out the y position where the should be drawn:
-                    letter_left = line_left + self.text_font_metrics.width( line_text[:line_char_num] )
-                    letter_right = line_left + self.text_font_metrics.width( line_text[:line_char_num+1] )
+                    letter_left = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num] )
+                    letter_right = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num+1] )
 
                     chord_middle = (letter_left + letter_right) / 2 # Average of left and right
                     
@@ -845,11 +936,11 @@ class App:
 
 
 
-            elif y > text_top:
+            elif y > lyrics_top:
                 is_chord = False
                 for line_char_num in range(len(line_text)):
-                    left = line_left + self.text_font_metrics.width( line_text[:line_char_num] )
-                    right = line_left + self.text_font_metrics.width( line_text[:line_char_num+1] )
+                    left = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num] )
+                    right = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num+1] )
                     if x > left and x < right:
                         song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
                         return (is_chord, linenum, line_char_num, song_char_num)
@@ -859,6 +950,10 @@ class App:
         
     
     def processSongCharEdit(self, song_char_num):
+        """
+        Bring up a dialog that will allow the user to add/modify the chord at
+        the specified position.
+        """
         
         # Check whether this character already has a chord:
         song_id = self.current_song.id
@@ -897,31 +992,31 @@ class App:
 
     
     def getLineHeights(self, linenum):
-        text_height = self.text_font_metrics.height()
+        """
+        Returns top & bottom y positions of the chords and lyrics texts
+        for the specified line.
+        """
+        lyrics_height = self.lyrics_font_metrics.height()
         
-        chord_height = self.chord_font_metrics.height()
+        chords_height = self.chord_font_metrics.height()
         
-        line_height = text_height + chord_height
+        line_height = lyrics_height + chords_height
         line_height *= 0.9 # So that there is less spacing between the chords and the text
         
         line_top = linenum * line_height
 
         chords_top = line_top
-        chords_bottom = chords_top + chord_height
-        text_bottom = line_top + line_height
-        text_top = text_bottom - text_height
+        chords_bottom = chords_top + chords_height
+        lyrics_bottom = line_top + line_height
+        lyrics_top = lyrics_bottom - lyrics_height
 
         
-        return chords_top, chords_bottom, text_top, text_bottom
+        return chords_top, chords_bottom, lyrics_top, lyrics_bottom
     
     
-    
-    def getCharacterPosition(self, char_num):
-        pass
 
-    def getChordPosition(self, char_num):
-        pass
 
+# Main event loop:
 
 qapp = QtGui.QApplication(sys.argv)
 window = App()
