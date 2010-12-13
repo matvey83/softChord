@@ -246,42 +246,40 @@ class PrintWidget(QtGui.QWidget):
     
 
     def leaveEvent(self, event):
-        #print 'mouse leave'
-
-        self.selected_char_num = None
+        """
+        Called when the mouse LEAVES the song chords widget.
+        """
         
-        # The letter/chord that is currently hover (mouse hoveing over it):
+        # Clear the hovering highlighting:
         self.hover_char_num = None
-        
         self.repaint()
 
     
     def mouseMoveEvent(self, event):
         """
-        Called when mouse is DRAGGED in the song chords widget.
+        Called when mouse is DRAGGED or HOVERED in the song chords widget.
         """
+        
         if self.geometry().contains(event.pos()):
             localx = event.pos().x()
             localy = event.pos().y()
             letter_tuple = self.app.determineClickedLetter(localx, localy)
-            #print 'mouse moved to x,y:', localx, localy
             if letter_tuple:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
+                # Mouse is over a vlid chord/letter
                 
                 if self.dragging_chord_curr_position == -1:
-                    # Hovering
+                    # Hovering, highlight the new chord/letter
                     self.app.hover_char_num = song_char_num
 
                 else:
                     # Dragging
                     if self.dragging_chord_curr_position != -1:
-                        #print 'mouse moved in chord', is_chord, 'song_char_num:', song_char_num
-
-                        #print ' am dragging'
-                        #print 'dragging'
+                        # A chord is being dragged
+                        
                         if song_char_num != self.dragging_chord_curr_position:
-                            #print '  moving chord', self.dragging_chord_curr_position, 'to', song_char_num
-                            
+                            # The dragged chord was moved to a new position
+                        
                             #key_modifiers = QtGui.QApplication.instance().keyboardModifiers() 
                             key_modifiers = event.modifiers() 
                             # shiftdown = key_modifiers & Qt.ShiftModifier
@@ -313,14 +311,12 @@ class PrintWidget(QtGui.QWidget):
                             self.app.moveChord(self.dragging_chord_curr_position, song_char_num)
                             self.dragging_chord_curr_position = song_char_num
                             
-                            # Move the selection to the new letter:
-                            #self.app.selected_char_num = song_char_num
-                            
                             # Show hover feedback on the new letter:
                             self.app.hover_char_num = song_char_num
                     else:
+                        # No chord is being currently dragged. Clear previous selection:
                         self.app.selected_char_num = song_char_num
-
+            
             self.app.print_widget.repaint()
 
 
@@ -329,26 +325,25 @@ class PrintWidget(QtGui.QWidget):
         """
         Called when mouse is CLICKED in the song chords widget.
         """
+
         if event.button() == Qt.LeftButton:
             localx = event.pos().x()
             localy = event.pos().y()
             letter_tuple = self.app.determineClickedLetter(localx, localy)
             if letter_tuple:
+                # A valid letter/chord was clicked, select it:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
-                #print 'mouse pressed in chord', is_chord, 'song_char_num:', song_char_num
                 
                 if self.app.selected_char_num == song_char_num and is_chord:
-                    #print 'this char is selected, dragging'
-                    # User clicked on the selected chord
-                    #print 'clicked on selected, starting drag'
+                    # User clicked on the selected chord, initiate drag:
                     self.dragging_chord_curr_position = song_char_num
                     self.dragging_chord_orig_position = song_char_num
                     self.copying_chord = False
                 else:
-                    #print 'this char is not selected, selecting'
+                    # User clicked on an un-selected chord. Select it:
                     self.app.selected_char_num = song_char_num
-                    self.dragging_chord_curr_position = -1
-                    self.dragging_chord_orig_position = -1
+                    #self.dragging_chord_curr_position = -1
+                    #self.dragging_chord_orig_position = -1
             else:
                 self.app.selected_char_num = None
             self.app.print_widget.repaint()
@@ -356,49 +351,31 @@ class PrintWidget(QtGui.QWidget):
 
     def mouseReleaseEvent(self, event):
         #if event.button() == Qt.LeftButton:
+
+        # Stop dragging of the chord (it's already in the correct position):
         if self.dragging_chord_curr_position != -1:
             self.dragging_chord_curr_position = -1
             self.dragging_chord_orig_position = -1
         
         
-
-        if False:
-            localx = event.pos().x()
-            localy = event.pos().y()
-            letter_tuple = self.app.determineClickedLetter(localx, localy)
-            if letter_tuple:
-                (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
-                
-                if self.dragging_chord_curr_position != -1:
-                    self.dragging_chord_curr_position = -1
-                    self.dragging_chord_orig_position = -1
-                    #print 'dropped'
-                
-                #if self.app.selected_char_num == song_char_num and is_chord:
-                    # User clicked on the selected chord
-                    #print 'clicked on selected, starting drag'
-                #    self.dragging_chord_curr_position = song_char_num
-                #else:
-                #    self.app.selected_char_num = song_char_num
-                #    self.dragging_chord_curr_position = -1
-            else:
-                self.app.selected_char_num = None
-            self.app.print_widget.repaint()
-    
     def mouseDoubleClickEvent(self, event):
         """
         Called when mouse is DOUBLE-CLICKED in the song chords widget.
         """
+        
         if event.button() == Qt.LeftButton:
             localx = event.pos().x()
             localy = event.pos().y()
             letter_tuple = self.app.determineClickedLetter(localx, localy)
             if letter_tuple:
+                # A valid chord/letter was double-clicked, edit it:
+                self.app.selected_char_num = song_char_num
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
                 self.app.processSongCharEdit(song_char_num)
-                self.app.selected_char_num = song_char_num
             else:
+                # Invalid chord/letter was double clicked. Clear current selection:
                 self.app.selected_char_num = None
+
             self.app.print_widget.repaint()
 
     
@@ -1043,7 +1020,7 @@ class App:
             return
         
         selection_brush = QtGui.QPalette().highlight()
-        hovert_brush = QtGui.QColor("light grey")
+        hover_brush = QtGui.QColor("light grey")
         
         line_left = 20
 
@@ -1060,7 +1037,7 @@ class App:
                     letter_right = line_left + self.lyrics_font_metrics.width( line_text[:hover_line_char_num+1] )
                     
                     # Draw a selection rectangle:
-                    painter.fillRect(letter_left, lyrics_top, letter_right-letter_left, lyrics_bottom-lyrics_top, hovert_brush)
+                    painter.fillRect(letter_left, lyrics_top, letter_right-letter_left, lyrics_bottom-lyrics_top, hover_brush)
             
             if self.selected_char_num != None:
                 selected_linenum, selected_line_char_num = self.current_song.songCharToLineChar(self.selected_char_num)
@@ -1078,6 +1055,8 @@ class App:
 
             painter.setFont(self.chord_font)
 
+            #print 'hover_char_num:', self.hover_char_num
+            #print 'selected_char_num:', self.selected_char_num
 
             for song_char_num, chord in self.current_song.all_chords.iteritems():
                 chord_linenum, line_char_num = self.current_song.songCharToLineChar(song_char_num)
@@ -1093,14 +1072,13 @@ class App:
                 chord_left = chord_middle - (chord_width/2)
                 chord_right = chord_middle + (chord_width/2)
                 
-                if self.selected_char_num != None:
-                    if song_char_num == self.hover_char_num:
-                        # Draw a hoverectangle:
-                        painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, hovert_brush)
-
-                    if song_char_num == self.selected_char_num:
-                        # Draw a selection rectangle:
-                        painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, selection_brush)
+                if song_char_num == self.hover_char_num:
+                    # Draw a hover rectangle:
+                    painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, hover_brush)
+                
+                if song_char_num == self.selected_char_num:
+                    # Draw a selection rectangle:
+                    painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, selection_brush)
                 
                 painter.drawText(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, chord_text)
             
