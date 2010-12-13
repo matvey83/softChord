@@ -407,8 +407,8 @@ class App:
         self.curs = sqlite3.connect(db_file)
         
         # FOR DEMONSTRATION:
-        for row in self.curs.execute("SELECT * FROM songs"):
-            print row
+        #for row in self.curs.execute("SELECT * FROM songs"):
+        #    print row
 
 
         """
@@ -456,7 +456,7 @@ class App:
         self.ui.song_key_menu.addItems(keys_list)
  
         
-        self._in_song_lyrics_changed = False
+        self.ignore_song_text_changed = False
         self.previous_song_text = None # Song text before last user's edit operation
         self.c( self.ui.song_text_edit, "textChanged()", self.songTextChanged )
         
@@ -466,6 +466,7 @@ class App:
         self.c( self.ui.text_font_button, "clicked()", self.changeLyricsFont )
         self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
+        self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSong )
         
         self.c( self.ui.song_title_ef, "textEdited(QString)", self.currentSongTitleEdited )
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
@@ -572,46 +573,30 @@ class App:
         self.updateCurrentSongFromDatabase()
     
 
+    def getSelectedSongIds(self):
+        """
+        Returns a list of selected songs (their song_ids)
+        """
+
+        selected_song_ids = []
+        for index in self.ui.songs_view.selectionModel().selectedRows():
+            song_id = self.songs_model.data(index).toInt()[0]
+            selected_song_ids.append(song_id)
+        return selected_song_ids
+    
+
     def updateCurrentSongFromDatabase(self):
         """
         Re-reads the current song from the database.
         """
-        self.current_song = None
-
-        for index in self.ui.songs_view.selectionModel().selectedRows():
-            song_id = self.songs_model.data(index).toInt()[0]
+        
+        selected_song_ids = self.getSelectedSongIds()
+        
+        if len(selected_song_ids) == 1:
+            song_id = selected_song_ids[0]
+            self.setCurrentSong(song_id)
             
-            query = QtSql.QSqlQuery("SELECT title, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id)
-            query.next()
-            song_title = query.value(0).toString()
-            song_text = query.value(1).toString()
-            song_key_note_id = query.value(2).toInt()[0]
-            song_key_is_major = query.value(3).toInt()[0]
-            
-            if not self._in_song_lyrics_changed:
-                self.ui.song_text_edit.setPlainText(song_text)
-                self.previous_song_text = song_text
-            
-            song_chords = {}
-            query = QtSql.QSqlQuery("SELECT id, character_num, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i" % song_id)
-            while query.next():
-                id = query.value(0).toInt()[0]
-                song_char_num = query.value(1).toInt()[0]
-                note_id = query.value(2).toInt()[0]
-                chord_type_id = query.value(3).toInt()[0]
-                bass_note_id = query.value(4).toInt()[0]
-                song_chords[song_char_num] = SongChord(self, id, song_id, song_char_num, note_id, chord_type_id, bass_note_id)
-            
-            chord_string = [' '] * len(song_text)
-            for song_char_num, chord in song_chords.iteritems():
-                try:
-                    chord_string[song_char_num] = chord
-                except IndexError:
-                    pass
-
-            self.current_song = Song(song_id, song_title, song_text, song_key_note_id, song_key_is_major, song_chords)
-            
-            
+            # Update the print_widget size:
             widget_width = self.ui.chord_scroll_area.width() - 20
             widget_height = self.ui.chord_scroll_area.height() - 2
             line_left = 20
@@ -625,24 +610,65 @@ class App:
                     widget_height = lyrics_bottom
             
             self.print_widget.resize(widget_width, widget_height)
-                
+        else:
+            self.current_song = None
+        
         if self.current_song == None:
             self.ui.song_text_edit.setPlainText("")
             self.previous_song_text = None
-            self.ui.song_text_edit.setEnabled(False)
             self.ui.song_title_ef.setText("")
-            self.ui.song_title_ef.setEnabled(False)
             self.ui.song_key_menu.setCurrentIndex(0) # FIXME should be "None"
-            self.ui.song_key_menu.setEnabled(False)
-        else:
-            self.ui.song_text_edit.setEnabled(True)
-            self.ui.song_title_ef.setText(self.current_song.title)
-            self.ui.song_key_menu.setCurrentIndex( song_key_note_id*2 + song_key_is_major )
-            self.ui.song_title_ef.setEnabled(True)
-            self.ui.song_key_menu.setEnabled(True)
+        
+        self.ui.song_text_edit.setEnabled( self.current_song != None )
+        self.ui.song_title_ef.setEnabled( self.current_song != None )
+        self.ui.song_key_menu.setEnabled( self.current_song != None )
+        self.ui.delete_song_button.setEnabled( len(selected_song_ids) > 0 )
         
         self.print_widget.repaint()
+            
     
+    def setCurrentSong(self, song_id):
+        """
+        Sets the current song to the specified song.
+        Reads all song info from the database.
+        """
+
+        query = QtSql.QSqlQuery("SELECT title, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id)
+        query.next()
+        song_title = query.value(0).toString()
+        song_text = query.value(1).toString()
+        song_key_note_id = query.value(2).toInt()[0]
+        song_key_is_major = query.value(3).toInt()[0]
+        
+        if not self.ignore_song_text_changed:
+            self.ignore_song_text_changed = True
+            self.ui.song_text_edit.setPlainText(song_text)
+            self.ignore_song_text_changed = False
+            self.previous_song_text = song_text
+        
+        song_chords = {}
+        query = QtSql.QSqlQuery("SELECT id, character_num, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i" % song_id)
+        while query.next():
+            id = query.value(0).toInt()[0]
+            song_char_num = query.value(1).toInt()[0]
+            note_id = query.value(2).toInt()[0]
+            chord_type_id = query.value(3).toInt()[0]
+            bass_note_id = query.value(4).toInt()[0]
+            song_chords[song_char_num] = SongChord(self, id, song_id, song_char_num, note_id, chord_type_id, bass_note_id)
+        
+        chord_string = [' '] * len(song_text)
+        for song_char_num, chord in song_chords.iteritems():
+            try:
+                chord_string[song_char_num] = chord
+            except IndexError:
+                pass
+        
+        self.current_song = Song(song_id, song_title, song_text, song_key_note_id, song_key_is_major, song_chords)
+
+        self.ui.song_key_menu.setCurrentIndex( song_key_note_id*2 + song_key_is_major )
+        self.ui.song_title_ef.setText(self.current_song.title)
+        
+
 
     def sharpsOrFlats(self):
         """
@@ -684,12 +710,12 @@ class App:
         """
         Called when the song lyric text is modified by the user.
         """
-        if self._in_song_lyrics_changed:
+        if self.ignore_song_text_changed:
             return
         if not self.current_song:
             return
         
-        self._in_song_lyrics_changed = True
+        self.ignore_song_text_changed = True
         
         song_text = self.ui.song_text_edit.toPlainText()
         
@@ -773,7 +799,7 @@ class App:
         
         self.updateCurrentSongFromDatabase()
         
-        self._in_song_lyrics_changed = False
+        self.ignore_song_text_changed = False
     
 
     def moveChord(self, song_char_num, new_song_char_num):
@@ -857,6 +883,10 @@ class App:
         """
         Called when the user modifies the selected song's key.
         """
+        
+        if self.current_song == None:
+            return
+
         song_id = self.current_song.id
 
         note_id = new_key_index / 2
@@ -891,8 +921,21 @@ class App:
         # Select the newly added song:
         self.ui.songs_view.selectRow( self.songs_model.rowCount()-1 )
         self.updateCurrentSongFromDatabase()
-
-
+    
+    def deleteSelectedSong(self):
+        selected_song_ids = self.getSelectedSongIds()
+        for song_id in selected_song_ids:
+            query = QtSql.QSqlQuery()
+            out = query.exec_("DELETE FROM songs WHERE id=%i" % song_id)
+            
+            # Delete all associated chords:   
+            query = QtSql.QSqlQuery()
+            out = query.exec_("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
+        
+        # Update the song table from database:
+        self.createSongsModel()
+    
+    
     def drawSongToRect(self, painter, rect):
         """
         Draws the current song text to the specified rect.
