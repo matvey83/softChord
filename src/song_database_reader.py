@@ -136,7 +136,7 @@ class Song:
         """
         Return the text for the specified line.
         """
-        return self.lines_list[linenum-1]    
+        return self.lines_list[linenum]
     
 
     def songCharToLineChar(self, song_char_num):
@@ -149,11 +149,10 @@ class Song:
         
         line_global_start = 0
         line_global_end = 0
-        linenum = 0
+        linenum = -1
         for line_text in self.lines_list:
             linenum += 1
             line_global_end += len(line_text) + 1
-            #print 'line', linenum, 'start:', line_global_start, 'end:', line_global_end
             if song_char_num < line_global_end:
                 # This character is in this line
                 line_char_num = song_char_num - line_global_start
@@ -170,7 +169,7 @@ class Song:
         """
         
         out_char_num = 0
-        linenum = 0
+        linenum = -1
         for line_text in self.lines_list:
             linenum += 1
             if linenum == char_linenum:
@@ -512,7 +511,7 @@ class App:
             widget_height = self.ui.chord_scroll_area.height() - 2
             line_left = 20
 
-            linenum = 0
+            linenum = -1
             for line_text in self.current_song.lines_list:
                 linenum += 1
                 chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
@@ -730,7 +729,7 @@ class App:
         
         line_left = 20
 
-        linenum = 0
+        linenum = -1
         for line_text in self.current_song.lines_list:
             linenum += 1
             
@@ -789,9 +788,9 @@ class App:
 
         line_left = 20
         
-        for linenum in range(1, self.current_song.getNumLines()+1):
+        for linenum in range(self.current_song.getNumLines()):
             line_text = self.current_song.getLineText(linenum)
-        #linenum = 0
+        #linenum = -1
         #for line_text in self.current_song.lines_list:
         #    linenum += 1
             
@@ -885,7 +884,7 @@ class App:
         line_height = text_height + chord_height
         line_height *= 0.9 # So that there is less spacing between the chords and the text
         
-        line_top = (linenum-1) * line_height
+        line_top = linenum * line_height
 
         chords_top = line_top
         chords_bottom = chords_top + chord_height
