@@ -369,8 +369,8 @@ class PrintWidget(QtGui.QWidget):
             letter_tuple = self.app.determineClickedLetter(localx, localy)
             if letter_tuple:
                 # A valid chord/letter was double-clicked, edit it:
-                self.app.selected_char_num = song_char_num
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
+                self.app.selected_char_num = song_char_num
                 self.app.processSongCharEdit(song_char_num)
             else:
                 # Invalid chord/letter was double clicked. Clear current selection:
