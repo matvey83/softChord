@@ -103,7 +103,7 @@ class Song:
         self.all_chords = chords_dict
         
         # Break the song text into multiple lines:
-        self.lines_list = [] # each item is a tuple of (text, chords)
+        self._lines_list = [] # each item is a tuple of (text, chords)
         line_start_offset = 0
         line_end_offset = None
         remaining_text = self.all_text
@@ -122,7 +122,7 @@ class Song:
                 remaining_text = remaining_text[char_num+1:]
                 line_end_offset = char_num + line_start_offset
             
-            self.lines_list.append(line_text)
+            self._lines_list.append(line_text)
             
             if char_num:
                 # The start of the next line will be offset by char_num:
@@ -130,14 +130,17 @@ class Song:
     
 
     def getNumLines(self):
-        return len(self.lines_list)
+        return len(self._lines_list)
     
     def getLineText(self, linenum):
         """
         Return the text for the specified line.
         """
-        return self.lines_list[linenum]
+        return self._lines_list[linenum]
     
+    def iterateOverLines(self):
+        for line in self._lines_list:
+            yield line
 
     def songCharToLineChar(self, song_char_num):
         """
@@ -150,7 +153,7 @@ class Song:
         line_global_start = 0
         line_global_end = 0
         linenum = -1
-        for line_text in self.lines_list:
+        for line_text in self.iterateOverLines():
             linenum += 1
             line_global_end += len(line_text) + 1
             if song_char_num < line_global_end-1:
@@ -170,7 +173,7 @@ class Song:
         
         out_char_num = 0
         linenum = -1
-        for line_text in self.lines_list:
+        for line_text in self.iterateOverLines():
             linenum += 1
             if linenum == char_linenum:
                 return out_char_num + char_num
@@ -488,6 +491,7 @@ class App:
             
             if not self._in_song_text_changed:
                 self.ui.song_text_edit.setPlainText(song_text)
+                self.previous_song_text = song_text
             
             song_chords = {}
             query = QtSql.QSqlQuery("SELECT id, character_num, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i" % song_id)
@@ -513,9 +517,7 @@ class App:
             widget_height = self.ui.chord_scroll_area.height() - 2
             line_left = 20
 
-            linenum = -1
-            for line_text in self.current_song.lines_list:
-                linenum += 1
+            for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
                 chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
                 line_right = line_left + self.text_font_metrics.width(line_text)
                 if line_right > widget_width:
@@ -619,22 +621,41 @@ class App:
                     # Reached end-of-line of either string
                     break
             num_preserved_end_chars = i
+            
+
 
             # Renumber the chords:
             song_id = self.current_song.id
             query = QtSql.QSqlQuery("SELECT id, character_num FROM song_chord_link WHERE song_id=%i" % song_id)
+            
+            # NOTE SURE IF THESE ARE NEEDED: ??
+            tmp_ids_to_delete = []
+            tmp_id_song_char_num_dict = {}
+            
             while query.next():
                 id = query.value(0).toInt()[0]
                 song_char_num = query.value(1).toInt()[0]
                 try:
                     new_song_char_num = renumber_map[song_char_num]
+                    tmp_id_song_char_num_list = []
                 except KeyError:
-                    query2 = QtSql.QSqlQuery()
-                    out = query2.exec_("DELETE FROM song_chord_link WHERE id=%i" % id)
+                    tmp_ids_to_delete.append(id)
+                    #query2 = QtSql.QSqlQuery()
+                    #out = query2.exec_("DELETE FROM song_chord_link WHERE id=%i" % id)
                 else:
-                    query2 = QtSql.QSqlQuery()
-                    out = query2.exec_("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
+                    tmp_id_song_char_num_dict[id] = new_song_char_num
+                    #query2 = QtSql.QSqlQuery()
+                    #out = query2.exec_("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
             
+            for id in tmp_ids_to_delete:    
+                query2 = QtSql.QSqlQuery()
+                out = query2.exec_("DELETE FROM song_chord_link WHERE id=%i" % id)
+
+            for id, new_song_char_num in tmp_id_song_char_num_dict.iteritems():
+                query2 = QtSql.QSqlQuery()
+                out = query2.exec_("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
+
+
             # Renumber the selection:
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(self.selected_char_num)
@@ -737,9 +758,7 @@ class App:
         
         line_left = 20
 
-        linenum = -1
-        for line_text in self.current_song.lines_list:
-            linenum += 1
+        for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
             
             chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
             
@@ -794,9 +813,6 @@ class App:
         
         for linenum in range(self.current_song.getNumLines()):
             line_text = self.current_song.getLineText(linenum)
-        #linenum = -1
-        #for line_text in self.current_song.lines_list:
-        #    linenum += 1
             
             chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
             
