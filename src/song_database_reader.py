@@ -118,13 +118,27 @@ class Song:
     """
     Stores information for a particular song.
     """
-    def __init__(self, id, title, text, key_note_id, key_is_major, chords_dict):
-        self.id = id
-        self.title = title
-        self.all_text = text
-        self.key_note_id = key_note_id
-        self.key_is_major = key_is_major
-        self.all_chords = chords_dict
+    def __init__(self, app, song_id):
+        
+        query = QtSql.QSqlQuery("SELECT title, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id)
+        query.next()
+        self.id = song_id
+        self.title = query.value(0).toString()
+        self.all_text = query.value(1).toString()
+        self.key_note_id = query.value(2).toInt()[0]
+        self.key_is_major = query.value(3).toInt()[0]
+        
+        song_chords = {}
+        query = QtSql.QSqlQuery("SELECT id, character_num, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i" % song_id)
+        while query.next():
+            id = query.value(0).toInt()[0]
+            song_char_num = query.value(1).toInt()[0]
+            note_id = query.value(2).toInt()[0]
+            chord_type_id = query.value(3).toInt()[0]
+            bass_note_id = query.value(4).toInt()[0]
+            song_chords[song_char_num] = SongChord(app, id, song_id, song_char_num, note_id, chord_type_id, bass_note_id)
+        self.all_chords = song_chords
+
         
         # Break the song text into multiple lines:
         self._lines_list = [] # each item is a tuple of (text, chords)
@@ -132,6 +146,7 @@ class Song:
         line_end_offset = None
         remaining_text = self.all_text
         
+
         exit = False
         while not exit:
             char_num = unicode(remaining_text).find('\n')
@@ -240,8 +255,9 @@ class PrintWidget(QtGui.QWidget):
         bgbrush = QtGui.QBrush(QtGui.QColor("white"))
         painter.fillRect(rect, bgbrush)
         
-        self.app.drawSongToRect(painter, rect)
-    
+        if self.app.current_song:
+            self.app.drawSongToRect(self.app.current_song, painter, rect)
+        
         painter.end()
     
 
@@ -688,40 +704,17 @@ class App:
         Sets the current song to the specified song.
         Reads all song info from the database.
         """
-
-        query = QtSql.QSqlQuery("SELECT title, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id)
-        query.next()
-        song_title = query.value(0).toString()
-        song_text = query.value(1).toString()
-        song_key_note_id = query.value(2).toInt()[0]
-        song_key_is_major = query.value(3).toInt()[0]
+        
+        self.current_song = Song(self, song_id)
         
         if not self.ignore_song_text_changed:
             self.ignore_song_text_changed = True
-            self.ui.song_text_edit.setPlainText(song_text)
+            self.ui.song_text_edit.setPlainText(self.current_song.all_text)
             self.ignore_song_text_changed = False
-            self.previous_song_text = song_text
+            self.previous_song_text = self.current_song.all_text
         
-        song_chords = {}
-        query = QtSql.QSqlQuery("SELECT id, character_num, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i" % song_id)
-        while query.next():
-            id = query.value(0).toInt()[0]
-            song_char_num = query.value(1).toInt()[0]
-            note_id = query.value(2).toInt()[0]
-            chord_type_id = query.value(3).toInt()[0]
-            bass_note_id = query.value(4).toInt()[0]
-            song_chords[song_char_num] = SongChord(self, id, song_id, song_char_num, note_id, chord_type_id, bass_note_id)
-        
-        chord_string = [' '] * len(song_text)
-        for song_char_num, chord in song_chords.iteritems():
-            try:
-                chord_string[song_char_num] = chord
-            except IndexError:
-                pass
-        
-        self.current_song = Song(song_id, song_title, song_text, song_key_note_id, song_key_is_major, song_chords)
 
-        self.ui.song_key_menu.setCurrentIndex( song_key_note_id*2 + song_key_is_major )
+        self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major )
         self.ui.song_title_ef.setText(self.current_song.title)
         
 
@@ -941,6 +934,7 @@ class App:
         if outfile: 
             #print 'generating PDF:', outfile
             
+            num_exported = 0
             self.setWaitCursor()
             try:
                 printer = QtGui.QPrinter()
@@ -953,18 +947,28 @@ class App:
                 painter = QtGui.QPainter()
                 painter.begin(printer) # may fail to open the file
                 
-                self.drawSongToRect(painter, None)
-                
-                # For the next song:
-                # printer.height()
-                #printer.newPage()
-                
+                for song_index, song_id in enumerate(self.getSelectedSongIds()):
+                    #print 'exporting song_id:', song_id
+                    if song_index != 0:
+                        printer.newPage()
+                    
+                    page_height = printer.height()
+                    page_width = printer.width()
+                    
+                    song = Song(self, song_id)
+                    self.drawSongToRect(song, painter, None, draw_markers=False)
+                    num_exported += 1
+
                 painter.end()
             except:
                 self.error("Error generating PDF")
                 raise
             else:
-                self.info("Saved PDF to file: %s" % outfile)
+                if num_exported == 1:
+                    num_str = "1 song"
+                else:
+                    num_str = "%i songs" % num_exported
+                self.info("Exported %s to PDF: %s" % (num_str, outfile))
             finally:
                 self.restoreCursor()
 
@@ -1039,42 +1043,41 @@ class App:
         self.createSongsModel()
     
     
-    def drawSongToRect(self, painter, rect):
+    def drawSongToRect(self, song, painter, rect, draw_markers=True):
         """
         Draws the current song text to the specified rect.
+
+        draw_markers - whether to draw the selection & hover markers
         """
-        
-        if not self.current_song:
-            return
         
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
         line_left = 20
 
-        for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
+        for linenum, line_text in enumerate(song.iterateOverLines()):
             
             chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.getLineHeights(linenum)
             
-            
-            if self.hover_char_num != None:
-                # Mouse is currently hovering over this letter:
-                hover_linenum, hover_line_char_num = self.current_song.songCharToLineChar(self.hover_char_num)
-                if hover_linenum == linenum:
-                    letter_left = line_left + self.lyrics_font_metrics.width( line_text[:hover_line_char_num] )
-                    letter_right = line_left + self.lyrics_font_metrics.width( line_text[:hover_line_char_num+1] )
-                    
-                    # Draw a selection rectangle:
-                    painter.fillRect(letter_left, lyrics_top, letter_right-letter_left, lyrics_bottom-lyrics_top, hover_brush)
-            
-            if self.selected_char_num != None:
-                selected_linenum, selected_line_char_num = self.current_song.songCharToLineChar(self.selected_char_num)
-                if selected_linenum == linenum:
-                    letter_left = line_left + self.lyrics_font_metrics.width( line_text[:selected_line_char_num] )
-                    letter_right = line_left + self.lyrics_font_metrics.width( line_text[:selected_line_char_num+1] )
-            
-                    # Draw a selection rectangle:
-                    painter.fillRect(letter_left, lyrics_top, letter_right-letter_left, lyrics_bottom-lyrics_top, selection_brush)
+            if draw_markers:
+                if self.hover_char_num != None:
+                    # Mouse is currently hovering over this letter:
+                    hover_linenum, hover_line_char_num = song.songCharToLineChar(self.hover_char_num)
+                    if hover_linenum == linenum:
+                        letter_left = line_left + self.lyrics_font_metrics.width( line_text[:hover_line_char_num] )
+                        letter_right = line_left + self.lyrics_font_metrics.width( line_text[:hover_line_char_num+1] )
+                        
+                        # Draw a selection rectangle:
+                        painter.fillRect(letter_left, lyrics_top, letter_right-letter_left, lyrics_bottom-lyrics_top, hover_brush)
+                
+                if self.selected_char_num != None:
+                    selected_linenum, selected_line_char_num = song.songCharToLineChar(self.selected_char_num)
+                    if selected_linenum == linenum:
+                        letter_left = line_left + self.lyrics_font_metrics.width( line_text[:selected_line_char_num] )
+                        letter_right = line_left + self.lyrics_font_metrics.width( line_text[:selected_line_char_num+1] )
+                
+                        # Draw a selection rectangle:
+                        painter.fillRect(letter_left, lyrics_top, letter_right-letter_left, lyrics_bottom-lyrics_top, selection_brush)
 
             
             painter.setFont(self.lyrics_font)
@@ -1086,8 +1089,8 @@ class App:
             #print 'hover_char_num:', self.hover_char_num
             #print 'selected_char_num:', self.selected_char_num
 
-            for song_char_num, chord in self.current_song.all_chords.iteritems():
-                chord_linenum, line_char_num = self.current_song.songCharToLineChar(song_char_num)
+            for song_char_num, chord in song.all_chords.iteritems():
+                chord_linenum, line_char_num = song.songCharToLineChar(song_char_num)
                 if chord_linenum != linenum:
                     continue
 
@@ -1100,14 +1103,15 @@ class App:
                 chord_left = chord_middle - (chord_width/2)
                 chord_right = chord_middle + (chord_width/2)
                 
-                if song_char_num == self.hover_char_num:
-                    # Draw a hover rectangle:
-                    painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, hover_brush)
-                
-                if song_char_num == self.selected_char_num:
-                    # Draw a selection rectangle:
-                    painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, selection_brush)
-                
+                if draw_markers:
+                    if song_char_num == self.hover_char_num:
+                        # Draw a hover rectangle:
+                        painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, hover_brush)
+                    
+                    if song_char_num == self.selected_char_num:
+                        # Draw a selection rectangle:
+                        painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, selection_brush)
+                    
                 painter.drawText(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, chord_text)
             
             

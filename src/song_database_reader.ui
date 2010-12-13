@@ -23,7 +23,7 @@
       <widget class="QWidget" name="">
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0">
+         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0">
           <item>
            <widget class="QPushButton" name="new_song_button">
             <property name="text">
@@ -35,6 +35,13 @@
            <widget class="QPushButton" name="delete_song_button">
             <property name="text">
              <string>Delete selected</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="export_pdf_button">
+            <property name="text">
+             <string>Export selected to PDF...</string>
             </property>
            </widget>
           </item>
@@ -130,7 +137,7 @@
           </layout>
          </item>
          <item>
-          <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="0,0,0,0,0">
+          <layout class="QHBoxLayout" name="horizontalLayout_4" stretch="0,0,0,0">
            <item>
             <widget class="QLabel" name="label_7">
              <property name="text">
@@ -149,13 +156,6 @@
             <widget class="QPushButton" name="transpose_up_button">
              <property name="text">
               <string>Transpose Up</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="export_pdf_button">
-             <property name="text">
-              <string>Export to PDF...</string>
              </property>
             </widget>
            </item>
