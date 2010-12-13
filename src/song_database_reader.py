@@ -939,7 +939,35 @@ class App:
                     "PDF format (*.pdf)",
         )
         if outfile: 
-            print 'outfile:', outfile
+            #print 'generating PDF:', outfile
+            
+            self.setWaitCursor()
+            try:
+                printer = QtGui.QPrinter()
+                printer.setFullPage(True)
+                printer.setPageSize(QtGui.QPrinter.Letter)
+                printer.setOrientation(QtGui.QPrinter.Portrait)
+                printer.setOutputFileName(outfile)
+                printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+                
+                painter = QtGui.QPainter()
+                painter.begin(printer) # may fail to open the file
+                
+                self.drawSongToRect(painter, None)
+                
+                # For the next song:
+                # printer.height()
+                #printer.newPage()
+                
+                painter.end()
+            except:
+                self.error("Error generating PDF")
+                raise
+            else:
+                self.info("Saved PDF to file: %s" % outfile)
+            finally:
+                self.restoreCursor()
+
     
 
     def currentSongTitleEdited(self, new_title):
