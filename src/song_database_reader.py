@@ -1,8 +1,23 @@
 # -*- coding: utf-8 -*-
+"""
+
+The main source file for softChord Editor
+
+Writen by: Matvey Adzhigirey
+Development started in December 2010
+
+"""
+
+# FIXME Use sqlite3 instead of QtSql, as this will allow this program to be
+# more easily ported for use on the web. Moreover, sqlite3 provides a simpler,
+# more Pythonic interface to SQLite than QtSql.
+
 
 from PyQt4 import QtCore, QtGui, QtSql, uic
 from PyQt4.QtCore import Qt
 import sys, os
+
+import sqlite3
 
 
 db_file = "song_database.sqlite"
@@ -91,9 +106,7 @@ class Song:
         self.lines_list = [] # each item is a tuple of (text, chords)
         line_start_offset = 0
         line_end_offset = None
-        #remaining_text = str(self.all_text)
         remaining_text = self.all_text
-        #remaining_text = remaining_text.replace("\\n", "\n")
         
         exit = False
         while not exit:
@@ -109,20 +122,63 @@ class Song:
                 remaining_text = remaining_text[char_num+1:]
                 line_end_offset = char_num + line_start_offset
             
-            # Figure out what chords go with this line and which position:
-            line_chords = {}
-            #new_remaining_chords = {}
-            for character_num, chord in self.all_chords.iteritems():
-                if character_num >= line_start_offset and character_num < line_end_offset:
-                    line_chords[character_num-line_start_offset] = chord
-            
-            
-            self.lines_list.append( (line_text, line_chords) )
+            self.lines_list.append(line_text)
             
             if char_num:
                 # The start of the next line will be offset by char_num:
                 line_start_offset += char_num+1
+    
+
+    def getNumLines(self):
+        return len(self.lines_list)
+    
+    def getLineText(self, linenum):
+        """
+        Return the text for the specified line.
+        """
+        return self.lines_list[linenum-1]    
+    
+
+    def songCharToLineChar(self, song_char_num):
+        """
+        Given a character's global position in the song, return the
+        character's line and line position.
+
+        Returns a tuple of (linenum, char_num)
+        """
         
+        line_global_start = 0
+        line_global_end = 0
+        linenum = 0
+        for line_text in self.lines_list:
+            linenum += 1
+            line_global_end += len(line_text) + 1
+            #print 'line', linenum, 'start:', line_global_start, 'end:', line_global_end
+            if song_char_num < line_global_end:
+                # This character is in this line
+                line_char_num = song_char_num - line_global_start
+                return (linenum, line_char_num)
+            line_global_start += len(line_text) + 1
+        
+        raise RuntimeError()
+
+
+    def lineCharToSongChar(self, char_linenum, char_num):
+        """
+        Given the character position in the line, return its global
+        position in the song.
+        """
+        
+        out_char_num = 0
+        linenum = 0
+        for line_text in self.lines_list:
+            linenum += 1
+            if linenum == char_linenum:
+                return out_char_num + char_num
+            else:
+                out_char_num += len(line_text) + 1 # Add one for the end-of-line character
+        raise RuntimeError()
+
 
 class PrintWidget(QtGui.QWidget):
     def __init__(self, app):
@@ -249,12 +305,21 @@ class App:
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
         
+        # This qill be used for Qt (QSqlQuery) operations:
         self.db = QtSql.QSqlDatabase.addDatabase("QSQLITE")
         self.db.setDatabaseName(db_file)
         if not self.db.open():
             print 'Could not open the database'
             sys.exit(1)
         
+        # This will be used for Python (sqlite3) operations:
+        self.curs = sqlite3.connect(db_file)
+        
+        # FOR DEMONSTRATION:
+        for row in self.curs.execute("SELECT * FROM songs"):
+            print row
+
+
         """
         self.notes_model = QtSql.QSqlQueryModel()
         self.notes_model.setQuery(QtSql.QSqlQuery("SELECT * from notes"))
@@ -427,16 +492,16 @@ class App:
             query = QtSql.QSqlQuery("SELECT id, character_num, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i" % song_id)
             while query.next():
                 id = query.value(0).toInt()[0]
-                character_num = query.value(1).toInt()[0]
+                song_char_num = query.value(1).toInt()[0]
                 note_id = query.value(2).toInt()[0]
                 chord_type_id = query.value(3).toInt()[0]
                 bass_note_id = query.value(4).toInt()[0]
-                song_chords[character_num] = SongChord(self, id, song_id, character_num, note_id, chord_type_id, bass_note_id)
+                song_chords[song_char_num] = SongChord(self, id, song_id, song_char_num, note_id, chord_type_id, bass_note_id)
             
             chord_string = [' '] * len(song_text)
-            for character_num, chord in song_chords.iteritems():
+            for song_char_num, chord in song_chords.iteritems():
                 try:
-                    chord_string[character_num] = chord
+                    chord_string[song_char_num] = chord
                 except IndexError:
                     pass
 
@@ -448,7 +513,7 @@ class App:
             line_left = 20
 
             linenum = 0
-            for line_text, line_chords in self.current_song.lines_list:
+            for line_text in self.current_song.lines_list:
                 linenum += 1
                 chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
                 line_right = line_left + self.text_font_metrics.width(line_text)
@@ -505,10 +570,9 @@ class App:
         self.updateCurrentSongFromDatabase()
 
     def transposeCurrentSong(self, steps):
-        for line_text, line_chords in self.current_song.lines_list:
-            for character_num, chord in line_chords.iteritems():
-                chord.transpose(steps)
-
+        
+        for character_num, chord in self.current_song.all_chords.iteritems():
+            chord.transpose(steps)
         self.updateCurrentSongFromDatabase()
     
     def songTextChanged(self):
@@ -662,14 +726,12 @@ class App:
         """
         
         if not self.current_song:
-            #painter.drawText(20, 20, "No song selected")
             return
-        
         
         line_left = 20
 
         linenum = 0
-        for line_text, line_chords in self.current_song.lines_list:
+        for line_text in self.current_song.lines_list:
             linenum += 1
             
             chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
@@ -679,8 +741,6 @@ class App:
             if self.selected_char:
                 (song_char_num, selected_linenum, selected_line_char_num) = self.selected_char
                 if selected_linenum == linenum:
-                    #painter.drawText(line_left, text_top, 1000, 1000, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, line_text)
-                    
                     letter_left = line_left + self.text_font_metrics.width( line_text[:selected_line_char_num] )
                     letter_right = line_left + self.text_font_metrics.width( line_text[:selected_line_char_num+1] )
             
@@ -691,12 +751,16 @@ class App:
             
             painter.setFont(self.text_font)
             line_right = line_left + self.text_font_metrics.width(line_text)
-            #painter.drawText(line_left, text_top, 1000, 1000, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, line_text)
             painter.drawText(line_left, text_top, line_right-line_left, text_bottom-text_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, line_text)
 
             painter.setFont(self.chord_font)
-            for line_char_num, chord in line_chords.iteritems():
-                # Figure out the y position where the should be drawn:
+
+
+            for song_char_num, chord in self.current_song.all_chords.iteritems():
+                chord_linenum, line_char_num = self.current_song.songCharToLineChar(song_char_num)
+                if chord_linenum != linenum:
+                    continue
+
                 letter_left = line_left + self.text_font_metrics.width( line_text[:line_char_num] )
                 letter_right = line_left + self.text_font_metrics.width( line_text[:line_char_num+1] )
                 chord_middle = (letter_left + letter_right) / 2 # Average of left and right
@@ -724,10 +788,12 @@ class App:
             return None
 
         line_left = 20
-
-        linenum = 0
-        for line_text, line_chords in self.current_song.lines_list:
-            linenum += 1
+        
+        for linenum in range(1, self.current_song.getNumLines()+1):
+            line_text = self.current_song.getLineText(linenum)
+        #linenum = 0
+        #for line_text in self.current_song.lines_list:
+        #    linenum += 1
             
             chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
             
@@ -738,7 +804,11 @@ class App:
                 is_chord = True
                 
                 # Figure out if a chord is attached to this letter:
-                for line_char_num, chord in line_chords.iteritems():
+                for song_char_num, chord in self.current_song.all_chords.iteritems():
+                    chord_linenum, line_char_num = self.current_song.songCharToLineChar(song_char_num)
+                    if chord_linenum != linenum:
+                        continue
+
                     # Figure out the y position where the should be drawn:
                     letter_left = line_left + self.text_font_metrics.width( line_text[:line_char_num] )
                     letter_right = line_left + self.text_font_metrics.width( line_text[:line_char_num+1] )
@@ -751,7 +821,7 @@ class App:
                     chord_right = chord_middle + (chord_width/2)
                     
                     if x > chord_left and x < chord_right:
-                        song_char_num = self.lineCharToSongChar(linenum, line_char_num)
+                        song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
                         return (is_chord, linenum, line_char_num, song_char_num)
 
 
@@ -762,7 +832,7 @@ class App:
                     left = line_left + self.text_font_metrics.width( line_text[:line_char_num] )
                     right = line_left + self.text_font_metrics.width( line_text[:line_char_num+1] )
                     if x > left and x < right:
-                        song_char_num = self.lineCharToSongChar(linenum, line_char_num)
+                        song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
                         return (is_chord, linenum, line_char_num, song_char_num)
         
         return None
@@ -806,20 +876,6 @@ class App:
             self.updateCurrentSongFromDatabase()
                 
 
-    def songCharToLineChar(self, song_char_num):
-        pass            
-            
-    def lineCharToSongChar(self, char_linenum, char_num):
-        
-        out_char_num = 0
-        linenum = 0
-        for line_text, line_chords in self.current_song.lines_list:
-            linenum += 1
-            if linenum == char_linenum:
-                return out_char_num + char_num
-            else:
-                out_char_num += len(line_text) + 1 # Add one for the end-of-line character
-    
     
     def getLineHeights(self, linenum):
         text_height = self.text_font_metrics.height()
