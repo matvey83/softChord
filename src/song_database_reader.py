@@ -153,7 +153,7 @@ class Song:
         for line_text in self.lines_list:
             linenum += 1
             line_global_end += len(line_text) + 1
-            if song_char_num < line_global_end:
+            if song_char_num < line_global_end-1:
                 # This character is in this line
                 line_char_num = song_char_num - line_global_start
                 return (linenum, line_char_num)
@@ -208,9 +208,9 @@ class PrintWidget(QtGui.QWidget):
             letter_tuple = self.app.determineClickedLetter(localx, localy)
             if letter_tuple:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
-                self.app.selected_char = (song_char_num, linenum, line_char_num)
+                self.app.selected_char_num = song_char_num
             else:
-                self.app.selected_char = None
+                self.app.selected_char_num = None
             self.app.print_widget.repaint()
 
 
@@ -222,9 +222,9 @@ class PrintWidget(QtGui.QWidget):
             letter_tuple = self.app.determineClickedLetter(localx, localy)
             if letter_tuple:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
-                self.app.selected_char = (song_char_num, linenum, line_char_num)
+                self.app.selected_char_num = song_char_num
             else:
-                self.app.selected_char = None
+                self.app.selected_char_num = None
             self.app.print_widget.repaint()
 
 
@@ -236,9 +236,9 @@ class PrintWidget(QtGui.QWidget):
             if letter_tuple:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
                 self.app.processSongCharEdit(song_char_num)
-                self.app.selected_char = (song_char_num, linenum, line_char_num)
+                self.app.selected_char_num = song_char_num
             else:
-                self.app.selected_char = None
+                self.app.selected_char_num = None
             self.app.print_widget.repaint()
 
     
@@ -383,7 +383,7 @@ class App:
         self.ui.chord_scroll_area.setWidget(self.print_widget)
         
         self.current_song = None
-        self.selected_char = None
+        self.selected_char_num = None
         # Wipe the ligand 2D image:
         #self.print_widget.repaint()
             
@@ -442,15 +442,15 @@ class App:
     
     def deleteSelectedChord(self):
         
-        if self.selected_char and self.current_song:
-            (song_char_num, selected_linenum, selected_line_char_num) = self.selected_char
+        if self.selected_char_num != None and self.current_song:
+            song_char_num = self.selected_char_num
             
             song_id = self.current_song.id
             
             query = QtSql.QSqlQuery()
             out = query.exec_("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
             
-            self.selected_char = None
+            self.selected_char_num = None
             self.updateCurrentSongFromDatabase()
             self.print_widget.repaint()
 
@@ -468,6 +468,8 @@ class App:
 
 
     def songsSelectionChangedCallback(self, selected=None, deselected=None):
+        self.selected_char_num = None # Remove the selection
+        self.selected_char_num = None # Remove the selection
         self.updateCurrentSongFromDatabase()
     
 
@@ -632,7 +634,11 @@ class App:
                 else:
                     query2 = QtSql.QSqlQuery()
                     out = query2.exec_("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
-
+            
+            # Renumber the selection:
+            if self.selected_char_num != None:
+                self.selected_char_num = renumber_map.get(self.selected_char_num)
+        
         self.previous_song_text = song_text
         
         song_id = self.current_song.id
@@ -727,6 +733,8 @@ class App:
         if not self.current_song:
             return
         
+        selection_brush = QtGui.QPalette().highlight()
+        
         line_left = 20
 
         linenum = -1
@@ -735,16 +743,13 @@ class App:
             
             chords_top, chords_bottom, text_top, text_bottom = self.getLineHeights(linenum)
             
-            
-            selected_line_char_num = None
-            if self.selected_char:
-                (song_char_num, selected_linenum, selected_line_char_num) = self.selected_char
+            if self.selected_char_num != None:
+                selected_linenum, selected_line_char_num = self.current_song.songCharToLineChar(self.selected_char_num)
                 if selected_linenum == linenum:
                     letter_left = line_left + self.text_font_metrics.width( line_text[:selected_line_char_num] )
                     letter_right = line_left + self.text_font_metrics.width( line_text[:selected_line_char_num+1] )
             
                     # Draw a selection rectangle:
-                    selection_brush = QtGui.QBrush(QtGui.QColor("light green"))
                     painter.fillRect(letter_left, text_top, letter_right-letter_left, text_bottom-text_top, selection_brush)
             
             
@@ -769,11 +774,10 @@ class App:
                 chord_left = chord_middle - (chord_width/2)
                 chord_right = chord_middle + (chord_width/2)
                 
-                if self.selected_char:
-                    (song_char_num, selected_linenum, selected_line_char_num) = self.selected_char
-                    if selected_linenum == linenum and selected_line_char_num == line_char_num:
+                if self.selected_char_num != None:
+                    if song_char_num == self.selected_char_num:
+                    #if selected_linenum == linenum and selected_line_char_num == line_char_num:
                         # Draw a selection rectangle:
-                        selection_brush = QtGui.QBrush(QtGui.QColor("light green"))
                         painter.fillRect(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, selection_brush)
                 
                 painter.drawText(chord_left, chords_top, chord_right-chord_left, chords_bottom-chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, chord_text)
