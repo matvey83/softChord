@@ -19,6 +19,9 @@ chord_dialog_ui_file = "song_database_reader_chord_dialog.ui"
 #    script_ui_file = os.path.join( os.path.dirname(sys.executable), "song_database_reader.ui" )
 
 
+def tr(text):
+    return text
+
 class SongChord:
     def __init__(self, app, id, song_id, character_num, note_id, chord_type_id, bass_note_id):
         self.app = app
@@ -339,14 +342,22 @@ class App:
             selected_row_indecies = self.ui.songs_view.selectionModel().selectedRows()
         else:
             selected_row_indecies = []
-        
+            
+        """
         self.songs_model = QtSql.QSqlTableModel()
         self.songs_model.setTable("songs")
         self.songs_model.setEditStrategy(QtSql.QSqlTableModel.OnFieldChange)
         self.songs_model.select()
         self.songs_model.removeColumn(1) # Remove the text column
-        #self.songs_model.removeColumn(0) # Remove the ID column
+        self.songs_model.removeColumn(2) # Remove the chord note column
+        self.songs_model.removeColumn(2) # Remove the is major column
+        """
+        self.songs_model = QtSql.QSqlQueryModel()
+        self.songs_model.setQuery(QtSql.QSqlQuery("SELECT id, title from songs"))
+        self.songs_model.setHeaderData(0, Qt.Horizontal, tr("ID"))
+        self.songs_model.setHeaderData(1, Qt.Horizontal, tr("Title"))
         self.ui.songs_view.setModel(self.songs_model)
+        self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
         
         self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         for index in selected_row_indecies:
@@ -453,13 +464,16 @@ class App:
             self.previous_song_text = None
             self.ui.song_text_edit.setEnabled(False)
             self.ui.song_title_ef.setText("")
+            self.ui.song_title_ef.setEnabled(False)
             self.ui.song_key_menu.setCurrentIndex(0) # FIXME should be "None"
+            self.ui.song_key_menu.setEnabled(False)
         else:
             self.ui.song_text_edit.setEnabled(True)
             self.ui.song_title_ef.setText(self.current_song.title)
             self.ui.song_key_menu.setCurrentIndex( song_key_note_id*2 + song_key_is_major )
-        #self.ui.song_title_ef.setEnabled(False)
-            
+            self.ui.song_title_ef.setEnabled(True)
+            self.ui.song_key_menu.setEnabled(True)
+        
         self.print_widget.repaint()
     
 
@@ -600,13 +614,13 @@ class App:
     
 
     def currentSongTitleEdited(self, new_title):
-
-        query = QtSql.QSqlQuery()
-        out = query.exec_('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+        if self.current_song:
+            query = QtSql.QSqlQuery()
+            out = query.exec_('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+            
+            # Update the song table from database:
+            self.createSongsModel()
         
-        # Update the song table from database:
-        self.createSongsModel()
-    
 
     def currentSongKeyChanged(self, new_key_index):
         song_id = self.current_song.id
