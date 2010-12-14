@@ -227,6 +227,60 @@ class Song:
         raise RuntimeError()
 
 
+    def exportToText(self):
+        """
+        Return a text string for this song. This text will have proper
+        formatting only if displayed with a mono-spaced (fixed-width) font.
+        """
+        
+        #monospaced_font = QtGui.QFont("Courier", 14)
+        #monospaced_metrics = QtGui.QFontMetrics(self.lyrics_font)
+        
+        song_text = u""
+        song_text += u"\n" # Song title
+        song_text += u"\n" # Blank line
+            
+        
+        for linenum in range(self.getNumLines()):
+            line_text = self.getLineText(linenum)
+            
+            line_chord_text_list =  [u' '] * len(line_text) # FIXME add a few to the end???
+            
+            # Figure out the lyric letter for the mouse location:
+            song_char_num = -1
+            for line_char_num in range(len(line_text)):
+                song_char_num = self.lineCharToSongChar(linenum, line_char_num)
+                
+                
+                # Figure out if a chord is attached to this letter:
+                for chord_song_char_num, chord in self.all_chords.iteritems():
+                    chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
+
+                    if chord_linenum != linenum:
+                        continue
+                        
+                    chord_text = chord.getChordString()
+                    chord_left = line_char_num - ( len(chord_text) / 2 )
+                    chord_right = line_char_num + ( len(chord_text) / 2 )
+                    
+                    #print 'chord:', chord_text, 'left:', chord_left, 'right:', chord_right
+                    for i in range(len(chord_text)):
+                        pos = i + chord_left
+                        line_chord_text_list[pos] = chord_text[i]
+                    
+            line_chord_text = u''.join(line_chord_text_list)
+
+            song_text += u"\n" + line_chord_text
+            song_text += u"\n" + line_text
+
+            #print 'CHORDS:', line_chord_text
+            #print 'LYRICS:', line_text
+    
+        #print u'SONG TEXT:\n', song_text
+
+        return song_text
+
+
 class PrintWidget(QtGui.QWidget):
     """
     Widget for painting the current song.
@@ -534,6 +588,7 @@ class App:
         self.c( self.ui.chord_font_button, "clicked()", self.changeChordFont )
         self.c( self.ui.text_font_button, "clicked()", self.changeLyricsFont )
         self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
+        self.c( self.ui.export_text_button, "clicked()", self.exportToText )
         self.c( self.ui.print_button, "clicked()", self.printSelectedSongs )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSong )
@@ -701,6 +756,9 @@ class App:
         self.ui.song_title_ef.setEnabled( self.current_song != None )
         self.ui.song_key_menu.setEnabled( self.current_song != None )
         self.ui.delete_song_button.setEnabled( len(selected_song_ids) > 0 )
+        
+        self.ui.export_pdf_button.setEnabled( len(selected_song_ids) > 0 )
+        self.ui.export_text_button.setEnabled( len(selected_song_ids) == 1 )
         
         self.print_widget.repaint()
             
@@ -1032,6 +1090,40 @@ class App:
                 self.info("Exported %s to PDF: %s" % (num_str, outfile))
     
     
+    
+    def exportToText(self):
+        """
+        Exports the selected song (one) to a TEXT file.
+        """
+        
+        #outfile = "tmp.txt"
+        
+        outfile = QtGui.QFileDialog.getSaveFileName(self.ui,
+                    "Save text file as:",
+                    ".", # initial dir
+                    "Text format (*.txt)",
+        )
+        
+        if outfile: 
+            print 'generating text file:', outfile
+            
+            fh = open(outfile, 'w')
+            
+            for song_index, song_id in enumerate(self.getSelectedSongIds()):
+                # NOTE for now there will always be only one song exported.
+                print 'exporting song_id:', song_id
+
+                song = Song(self, song_id)
+                
+                song_text = song.exportToText()
+                
+                #print u'song_text:', song_text
+
+                fh.write(song_text)
+            
+            fh.close()
+            print 'WRITTEN:', outfile
+
     
     def currentSongTitleEdited(self, new_title):
         """
