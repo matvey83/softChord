@@ -16,7 +16,7 @@ curs = sqlite3.connect(db_file)
 note_text_id_dict = {}
 
 for row in curs.execute("SELECT id, text, alt_text FROM notes"):
-    print 'row:', row
+    #print 'row:', row
     id = row[0]
     text = row[1]
     alt_text = row[2]
@@ -40,12 +40,34 @@ for row in curs.execute("SELECT id, print FROM chord_types"):
 
 
 
+
 def convert_chord(chord_str):
-    print '\ninput:', chord_str.encode('utf-8')
+    """
+    Convert the specified chord string to a note_id, chord_type_id, and a bass_note_id.
+    """
+    
+    input_chord_str = chord_str[:]
+    
+    # FIXME
+    in_paranthesis = chord_str.startswith('(') and chord_str.endswith(')')
+    if in_paranthesis:
+        chord_str = chord_str[1:-1]
+    
+    marker = None
     
     colon = chord_str.find(':')
     if colon != -1:
-        chord_str = chord_str[colon:]
+        if colon == len(chord_str)-1:
+            raise ValueError("Not a chord (nothing after a colon")
+            #print 'WARNING not a chord (nothing after a colon):', chord_str.encode('utf-8')
+            #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
+            #return None
+        
+        marker = chord_str[:colon]
+        chord_str = chord_str[colon+1:]
+    
+    if marker:
+        print 'MARKER:', marker.encode('utf-8')
     
     slash = chord_str.find('/')
     if slash != -1:
@@ -54,7 +76,16 @@ def convert_chord(chord_str):
     else:
         bass = None
     
-    print 'chord_str after bass removal:', chord_str.encode('utf-8')
+    if chord_str[0] == u'Е': # Russian letter
+        chord_str = 'E' + chord_str[1:]
+    if chord_str[0] == u'С': # Russian letter
+        chord_str = 'C' + chord_str[1:]
+    if chord_str[0] == u'В': # Russian letter
+        chord_str = 'B' + chord_str[1:]
+    if chord_str[0] == u'А': # Russian letter
+        chord_str = 'A' + chord_str[1:]
+
+    #print 'chord_str after bass removal:', chord_str.encode('utf-8')
     if chord_str[0] in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
         if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
             note = chord_str[:2]
@@ -63,8 +94,11 @@ def convert_chord(chord_str):
             note = chord_str[0]
             type = chord_str[1:]
     else:
-        return None
-
+        raise ValueError("First chord letter is not a note")
+        #print 'WARNING first chord letter is not a note:', chord_str.encode('utf-8')
+        #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
+        #return None
+    
     #print '      ', note, '  ', type, '  ', bass
 
     if len(note) > 1:
@@ -78,10 +112,10 @@ def convert_chord(chord_str):
         elif bass[1] == u'b':
             bass = bass[0] + u'♭'
     
-    if bass:
-        print 'converting:', note.encode('utf-8'), type, bass.encode('utf-8')
-    else:
-        print 'converting:', note.encode('utf-8'), type, 'None'
+    #if bass:
+    #    print 'converting:', note.encode('utf-8'), type, bass.encode('utf-8')
+    #else:
+    #    print 'converting:', note.encode('utf-8'), type, 'None'
 
     note_id = note_text_id_dict[note]
     if bass != None:
@@ -89,11 +123,19 @@ def convert_chord(chord_str):
     else:
         bass_id = -1
     
-    type_id = chord_type_texts_dict.get(type, 'UNKNOWN')
+    try:
+        type_id = chord_type_texts_dict[type]
+    except KeyError:
+        raise ValueError("Unkown chord type")
+        #print 'WARNING: unknown chord type:', type.encode('utf-8')
+        #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
+        #return None
     
-    print '  note:', note_id
-    print '  type:', type_id
-    print '  bass:', bass_id
+    return (note_id, type_id, bass_id, in_paranthesis, marker)
+
+    #print '  note:', note_id
+    #print '  type:', type_id
+    #print '  bass:', bass_id
 
 
 
@@ -139,46 +181,59 @@ all_songs.append( (song_num, song_title, song_lines) )
 
 
 
+out_lines = [] # each item is a tuple of line text and chord list.
+
+
 for song_num, song_title, song_lines in all_songs:
     #print '\nSONG', song_num, song_title
     
     prev_chords = None
 
     for line in song_lines:
-        chord_line = True
         
+        # Attempt to convert the line to chords:
         num_chords = 0
         num_non_chords = 0
         
-        s = line.split()
-        for chord_str in s:
-            if chord_str[0] in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-                num_chords += 1
-            else:
-                num_non_chords += 1
-            pass
-        
-        if num_chords > num_non_chords:
-            line_chords = []
-            for chord_str in s:
-                if chord_str == '/':
-                    # FIXME
-                    continue
-                
-                converted_chord = convert_chord(chord_str)
-                if converted_chord:
-                    line_chords.append(converted_chord)
+        tmp_chords = []
+        tmp_warnings = []
 
-            prev_chords = line_chords
+        for word in line.split():
+            if word == u'/':
+                num_chords += 1
+                converted_chord = None
+            else:
+                try:
+                    converted_chord = convert_chord(word)
+                except ValueError, err:
+                    tmp_warnings.append( 'WARNING: %s CHORD "%s"' % (str(err), word.encode('utf-8')) )
+                    num_non_chords += 1
+                else:
+                    num_chords += 1
+                    tmp_chords.append(converted_chord)
+        
+
+        print '\nnum_chords:', num_chords, 'num_non_chords:', num_non_chords
+        if num_chords > num_non_chords:
+            print 'CHORD LINE:', line.encode('utf-8')
+            # This is a chords line
+            prev_chords = tmp_chords
+            for warning_str in tmp_warnings:
+                print '  ', warning_str
         else:
+            print 'LYRICS LINE:', line.encode('utf-8')
+            # This is a lyrics line
             if prev_chords:
-                pass
-                #print 'CHORDS:', prev_chords
-            #print 'LINE:', line
+                out_lines.append( (line, prev_chords) )
+            else:
+                # The line before was NOT a chords line - no chords for this lyrics line
+                out_lines.append( (line, []) )
             prev_chords = None
 
 
-    
+for lyrics, chords in out_lines:
+    print '\nCHORDS:', chords
+    print 'LYRICS:', lyrics.encode('utf-8')
     
     
 
