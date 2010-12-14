@@ -647,6 +647,7 @@ class App:
         Called when the song selection changes.
         """
         self.selected_char_num = None # Remove the selection
+        self.hover_char_num = None # Remove the hover highlighting
         self.updateCurrentSongFromDatabase()
     
 
@@ -1012,7 +1013,7 @@ class App:
             try:
                 printer = QtGui.QPrinter()
                 printer.setFullPage(True)
-                printer.setPageSize(QtGui.QPrinter.Letter)
+                #printer.setPageSize(QtGui.QPrinter.Letter)
                 printer.setOrientation(QtGui.QPrinter.Portrait)
                 printer.setOutputFileName(outfile)
                 printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
@@ -1120,7 +1121,11 @@ class App:
             if draw_markers:
                 if self.hover_char_num != None:
                     # Mouse is currently hovering over this letter:
-                    hover_linenum, hover_line_char_num = song.songCharToLineChar(self.hover_char_num)
+                    try:
+                       hover_linenum, hover_line_char_num = song.songCharToLineChar(self.hover_char_num)
+                    except RuntimeError:
+                       print 'failed to find hover char:', self.hover_char_num
+                       continue
                     if hover_linenum == linenum:
                         letter_left = line_left + self.lyrics_font_metrics.width( line_text[:hover_line_char_num] )
                         letter_right = line_left + self.lyrics_font_metrics.width( line_text[:hover_line_char_num+1] )
