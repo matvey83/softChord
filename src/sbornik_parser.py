@@ -2,10 +2,99 @@
 # -*- coding: utf-8 -*-
 
 
+import sqlite3
 
-def convert_chord(note, type, bass):
+
+db_file = "song_database.sqlite"
+
+# This will be used for Python (sqlite3) operations:
+curs = sqlite3.connect(db_file)
+
+
+
+# Key: note text, value: note ID
+note_text_id_dict = {}
+
+for row in curs.execute("SELECT id, text, alt_text FROM notes"):
+    print 'row:', row
+    id = row[0]
+    text = row[1]
+    alt_text = row[2]
+    
+    note_text_id_dict[text] = id
+    note_text_id_dict[alt_text] = id
 
     
+# Key: chord type text, value: chord type ID
+chord_type_texts_dict = {}
+
+for row in curs.execute("SELECT id, print FROM chord_types"):
+    #print 'row:', row
+    id = row[0]
+    print_text = row[1]
+
+    chord_type_texts_dict[print_text] = id
+    if print_text == 'sus4':
+        chord_type_texts_dict['sus'] = id
+    
+
+
+
+def convert_chord(chord_str):
+    print '\ninput:', chord_str.encode('utf-8')
+    
+    colon = chord_str.find(':')
+    if colon != -1:
+        chord_str = chord_str[colon:]
+    
+    slash = chord_str.find('/')
+    if slash != -1:
+        bass = chord_str[slash+1:]
+        chord_str = chord_str[:slash]
+    else:
+        bass = None
+    
+    print 'chord_str after bass removal:', chord_str.encode('utf-8')
+    if chord_str[0] in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
+        if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
+            note = chord_str[:2]
+            type = chord_str[2:]
+        else:
+            note = chord_str[0]
+            type = chord_str[1:]
+    else:
+        return None
+
+    #print '      ', note, '  ', type, '  ', bass
+
+    if len(note) > 1:
+        if note[1] == u'#':
+            note = note[0] + u'♯'
+        elif note[1] == u'b':
+            note = note[0] + u'♭'
+    if bass and len(bass) > 1:
+        if bass[1] == u'#':
+            bass = bass[0] + u'♯'
+        elif bass[1] == u'b':
+            bass = bass[0] + u'♭'
+    
+    if bass:
+        print 'converting:', note.encode('utf-8'), type, bass.encode('utf-8')
+    else:
+        print 'converting:', note.encode('utf-8'), type, 'None'
+
+    note_id = note_text_id_dict[note]
+    if bass != None:
+        bass_id = note_text_id_dict[bass]
+    else:
+        bass_id = -1
+    
+    type_id = chord_type_texts_dict.get(type, 'UNKNOWN')
+    
+    print '  note:', note_id
+    print '  type:', type_id
+    print '  bass:', bass_id
+
 
 
 
@@ -19,7 +108,12 @@ song_num = 0
 song_title = None
 song_lines = []
 
-lines = open(sbornik_file).readlines()
+lines = []
+for line in open(sbornik_file):
+    # Convert to Unicode:
+    lines.append( line.decode('utf-8') )
+
+
 for linenum, line in enumerate(lines):
     
     next_song_num = song_num + 1
@@ -70,41 +164,17 @@ for song_num, song_title, song_lines in all_songs:
                 if chord_str == '/':
                     # FIXME
                     continue
-
-                colon = chord_str.find(':')
-                if colon != -1:
-                    chord_str = chord_str[colon:]
                 
-                slash = chord_str.find('/')
-                if slash != -1:
-                    bass = chord_str[slash+1:]
-                    chord_str = chord_str[:slash]
-                else:
-                    bass = None
-                
-                if chord_str[0] in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-                    if len(chord_str) > 1 and chord_str[1] in ['#', 'b', '♭', '♯']:
-                        note = chord_str[:1]
-                    else:
-                        note = chord_str[0]
-                type = chord_str[1:]
-                #print '      ', note, '  ', type, '  ', bass
+                converted_chord = convert_chord(chord_str)
+                if converted_chord:
+                    line_chords.append(converted_chord)
 
-                line_chords.append( (note, type, bass) )
             prev_chords = line_chords
         else:
-            
-            print '\n'
             if prev_chords:
-                print 'CHORDS:', prev_chords
-                
-                converted_chords = []
-                for note, type, bass in prev_chords:
-                    converted_chord = convert_chord(note, type, bass)
-                    if converted_chord:
-                        converted_chords.append( converted_chord )
-                    print 'converted:', converted_chords
-            print 'LINE:', line
+                pass
+                #print 'CHORDS:', prev_chords
+            #print 'LINE:', line
             prev_chords = None
 
 
