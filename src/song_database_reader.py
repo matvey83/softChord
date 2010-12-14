@@ -443,6 +443,7 @@ class ChordDialog:
             self.ui.bass_menu.setCurrentIndex(bass_note_id+1)
         
         self.ui.show()
+        self.ui.raise_()
         out = self.ui.exec_()
         if out: # OK pressed:
             note_id = self.ui.note_menu.currentIndex()
@@ -1334,6 +1335,7 @@ class App:
 qapp = QtGui.QApplication(sys.argv)
 window = App()
 window.ui.show()
+window.ui.raise_()
 sys.exit(qapp.exec_())
 
 
