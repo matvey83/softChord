@@ -23,15 +23,15 @@ import sqlite3
 db_file = "song_database.sqlite"
 
 
-script_ui_file = "song_database_reader.ui"
-chord_dialog_ui_file = "song_database_reader_chord_dialog.ui"
+script_ui_file = "softchordeditor.ui"
+chord_dialog_ui_file = "softchordeditor_chord_dialog.ui"
 
 #if sys.executable.endswith("python.exe"):
     # Running in a Windows environment
-#    script_ui_file = "song_database_reader.ui"
+#    script_ui_file = "softchordeditor.ui"
 #else:
     # Running in Mac executaion environment
-#    script_ui_file = os.path.join( os.path.dirname(sys.executable), "song_database_reader.ui" )
+#    script_ui_file = os.path.join( os.path.dirname(sys.executable), "softchordeditor.ui" )
 
 
 def tr(text):
