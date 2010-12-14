@@ -16,6 +16,7 @@ Development started in December 2010
 from PyQt4 import QtCore, QtGui, QtSql, uic
 from PyQt4.QtCore import Qt
 import sys, os
+import codecs
 
 import sqlite3
 
@@ -122,6 +123,13 @@ class Song:
         
         query = QtSql.QSqlQuery("SELECT title, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id)
         query.next()
+        """
+        for row in app.curs.execute("SELECT title, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
+            title = row[0].encode('utf-8')
+            print 'THE TEXT:', title
+            #print 'row:', row
+            #for id, song_char_num
+        """
         self.id = song_id
         self.title = query.value(0).toString()
         self.all_text = query.value(1).toString()
@@ -141,12 +149,18 @@ class Song:
 
         
         # Break the song text into multiple lines:
-        self._lines_list = [] # each item is a tuple of (text, chords)
+        self._lines_list = []
         line_start_offset = 0
         line_end_offset = None
-        remaining_text = self.all_text
         
 
+        #for row in app.curs.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i" % song_id):
+        #    print 'row:', row
+        #    #for id, song_char_num
+
+        self.all_text = unicode(self.all_text)
+        remaining_text = self.all_text
+        
         exit = False
         while not exit:
             char_num = unicode(remaining_text).find('\n')
@@ -227,7 +241,7 @@ class Song:
         raise RuntimeError()
 
 
-    def exportToText(self):
+    def getAsText(self):
         """
         Return a text string for this song. This text will have proper
         formatting only if displayed with a mono-spaced (fixed-width) font.
@@ -236,13 +250,13 @@ class Song:
         #monospaced_font = QtGui.QFont("Courier", 14)
         #monospaced_metrics = QtGui.QFontMetrics(self.lyrics_font)
         
-        song_text = u""
+        song_text = unicode()
         song_text += u"\n" # Song title
         song_text += u"\n" # Blank line
             
         
         for linenum in range(self.getNumLines()):
-            line_text = self.getLineText(linenum)
+            line_text = unicode( self.getLineText(linenum) )
             
             line_chord_text_list =  [u' '] * len(line_text) # FIXME add a few to the end???
             
@@ -272,12 +286,7 @@ class Song:
 
             song_text += u"\n" + line_chord_text
             song_text += u"\n" + line_text
-
-            #print 'CHORDS:', line_chord_text
-            #print 'LYRICS:', line_text
-    
-        #print u'SONG TEXT:\n', song_text
-
+            
         return song_text
 
 
@@ -572,9 +581,9 @@ class App:
             if text == alt_text:
                 combined_text = text
             else:
-                combined_text = "%s/%s" % (text, alt_text)
-            keys_list.append(combined_text + " Major")
-            keys_list.append(combined_text + " Minor")
+                combined_text = text + u'/' + alt_text #u"%s/%s" % (text, alt_text)
+            keys_list.append(combined_text + u" Major")
+            keys_list.append(combined_text + u" Minor")
         
         self.ui.song_key_menu.addItems(keys_list)
  
@@ -1096,17 +1105,18 @@ class App:
         Exports the selected song (one) to a TEXT file.
         """
         
-        #outfile = "tmp.txt"
-        
+        outfile = "tmp.txt"
+        """
         outfile = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save text file as:",
                     ".", # initial dir
                     "Text format (*.txt)",
         )
-        
+        """
         if outfile: 
             print 'generating text file:', outfile
             
+            fh = codecs.open(outfile, 'w', encoding='utf-8')
             fh = open(outfile, 'w')
             
             for song_index, song_id in enumerate(self.getSelectedSongIds()):
@@ -1115,10 +1125,8 @@ class App:
 
                 song = Song(self, song_id)
                 
-                song_text = song.exportToText()
+                song_text = song.getAsText().encode('utf-8')
                 
-                #print u'song_text:', song_text
-
                 fh.write(song_text)
             
             fh.close()
@@ -1241,8 +1249,6 @@ class App:
 
             painter.setFont(self.chord_font)
 
-            #print 'hover_char_num:', self.hover_char_num
-            #print 'selected_char_num:', self.selected_char_num
 
             for song_char_num, chord in song.all_chords.iteritems():
                 chord_linenum, line_char_num = song.songCharToLineChar(song_char_num)
@@ -1285,7 +1291,7 @@ class App:
         line_left = 20
         
         for linenum in range(self.current_song.getNumLines()):
-            line_text = self.current_song.getLineText(linenum)
+            line_text = unicode( self.current_song.getLineText(linenum) )
             
             chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.getLineHeights(linenum)
             
