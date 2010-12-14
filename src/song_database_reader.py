@@ -533,6 +533,7 @@ class App:
         self.c( self.ui.chord_font_button, "clicked()", self.changeChordFont )
         self.c( self.ui.text_font_button, "clicked()", self.changeLyricsFont )
         self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
+        self.c( self.ui.print_button, "clicked()", self.printSelectedSongs )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSong )
         
@@ -542,6 +543,9 @@ class App:
         self.print_widget = PrintWidget(self)
         self.ui.chord_scroll_area.setWidgetResizable(False)
         self.ui.chord_scroll_area.setWidget(self.print_widget)
+        # Set the background to white (instead of grey):
+        self.ui.chord_scroll_area.setBackgroundRole(QtGui.QPalette.Light)
+
         
         self.current_song = None
         # The letter/chord that is currently selected:
@@ -669,8 +673,8 @@ class App:
             self.setCurrentSong(song_id)
             
             # Update the print_widget size:
-            widget_width = self.ui.chord_scroll_area.width() - 20
-            widget_height = self.ui.chord_scroll_area.height() - 2
+            widget_width = 0 #self.ui.chord_scroll_area.width() - 20
+            widget_height = 0 #self.ui.chord_scroll_area.height() - 2
             line_left = 20
 
             for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
@@ -920,11 +924,79 @@ class App:
             self.ui.song_text_edit.setFont(self.lyrics_font)
             self.print_widget.repaint()
     
+
+    def printSelectedSongs(self):
+        """
+        Bring up a print dialog box.
+        """
+        
+        printer = QtGui.QPrinter()
+        printer.setFullPage(True)
+        printer.setPageSize(QtGui.QPrinter.Letter)
+        printer.setOrientation(QtGui.QPrinter.Portrait)
+        
+        painter = QtGui.QPainter()
+        
+        print_dialog = QtGui.QPrintDialog(printer, self.ui)
+        if print_dialog.exec_() == QtGui.QDialog.Accepted:
+            print 'printing'
+            num_printed = self._paintToPrinter(printer)
+            print 'printed %s songs' % num_printed
+
+
+    """
+        QPrinter printer;
+        printer.setOutputFormat(QPrinter::PdfFormat);
+        printer.setOutputFileName("/foobar/nonwritable.pdf");
+        QPainter painter;
+        if (! painter.begin(&printer)) { // failed to open file
+        qWarning("failed to open file, is it writable?");
+        return 1;
+        }
+        painter.drawText(10, 10, "Test");
+        if (! printer.newPage()) {
+        qWarning("failed in flushing page to disk, disk full?");
+        return 1;
+        }
+        painter.drawText(10, 10, "Test 2");
+        painter.end();
+    """
+
+    
+    def _paintToPrinter(self, printer):
+        """
+        Paint current songs to the specified QPriner instance.
+        """
+        
+        print 'from page:', printer.fromPage()
+
+        print 'page order:', printer.pageOrder()
+        print 'print range:', printer.printRange()
+
+        painter = QtGui.QPainter()
+        painter.begin(printer) # may fail to open the file
+        
+        num_printed = 0
+        for song_index, song_id in enumerate(self.getSelectedSongIds()):
+            #print 'exporting song_id:', song_id
+            if song_index != 0:
+                printer.newPage()
+            
+            page_height = printer.height()
+            page_width = printer.width()
+            
+            song = Song(self, song_id)
+            self.drawSongToRect(song, painter, None, draw_markers=False)
+            num_printed += 1
+        
+        painter.end()
+        return num_printed
+
+
     def exportToPdf(self):
         """
         Exports the selected songs to a PDF file.
         """
-        # FIXME
 
         outfile = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save PDF file as:",
@@ -944,23 +1016,9 @@ class App:
                 printer.setOutputFileName(outfile)
                 printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
                 
-                painter = QtGui.QPainter()
-                painter.begin(printer) # may fail to open the file
-                
-                for song_index, song_id in enumerate(self.getSelectedSongIds()):
-                    #print 'exporting song_id:', song_id
-                    if song_index != 0:
-                        printer.newPage()
-                    
-                    page_height = printer.height()
-                    page_width = printer.width()
-                    
-                    song = Song(self, song_id)
-                    self.drawSongToRect(song, painter, None, draw_markers=False)
-                    num_exported += 1
-
-                painter.end()
+                num_exported = self._paintToPrinter(printer)
             except:
+                self.restoreCursor()
                 self.error("Error generating PDF")
                 raise
             else:
@@ -968,12 +1026,11 @@ class App:
                     num_str = "1 song"
                 else:
                     num_str = "%i songs" % num_exported
-                self.info("Exported %s to PDF: %s" % (num_str, outfile))
-            finally:
                 self.restoreCursor()
-
+                self.info("Exported %s to PDF: %s" % (num_str, outfile))
     
-
+    
+    
     def currentSongTitleEdited(self, new_title):
         """
         Called when the user modifies the selected song's title.
