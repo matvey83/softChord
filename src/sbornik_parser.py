@@ -200,14 +200,14 @@ for song_num, song_title, song_text in all_songs:
     song_lines = [] # each item is a tuple of line text and chord list.
     
     
-    prev_chords = {}
+    prev_chords = []
     for line in song_text:
         
         # Attempt to convert the line to chords:
         num_chords = 0
         num_non_chords = 0
         
-        tmp_chords = {} # Key: position
+        tmp_chords = []
         tmp_warnings = []
         
         char_num = 0
@@ -223,12 +223,13 @@ for song_num, song_title, song_text in all_songs:
                     num_non_chords += 1
                 else:
                     num_chords += 1
-                    # FIXME align the chords instead of just putting 3 chars
+                    # FIXME align the chords instead of just putting 5 space
                     # character between them!
-                    tmp_chords[char_num] = converted_chord
-                    char_num += 4
-        
+                    tmp_chords.append(converted_chord)
+                    char_num += 6
+            
 
+        
         #print '\nnum_chords:', num_chords, 'num_non_chords:', num_non_chords
         if num_chords > num_non_chords:
             #print 'CHORD LINE:', line.encode('utf-8')
@@ -240,11 +241,18 @@ for song_num, song_title, song_text in all_songs:
             #print 'LYRICS LINE:', line.encode('utf-8')
             # This is a lyrics line
             if prev_chords:
-                song_lines.append( (line, prev_chords) )
+                chord_spacing = len(line) / len(prev_chords)
+                print 'line length:', len(line), 'chord_spacing:', chord_spacing
+                
+                # Space out the chords:
+                chords_dict = {}
+                for i, chord in enumerate(prev_chords):
+                    chords_dict[i*chord_spacing] = chord
+                song_lines.append( (line, chords_dict) )
             else:
                 # The line before was NOT a chords line - no chords for this lyrics line
                 song_lines.append( (line, {}) )
-            prev_chords = {}
+            prev_chords = []
     
 
     global_song_text = ""
@@ -264,7 +272,7 @@ for song_num, song_title, song_text in all_songs:
         line_start_char_num += len(lyrics) + 1 # 1 for the EOL character
     
 
-    if song_num >= 130:
+    if True:
         print 'IMPORTING'
         
         song_id = 0
@@ -284,7 +292,7 @@ for song_num, song_title, song_text in all_songs:
         for song_char_num, chord in global_song_chords.iteritems():
             (marker, note_id, type_id, bass_id, in_parentheses) = chord
             if not marker:
-                marker = -1 # NULL
+                marker = ""
             
             in_parentheses = int(in_parentheses)
             

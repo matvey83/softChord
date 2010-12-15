@@ -141,7 +141,7 @@ class Song:
         """
         self.id = song_id
         self.title = query.value(0).toString()
-        self.number = query.value(1).toString()
+        self.number = query.value(1).toInt()[0]
         self.all_text = query.value(2).toString()
         self.key_note_id = query.value(3).toInt()[0]
         self.key_is_major = query.value(4).toInt()[0]
@@ -435,6 +435,11 @@ class PrintWidget(QtGui.QWidget):
                     self.app.selected_char_num = song_char_num
                     #self.dragging_chord_curr_position = -1
                     #self.dragging_chord_orig_position = -1
+                    
+                    # Initiate a drag:
+                    self.dragging_chord_curr_position = song_char_num
+                    self.dragging_chord_orig_position = song_char_num
+                    self.copying_chord = False
             else:
                 self.app.selected_char_num = None
             self.app.print_widget.repaint()
@@ -1272,18 +1277,22 @@ class App:
 
 
     def deleteSelectedSong(self):
-        selected_song_ids = self.getSelectedSongIds()
-        for song_id in selected_song_ids:
-            query = QtSql.QSqlQuery()
-            out = query.exec_("DELETE FROM songs WHERE id=%i" % song_id)
+        self.setWaitCursor()
+        try:
+            selected_song_ids = self.getSelectedSongIds()
+            for song_id in selected_song_ids:
+                query = QtSql.QSqlQuery()
+                out = query.exec_("DELETE FROM songs WHERE id=%i" % song_id)
+                
+                # Delete all associated chords:   
+                query = QtSql.QSqlQuery()
+                out = query.exec_("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
             
-            # Delete all associated chords:   
-            query = QtSql.QSqlQuery()
-            out = query.exec_("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
-        
-        # Update the song table from database:
-        self.createSongsModel()
-    
+            # Update the song table from database:
+            self.createSongsModel()
+        finally:
+            self.restoreCursor()
+
     
     def drawSongToRect(self, song, painter, rect, draw_markers=True):
         """
