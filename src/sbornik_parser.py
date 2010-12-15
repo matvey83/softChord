@@ -49,8 +49,8 @@ def convert_chord(chord_str):
     input_chord_str = chord_str[:]
     
     # FIXME
-    in_paranthesis = chord_str.startswith('(') and chord_str.endswith(')')
-    if in_paranthesis:
+    in_parentheses = chord_str.startswith('(') and chord_str.endswith(')')
+    if in_parentheses:
         chord_str = chord_str[1:-1]
     
     marker = None
@@ -131,7 +131,7 @@ def convert_chord(chord_str):
         #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
         #return None
     
-    return (marker, note_id, type_id, bass_id, in_paranthesis)
+    return (marker, note_id, type_id, bass_id, in_parentheses)
 
     #print '  note:', note_id
     #print '  type:', type_id
@@ -223,10 +223,10 @@ for song_num, song_title, song_text in all_songs:
                     num_non_chords += 1
                 else:
                     num_chords += 1
-                    # FIXME align the chords instead of just putting one
+                    # FIXME align the chords instead of just putting 3 chars
                     # character between them!
                     tmp_chords[char_num] = converted_chord
-                    char_num += 2
+                    char_num += 4
         
 
         #print '\nnum_chords:', num_chords, 'num_non_chords:', num_non_chords
@@ -263,7 +263,42 @@ for song_num, song_title, song_text in all_songs:
         
         line_start_char_num += len(lyrics) + 1 # 1 for the EOL character
     
-    
+
+    if song_num >= 130:
+        print 'IMPORTING'
+        
+        song_id = 0
+        for row in curs.execute("SELECT MAX(id) from songs"):
+            song_id = row[0] + 1
+        print 'song_id:', song_id
+        print 'song_num:', song_num
+        print 'song_title:', song_title.encode('utf-8')
+        
+        # Replace all double quotes with single quotes:
+        global_song_text = global_song_text.replace('"', "'")
+
+        out = curs.execute("INSERT INTO songs (id, number, text, title) " + \
+            'VALUES (%i, %i, "%s", "%s")' % (song_id, song_num, global_song_text, song_title))
+        print 'song add out:', out
+        
+        for song_char_num, chord in global_song_chords.iteritems():
+            (marker, note_id, type_id, bass_id, in_parentheses) = chord
+            if not marker:
+                marker = -1 # NULL
+            
+            in_parentheses = int(in_parentheses)
+            
+            # Get the next available ID:
+            chord_id = 0
+            for row in curs.execute("SELECT MAX(id) from song_chord_link"):
+                chord_id = row[0] + 1
+            
+            out = curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+                        'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
+        
+        curs.commit()
+        print 'DONE', out
+
     # Go to next song
 
 
