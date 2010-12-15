@@ -200,16 +200,17 @@ for song_num, song_title, song_text in all_songs:
     song_lines = [] # each item is a tuple of line text and chord list.
     
     
-    prev_chords = None
+    prev_chords = {}
     for line in song_text:
         
         # Attempt to convert the line to chords:
         num_chords = 0
         num_non_chords = 0
         
-        tmp_chords = []
+        tmp_chords = {} # Key: position
         tmp_warnings = []
-
+        
+        char_num = 0
         for word in line.split():
             if word == u'/':
                 num_chords += 1
@@ -222,7 +223,10 @@ for song_num, song_title, song_text in all_songs:
                     num_non_chords += 1
                 else:
                     num_chords += 1
-                    tmp_chords.append(converted_chord)
+                    # FIXME align the chords instead of just putting one
+                    # character between them!
+                    tmp_chords[char_num] = converted_chord
+                    char_num += 2
         
 
         #print '\nnum_chords:', num_chords, 'num_non_chords:', num_non_chords
@@ -239,16 +243,28 @@ for song_num, song_title, song_text in all_songs:
                 song_lines.append( (line, prev_chords) )
             else:
                 # The line before was NOT a chords line - no chords for this lyrics line
-                song_lines.append( (line, []) )
-            prev_chords = None
-
-
-    for lyrics, chords in song_lines:
-        print '  ', chords
-        print lyrics.encode('utf-8')
-    
+                song_lines.append( (line, {}) )
+            prev_chords = {}
     
 
+    global_song_text = ""
+    global_song_chords = {} # key: position in the global_song_text
+    
+    # Print all lines for this song:
+    line_start_char_num = 0
+    for lyrics, chords_dict in song_lines:
+        #print '  ', chords_dict
+        #print lyrics.encode('utf-8')
+        
+        global_song_text += lyrics + '\n'
+        for line_char_num, chord in chords_dict.iteritems():
+            song_char_num = line_char_num + line_start_char_num
+            global_song_chords[song_char_num] = chord
+        
+        line_start_char_num += len(lyrics) + 1 # 1 for the EOL character
+    
+    
+    # Go to next song
 
 
 #EOF
