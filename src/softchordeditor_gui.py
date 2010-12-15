@@ -23,8 +23,6 @@ import sqlite3
 
 
 
-script_ui_file = "softchordeditor.ui"
-chord_dialog_ui_file = "softchordeditor_chord_dialog.ui"
 
 #if sys.executable.endswith("python.exe"):
     # Running in a Windows environment
@@ -33,13 +31,22 @@ chord_dialog_ui_file = "softchordeditor_chord_dialog.ui"
     # Running in Mac executaion environment
 #    script_ui_file = os.path.join( os.path.dirname(sys.executable), "softchordeditor.ui" )
 
-script_ui_file = os.path.join( os.path.dirname(sys.executable), "softchordeditor.ui" )
+
+if sys.executable.startswith("python"):
+    exec_dir = os.path.dirname(sys.executable)
+else:
+    exec_dir = "."
+
+script_ui_file = os.path.join(exec_dir, "softchordeditor.ui" )
+chord_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_chord_dialog.ui")
+
 print 'script_ui_file:', script_ui_file
 print 'exists:', os.path.isfile(script_ui_file)
 
 
 #db_file = "song_database.sqlite"
-db_file = os.path.join( os.path.dirname(sys.executable), "song_database.sqlite" )
+db_file = os.path.join( exec_dir, "song_database.sqlite" )
+
 
 
 def tr(text):
@@ -93,9 +100,7 @@ class SongChord:
             elif self.bass_note_id > 11:
                 self.bass_note_id -= 12
 
-        
-        query = QtSql.QSqlQuery()
-        out = query.exec_("UPDATE song_chord_link SET note_id=%i, bass_note_id=%i WHERE id=%i" % (self.note_id, self.bass_note_id, self.id))
+        self.app.execute("UPDATE song_chord_link SET note_id=%i, bass_note_id=%i WHERE id=%i" % (self.note_id, self.bass_note_id, self.id))
         
     
     def _getNoteString(self, note_id):
@@ -103,15 +108,15 @@ class SongChord:
         Returns the specified note as a string, using sharps vs flats
         as appropriate.
         """
-        query = QtSql.QSqlQuery("SELECT text, alt_text FROM notes WHERE id=%i" % note_id)
-        query.next()
-        note_text = query.value(0).toString()
-        note_alt_text = query.value(1).toString()
-        
-        if self.app.sharpsOrFlats() == 1:
-            return note_text
-        else:
-            return note_alt_text
+
+        for row in self.app.execute("SELECT text, alt_text FROM notes WHERE id=%i" % note_id):
+            note_text = row[0]
+            note_alt_text = row[1]
+            
+            if self.app.sharpsOrFlats() == 1:
+                return note_text
+            else:
+                return note_alt_text
         
     def getChordString(self):
         """
@@ -120,9 +125,9 @@ class SongChord:
         """
         note_text = self._getNoteString(self.note_id)
         
-        query = QtSql.QSqlQuery("SELECT print FROM chord_types WHERE id=%i" % self.chord_type_id)
-        query.next()
-        chord_type_text = query.value(0).toString()
+        chord_type_text = ""
+        for row in self.app.execute("SELECT print FROM chord_types WHERE id=%i" % self.chord_type_id):
+            chord_type_text = row[0]
         
         if self.marker: # Not NULL
             chord_str = '%s:%s%s' % (self.marker, note_text, chord_type_text)
@@ -144,32 +149,28 @@ class Song:
     Stores information for a particular song.
     """
     def __init__(self, app, song_id):
-        
-        query = QtSql.QSqlQuery("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id)
-        query.next()
-        """
-        for row in app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
-            title = row[0].encode('utf-8')
-            #for id, song_char_num
-        """
+        self.app = app
         self.id = song_id
-        self.title = query.value(0).toString()
-        self.number = query.value(1).toInt()[0]
-        self.all_text = query.value(2).toString()
-        self.key_note_id = query.value(3).toInt()[0]
-        self.key_is_major = query.value(4).toInt()[0]
+        
+        for row in self.app.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
+            self.title = row[0]
+            self.number = row[1]
+            self.all_text = row[2]
+            self.key_note_id = row[3] # Can be None or -1
+            if self.key_note_id == None:
+                self.key_note_id = -1
+            self.key_is_major = row[4]
+            break
         
         song_chords = {}
-        query = QtSql.QSqlQuery("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % song_id)
-
-        while query.next():
-            id = query.value(0).toInt()[0]
-            song_char_num = query.value(1).toInt()[0]
-            note_id = query.value(2).toInt()[0]
-            chord_type_id = query.value(3).toInt()[0]
-            bass_note_id = query.value(4).toInt()[0]
-            marker = query.value(5).toString()
-            in_parentheses = query.value(6).toInt()[0]
+        for row in self.app.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % song_id):
+            id = row[0]
+            song_char_num = row[1]
+            note_id = row[2]
+            chord_type_id = row[3]
+            bass_note_id = row[4]
+            marker = row[5]
+            in_parentheses = row[6]
             song_chords[song_char_num] = SongChord(app, id, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
         self.all_chords = song_chords
 
@@ -180,7 +181,7 @@ class Song:
         line_end_offset = None
         
 
-        #for row in app.curs.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker FROM song_chord_link WHERE song_id=%i" % song_id):
+        #for row in app.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker FROM song_chord_link WHERE song_id=%i" % song_id):
         #    print 'row:', row
         #    #for id, song_char_num
 
@@ -504,11 +505,10 @@ class ChordDialog:
         self.ui = uic.loadUi(chord_dialog_ui_file)
         
         notes_list = []
-        query = QtSql.QSqlQuery("SELECT id, text, alt_text FROM notes")
-        while query.next():
-            note_id = query.value(0).toInt()[0]
-            text = query.value(1).toString()
-            alt_text = query.value(2).toString()
+        for row in self.app.execute("SELECT id, text, alt_text FROM notes"):
+            note_id = row[0]
+            text = row[1]
+            alt_text = row[2]
             if text == alt_text:
                 combined_text = text
             else:
@@ -518,10 +518,9 @@ class ChordDialog:
 
 
         chord_types_list = []
-        query = QtSql.QSqlQuery("SELECT id, name FROM chord_types")
-        while query.next():
-            chord_type_id = query.value(0).toInt()[0]
-            name = query.value(1).toString()
+        for row in self.app.execute("SELECT id, name FROM chord_types"):
+            chord_type_id = row[0]
+            name = row[1]
             chord_types_list.append(name)
         self.ui.chord_type_menu.addItems(chord_types_list)
 
@@ -579,82 +578,31 @@ class App:
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
 
-        self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(db_file)))
+        #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(db_file)))
         
-        """
+        
         # This qill be used for Qt (QSqlQuery) operations:
         self.db = QtSql.QSqlDatabase.addDatabase("QSQLITE")
         self.db.setDatabaseName(db_file)
         if not self.db.open():
             self.error('Could not open the database')
             sys.exit(1)
-        """
+        
         
         # This will be used for Python (sqlite3) operations:
         self.curs = sqlite3.connect(db_file)
         
         # FOR DEMONSTRATION:
-        for row in self.curs.execute("SELECT * FROM songs"):
-            print row
+        #for row in self.execute("SELECT * FROM songs"):
+        #    print row
         
-        return
-
-
-        #print 'adding in_parentheses column...'
-        #query = QtSql.QSqlQuery()
-        #out = query.exec_("ALTER TABLE song_chord_link ADD in_parentheses int")
-        #print 'done. out:', out
-        
-        
-        #print 'adding a song number column...'
-        #query = QtSql.QSqlQuery()
-        #out = query.exec_("ALTER TABLE songs ADD number int")
-        #print 'done. out:', out
-        
-        
-        #print 'Setting all "-1" markers to NULL...'
-        #query2 = QtSql.QSqlQuery()
-        #out = query2.exec_('UPDATE song_chord_link SET marker="" WHERE marker="-1"')
-        #print 'out:', out
-        
-        #for row in self.curs.execute('SELECT id, marker FROM song_chord_link'):
-        #    print 'row:', row
-        
-        """
-        self.notes_model = QtSql.QSqlQueryModel()
-        self.notes_model.setQuery(QtSql.QSqlQuery("SELECT * from notes"))
-        self.ui.notes_view.setModel(self.notes_model)
-        self.ui.notes_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
-
-        self.chord_types_model = QtSql.QSqlQueryModel()
-        self.chord_types_model.setQuery(QtSql.QSqlQuery("SELECT * from chord_types"))
-        self.ui.chord_types_view.setModel(self.chord_types_model)
-        self.ui.chord_types_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
-        
-        #self.song_chord_link_model = QtSql.QSqlTableModel()
-        self.song_chord_link_model = QtSql.QSqlRelationalTableModel()
-        self.song_chord_link_model.setTable("song_chord_link")
-        self.song_chord_link_model.setRelation(3, QtSql.QSqlRelation("notes", "id", "text"))
-        self.song_chord_link_model.setRelation(4, QtSql.QSqlRelation("chord_types", "id", "name"))
-        self.ui.song_chord_link_view.setItemDelegate(QtSql.QSqlRelationalDelegate(self.ui.song_chord_link_view))
-        self.song_chord_link_model.setEditStrategy(QtSql.QSqlTableModel.OnFieldChange)
-        self.song_chord_link_model.select()
-        self.ui.song_chord_link_view.setModel(self.song_chord_link_model)
-        self.ui.song_chord_link_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
-        self.c( self.song_chord_link_model, "dataChanged(QModelIndex, QModelIndex)",
-            self.songChordLinkDataChanged )
-        
-        """
-        
-        self.createSongsModel()
         
         # Make a list of all keys:
-        keys_list = []
-        query = QtSql.QSqlQuery("SELECT id, text, alt_text FROM notes")
-        while query.next():
-            note_id = query.value(0).toInt()[0]
-            text = query.value(1).toString()
-            alt_text = query.value(2).toString()
+        keys_list = ["None"]
+        for row in self.execute("SELECT id, text, alt_text FROM notes"):
+            note_id = row[0]
+            text = row[1]
+            alt_text = row[2]
             if text == alt_text:
                 combined_text = text
             else:
@@ -664,6 +612,11 @@ class App:
         
         self.ui.song_key_menu.addItems(keys_list)
  
+        
+
+        # return
+        
+        self.createSongsModel()
         
         self.ignore_song_text_changed = False
         self.previous_song_text = None # Song text before last user's edit operation
@@ -716,8 +669,11 @@ class App:
         self._orig_keyPressEvent = self.ui.keyPressEvent
         self.ui.keyPressEvent = self.keyPressEvent
 
-    #def __del__(self):
-    #    self.db.close()
+    def __del__(self):
+        self.db.close()
+    
+    def execute(self, query):
+        return self.curs.execute(query)
     
     
     def createSongsModel(self):
@@ -740,6 +696,8 @@ class App:
         self.songs_model.removeColumn(2) # Remove the chord note column
         self.songs_model.removeColumn(2) # Remove the is major column
         """
+        
+
         self.songs_model = QtSql.QSqlQueryModel()
         self.songs_model.setQuery(QtSql.QSqlQuery("SELECT id, number, title from songs"))
         self.songs_model.setHeaderData(0, Qt.Horizontal, tr("ID"))
@@ -777,8 +735,7 @@ class App:
             
             song_id = self.current_song.id
             
-            query = QtSql.QSqlQuery()
-            out = query.exec_("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
+            self.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
             
             self.selected_char_num = None
             self.updateCurrentSongFromDatabase()
@@ -854,7 +811,7 @@ class App:
             self.previous_song_text = None
             self.ui.song_title_ef.setText("")
             self.ui.song_num_ef.setText("")
-            self.ui.song_key_menu.setCurrentIndex(0) # FIXME should be "None"
+            self.ui.song_key_menu.setCurrentIndex(0) # None
         
         self.ui.song_text_edit.setEnabled( self.current_song != None )
         self.ui.song_title_ef.setEnabled( self.current_song != None )
@@ -882,8 +839,11 @@ class App:
             self.ignore_song_text_changed = False
             self.previous_song_text = self.current_song.all_text
         
+        if self.current_song.key_note_id == -1:
+            self.ui.song_key_menu.setCurrentIndex( 0 )
+        else:
+            self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major + 1)
 
-        self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major )
         self.ui.song_title_ef.setText(self.current_song.title)
         if self.current_song.number == -1:
             self.ui.song_num_ef.setText("")
@@ -900,11 +860,10 @@ class App:
         if not self.current_song:
             return 1
         
-        query = QtSql.QSqlQuery("SELECT note_id FROM song_chord_link WHERE song_id=%i" % self.current_song.id)
         num_prefer_sharp = 0
         num_prefer_flat = 0
-        while query.next():
-            note_id = query.value(0).toInt()[0]
+        for row in self.execute("SELECT note_id FROM song_chord_link WHERE song_id=%i" % self.current_song.id):
+            note_id = row[0]
             if note_id in [1, 6]: # C# or F#
                 num_prefer_sharp += 1
             elif note_id in [3, 10]: # Eb or Bb
@@ -985,27 +944,21 @@ class App:
             tmp_id_song_char_num_dict = {}
             
             while query.next():
-                id = query.value(0).toInt()[0]
-                song_char_num = query.value(1).toInt()[0]
+                id = row[0]
+                song_char_num = row[1]
                 try:
                     new_song_char_num = renumber_map[song_char_num]
                     tmp_id_song_char_num_list = []
                 except KeyError:
                     tmp_ids_to_delete.append(id)
-                    #query2 = QtSql.QSqlQuery()
-                    #out = query2.exec_("DELETE FROM song_chord_link WHERE id=%i" % id)
                 else:
                     tmp_id_song_char_num_dict[id] = new_song_char_num
-                    #query2 = QtSql.QSqlQuery()
-                    #out = query2.exec_("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
             
             for id in tmp_ids_to_delete:    
-                query2 = QtSql.QSqlQuery()
-                out = query2.exec_("DELETE FROM song_chord_link WHERE id=%i" % id)
+                self.execute("DELETE FROM song_chord_link WHERE id=%i" % id)
 
             for id, new_song_char_num in tmp_id_song_char_num_dict.iteritems():
-                query2 = QtSql.QSqlQuery()
-                out = query2.exec_("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
+                self.execute("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
 
 
             # Renumber the selection:
@@ -1016,8 +969,7 @@ class App:
         
         song_id = self.current_song.id
         
-        query = QtSql.QSqlQuery()
-        out = query.exec_('UPDATE songs SET text="%s" WHERE id=%i' % (song_text, song_id))
+        self.execute('UPDATE songs SET text="%s" WHERE id=%i' % (song_text, song_id))
         
         self.updateCurrentSongFromDatabase()
         
@@ -1036,33 +988,30 @@ class App:
         song_id = self.current_song.id
         query = QtSql.QSqlQuery("SELECT id, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
         query.next()
-        id = query.value(0).toInt()[0]
+        id = row[0]
         
         if new_song_char_num == -1:
             # Delete
-            query2 = QtSql.QSqlQuery()
-            out = query2.exec_("DELETE FROM song_chord_link WHERE id=%i" % id)
+            self.execute("DELETE FROM song_chord_link WHERE id=%i" % id)
         else:
             if copy:
                 #print 'copying'
                 # Copy
-                note_id = query.value(1).toInt()[0]
-                chord_type_id = query.value(2).toInt()[0]
-                bass_note_id = query.value(3).toInt()[0]
+                note_id = row[1]
+                chord_type_id = row[2]
+                bass_note_id = row[3]
                 
                 # Get the next available ID:
                 query = QtSql.QSqlQuery("SELECT MAX(id) from song_chord_link")
                 query.next()
-                new_id = query.value(0).toInt()[0] + 1
+                new_id = row[0] + 1
                 
-                out = query.exec_("INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id) " + \
+                self.execute("INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id) " + \
                             "VALUES (%i, %i, %i, %i, %i, %i)" % (new_id, song_id, new_song_char_num, note_id, chord_type_id, bass_note_id))
-                #print 'copy out:', out
             else:
                 #print 'moving'
                 # Move
-                query2 = QtSql.QSqlQuery()
-                out = query2.exec_("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
+                self.execute("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
         self.updateCurrentSongFromDatabase()
     
     
@@ -1243,8 +1192,7 @@ class App:
         Called when the user modifies the selected song's title.
         """
         if self.current_song:
-            query = QtSql.QSqlQuery()
-            out = query.exec_('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+            self.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
             
             # Update the song table from database:
             self.createSongsModel()
@@ -1262,8 +1210,7 @@ class App:
             except:
                 self.error("Invalid song number")
             else:
-                query = QtSql.QSqlQuery()
-                out = query.exec_('UPDATE songs SET number=%i WHERE id=%i' % (new_num, self.current_song.id))
+                self.execute('UPDATE songs SET number=%i WHERE id=%i' % (new_num, self.current_song.id))
                 
                 # Update the song table from database:
                 self.createSongsModel()
@@ -1276,16 +1223,19 @@ class App:
         
         if self.current_song == None:
             return
-
+        
         song_id = self.current_song.id
-
-        note_id = new_key_index / 2
-        is_major = new_key_index % 2
+        
+        if new_key_index == 0:
+            note_id = -1
+            is_major = 1
+        else:
+            note_id = (new_key_index-1) / 2
+            is_major = (new_key_index-1) % 2
         
         if note_id != self.current_song.key_note_id and is_major != self.current_song.key_is_major:
             # Do not run this code if the value of the menu is first initialized
-            query = QtSql.QSqlQuery()
-            out = query.exec_('UPDATE songs SET key_note_id=%i, key_is_major=%i WHERE id=%i' % (note_id, is_major, song_id))
+            self.execute('UPDATE songs SET key_note_id=%i, key_is_major=%i WHERE id=%i' % (note_id, is_major, song_id))
             
             # Update the song table from database:
             self.createSongsModel()
@@ -1302,9 +1252,9 @@ class App:
         
         query = QtSql.QSqlQuery("SELECT MAX(id) from songs")
         query.next()
-        id = query.value(0).toInt()[0] + 1
+        id = row[0] + 1
         
-        out = query.exec_("INSERT INTO songs (id, number, text, title) " + \
+        self.execute("INSERT INTO songs (id, number, text, title) " + \
                         'VALUES (%i, %i, "%s", "%s")' % (id, song_number, song_text, song_title))
         
         # Update the song table from database:
@@ -1321,12 +1271,10 @@ class App:
         try:
             selected_song_ids = self.getSelectedSongIds()
             for song_id in selected_song_ids:
-                query = QtSql.QSqlQuery()
-                out = query.exec_("DELETE FROM songs WHERE id=%i" % song_id)
+                self.execute("DELETE FROM songs WHERE id=%i" % song_id)
                 
                 # Delete all associated chords:   
-                query = QtSql.QSqlQuery()
-                out = query.exec_("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
+                self.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
             
             # Update the song table from database:
             self.createSongsModel()
@@ -1506,14 +1454,13 @@ class App:
         
         # Check whether this character already has a chord:
         song_id = self.current_song.id
-        query = QtSql.QSqlQuery("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
-        if query.next():
-            #id = query.value(0).toInt()[0]
-            note_id = query.value(2).toInt()[0]
-            chord_type_id = query.value(3).toInt()[0]
-            bass_note_id = query.value(4).toInt()[0]
-            marker = query.value(5).toString()
-            in_parentheses = query.value(6).toInt()[0]
+        for row in self.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)):
+            #id = row[0]
+            note_id = row[2]
+            chord_type_id = row[3]
+            bass_note_id = row[4]
+            marker = row[5]
+            in_parentheses = row[6]
             
             chord = SongChord(self, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
         else:
@@ -1531,20 +1478,17 @@ class App:
             in_parentheses = modified_chord.in_parentheses
             
             # Check whether this character already has a chord, if so, alter it:
-            query = QtSql.QSqlQuery("SELECT id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
-            if query.next():
+            for row in self.execute("SELECT id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)):
                 # Replacing exising chord
-                id = query.value(0).toInt()[0]
-                query = QtSql.QSqlQuery()
-                out = query.exec_('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE id=%i' % (note_id, chord_type_id, bass_note_id, marker, in_parentheses, id))
+                id = row[0]
+                self.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE id=%i' % (note_id, chord_type_id, bass_note_id, marker, in_parentheses, id))
             else:
                 # Adding a new chord
                 query = QtSql.QSqlQuery("SELECT MAX(id) from song_chord_link")
                 query.next()
-                id = query.value(0).toInt()[0] + 1
+                id = row[0] + 1
                 
-                query = QtSql.QSqlQuery()
-                out = query.exec_('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
+                self.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
                             "VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (id, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses))
             self.updateCurrentSongFromDatabase()
                 
@@ -1600,7 +1544,7 @@ class App:
         # Key: note text, value: note ID
         self.note_text_id_dict = {}
 
-        for row in self.curs.execute("SELECT id, text, alt_text FROM notes"):
+        for row in self.execute("SELECT id, text, alt_text FROM notes"):
             #print 'row:', row
             id = row[0]
             text = row[1]
@@ -1613,7 +1557,7 @@ class App:
         # Key: chord type text, value: chord type ID
         self.chord_type_texts_dict = {}
 
-        for row in self.curs.execute("SELECT id, print FROM chord_types"):
+        for row in self.execute("SELECT id, print FROM chord_types"):
             #print 'row:', row
             id = row[0]
             print_text = row[1]
@@ -1709,7 +1653,7 @@ class App:
         print 'IMPORTING'
         
         song_id = 0
-        for row in self.curs.execute("SELECT MAX(id) from songs"):
+        for row in self.execute("SELECT MAX(id) from songs"):
             song_id = row[0] + 1
         print 'song_id:', song_id
         print 'song_num:', song_num
@@ -1718,9 +1662,8 @@ class App:
         # Replace all double quotes with single quotes:
         global_song_text = global_song_text.replace('"', "'")
 
-        out = self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
+        self.execute("INSERT INTO songs (id, number, text, title) " + \
             'VALUES (%i, %i, "%s", "%s")' % (song_id, song_num, global_song_text, song_title))
-        print 'song add out:', out
         
         for song_char_num, chord in global_song_chords.iteritems():
             (marker, note_id, type_id, bass_id, in_parentheses) = chord
@@ -1731,10 +1674,10 @@ class App:
             
             # Get the next available ID:
             chord_id = 0
-            for row in self.curs.execute("SELECT MAX(id) from song_chord_link"):
+            for row in self.execute("SELECT MAX(id) from song_chord_link"):
                 chord_id = row[0] + 1
             
-            out = self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+            self.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
                         'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
         
         self.curs.commit()
