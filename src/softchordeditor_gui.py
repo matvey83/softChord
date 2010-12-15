@@ -357,6 +357,8 @@ class PrintWidget(QtGui.QWidget):
         Called when mouse is DRAGGED or HOVERED in the song chords widget.
         """
         
+        self.app.hover_char_num = None
+        
         if self.geometry().contains(event.pos()):
             localx = event.pos().x()
             localy = event.pos().y()
@@ -413,8 +415,8 @@ class PrintWidget(QtGui.QWidget):
                     else:
                         # No chord is being currently dragged. Clear previous selection:
                         self.app.selected_char_num = song_char_num
-            
-            self.app.print_widget.repaint()
+        
+        self.app.print_widget.repaint()
 
 
 
@@ -661,7 +663,7 @@ class App:
         self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
         self.c( self.ui.import_text_button, "clicked()", self.importFromText )
         self.c( self.ui.export_text_button, "clicked()", self.exportToText )
-        self.c( self.ui.print_button, "clicked()", self.printSelectedSongs )
+        #self.c( self.ui.print_button, "clicked()", self.printSelectedSongs )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSong )
         
@@ -732,6 +734,7 @@ class App:
         self.songs_model.setHeaderData(2, Qt.Horizontal, tr("Title"))
         self.ui.songs_view.setModel(self.songs_model)
         self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
+        self.ui.songs_view.verticalHeader().hide()
         
         self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         for index in selected_row_indecies:

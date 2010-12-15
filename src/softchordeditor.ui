@@ -23,7 +23,7 @@
       <widget class="QWidget" name="layoutWidget">
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0,0,0,0">
+         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0,0,0">
           <item>
            <widget class="QPushButton" name="new_song_button">
             <property name="text">
@@ -56,13 +56,6 @@
            <widget class="QPushButton" name="export_text_button">
             <property name="text">
              <string>Export selected to TEXT...</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="print_button">
-            <property name="text">
-             <string>Print selected...</string>
             </property>
            </widget>
           </item>
@@ -106,7 +99,7 @@
          <widget class="QTableView" name="songs_view">
           <property name="minimumSize">
            <size>
-            <width>0</width>
+            <width>100</width>
             <height>100</height>
            </size>
           </property>
@@ -154,19 +147,6 @@
           </item>
           <item>
            <widget class="QLineEdit" name="song_title_ef"/>
-          </item>
-          <item>
-           <spacer name="horizontalSpacer_2">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
           </item>
          </layout>
         </item>
