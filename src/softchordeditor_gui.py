@@ -29,7 +29,7 @@ import sqlite3
 #    script_ui_file = os.path.join( os.path.dirname(sys.executable), "softchordeditor.ui" )
 
 
-if sys.executable.startswith("python"):
+if not sys.executable.startswith("python"):
     exec_dir = os.path.dirname(sys.executable)
 else:
     exec_dir = "."
