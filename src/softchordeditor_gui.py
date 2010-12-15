@@ -58,6 +58,51 @@ def tr(text):
 
 
 
+class SongTableModel(QtCore.QAbstractTableModel):
+    """
+    Class for storing table information.
+    """
+    def __init__(self, app):
+        QtCore.QAbstractTableModel.__init__(self)
+        self.app = app
+        self._data = []
+        self.header_list = ["ID", "Number", "Title"]
+        self.updateFromDatabase()
+
+    def updateFromDatabase(self):
+        self._data = []
+        for row in self.app.execute("SELECT id, number, title FROM songs"):
+            self._data.append(row)
+        #print 'self._data:', self._data
+    
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        """ Returns number of rows """
+        return len(self._data)
+    
+    def columnCount(self, parent=QtCore.QModelIndex()):
+        """ Returns number of columns """
+        return len(self.header_list)
+    
+    def data(self, index, role=Qt.DisplayRole):
+        """
+        Given a cell index, returns the data that should be displayed in that
+        cell (text or check button state). Used by the view.
+        """
+        
+        if role == Qt.DisplayRole:
+            row_data = self._data[index.row()]
+            return QtCore.QVariant( row_data[index.column()] )
+        return QtCore.QVariant()
+    
+    def headerData(self, section, orientation, role):
+        """
+        Returns the string that should be displayed in the specified header
+        cell. Used by the View.
+        """
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return QtCore.QVariant(self.header_list[section])
+        return QtCore.QVariant()        
+    
 
 
 
@@ -611,12 +656,18 @@ class App:
             keys_list.append(combined_text + u" Minor")
         
         self.ui.song_key_menu.addItems(keys_list)
- 
         
+        
+        self.songs_model = SongTableModel(self)
+        
+        self.ui.songs_view.setModel(self.songs_model)
+        self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
+        self.ui.songs_view.verticalHeader().hide()
+        self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
+        self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
+            self.songsSelectionChangedCallback )
 
-        # return
-        
-        self.createSongsModel()
+        self.updateFromDatabase()
         
         self.ignore_song_text_changed = False
         self.previous_song_text = None # Song text before last user's edit operation
@@ -676,43 +727,16 @@ class App:
         return self.curs.execute(query)
     
     
-    def createSongsModel(self):
+    def updateFromDatabase(self):
         """
         Re-create the songs model to re-read it from the database.
-        THERE MUST BE A BETTER WAY TO UPDATE THE MODEL?
         """
         
-        if hasattr(self, "songs_model"):
-            selected_row_indecies = self.ui.songs_view.selectionModel().selectedRows()
-        else:
-            selected_row_indecies = []
-            
-        """
-        self.songs_model = QtSql.QSqlTableModel()
-        self.songs_model.setTable("songs")
-        self.songs_model.setEditStrategy(QtSql.QSqlTableModel.OnFieldChange)
-        self.songs_model.select()
-        self.songs_model.removeColumn(1) # Remove the text column
-        self.songs_model.removeColumn(2) # Remove the chord note column
-        self.songs_model.removeColumn(2) # Remove the is major column
-        """
+        selected_row_indecies = self.ui.songs_view.selectionModel().selectedRows()
         
-
-        self.songs_model = QtSql.QSqlQueryModel()
-        self.songs_model.setQuery(QtSql.QSqlQuery("SELECT id, number, title from songs"))
-        self.songs_model.setHeaderData(0, Qt.Horizontal, tr("ID"))
-        self.songs_model.setHeaderData(1, Qt.Horizontal, tr("Number"))
-        self.songs_model.setHeaderData(2, Qt.Horizontal, tr("Title"))
-        self.ui.songs_view.setModel(self.songs_model)
-        self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
-        self.ui.songs_view.verticalHeader().hide()
-        
-        self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         for index in selected_row_indecies:
             self.ui.songs_view.selectRow(index.row())
 
-        self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
-            self.songsSelectionChangedCallback )
 
     def keyPressEvent(self, event):
         """
@@ -1195,7 +1219,7 @@ class App:
             self.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
             
             # Update the song table from database:
-            self.createSongsModel()
+            self.updateFromDatabase()
         
     
     def currentSongNumberEdited(self, new_num_str):
@@ -1213,7 +1237,7 @@ class App:
                 self.execute('UPDATE songs SET number=%i WHERE id=%i' % (new_num, self.current_song.id))
                 
                 # Update the song table from database:
-                self.createSongsModel()
+                self.updateFromDatabase()
         
     
     def currentSongKeyChanged(self, new_key_index):
@@ -1238,7 +1262,7 @@ class App:
             self.execute('UPDATE songs SET key_note_id=%i, key_is_major=%i WHERE id=%i' % (note_id, is_major, song_id))
             
             # Update the song table from database:
-            self.createSongsModel()
+            self.updateFromDatabase()
     
 
     
@@ -1258,7 +1282,7 @@ class App:
                         'VALUES (%i, %i, "%s", "%s")' % (id, song_number, song_text, song_title))
         
         # Update the song table from database:
-        self.createSongsModel()
+        self.updateFromDatabase()
         
         # Select the newly added song:
         self.ui.songs_view.selectRow( self.songs_model.rowCount()-1 )
@@ -1277,7 +1301,7 @@ class App:
                 self.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
             
             # Update the song table from database:
-            self.createSongsModel()
+            self.updateFromDatabase()
         finally:
             self.restoreCursor()
 
@@ -1684,7 +1708,7 @@ class App:
         print 'DONE', out
         
         # Update the song table from database:
-        self.createSongsModel()
+        self.updateFromDatabase()
         
         self.ui.songs_view.selectRow( self.songs_model.rowCount()-1 )
 
