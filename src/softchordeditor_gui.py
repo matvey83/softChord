@@ -21,7 +21,6 @@ import codecs
 import sqlite3
 
 
-db_file = "song_database.sqlite"
 
 
 script_ui_file = "softchordeditor.ui"
@@ -33,6 +32,14 @@ chord_dialog_ui_file = "softchordeditor_chord_dialog.ui"
 #else:
     # Running in Mac executaion environment
 #    script_ui_file = os.path.join( os.path.dirname(sys.executable), "softchordeditor.ui" )
+
+script_ui_file = os.path.join( os.path.dirname(sys.executable), "softchordeditor.ui" )
+print 'script_ui_file:', script_ui_file
+print 'exists:', os.path.isfile(script_ui_file)
+
+
+#db_file = "song_database.sqlite"
+db_file = os.path.join( os.path.dirname(sys.executable), "song_database.sqlite" )
 
 
 def tr(text):
@@ -571,20 +578,26 @@ class App:
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
+
+        self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(db_file)))
         
+        """
         # This qill be used for Qt (QSqlQuery) operations:
         self.db = QtSql.QSqlDatabase.addDatabase("QSQLITE")
         self.db.setDatabaseName(db_file)
         if not self.db.open():
-            print 'Could not open the database'
+            self.error('Could not open the database')
             sys.exit(1)
+        """
         
         # This will be used for Python (sqlite3) operations:
         self.curs = sqlite3.connect(db_file)
         
         # FOR DEMONSTRATION:
-        #for row in self.curs.execute("SELECT * FROM songs"):
-        #    print row
+        for row in self.curs.execute("SELECT * FROM songs"):
+            print row
+        
+        return
 
 
         #print 'adding in_parentheses column...'
@@ -703,8 +716,8 @@ class App:
         self._orig_keyPressEvent = self.ui.keyPressEvent
         self.ui.keyPressEvent = self.keyPressEvent
 
-    def __del__(self):
-        self.db.close()
+    #def __del__(self):
+    #    self.db.close()
     
     
     def createSongsModel(self):
@@ -776,6 +789,9 @@ class App:
 
     def info(self, text):
         QtGui.QMessageBox.information(self.ui, "Information", text)
+    
+    def error(self, text):
+        QtGui.QMessageBox.warning(self.ui, "Error", text)
 
     def setWaitCursor(self):
         self.ui.setCursor( QtGui.QCursor(QtCore.Qt.WaitCursor) )
