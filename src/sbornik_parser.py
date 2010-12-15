@@ -66,8 +66,8 @@ def convert_chord(chord_str):
         marker = chord_str[:colon]
         chord_str = chord_str[colon+1:]
     
-    if marker:
-        print 'MARKER:', marker.encode('utf-8')
+    #if marker:
+    #    print 'MARKER:', marker.encode('utf-8')
     
     slash = chord_str.find('/')
     if slash != -1:
@@ -131,7 +131,7 @@ def convert_chord(chord_str):
         #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
         #return None
     
-    return (note_id, type_id, bass_id, in_paranthesis, marker)
+    return (marker, note_id, type_id, bass_id, in_paranthesis)
 
     #print '  note:', note_id
     #print '  type:', type_id
@@ -141,18 +141,23 @@ def convert_chord(chord_str):
 
 
 
+
+
 sbornik_file = "zvuki_neba.txt"
+
+
 
 all_songs = []
 
 
 song_num = 0
 song_title = None
-song_lines = []
+
+song_text = []
 
 lines = []
 for line in open(sbornik_file):
-    # Convert to Unicode:
+    # Decode UTF-8 into Unicode:
     lines.append( line.decode('utf-8') )
 
 
@@ -160,8 +165,10 @@ for linenum, line in enumerate(lines):
     
     next_song_num = song_num + 1
     if line.startswith("%s\t" % next_song_num) or line.strip() == str(next_song_num) or line.startswith("%s   " % next_song_num):
-        all_songs.append( (song_num, song_title, song_lines) )
-
+        if song_title != None:
+            all_songs.append( (song_num, song_title, song_text) )
+            song_text = []
+        
         title = lines[linenum+2].strip()
         if title[-1] in ['.', ',']:
             title = title[:-1]
@@ -175,21 +182,26 @@ for linenum, line in enumerate(lines):
             # This is not the text before the first song
             while line.startswith('\t'):
                 line = line[1:]
-            song_lines.append(line[:-1])
-        
-all_songs.append( (song_num, song_title, song_lines) )
+            song_text.append(line[:-1])
+
+all_songs.append( (song_num, song_title, song_text) )
+song_text = []
 
 
 
-out_lines = [] # each item is a tuple of line text and chord list.
+
+for song_num, song_title, song_text in all_songs:
+    if song_title == None:
+        print '\n\nSONG', song_num, None
+    else:
+        print '\n\nSONG', song_num, song_title.encode('utf-8')
 
 
-for song_num, song_title, song_lines in all_songs:
-    #print '\nSONG', song_num, song_title
+    song_lines = [] # each item is a tuple of line text and chord list.
+    
     
     prev_chords = None
-
-    for line in song_lines:
+    for line in song_text:
         
         # Attempt to convert the line to chords:
         num_chords = 0
@@ -213,30 +225,30 @@ for song_num, song_title, song_lines in all_songs:
                     tmp_chords.append(converted_chord)
         
 
-        print '\nnum_chords:', num_chords, 'num_non_chords:', num_non_chords
+        #print '\nnum_chords:', num_chords, 'num_non_chords:', num_non_chords
         if num_chords > num_non_chords:
-            print 'CHORD LINE:', line.encode('utf-8')
+            #print 'CHORD LINE:', line.encode('utf-8')
             # This is a chords line
             prev_chords = tmp_chords
             for warning_str in tmp_warnings:
                 print '  ', warning_str
         else:
-            print 'LYRICS LINE:', line.encode('utf-8')
+            #print 'LYRICS LINE:', line.encode('utf-8')
             # This is a lyrics line
             if prev_chords:
-                out_lines.append( (line, prev_chords) )
+                song_lines.append( (line, prev_chords) )
             else:
                 # The line before was NOT a chords line - no chords for this lyrics line
-                out_lines.append( (line, []) )
+                song_lines.append( (line, []) )
             prev_chords = None
 
 
-for lyrics, chords in out_lines:
-    print '\nCHORDS:', chords
-    print 'LYRICS:', lyrics.encode('utf-8')
+    for lyrics, chords in song_lines:
+        print '  ', chords
+        print lyrics.encode('utf-8')
     
     
 
 
 
-
+#EOF
