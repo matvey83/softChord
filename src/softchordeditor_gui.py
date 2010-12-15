@@ -20,16 +20,9 @@ import sqlite3
 
 
 
-
-#if sys.executable.endswith("python.exe"):
-    # Running in a Windows environment
-#    script_ui_file = "softchordeditor.ui"
-#else:
-    # Running in Mac executaion environment
-#    script_ui_file = os.path.join( os.path.dirname(sys.executable), "softchordeditor.ui" )
-
-
-if not sys.executable.startswith("python"):
+#print 'executable:', sys.executable
+#print 'dir executable:', dir(sys.executable)
+if not os.path.basename(sys.executable).startswith("python"):
     exec_dir = os.path.dirname(sys.executable)
 else:
     exec_dir = "."
@@ -41,7 +34,6 @@ print 'script_ui_file:', script_ui_file
 print 'exists:', os.path.isfile(script_ui_file)
 
 
-#db_file = "song_database.sqlite"
 db_file = os.path.join( exec_dir, "song_database.sqlite" )
 
 
@@ -709,7 +701,8 @@ class App:
         self.ui.keyPressEvent = self.keyPressEvent
 
     def __del__(self):
-        self.db.close()
+        pass
+        #self.db.close()
     
     def execute(self, query):
         return self.curs.execute(query)
