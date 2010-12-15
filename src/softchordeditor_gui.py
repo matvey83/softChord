@@ -8,12 +8,9 @@ Development started in December 2010
 
 """
 
-# FIXME Use sqlite3 instead of QtSql, as this will allow this program to be
-# more easily ported for use on the web. Moreover, sqlite3 provides a simpler,
-# more Pythonic interface to SQLite than QtSql.
+# NOTE The sqlite3 is intentionally used instead of QtSql.
 
-
-from PyQt4 import QtCore, QtGui, QtSql, uic
+from PyQt4 import QtCore, QtGui, uic
 from PyQt4.QtCore import Qt
 import sys, os
 import codecs
@@ -625,15 +622,6 @@ class App:
 
         #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(db_file)))
         
-        
-        # This qill be used for Qt (QSqlQuery) operations:
-        self.db = QtSql.QSqlDatabase.addDatabase("QSQLITE")
-        self.db.setDatabaseName(db_file)
-        if not self.db.open():
-            self.error('Could not open the database')
-            sys.exit(1)
-        
-        
         # This will be used for Python (sqlite3) operations:
         self.curs = sqlite3.connect(db_file)
         
@@ -960,14 +948,10 @@ class App:
 
 
             # Renumber the chords:
-            song_id = self.current_song.id
-            query = QtSql.QSqlQuery("SELECT id, character_num FROM song_chord_link WHERE song_id=%i" % song_id)
-            
-            # NOTE SURE IF THESE ARE NEEDED: ??
             tmp_ids_to_delete = []
             tmp_id_song_char_num_dict = {}
-            
-            while query.next():
+            song_id = self.current_song.id
+            for row in self.execute("SELECT id, character_num FROM song_chord_link WHERE song_id=%i" % song_id):
                 id = row[0]
                 song_char_num = row[1]
                 try:
@@ -1010,8 +994,7 @@ class App:
         
         # Renumber the chords:
         song_id = self.current_song.id
-        query = QtSql.QSqlQuery("SELECT id, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
-        query.next()
+        row = self.execute("SELECT id, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)).fetchone()
         id = row[0]
         
         if new_song_char_num == -1:
@@ -1026,8 +1009,7 @@ class App:
                 bass_note_id = row[3]
                 
                 # Get the next available ID:
-                query = QtSql.QSqlQuery("SELECT MAX(id) from song_chord_link")
-                query.next()
+                row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
                 new_id = row[0] + 1
                 
                 self.execute("INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id) " + \
@@ -1274,8 +1256,7 @@ class App:
         song_number = -1 # NULL
         song_title = ""
         
-        query = QtSql.QSqlQuery("SELECT MAX(id) from songs")
-        query.next()
+        row = self.exeucute("SELECT MAX(id) from songs").fetchone()
         id = row[0] + 1
         
         self.execute("INSERT INTO songs (id, number, text, title) " + \
@@ -1508,8 +1489,7 @@ class App:
                 self.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE id=%i' % (note_id, chord_type_id, bass_note_id, marker, in_parentheses, id))
             else:
                 # Adding a new chord
-                query = QtSql.QSqlQuery("SELECT MAX(id) from song_chord_link")
-                query.next()
+                row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
                 id = row[0] + 1
                 
                 self.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
