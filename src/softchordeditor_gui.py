@@ -56,8 +56,8 @@ class SongChord:
         self.note_id = note_id
         self.chord_type_id = chord_type_id
         self.bass_note_id = bass_note_id
-        #if marker == "":
-        #    marker = -1
+        if marker == u"-1":
+            self.marker = None
         self.marker = marker
         self.in_parentheses = in_parentheses
 
@@ -111,7 +111,7 @@ class SongChord:
         query.next()
         chord_type_text = query.value(0).toString()
         
-        if self.marker != -1: # Not NULL
+        if self.marker: # Not NULL
             chord_str = '%s:%s%s' % (self.marker, note_text, chord_type_text)
         else:
             chord_str = '%s%s' % (note_text, chord_type_text)
@@ -137,8 +137,6 @@ class Song:
         """
         for row in app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
             title = row[0].encode('utf-8')
-            print 'THE TEXT:', title
-            #print 'row:', row
             #for id, song_char_num
         """
         self.id = song_id
@@ -157,7 +155,7 @@ class Song:
             note_id = query.value(2).toInt()[0]
             chord_type_id = query.value(3).toInt()[0]
             bass_note_id = query.value(4).toInt()[0]
-            marker = query.value(5).toInt()[0]
+            marker = query.value(5).toString()
             in_parentheses = query.value(6).toInt()[0]
             song_chords[song_char_num] = SongChord(app, id, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
         self.all_chords = song_chords
@@ -292,7 +290,6 @@ class Song:
                     chord_left = line_char_num - ( len(chord_text) / 2 )
                     chord_right = line_char_num + ( len(chord_text) / 2 )
                     
-                    #print 'chord:', chord_text, 'left:', chord_left, 'right:', chord_right
                     for i in range(len(chord_text)):
                         pos = i + chord_left
                         line_chord_text_list[pos] = chord_text[i]
@@ -577,11 +574,6 @@ class App:
         #    print row
 
 
-        #print 'adding a marker column...'
-        #query = QtSql.QSqlQuery()
-        #out = query.exec_("ALTER TABLE song_chord_link ADD marker varchar(20)")
-        #print 'done. out:', out
-        
         #print 'adding in_parentheses column...'
         #query = QtSql.QSqlQuery()
         #out = query.exec_("ALTER TABLE song_chord_link ADD in_parentheses int")
@@ -594,6 +586,13 @@ class App:
         #print 'done. out:', out
         
         
+        #print 'Setting all "-1" markers to NULL...'
+        #query2 = QtSql.QSqlQuery()
+        #out = query2.exec_('UPDATE song_chord_link SET marker="" WHERE marker="-1"')
+        #print 'out:', out
+        
+        #for row in self.curs.execute('SELECT id, marker FROM song_chord_link'):
+        #    print 'row:', row
         
         """
         self.notes_model = QtSql.QSqlQueryModel()
@@ -655,6 +654,7 @@ class App:
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSong )
         
         self.c( self.ui.song_title_ef, "textEdited(QString)", self.currentSongTitleEdited )
+        self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
 
         self.print_widget = PrintWidget(self)
@@ -812,10 +812,12 @@ class App:
             self.ui.song_text_edit.setPlainText("")
             self.previous_song_text = None
             self.ui.song_title_ef.setText("")
+            self.ui.song_num_ef.setText("")
             self.ui.song_key_menu.setCurrentIndex(0) # FIXME should be "None"
         
         self.ui.song_text_edit.setEnabled( self.current_song != None )
         self.ui.song_title_ef.setEnabled( self.current_song != None )
+        self.ui.song_num_ef.setEnabled( self.current_song != None )
         self.ui.song_key_menu.setEnabled( self.current_song != None )
         self.ui.delete_song_button.setEnabled( len(selected_song_ids) > 0 )
         
@@ -842,6 +844,10 @@ class App:
 
         self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major )
         self.ui.song_title_ef.setText(self.current_song.title)
+        if self.current_song.number == -1:
+            self.ui.song_num_ef.setText("")
+        else:
+            self.ui.song_num_ef.setText( str(self.current_song.number) )
         
 
 
@@ -1198,7 +1204,26 @@ class App:
             # Update the song table from database:
             self.createSongsModel()
         
-
+    
+    def currentSongNumberEdited(self, new_num_str):
+        """
+        Called when the user modifies the selected song's number.
+        """
+        if self.current_song:
+            if new_num_str == "":
+                new_num_str = -1 # NULL
+            try:
+                new_num = int(new_num_str)
+            except:
+                self.error("Invalid song number")
+            else:
+                query = QtSql.QSqlQuery()
+                out = query.exec_('UPDATE songs SET number=%i WHERE id=%i' % (new_num, self.current_song.id))
+                
+                # Update the song table from database:
+                self.createSongsModel()
+        
+    
     def currentSongKeyChanged(self, new_key_index):
         """
         Called when the user modifies the selected song's key.
