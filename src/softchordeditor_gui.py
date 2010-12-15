@@ -59,10 +59,11 @@ class SongTableModel(QtCore.QAbstractTableModel):
         self.updateFromDatabase()
 
     def updateFromDatabase(self):
+        self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
         self._data = []
         for row in self.app.execute("SELECT id, number, title FROM songs"):
             self._data.append(row)
-        #print 'self._data:', self._data
+        self.emit(QtCore.SIGNAL("layoutChanged()")) # Forces the view to redraw
     
     def rowCount(self, parent=QtCore.QModelIndex()):
         """ Returns number of rows """
@@ -644,6 +645,7 @@ class App:
         self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
         self.ui.songs_view.verticalHeader().hide()
         self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
+        self.ui.songs_view.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
             self.songsSelectionChangedCallback )
 
@@ -702,10 +704,12 @@ class App:
 
     def __del__(self):
         pass
-        #self.db.close()
     
+
     def execute(self, query):
-        return self.curs.execute(query)
+        out = self.curs.execute(query)
+        self.curs.commit()
+        return out
     
     
     def updateFromDatabase(self):
@@ -715,6 +719,8 @@ class App:
         
         selected_row_indecies = self.ui.songs_view.selectionModel().selectedRows()
         
+        self.songs_model.updateFromDatabase()
+
         for index in selected_row_indecies:
             self.ui.songs_view.selectRow(index.row())
 
@@ -1089,10 +1095,9 @@ class App:
         Paint current songs to the specified QPriner instance.
         """
         
-        print 'from page:', printer.fromPage()
-
-        print 'page order:', printer.pageOrder()
-        print 'print range:', printer.printRange()
+        #print 'from page:', printer.fromPage()
+        #print 'page order:', printer.pageOrder()
+        #print 'print range:', printer.printRange()
 
         painter = QtGui.QPainter()
         painter.begin(printer) # may fail to open the file
@@ -1249,11 +1254,14 @@ class App:
         song_number = -1 # NULL
         song_title = ""
         
-        row = self.exeucute("SELECT MAX(id) from songs").fetchone()
+        row = self.execute("SELECT MAX(id) from songs").fetchone()
         id = row[0] + 1
         
-        self.execute("INSERT INTO songs (id, number, text, title) " + \
+        print 'new id:', id
+
+        out = self.execute("INSERT INTO songs (id, number, text, title) " + \
                         'VALUES (%i, %i, "%s", "%s")' % (id, song_number, song_text, song_title))
+        print 'out:', out
         
         # Update the song table from database:
         self.updateFromDatabase()
