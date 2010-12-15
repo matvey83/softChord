@@ -23,7 +23,7 @@
       <widget class="QWidget" name="layoutWidget">
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0,0,0">
+         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0,0,0,0">
           <item>
            <widget class="QPushButton" name="new_song_button">
             <property name="text">
@@ -35,6 +35,13 @@
            <widget class="QPushButton" name="delete_song_button">
             <property name="text">
              <string>Delete selected</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="import_text_button">
+            <property name="text">
+             <string>Import from TEXT...</string>
             </property>
            </widget>
           </item>
@@ -264,8 +271,8 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>467</width>
-                 <height>345</height>
+                 <width>484</width>
+                 <height>339</height>
                 </rect>
                </property>
               </widget>
@@ -287,7 +294,7 @@
      <x>0</x>
      <y>0</y>
      <width>1016</width>
-     <height>26</height>
+     <height>25</height>
     </rect>
    </property>
   </widget>
