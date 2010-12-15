@@ -668,7 +668,17 @@ class App:
         self.c( self.ui.song_title_ef, "textEdited(QString)", self.currentSongTitleEdited )
         self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
-
+        
+        # Menu actions:
+        self.c( self.ui.actionPrint, "triggered()", self.printSelectedSongs )
+        self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
+        self.c( self.ui.actionDeleteSongs, "triggered()", self.deleteSelectedSong )
+        self.c( self.ui.actionExportPdf, "triggered()", self.exportToPdf )
+        self.c( self.ui.actionExportText, "triggered()", self.exportToText )
+        self.c( self.ui.actionImportText, "triggered()", self.importFromText )
+        self.c( self.ui.actionLyricsFont, "triggered()", self.changeLyricsFont )
+        self.c( self.ui.actionChordsFont, "triggered()", self.changeChordFont )
+        
         self.print_widget = PrintWidget(self)
         self.ui.chord_scroll_area.setWidgetResizable(False)
         self.ui.chord_scroll_area.setWidget(self.print_widget)
@@ -1063,6 +1073,10 @@ class App:
             self.lyrics_font_metrics = QtGui.QFontMetrics(self.lyrics_font)
             self.ui.song_text_edit.setFont(self.lyrics_font)
             self.print_widget.repaint()
+        
+    
+    def actionPrint(self):
+        print 'actionPrint'
     
 
     def printSelectedSongs(self):

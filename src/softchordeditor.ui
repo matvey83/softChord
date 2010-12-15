@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1016</width>
+    <width>1060</width>
     <height>878</height>
    </rect>
   </property>
@@ -271,7 +271,7 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>484</width>
+                 <width>505</width>
                  <height>339</height>
                 </rect>
                </property>
@@ -293,12 +293,78 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1016</width>
+     <width>1060</width>
      <height>25</height>
     </rect>
    </property>
+   <widget class="QMenu" name="menuSong">
+    <property name="title">
+     <string>Songs</string>
+    </property>
+    <addaction name="actionNewSong"/>
+    <addaction name="actionImportText"/>
+    <addaction name="actionDeleteSongs"/>
+    <addaction name="actionExportPdf"/>
+    <addaction name="actionExportText"/>
+   </widget>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="actionPrint"/>
+   </widget>
+   <widget class="QMenu" name="menuSettings">
+    <property name="title">
+     <string>Settings</string>
+    </property>
+    <addaction name="actionLyricsFont"/>
+    <addaction name="actionChordsFont"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuSong"/>
+   <addaction name="menuSettings"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionNewSong">
+   <property name="text">
+    <string>New song</string>
+   </property>
+  </action>
+  <action name="actionDeleteSongs">
+   <property name="text">
+    <string>Delete selected songs</string>
+   </property>
+  </action>
+  <action name="actionExportPdf">
+   <property name="text">
+    <string>Export selected songs to PDF...</string>
+   </property>
+  </action>
+  <action name="actionExportText">
+   <property name="text">
+    <string>Export selected song to TEXT...</string>
+   </property>
+  </action>
+  <action name="actionPrint">
+   <property name="text">
+    <string>Print...</string>
+   </property>
+  </action>
+  <action name="actionLyricsFont">
+   <property name="text">
+    <string>Lyrics font...</string>
+   </property>
+  </action>
+  <action name="actionChordsFont">
+   <property name="text">
+    <string>Chords font...</string>
+   </property>
+  </action>
+  <action name="actionImportText">
+   <property name="text">
+    <string>Import from TEXT...</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections/>
