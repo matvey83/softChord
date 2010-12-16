@@ -1537,7 +1537,10 @@ class App:
                     ".", # initial dir
                     "Text format (*.txt)",
         )
-        if text_file: 
+        if text_file:
+            #text_file = str(text_file).decode('utf-8')
+            #text = codecs.open(text_file, encoding='utf-8').read()
+            #text_file = str(text_file).encode('utf-8')
             text = open(text_file).read()
             # Decode UTF-8 into Unicode:
             text = text.decode('utf-8')
@@ -1690,7 +1693,6 @@ class App:
                         'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
         
         self.curs.commit()
-        print 'DONE', out
         
         # Update the song table from database:
         self.updateFromDatabase()
