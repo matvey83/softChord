@@ -54,7 +54,7 @@ class SongTableModel(QtCore.QAbstractTableModel):
         QtCore.QAbstractTableModel.__init__(self)
         self.app = app
         self._data = []
-        self.header_list = ["ID", "Number", "Title"]
+        self.header_list = ["Number", "Title"]
         self.updateFromDatabase()
 
     def updateFromDatabase(self):
@@ -80,6 +80,7 @@ class SongTableModel(QtCore.QAbstractTableModel):
         
         if role == Qt.DisplayRole:
             row_data = self._data[index.row()]
+            row_data = row_data[1:] # Remove the ID column
             return QtCore.QVariant( row_data[index.column()] )
         return QtCore.QVariant()
     
@@ -88,11 +89,15 @@ class SongTableModel(QtCore.QAbstractTableModel):
         Returns the string that should be displayed in the specified header
         cell. Used by the View.
         """
-        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return QtCore.QVariant(self.header_list[section])
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                return QtCore.QVariant(self.header_list[section])
+            else:
+                return QtCore.QVariant(section+1)
         return QtCore.QVariant()        
     
-
+    def getRowSongID(self, row):
+        return self._data[row][0]
 
 
 
@@ -644,7 +649,7 @@ class App:
         
         self.ui.songs_view.setModel(self.songs_model)
         self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
-        self.ui.songs_view.verticalHeader().hide()
+        #self.ui.songs_view.verticalHeader().hide()
         self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         self.ui.songs_view.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
@@ -785,7 +790,7 @@ class App:
 
         selected_song_ids = []
         for index in self.ui.songs_view.selectionModel().selectedRows():
-            song_id = self.songs_model.data(index).toInt()[0]
+            song_id = self.songs_model.getRowSongID(index.row())
             selected_song_ids.append(song_id)
         return selected_song_ids
     
