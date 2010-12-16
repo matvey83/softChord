@@ -124,8 +124,9 @@ class SongChord:
         self.chord_type_id = chord_type_id
         self.bass_note_id = bass_note_id
 
-        if marker == u"-1" or marker == None:
-            self.marker = None
+        if marker == u"-1" or marker == None or marker == "None":
+            # FIXME the database should have only one of these in it
+            marker = None
         self.marker = marker
 
         if in_parentheses == None:
@@ -159,15 +160,13 @@ class SongChord:
         Returns the specified note as a string, using sharps vs flats
         as appropriate.
         """
-
-        for row in self.app.execute("SELECT text, alt_text FROM notes WHERE id=%i" % note_id):
-            note_text = row[0]
-            note_alt_text = row[1]
-            
-            if self.app.sharpsOrFlats() == 1:
-                return note_text
-            else:
-                return note_alt_text
+        
+        #for (note_text, note_alt_text) in self.app.notes_list[note_id]:
+        note_text, note_alt_text = self.app.notes_list[note_id]
+        if self.app.sharpsOrFlats() == 1:
+            return note_text
+        else:
+            return note_alt_text
         
     def getChordString(self):
         """
@@ -176,9 +175,7 @@ class SongChord:
         """
         note_text = self._getNoteString(self.note_id)
         
-        chord_type_text = ""
-        for row in self.app.execute("SELECT print FROM chord_types WHERE id=%i" % self.chord_type_id):
-            chord_type_text = row[0]
+        chord_type_text = self.app.chord_type_prints[self.chord_type_id]
         
         # Convert the chord note and type to a text string:
         if self.marker: # Not NULL
@@ -601,24 +598,19 @@ class ChordDialog:
         self.ui = uic.loadUi(chord_dialog_ui_file)
         
         notes_list = []
-        for row in self.app.execute("SELECT id, text, alt_text FROM notes"):
-            note_id = row[0]
-            text = row[1]
-            alt_text = row[2]
-            if text == alt_text:
-                combined_text = text
+
+        for (note_text, note_alt_text) in self.app.notes_list:
+            note_text = row[1]
+            note_alt_text = row[2]
+            if note_text == note_alt_text:
+                combined_text = note_text
             else:
-                combined_text = "%s/%s" % (text, alt_text)
+                combined_text = "%s/%s" % (note_text, note_alt_text)
             notes_list.append(combined_text)
         self.ui.note_menu.addItems(notes_list)
 
 
-        chord_types_list = []
-        for row in self.app.execute("SELECT id, name FROM chord_types"):
-            chord_type_id = row[0]
-            name = row[1]
-            chord_types_list.append(name)
-        self.ui.chord_type_menu.addItems(chord_types_list)
+        self.ui.chord_type_menu.addItems(self.app.chord_type_names)
 
         self.ui.bass_menu.addItems(["None"] + notes_list)
     
@@ -684,8 +676,25 @@ class App:
         # This will be used for Python (sqlite3) operations:
         self.curs = sqlite3.connect(db_file)
         
-        # Make a list of all keys:
+        
+
+        # Make a list of all chord types:
+        self.chord_type_names = []
+        self.chord_type_prints = []
+        for row in self.execute("SELECT id, name, print FROM chord_types"):
+            chord_type_id = row[0]
+            name = row[1]
+            print_text = row[2]
+            self.chord_type_names.append(name)
+            self.chord_type_prints.append(print_text)
+        
+
+        # Make a list of all notes and keys:
+        self.notes_list = []
+        self.note_text_id_dict = {}
         keys_list = ["None"]
+        
+        # Make a list of all keys:
         for row in self.execute("SELECT id, text, alt_text FROM notes"):
             note_id = row[0]
             text = row[1]
@@ -696,6 +705,10 @@ class App:
                 combined_text = text + u'/' + alt_text #u"%s/%s" % (text, alt_text)
             keys_list.append(combined_text + u" Major")
             keys_list.append(combined_text + u" Minor")
+
+            self.notes_list.append( (text, alt_text) )
+            self.note_text_id_dict[text] = note_id
+            self.note_text_id_dict[alt_text] = note_id
         
         self.ui.song_key_menu.addItems(keys_list)
         
@@ -1628,25 +1641,9 @@ class App:
         input_text should contain all lines, decoded, in Unicode.
         """
 
-        # Key: note text, value: note ID
-        self.note_text_id_dict = {}
-
-        for row in self.execute("SELECT id, text, alt_text FROM notes"):
-            id = row[0]
-            text = row[1]
-            alt_text = row[2]
-            
-            self.note_text_id_dict[text] = id
-            self.note_text_id_dict[alt_text] = id
-
-            
         # Key: chord type text, value: chord type ID
         self.chord_type_texts_dict = {}
-
-        for row in self.execute("SELECT id, print FROM chord_types"):
-            id = row[0]
-            print_text = row[1]
-
+        for id, print_text in enumerate(self.chord_type_prints):
             self.chord_type_texts_dict[print_text] = id
             if print_text == 'sus4':
                 self.chord_type_texts_dict['sus'] = id
