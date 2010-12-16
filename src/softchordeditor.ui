@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1060</width>
+    <width>1091</width>
     <height>878</height>
    </rect>
   </property>
@@ -201,7 +201,7 @@
             <item>
              <widget class="QLabel" name="label">
               <property name="text">
-               <string>Lyric Editor - edit the words to the song here. You can paste text here and modify it.</string>
+               <string>Lyric Editor - Paste and modify song lyrics here.</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>
@@ -225,7 +225,7 @@
             <item>
              <widget class="QLabel" name="label_2">
               <property name="text">
-               <string>Chord Editor - double-click on a lyric letter to add or modify a chord, drag a selected chord to move it.</string>
+               <string>Chord Editor - Double-click on a lyric letter to add or modify a chord; drag a chord to move it; select and press &quot;Delete&quot; to delete.</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>
@@ -254,8 +254,8 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>505</width>
-                 <height>339</height>
+                 <width>525</width>
+                 <height>328</height>
                 </rect>
                </property>
               </widget>
@@ -276,8 +276,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1060</width>
-     <height>25</height>
+     <width>1091</width>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuSong">
