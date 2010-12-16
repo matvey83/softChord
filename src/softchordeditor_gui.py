@@ -14,12 +14,13 @@ from PyQt4 import QtCore, QtGui, uic
 from PyQt4.QtCore import Qt
 import sys, os
 import sqlite3
+import codecs
 
 
 
 
-print 'executable:', sys.executable
-print 'dir executable:', dir(sys.executable)
+#print 'executable:', sys.executable
+#print 'dir executable:', dir(sys.executable)
 if not os.path.basename(sys.executable).lower().startswith("python"):
     exec_dir = os.path.dirname(sys.executable)
 else:
@@ -28,8 +29,8 @@ else:
 script_ui_file = os.path.join(exec_dir, "softchordeditor.ui" )
 chord_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_chord_dialog.ui")
 
-print 'script_ui_file:', script_ui_file
-print 'exists:', os.path.isfile(script_ui_file)
+#print 'script_ui_file:', script_ui_file
+#print 'exists:', os.path.isfile(script_ui_file)
 
 
 db_file = os.path.join( exec_dir, "song_database.sqlite" )
@@ -400,18 +401,19 @@ class PrintWidget(QtGui.QWidget):
         
         self.app.hover_char_num = None
         
-        if self.geometry().contains(event.pos()):
+        if True: #self.geometry().contains(event.pos()):
             localx = event.pos().x()
             localy = event.pos().y()
             letter_tuple = self.app.determineClickedLetter(localx, localy)
-            if letter_tuple:
+            
+            if letter_tuple != None:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
                 # Mouse is over a vlid chord/letter
                 
                 if self.dragging_chord_curr_position == -1:
                     # Hovering, highlight the new chord/letter
                     self.app.hover_char_num = song_char_num
-
+                    
                 else:
                     # Dragging
                     if self.dragging_chord_curr_position != -1:
@@ -1000,7 +1002,6 @@ class App:
             self.execute("DELETE FROM song_chord_link WHERE id=%i" % id)
         else:
             if copy:
-                #print 'copying'
                 # Copy
                 note_id = row[1]
                 chord_type_id = row[2]
@@ -1013,7 +1014,6 @@ class App:
                 self.execute("INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id) " + \
                             "VALUES (%i, %i, %i, %i, %i, %i)" % (new_id, song_id, new_song_char_num, note_id, chord_type_id, bass_note_id))
             else:
-                #print 'moving'
                 # Move
                 self.execute("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
         self.updateCurrentSongFromDatabase()
@@ -1161,14 +1161,11 @@ class App:
         Exports the selected song (one) to a TEXT file.
         """
         
-        outfile = "tmp.txt"
-        """
         outfile = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save text file as:",
                     ".", # initial dir
                     "Text format (*.txt)",
         )
-        """
         if outfile: 
             print 'generating text file:', outfile
             
