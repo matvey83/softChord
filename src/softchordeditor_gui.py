@@ -39,7 +39,7 @@ db_file = os.path.join( exec_dir, "song_database.sqlite" )
 
 def tr(text):
     """
-    Returns translated GUI text.
+    Returns translated GUI text. Not implemented yet.
     """
     return text
 
@@ -58,6 +58,9 @@ class SongTableModel(QtCore.QAbstractTableModel):
         self.updateFromDatabase()
 
     def updateFromDatabase(self):
+        """
+        Updates the table model from the latest data in the database.
+        """
         self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
         self._data = []
         for row in self.app.execute("SELECT id, number, title FROM songs"):
@@ -100,6 +103,9 @@ class SongTableModel(QtCore.QAbstractTableModel):
         return QtCore.QVariant()        
     
     def getRowSongID(self, row):
+        """
+        Returns the database ID of the selected song (by row number).
+        """
         return self._data[row][0]
 
 
@@ -171,15 +177,19 @@ class SongChord:
         for row in self.app.execute("SELECT print FROM chord_types WHERE id=%i" % self.chord_type_id):
             chord_type_text = row[0]
         
+        # Convert the chord note and type to a text string:
         if self.marker: # Not NULL
+            # Add the chord prefix (example: "1:", "2:")
             chord_str = '%s:%s%s' % (self.marker, note_text, chord_type_text)
         else:
             chord_str = '%s%s' % (note_text, chord_type_text)
         
+        # Add the bass note (if any):
         if self.bass_note_id != -1: # Not NULL
             bass_note_text = self._getNoteString(self.bass_note_id)
             chord_str += "/%s" % bass_note_text
         
+        # Add parentheses (if any):
         if self.in_parentheses:
             chord_str = "(%s)" % chord_str
 
@@ -223,10 +233,6 @@ class Song:
         line_end_offset = None
         
 
-        #for row in app.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker FROM song_chord_link WHERE song_id=%i" % song_id):
-        #    print 'row:', row
-        #    #for id, song_char_num
-
         self.all_text = unicode(self.all_text)
         remaining_text = self.all_text
         
@@ -269,7 +275,46 @@ class Song:
         """
         for line in self._lines_list:
             yield line
+    
+    
+    def doesLineHaveChords(self, linenum):
+        """
+        Return True/False, whether the given line has at least one chord
+        associated with it.
+        """
 
+        for song_char_num, chord in self.all_chords.iteritems():
+            chord_linenum, line_char_num = self.songCharToLineChar(song_char_num)
+            if chord_linenum == linenum:
+                return True
+        return False
+    
+    
+    def getLineHeights(self, linenum):
+        """
+        Returns top & bottom y positions of the chords and lyrics texts
+        for the specified line.
+        """
+
+        lyrics_height = self.app.lyrics_font_metrics.height()
+        if self.doesLineHaveChords(linenum):
+            chords_height = self.app.chord_font_metrics.height()
+            
+            line_height = lyrics_height + chords_height
+            line_height *= 0.9 # So that there is less spacing between the chords and the text
+        else:
+            chords_height = 0
+            line_height = lyrics_height
+        
+        line_top = 20
+        chords_top = line_top
+        chords_bottom = chords_top + chords_height
+        lyrics_bottom = line_top + line_height
+        lyrics_top = lyrics_bottom - lyrics_height
+        
+        return chords_top, chords_bottom, lyrics_top, lyrics_bottom
+    
+    
     def songCharToLineChar(self, song_char_num):
         """
         Given a character's global position in the song, return the
@@ -316,9 +361,6 @@ class Song:
         formatting only if displayed with a mono-spaced (fixed-width) font.
         """
         
-        #monospaced_font = QtGui.QFont("Courier", 14)
-        #monospaced_metrics = QtGui.QFontMetrics(self.lyrics_font)
-        
         song_text = unicode()
         song_text += u"\n" # Song title
         song_text += u"\n" # Blank line
@@ -327,36 +369,39 @@ class Song:
         for linenum in range(self.getNumLines()):
             line_text = unicode( self.getLineText(linenum) )
             
-            line_chord_text_list =  [u' '] * len(line_text) # FIXME add a few to the end???
-            
-            # Figure out the lyric letter for the mouse location:
-            song_char_num = -1
-            for line_char_num in range(len(line_text)):
-                song_char_num = self.lineCharToSongChar(linenum, line_char_num)
+            if self.doesLineHaveChords(linenum):
+                # Add the chords line above this line
                 
+                line_chord_text_list =  [u' '] * len(line_text) # FIXME add a few to the end???
                 
-                # Figure out if a chord is attached to this letter:
-                for chord_song_char_num, chord in self.all_chords.iteritems():
-                    chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
+                # Figure out the lyric letter for the mouse location:
+                song_char_num = -1
+                for line_char_num in range(len(line_text)):
+                    song_char_num = self.lineCharToSongChar(linenum, line_char_num)
+                    
+                    
+                    # Figure out if a chord is attached to this letter:
+                    for chord_song_char_num, chord in self.all_chords.iteritems():
+                        chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
 
-                    if chord_linenum != linenum:
-                        continue
+                        if chord_linenum != linenum:
+                            continue
+                            
+                        chord_text = chord.getChordString()
+                        chord_left = line_char_num - ( len(chord_text) / 2 )
+                        chord_right = line_char_num + ( len(chord_text) / 2 )
                         
-                    chord_text = chord.getChordString()
-                    chord_left = line_char_num - ( len(chord_text) / 2 )
-                    chord_right = line_char_num + ( len(chord_text) / 2 )
-                    
-                    # For each letter in the chord text:
-                    for i in range(len(chord_text)):
-                        pos = i + chord_left
-                        # Make sure that the chord does not go beyond the end-of-line:
-                        while pos >= len(line_chord_text_list) and pos > 0:
-                            pos -= 1
-                        line_chord_text_list[pos] = chord_text[i]
-                    
-            line_chord_text = u''.join(line_chord_text_list)
+                        # For each letter in the chord text:
+                        for i in range(len(chord_text)):
+                            pos = i + chord_left
+                            # Make sure that the chord does not go beyond the end-of-line:
+                            while pos >= len(line_chord_text_list) and pos > 0:
+                                pos -= 1
+                            line_chord_text_list[pos] = chord_text[i]
+            
+                line_chord_text = u''.join(line_chord_text_list)
+                song_text += u"\n" + line_chord_text
 
-            song_text += u"\n" + line_chord_text
             song_text += u"\n" + line_text
             
         return song_text
@@ -635,11 +680,6 @@ class App:
         # This will be used for Python (sqlite3) operations:
         self.curs = sqlite3.connect(db_file)
         
-        # FOR DEMONSTRATION:
-        #for row in self.execute("SELECT * FROM songs"):
-        #    print row
-        
-        
         # Make a list of all keys:
         keys_list = ["None"]
         for row in self.execute("SELECT id, text, alt_text FROM notes"):
@@ -660,7 +700,6 @@ class App:
         
         self.ui.songs_view.setModel(self.songs_model)
         self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
-        #self.ui.songs_view.verticalHeader().hide()
         self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         self.ui.songs_view.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
@@ -679,7 +718,6 @@ class App:
         self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
         self.c( self.ui.import_text_button, "clicked()", self.importFromText )
         self.c( self.ui.export_text_button, "clicked()", self.exportToText )
-        #self.c( self.ui.print_button, "clicked()", self.printSelectedSongs )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSong )
         
@@ -770,18 +808,23 @@ class App:
             self.print_widget.repaint()
 
     def warning(self, text):
+        """ Display a warning dialog box with the given text """
         QtGui.QMessageBox.warning(self.ui, "Warning", text)
 
     def info(self, text):
+        """ Display an information dialog box with the given text """
         QtGui.QMessageBox.information(self.ui, "Information", text)
     
     def error(self, text):
+        """ Display an error dialog box with the given text """
         QtGui.QMessageBox.warning(self.ui, "Error", text)
 
     def setWaitCursor(self):
+        """ Set the mouse cursor to the watch """
         self.ui.setCursor( QtGui.QCursor(QtCore.Qt.WaitCursor) )
 
     def restoreCursor(self):
+        """ Set the mouse cursor to the default arrow. """
         self.ui.setCursor( QtGui.QCursor(QtCore.Qt.ArrowCursor) )
 
 
@@ -818,8 +861,8 @@ class App:
             self.setCurrentSong(song_id)
             
             # Update the print_widget size:
-            widget_width = 0 #self.ui.chord_scroll_area.width() - 20
-            widget_height = 0 #self.ui.chord_scroll_area.height() - 2
+            widget_width = 0
+            widget_height = 0 
             line_left = 20
 
             for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
@@ -902,9 +945,6 @@ class App:
         else:
             return 1 # sharp
 
-
-    #def LinkDataChanged(self, topLeft, bottomRight):
-    #    self.updateCurrentSongFromDatabase()
 
     def _transposeCurrentSong(self, steps):
         """
@@ -1063,10 +1103,6 @@ class App:
             self.print_widget.repaint()
         
     
-    def actionPrint(self):
-        print 'actionPrint'
-    
-
     def printSelectedSongs(self):
         """
         Bring up a print dialog box.
@@ -1316,7 +1352,7 @@ class App:
 
         for linenum, line_text in enumerate(song.iterateOverLines()):
             
-            chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.getLineHeights(linenum)
+            chords_top, chords_bottom, lyrics_top, lyrics_bottom = song.getLineHeights(linenum)
             
             if draw_markers:
                 if self.hover_char_num != None:
@@ -1393,7 +1429,7 @@ class App:
         for linenum in range(self.current_song.getNumLines()):
             line_text = unicode( self.current_song.getLineText(linenum) )
             
-            chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.getLineHeights(linenum)
+            chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.current_song.getLineHeights(linenum)
             
             if y < chords_top or y > lyrics_bottom:
                 continue # Not this line
@@ -1438,10 +1474,8 @@ class App:
                 
                 # Location is NOT on an existing chord
                 if song_char_num == -1:
-                    #print 'exit1'
                     return None
 
-                #print 'event in a chord'
                 return (is_chord, None, None, song_char_num)
             
             
@@ -1449,10 +1483,8 @@ class App:
                 # Location is above a lyric letter
                 is_chord = False
                 if song_char_num == -1:
-                    #print 'exit2'
                     return None
                 
-                #print 'event in a letter'
                 return (is_chord, None, None, song_char_num)
                 #for line_char_num in range(len(line_text)):
                 #    left = line_left + self.lyrics_font_metrics.width( line_text[:line_char_num] )
@@ -1461,7 +1493,6 @@ class App:
                 #        song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
                 #        return (is_chord, linenum, line_char_num, song_char_num)
         
-        #print 'exit3'
         return None
 
         
@@ -1515,29 +1546,8 @@ class App:
             self.updateCurrentSongFromDatabase()
                 
 
-    
-    def getLineHeights(self, linenum):
-        """
-        Returns top & bottom y positions of the chords and lyrics texts
-        for the specified line.
-        """
-        lyrics_height = self.lyrics_font_metrics.height()
-        
-        chords_height = self.chord_font_metrics.height()
-        
-        line_height = lyrics_height + chords_height
-        line_height *= 0.9 # So that there is less spacing between the chords and the text
-        
-        line_top = linenum * line_height
 
-        chords_top = line_top
-        chords_bottom = chords_top + chords_height
-        lyrics_bottom = line_top + line_height
-        lyrics_top = lyrics_bottom - lyrics_height
 
-        
-        return chords_top, chords_bottom, lyrics_top, lyrics_bottom
-    
     
 
 
@@ -1570,7 +1580,6 @@ class App:
         self.note_text_id_dict = {}
 
         for row in self.execute("SELECT id, text, alt_text FROM notes"):
-            #print 'row:', row
             id = row[0]
             text = row[1]
             alt_text = row[2]
@@ -1583,7 +1592,6 @@ class App:
         self.chord_type_texts_dict = {}
 
         for row in self.execute("SELECT id, print FROM chord_types"):
-            #print 'row:', row
             id = row[0]
             print_text = row[1]
 
@@ -1632,8 +1640,6 @@ class App:
                         char_num += 6
                 
 
-            
-            #print '\nnum_chords:', num_chords, 'num_non_chords:', num_non_chords
             if num_chords > num_non_chords:
                 #print 'CHORD LINE:', line.encode('utf-8')
                 # This is a chords line
@@ -1731,15 +1737,9 @@ class App:
         if colon != -1:
             if colon == len(chord_str)-1:
                 raise ValueError("Not a chord (nothing after a colon")
-                #print 'WARNING not a chord (nothing after a colon):', chord_str.encode('utf-8')
-                #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
-                #return None
             
             marker = chord_str[:colon]
             chord_str = chord_str[colon+1:]
-        
-        #if marker:
-        #    print 'MARKER:', marker.encode('utf-8')
         
         slash = chord_str.find('/')
         if slash != -1:
@@ -1756,8 +1756,7 @@ class App:
             chord_str = 'B' + chord_str[1:]
         if chord_str[0] == u'А': # Russian letter
             chord_str = 'A' + chord_str[1:]
-
-        #print 'chord_str after bass removal:', chord_str.encode('utf-8')
+        
         if chord_str[0] in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
             if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
                 note = chord_str[:2]
@@ -1767,12 +1766,7 @@ class App:
                 type = chord_str[1:]
         else:
             raise ValueError("First chord letter is not a note")
-            #print 'WARNING first chord letter is not a note:', chord_str.encode('utf-8')
-            #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
-            #return None
         
-        #print '      ', note, '  ', type, '  ', bass
-
         if len(note) > 1:
             if note[1] == u'#':
                 note = note[0] + u'♯'
@@ -1799,16 +1793,8 @@ class App:
             type_id = self.chord_type_texts_dict[type]
         except KeyError:
             raise ValueError("Unkown chord type")
-            #print 'WARNING: unknown chord type:', type.encode('utf-8')
-            #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
-            #return None
         
         return (marker, note_id, type_id, bass_id, in_parentheses)
-
-        #print '  note:', note_id
-        #print '  type:', type_id
-        #print '  bass:', bass_id
-
 
 
 
@@ -1823,3 +1809,4 @@ window.ui.raise_()
 sys.exit(qapp.exec_())
 
 
+#EOF
