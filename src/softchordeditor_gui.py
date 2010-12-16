@@ -346,8 +346,12 @@ class Song:
                     chord_left = line_char_num - ( len(chord_text) / 2 )
                     chord_right = line_char_num + ( len(chord_text) / 2 )
                     
+                    # For each letter in the chord text:
                     for i in range(len(chord_text)):
                         pos = i + chord_left
+                        # Make sure that the chord does not go beyond the end-of-line:
+                        while pos >= len(line_chord_text_list) and pos > 0:
+                            pos -= 1
                         line_chord_text_list[pos] = chord_text[i]
                     
             line_chord_text = u''.join(line_chord_text_list)
