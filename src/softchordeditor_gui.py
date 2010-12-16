@@ -18,9 +18,9 @@ import sqlite3
 
 
 
-#print 'executable:', sys.executable
-#print 'dir executable:', dir(sys.executable)
-if not os.path.basename(sys.executable).startswith("python"):
+print 'executable:', sys.executable
+print 'dir executable:', dir(sys.executable)
+if not os.path.basename(sys.executable).lower().startswith("python"):
     exec_dir = os.path.dirname(sys.executable)
 else:
     exec_dir = "."
