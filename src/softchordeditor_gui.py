@@ -13,8 +13,6 @@ Development started in December 2010
 from PyQt4 import QtCore, QtGui, uic
 from PyQt4.QtCore import Qt
 import sys, os
-import codecs
-
 import sqlite3
 
 
@@ -567,7 +565,8 @@ class ChordDialog:
         Display the chord-editing dialog box.
         Returns a modified chord if OK was pressed. Returns None if Cancel.
         """
-        
+
+        import copy
         chord = copy.copy(chord)
         note_id = chord.note_id
         chord_type_id = chord.chord_type_id
@@ -886,7 +885,7 @@ class App:
             return 1 # sharp
 
 
-    #def songChordLinkDataChanged(self, topLeft, bottomRight):
+    #def LinkDataChanged(self, topLeft, bottomRight):
     #    self.updateCurrentSongFromDatabase()
 
     def _transposeCurrentSong(self, steps):
@@ -1461,19 +1460,21 @@ class App:
         # Check whether this character already has a chord:
         song_id = self.current_song.id
         for row in self.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)):
-            #id = row[0]
+            id = row[0]
             note_id = row[2]
             chord_type_id = row[3]
             bass_note_id = row[4]
             marker = row[5]
             in_parentheses = row[6]
             
-            chord = SongChord(self, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
+            chord = SongChord(self, id, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
         else:
             # New chord
-            chord = SongChord(self, song_id, song_char_num, 0, 0, -1, "", False)
+            row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
+            id = row[0] + 1
+            chord = SongChord(self, id, song_id, song_char_num, 0, 0, -1, "", False)
             
-        modified_chord = ChordDialog(self).display(note_id, chord_type_id, bass_note_id)
+        modified_chord = ChordDialog(self).display(chord)
         
         if modified_chord:
             # Ok pressed
@@ -1487,14 +1488,15 @@ class App:
             for row in self.execute("SELECT id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)):
                 # Replacing exising chord
                 id = row[0]
+                #id = modified_chord.id
                 self.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE id=%i' % (note_id, chord_type_id, bass_note_id, marker, in_parentheses, id))
             else:
                 # Adding a new chord
-                row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
-                id = row[0] + 1
-                
-                self.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
-                            "VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (id, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses))
+                #row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
+                #id = row[0] + 1
+                id = modified_chord.id
+                self.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+                            'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (id, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses))
             self.updateCurrentSongFromDatabase()
                 
 
