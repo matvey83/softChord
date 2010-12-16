@@ -81,7 +81,10 @@ class SongTableModel(QtCore.QAbstractTableModel):
         if role == Qt.DisplayRole:
             row_data = self._data[index.row()]
             row_data = row_data[1:] # Remove the ID column
-            return QtCore.QVariant( row_data[index.column()] )
+            value = row_data[index.column()]
+            if value == -1: # Invalid song number
+                value = ""
+            return QtCore.QVariant(value)
         return QtCore.QVariant()
     
     def headerData(self, section, orientation, role):
@@ -592,6 +595,10 @@ class ChordDialog:
             # -1 becomes 0, etc:
             self.ui.bass_menu.setCurrentIndex(bass_note_id+1)
         
+        if marker == -1 or marker == "":
+            marker = ""
+        self.ui.marker_ef.setText(marker)
+        
         self.ui.show()
         self.ui.raise_()
         out = self.ui.exec_()
@@ -601,7 +608,7 @@ class ChordDialog:
             new_chord.chord_type_id = self.ui.chord_type_menu.currentIndex()
             # 0 (first item) will become -1 (invalid):
             new_chord.bass_note_id = self.ui.bass_menu.currentIndex() - 1
-            new_chord.marker = marker # FIXME
+            new_chord.marker = self.ui.marker_ef.text()
             new_chord.in_parentheses = in_parentheses # FIXME
             
             return new_chord
@@ -1258,11 +1265,10 @@ class App:
         row = self.execute("SELECT MAX(id) from songs").fetchone()
         id = row[0] + 1
         
-        print 'new id:', id
+        #print 'new id:', id
 
         out = self.execute("INSERT INTO songs (id, number, text, title) " + \
                         'VALUES (%i, %i, "%s", "%s")' % (id, song_number, song_text, song_title))
-        print 'out:', out
         
         # Update the song table from database:
         self.updateFromDatabase()
@@ -1285,6 +1291,9 @@ class App:
             
             # Update the song table from database:
             self.updateFromDatabase()
+            
+            # Clear the selection:
+            self.ui.songs_view.selectionModel().clearSelection()
         finally:
             self.restoreCursor()
 
