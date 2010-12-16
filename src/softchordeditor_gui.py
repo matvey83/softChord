@@ -299,21 +299,13 @@ class Song:
         lyrics_height = self.app.lyrics_font_metrics.height()
         if self.doesLineHaveChords(linenum):
             chords_height = self.app.chord_font_metrics.height()
-            
-            line_height = lyrics_height + chords_height
-            line_height *= 0.9 # So that there is less spacing between the chords and the text
+            line_height = lyrics_height + chords_height * 0.9 # So that there is less spacing between the chords and the text
         else:
             chords_height = 0
             line_height = lyrics_height
         
-        line_top = 20
-        chords_top = line_top
-        chords_bottom = chords_top + chords_height
-        lyrics_bottom = line_top + line_height
-        lyrics_top = lyrics_bottom - lyrics_height
-        
-        return chords_top, chords_bottom, lyrics_top, lyrics_bottom
-    
+        return chords_height, lyrics_height, line_height
+
     
     def songCharToLineChar(self, song_char_num):
         """
@@ -864,9 +856,18 @@ class App:
             widget_width = 0
             widget_height = 0 
             line_left = 20
-
+            prev_line_bottom = 20
+            
             for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
-                chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.getLineHeights(linenum)
+                chords_height, lyrics_height, line_height = self.current_song.getLineHeights(linenum)
+                chords_top = prev_line_bottom # Bottom of the previous line
+                chords_bottom = chords_top + chords_height
+                lyrics_bottom = chords_top + line_height
+                lyrics_top = lyrics_bottom - lyrics_height
+                prev_line_bottom = lyrics_bottom
+                
+
+
                 line_right = line_left + self.lyrics_font_metrics.width(line_text)
                 if line_right > widget_width:
                     widget_width = line_right
@@ -1349,10 +1350,16 @@ class App:
         hover_brush = QtGui.QColor("light grey")
         
         line_left = 20
-
+        prev_line_bottom = 20
+        
         for linenum, line_text in enumerate(song.iterateOverLines()):
+            chords_height, lyrics_height, line_height = self.current_song.getLineHeights(linenum)
+            chords_top = prev_line_bottom # Bottom of the previous line
+            chords_bottom = chords_top + chords_height
+            lyrics_bottom = chords_top + line_height
+            lyrics_top = lyrics_bottom - lyrics_height
+            prev_line_bottom = lyrics_bottom
             
-            chords_top, chords_bottom, lyrics_top, lyrics_bottom = song.getLineHeights(linenum)
             
             if draw_markers:
                 if self.hover_char_num != None:
@@ -1386,6 +1393,9 @@ class App:
             painter.setFont(self.chord_font)
 
 
+            if not song.doesLineHaveChords(linenum):
+                continue
+            
             for song_char_num, chord in song.all_chords.iteritems():
                 chord_linenum, line_char_num = song.songCharToLineChar(song_char_num)
                 if chord_linenum != linenum:
@@ -1425,12 +1435,19 @@ class App:
             return None
 
         line_left = 20
-        
+        prev_line_bottom = 20
+
         for linenum in range(self.current_song.getNumLines()):
             line_text = unicode( self.current_song.getLineText(linenum) )
             
-            chords_top, chords_bottom, lyrics_top, lyrics_bottom = self.current_song.getLineHeights(linenum)
+            chords_height, lyrics_height, line_height = self.current_song.getLineHeights(linenum)
+            chords_top = prev_line_bottom # Bottom of the previous line
+            chords_bottom = chords_top + chords_height
+            lyrics_bottom = chords_top + line_height
+            lyrics_top = lyrics_bottom - lyrics_height
+            prev_line_bottom = lyrics_bottom
             
+
             if y < chords_top or y > lyrics_bottom:
                 continue # Not this line
             
