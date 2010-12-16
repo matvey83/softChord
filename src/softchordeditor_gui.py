@@ -354,9 +354,9 @@ class Song:
         """
         
         song_text = unicode()
-        song_text += u"\n" # Song title
-        song_text += u"\n" # Blank line
-            
+        if self.number != -1:
+            song_text += str(self.number) + u"\n"
+        song_text += u"%s\n" % self.title
         
         for linenum in range(self.getNumLines()):
             line_text = unicode( self.getLineText(linenum) )
@@ -383,13 +383,22 @@ class Song:
                         chord_left = line_char_num - ( len(chord_text) / 2 )
                         chord_right = line_char_num + ( len(chord_text) / 2 )
                         
+                        # Make sure that the chord does not go beyond the start-of-line:
+                        while chord_left < 0:
+                            chord_left +=1
+                            chord_right += 1
+                        
+                        # Make sure that the chord does not go beyond the end-of-line:
+                        while chord_right >= len(line_chord_text_list):
+                            chord_right -= 1
+                            chord_left -= 1
+                        
                         # For each letter in the chord text:
                         for i in range(len(chord_text)):
                             pos = i + chord_left
-                            # Make sure that the chord does not go beyond the end-of-line:
-                            while pos >= len(line_chord_text_list) and pos > 0:
-                                pos -= 1
                             line_chord_text_list[pos] = chord_text[i]
+
+
             
                 line_chord_text = u''.join(line_chord_text_list)
                 song_text += u"\n" + line_chord_text
@@ -1219,24 +1228,28 @@ class App:
                     ".", # initial dir
                     "Text format (*.txt)",
         )
-        if outfile: 
-            print 'generating text file:', outfile
-            
-            fh = codecs.open(outfile, 'w', encoding='utf-8')
-            fh = open(outfile, 'w')
-            
-            for song_index, song_id in enumerate(self.getSelectedSongIds()):
-                # NOTE for now there will always be only one song exported.
-                print 'exporting song_id:', song_id
+        if outfile:
+            self.setWaitCursor()
+            try:
+                print 'generating text file:', outfile
+                
+                fh = codecs.open(outfile, 'w', encoding='utf-8')
+                fh = open(outfile, 'w')
+                
+                for song_index, song_id in enumerate(self.getSelectedSongIds()):
+                    # NOTE for now there will always be only one song exported.
+                    print 'exporting song_id:', song_id
 
-                song = Song(self, song_id)
+                    song = Song(self, song_id)
+                    
+                    # Encode the unicode string as UTF-8 before writing to file:
+                    song_text = song.getAsText().encode('utf-8')
+                    
+                    fh.write(song_text)
                 
-                # Encode the unicode string as UTF-8 before writing to file:
-                song_text = song.getAsText().encode('utf-8')
-                
-                fh.write(song_text)
-            
-            fh.close()
+                fh.close()
+            finally:
+                self.restoreCursor()
             print 'WRITTEN:', outfile
 
     
