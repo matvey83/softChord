@@ -354,9 +354,6 @@ class Song:
         """
         
         song_text = unicode()
-        if self.number != -1:
-            song_text += str(self.number) + u"\n"
-        song_text += u"%s\n" % self.title
         
         for linenum in range(self.getNumLines()):
             line_text = unicode( self.getLineText(linenum) )
@@ -401,9 +398,9 @@ class Song:
 
             
                 line_chord_text = u''.join(line_chord_text_list)
-                song_text += u"\n" + line_chord_text
-
-            song_text += u"\n" + line_text
+                song_text += line_chord_text + u"\n"
+            
+            song_text += line_text + u"\n"
             
         return song_text
 
@@ -1735,9 +1732,9 @@ class App:
         song_id = 0
         for row in self.execute("SELECT MAX(id) from songs"):
             song_id = row[0] + 1
-        print 'song_id:', song_id
-        print 'song_num:', song_num
-        print 'song_title:', song_title.encode('utf-8')
+        #print 'song_id:', song_id
+        #print 'song_num:', song_num
+        #print 'song_title:', song_title.encode('utf-8')
         
         # Replace all double quotes with single quotes:
         global_song_text = global_song_text.replace('"', "'")
