@@ -1070,9 +1070,13 @@ class App:
         Transpose the current song up by the specified number of steps.
         """
         
-        self.current_song.transpose(steps)
-        self.current_song.sendToDatabase()
-        self.print_widget.repaint()
+        self.setWaitCursor()
+        try:
+            self.current_song.transpose(steps)
+            self.current_song.sendToDatabase()
+            self.print_widget.repaint()
+        finally:
+            self.restoreCursor()
     
 
     def songTextChanged(self):
@@ -1287,7 +1291,6 @@ class App:
                 else:
                     num_str = "%i songs" % num_exported
                 self.restoreCursor()
-                self.info("Exported %s to PDF: %s" % (num_str, pdf_file))
     
     
     
@@ -1492,7 +1495,7 @@ class App:
                 chord_text = chord.getChordString()
                 chord_width = self.chord_font_metrics.width(chord_text)
                 chord_left = chord_middle - (chord_width/2)
-                chord_right = chord_middle + (chord_width/2)
+                chord_right = chord_middle + chord_width - (chord_width/2)
                 
                 if draw_markers:
                     if song_char_num == self.hover_char_num:
