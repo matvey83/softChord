@@ -410,7 +410,7 @@ class Song:
 
 
             
-                line_chord_text = u''.join(line_chord_text_list)
+                line_chord_text = u''.join(line_chord_text_list).rstrip()
                 song_text += line_chord_text + u"\n"
             
             song_text += line_text + u"\n"
@@ -1665,7 +1665,7 @@ class App:
             self.chord_type_texts_dict[print_text] = id
             if print_text == 'sus4':
                 self.chord_type_texts_dict['sus'] = id
-            
+        
         
         song_text = input_text.split('\n')
         song_num = -1
@@ -1675,18 +1675,46 @@ class App:
         song_lines = [] # each item is a tuple of line text and chord list.
         
         
-        prev_chords = []
+        prev_chords = {}
         for line in song_text:
             
             # Attempt to convert the line to chords:
             num_chords = 0
             num_non_chords = 0
             
-            tmp_chords = []
+            tmp_chords = {} # Key: line_char_num, value: converted chord
             tmp_warnings = []
             
             char_num = 0
-            for word in line.split():
+            
+            # Make a list of words:
+            words = []
+            current_word = ""
+            current_word_start = None
+            for i, char in enumerate(line):
+                if not current_word:
+                    # Previous char was a white space
+                    if char.isspace():
+                        continue
+                    else:
+                        # Found a word:
+                        current_word = char
+                        current_word_start = i
+                        on_break = False
+                else:
+                    # Previous char was part of a word
+                    if not char.isspace():
+                        # Still on the same word
+                        current_word += char
+                    else:
+                        on_break = True
+                        words.append( (current_word, current_word_start, i) )
+                        current_word = None
+
+            if current_word:
+                words.append( (current_word, current_word_start, i) )
+            
+            for word, word_start, word_end in words:
                 if word == u'/':
                     num_chords += 1
                     converted_chord = None
@@ -1697,10 +1725,9 @@ class App:
                         tmp_warnings.append( 'WARNING: %s CHORD "%s"' % (str(err), word.encode('utf-8')) )
                         num_non_chords += 1
                     else:
+                        chord_middle_char = (word_start + word_end) / 2
                         num_chords += 1
-                        # FIXME align the chords instead of just putting 5 space
-                        # character between them!
-                        tmp_chords.append(converted_chord)
+                        tmp_chords[chord_middle_char] = converted_chord
                         char_num += 6
                 
 
@@ -1712,23 +1739,16 @@ class App:
             else:
                 # This is a lyrics line
                 if prev_chords:
-                    chord_spacing = len(line) / len(prev_chords)
-                    
-                    # Space out the chords:
-                    chords_dict = {}
-                    for i, chord in enumerate(prev_chords):
-                        chords_dict[i*chord_spacing] = chord
-                    song_lines.append( (line, chords_dict) )
+                    song_lines.append( (line, prev_chords) )
                 else:
                     # The line before was NOT a chords line - no chords for this lyrics line
                     song_lines.append( (line, {}) )
                 prev_chords = []
         
-
+        
+        # Make a global-reference text and chords dict:
         global_song_text = ""
         global_song_chords = {} # key: position in the global_song_text
-        
-        # Print all lines for this song:
         line_start_char_num = 0
         for lyrics, chords_dict in song_lines:
             
