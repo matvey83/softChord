@@ -623,6 +623,10 @@ class PrintWidget(QtGui.QWidget):
                 # A valid letter/chord was clicked, select it:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
                 
+                if self.app.selected_char_num != song_char_num:
+                    # User clicked on an un-selected letter. Select it:
+                    self.app.selected_char_num = song_char_num
+               
                 #if self.app.selected_char_num == song_char_num and is_chord:
                 if is_chord:
                     # User clicked on the selected chord, initiate drag:
@@ -630,9 +634,6 @@ class PrintWidget(QtGui.QWidget):
                     self.dragging_chord_orig_position = song_char_num
                     self.copying_chord = False
                     
-                elif self.app.selected_char_num != song_char_num:
-                    # User clicked on an un-selected letter. Select it:
-                    self.app.selected_char_num = song_char_num
                     
             else:
                 self.app.selected_char_num = None
