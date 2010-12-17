@@ -151,7 +151,6 @@ class SongChord:
         self.note_id = transpose_note(self.note_id, steps)
         if self.bass_note_id != -1:
             self.bass_note_id = transpose_note(self.bass_note_id, steps)
-        
     
     def _getNoteString(self, note_id):
         """
@@ -161,7 +160,10 @@ class SongChord:
         
         #for (note_text, note_alt_text) in self.app.notes_list[note_id]:
         note_text, note_alt_text = self.app.notes_list[note_id]
-        if self.app.sharpsOrFlats() == 1:
+
+        # FIXME should work on the song of this chord instead of the current
+        # song.
+        if self.app.current_song.sharpsOrFlats() == 1:
             return note_text
         else:
             return note_alt_text
@@ -438,9 +440,8 @@ class Song:
         for chord in self.all_chords:
             # Update existing chords
             if chord.character_num in chords_in_database:
-                self.app.updateChordToDatabase(chord)
-                #self.app.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
-                #    % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
+                self.app.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
+                    % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
                 chords_in_database.remove(chord.character_num)
         
             else:
@@ -475,7 +476,28 @@ class Song:
             chord = self.getChord(song_char_num)
             chord.character_num = new_song_char_num
         #print '  after move:', [chord.character_num for chord in self.all_chords]
+       
             
+    def sharpsOrFlats(self):
+        """
+        Returns 0 if "flat" versions of the chord should be printed,
+        and returns 1 if "sharp" versions of the chords should be printed
+        """
+        
+        num_prefer_sharp = 0
+        num_prefer_flat = 0
+        for row in self.app.execute("SELECT note_id FROM song_chord_link WHERE song_id=%i" % self.id):
+            note_id = row[0]
+            if note_id in [1, 6]: # C# or F#
+                num_prefer_sharp += 1
+            elif note_id in [3, 10]: # Eb or Bb
+                num_prefer_flat += 1
+        
+        if num_prefer_flat > num_prefer_sharp:
+            return 0 # flat
+        else:
+            return 1 # sharp
+
 
 class PrintWidget(QtGui.QWidget):
     """
@@ -863,24 +885,7 @@ class App:
         for index in selected_row_indecies:
             self.ui.songs_view.selectRow(index.row())
     
-
-    def addChordToDatabase(self, chord):
-        """
-        Add this code to the database.
-        """
-        row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
-        id = row[0] + 1
-
-        self.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                    'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (id, chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
     
-    def updateChordToDatabase(self, chord):
-        """
-        Update this chord's record in the database.
-        """
-        self.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
-            % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
-
     def keyPressEvent(self, event):
         """
         Will get called when a key is pressed
@@ -1045,28 +1050,6 @@ class App:
         
 
 
-    def sharpsOrFlats(self):
-        """
-        Returns 0 if "flat" versions of the chord should be printed,
-        and returns 1 if "sharp" versions of the chords should be printed
-        """
-        if not self.current_song:
-            return 1
-        
-        num_prefer_sharp = 0
-        num_prefer_flat = 0
-        for row in self.execute("SELECT note_id FROM song_chord_link WHERE song_id=%i" % self.current_song.id):
-            note_id = row[0]
-            if note_id in [1, 6]: # C# or F#
-                num_prefer_sharp += 1
-            elif note_id in [3, 10]: # Eb or Bb
-                num_prefer_flat += 1
-
-        if num_prefer_flat > num_prefer_sharp:
-            return 0 # flat
-        else:
-            return 1 # sharp
-
 
     def _transposeCurrentSong(self, steps):
         """
@@ -1140,10 +1123,6 @@ class App:
             
             self.current_song.all_chords = new_all_chords
             
-            #for id, new_song_char_num in tmp_id_song_char_num_dict.iteritems():
-                #self.updateChordToDatabase(chord)
-            #    self.execute("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
-
             # Renumber the selection:
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(self.selected_char_num)
