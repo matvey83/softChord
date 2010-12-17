@@ -152,8 +152,6 @@ class SongChord:
         if self.bass_note_id != -1:
             self.bass_note_id = transpose_note(self.bass_note_id, steps)
         
-        self.app.updateChordToDatabase(self)
-        
     
     def _getNoteString(self, note_id):
         """
@@ -214,7 +212,7 @@ class Song:
             self.key_is_major = row[4]
             break
         
-        song_chords = {}
+        song_chords = []
         for row in self.app.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % song_id):
             id = row[0]
             song_char_num = row[1]
@@ -223,7 +221,8 @@ class Song:
             bass_note_id = row[4]
             marker = row[5]
             in_parentheses = row[6]
-            song_chords[song_char_num] = SongChord(app, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
+            chord = SongChord(app, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
+            song_chords.append(chord)
         self.all_chords = song_chords
 
         
@@ -283,7 +282,8 @@ class Song:
         associated with it.
         """
 
-        for song_char_num, chord in self.all_chords.iteritems():
+        for chord in self.all_chords:
+            song_char_num = chord.character_num
             chord_linenum, line_char_num = self.songCharToLineChar(song_char_num)
             if chord_linenum == linenum:
                 return True
@@ -348,7 +348,8 @@ class Song:
     
 
     def getChord(self, song_char_num):
-        for chord_song_char_num, chord in self.all_chords.iteritems():
+        for chord in self.all_chords:
+            chord_song_char_num = chord.character_num
             if chord_song_char_num == song_char_num:
                 return chord
         raise ValueError("There is no chord for character %i" % song_char_num)
@@ -377,7 +378,8 @@ class Song:
                     
                     
                     # Figure out if a chord is attached to this letter:
-                    for chord_song_char_num, chord in self.all_chords.iteritems():
+                    for chord in self.all_chords:
+                        chord_song_char_num = chord.character_num
                         chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
 
                         if chord_linenum != linenum:
@@ -413,15 +415,31 @@ class Song:
         
     
     def transpose(self, steps):
-        for character_num, chord in self.all_chords.iteritems():
+        for chord in self.all_chords:
             chord.transpose(steps)
-            self.app.updateChordToDatabase(chord)
         
         if self.key_note_id != -1:
             self.key_note_id = transpose_note(self.key_note_id, steps)
-            self.app.execute('UPDATE songs SET key_note_id=%i WHERE id=%i' % (self.key_note_id, self.id))
+        
+        self.sendToDatabase()
+        
 
-    
+    def sendToDatabase(self):
+        """
+        Save this song to the database.
+        """
+        
+        # Add new chords
+
+        # Remove old chords
+
+        # Update existing chords
+        for chord in self.all_chords:
+            self.app.updateChordToDatabase(chord)
+        
+        self.app.execute('UPDATE songs SET key_note_id=%i WHERE id=%i' % (self.key_note_id, self.id))
+
+        
     def moveChord(self, song_char_num, new_song_char_num, copy=False):
         """
         Move the specified chord to a new position.
@@ -430,18 +448,17 @@ class Song:
         If copy is True, then copy the chord instead of moving it.
         """
         
+        #print '  before move:', [chord.character_num for chord in self.all_chords]
         if copy:
             orig_chord = self.getChord(song_char_num)
             new_chord = copy.copy(orig_chord)
             new_chord.character_num = new_song_char_num
-            self.all_chords[new_song_char_num] = new_chord
+            self.all_chords.append(new_chord)
         else:
             chord = self.getChord(song_char_num)
             chord.character_num = new_song_char_num
+        #print '  after move:', [chord.character_num for chord in self.all_chords]
             
-            self.all_chords[new_song_char_num] = chord
-            del self.all_chords[song_char_num]
-
 
 class PrintWidget(QtGui.QWidget):
     """
@@ -494,7 +511,7 @@ class PrintWidget(QtGui.QWidget):
         
         self.app.hover_char_num = None
         
-        if True: #self.geometry().contains(event.pos()):
+        if True:
             localx = event.pos().x()
             localy = event.pos().y()
             letter_tuple = self.app.determineClickedLetter(localx, localy)
@@ -581,16 +598,17 @@ class PrintWidget(QtGui.QWidget):
                     #self.dragging_chord_orig_position = -1
                     
                     # Initiate a drag:
-                    self.dragging_chord_curr_position = song_char_num
-                    self.dragging_chord_orig_position = song_char_num
-                    self.copying_chord = False
+                    if is_chord:
+                        self.dragging_chord_curr_position = song_char_num
+                        self.dragging_chord_orig_position = song_char_num
+                        self.copying_chord = False
             else:
                 self.app.selected_char_num = None
+                self.dragging_chord_curr_position = -1
             self.app.print_widget.repaint()
     
 
     def mouseReleaseEvent(self, event):
-        #if event.button() == Qt.LeftButton:
 
         # Stop dragging of the chord (it's already in the correct position):
         if self.dragging_chord_curr_position != -1:
@@ -837,10 +855,6 @@ class App:
             self.ui.songs_view.selectRow(index.row())
     
 
-    def deleteChordFromDatabase(self, chord):
-        self.execute('DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i'
-            % (chord.song_id, chord.character_num))
-    
     def addChordToDatabase(self, chord):
         """
         Add this code to the database.
@@ -1039,6 +1053,7 @@ class App:
         """
         
         self.current_song.transpose(steps)
+        self.current_song.sendToDatabase()
         self.updateCurrentSongFromDatabase()
     
 
@@ -1235,8 +1250,6 @@ class App:
                     "PDF format (*.pdf)",
         )
         if outfile: 
-            #print 'generating PDF:', outfile
-            
             num_exported = 0
             self.setWaitCursor()
             try:
@@ -1275,15 +1288,11 @@ class App:
         if outfile:
             self.setWaitCursor()
             try:
-                #print 'generating text file:', outfile
-                
                 fh = codecs.open(outfile, 'w', encoding='utf-8')
                 fh = open(outfile, 'w')
                 
                 for song_index, song_id in enumerate(self.getSelectedSongIds()):
                     # NOTE for now there will always be only one song exported.
-                    print 'exporting song_id:', song_id
-
                     song = Song(self, song_id)
                     
                     # Encode the unicode string as UTF-8 before writing to file:
@@ -1294,7 +1303,6 @@ class App:
                 fh.close()
             finally:
                 self.restoreCursor()
-            print 'WRITTEN:', outfile
 
     
     def currentSongTitleEdited(self, new_title):
@@ -1419,7 +1427,7 @@ class App:
                     try:
                        hover_linenum, hover_line_char_num = song.songCharToLineChar(self.hover_char_num)
                     except RuntimeError:
-                       print 'failed to find hover char:', self.hover_char_num
+                       raise RuntimeError('failed to find hover char: %i' % self.hover_char_num)
                        continue
                     if hover_linenum == linenum:
                         letter_left = line_left + self.lyrics_font_metrics.width( line_text[:hover_line_char_num] )
@@ -1448,7 +1456,8 @@ class App:
             if not song.doesLineHaveChords(linenum):
                 continue
             
-            for song_char_num, chord in song.all_chords.iteritems():
+            for chord in song.all_chords:
+                song_char_num = chord.character_num
                 chord_linenum, line_char_num = song.songCharToLineChar(song_char_num)
                 if chord_linenum != linenum:
                     continue
@@ -1516,7 +1525,8 @@ class App:
                 is_chord = True
                 
                 # Figure out if a chord is attached to this letter:
-                for chord_song_char_num, chord in self.current_song.all_chords.iteritems():
+                for chord in self.current_song.all_chords:
+                    chord_song_char_num = chord.character_num
                     chord_linenum, line_char_num = self.current_song.songCharToLineChar(chord_song_char_num)
                     if chord_linenum != linenum:
                         continue
@@ -1654,9 +1664,6 @@ class App:
         song_title = ""
         
         
-        #print '\n\nSONG', song_num, song_title.encode('utf-8')
-
-
         song_lines = [] # each item is a tuple of line text and chord list.
         
         
@@ -1690,17 +1697,14 @@ class App:
                 
 
             if num_chords > num_non_chords:
-                #print 'CHORD LINE:', line.encode('utf-8')
                 # This is a chords line
                 prev_chords = tmp_chords
                 for warning_str in tmp_warnings:
                     print '  ', warning_str
             else:
-                #print 'LYRICS LINE:', line.encode('utf-8')
                 # This is a lyrics line
                 if prev_chords:
                     chord_spacing = len(line) / len(prev_chords)
-                    #print 'line length:', len(line), 'chord_spacing:', chord_spacing
                     
                     # Space out the chords:
                     chords_dict = {}
@@ -1719,8 +1723,6 @@ class App:
         # Print all lines for this song:
         line_start_char_num = 0
         for lyrics, chords_dict in song_lines:
-            #print '  ', chords_dict
-            #print lyrics.encode('utf-8')
             
             global_song_text += lyrics + '\n'
             for line_char_num, chord in chords_dict.iteritems():
@@ -1730,14 +1732,10 @@ class App:
             line_start_char_num += len(lyrics) + 1 # 1 for the EOL character
         
         
-        #print 'IMPORTING'
         
         song_id = 0
         for row in self.execute("SELECT MAX(id) from songs"):
             song_id = row[0] + 1
-        #print 'song_id:', song_id
-        #print 'song_num:', song_num
-        #print 'song_title:', song_title.encode('utf-8')
         
         # Replace all double quotes with single quotes:
         global_song_text = global_song_text.replace('"', "'")
@@ -1827,11 +1825,6 @@ class App:
             elif bass[1] == u'b':
                 bass = bass[0] + u'♭'
         
-        #if bass:
-        #    print 'converting:', note.encode('utf-8'), type, bass.encode('utf-8')
-        #else:
-        #    print 'converting:', note.encode('utf-8'), type, 'None'
-
         note_id = self.note_text_id_dict[note]
         if bass != None:
             bass_id = self.note_text_id_dict[bass]
