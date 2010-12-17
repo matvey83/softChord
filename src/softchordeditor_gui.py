@@ -44,6 +44,15 @@ def tr(text):
     return text
 
 
+def transpose_note(note_id, steps):
+    note_id += steps
+
+    if note_id < 0:
+        note_id += 12
+    elif note_id > 11:
+        note_id -= 12
+
+    return note_id
 
 
 class SongTableModel(QtCore.QAbstractTableModel):
@@ -139,18 +148,8 @@ class SongChord:
         Transpose this chord the specified number of steps up.
         <steps> can be negative.
         """
-        self.note_id += steps
-        if self.note_id < 0:
-            self.note_id += 12
-        elif self.note_id > 11:
-            self.note_id -= 12
-        
-        if self.bass_note_id != -1:
-            self.bass_note_id += steps
-            if self.bass_note_id < 0:
-                self.bass_note_id += 12
-            elif self.bass_note_id > 11:
-                self.bass_note_id -= 12
+        self.note_id = transpose_note(self.note_id, steps)
+        self.bass_note_id = transpose_note(self.bass_note_id, steps)
         
         self.app.updateChordToDatabase(self)
         
@@ -403,6 +402,16 @@ class Song:
             song_text += line_text + u"\n"
             
         return song_text
+        
+    
+    def transpose(self, steps):
+        for character_num, chord in self.all_chords.iteritems():
+            chord.transpose(steps)
+            self.app.updateChordToDatabase(chord)
+        
+        if self.key_note_id != -1:
+            self.key_note_id = transpose_note(self.key_note_id, steps)
+            self.app.execute('UPDATE songs SET key_note_id=%i WHERE id=%i' % (self.key_note_id, self.id))
 
 
 class PrintWidget(QtGui.QWidget):
@@ -991,12 +1000,10 @@ class App:
         Transpose the current song up by the specified number of steps.
         """
         
-        for character_num, chord in self.current_song.all_chords.iteritems():
-            chord.transpose(steps)
-            self.updateChordToDatabase(chord)
-
+        self.current_song.transpose(steps)
         self.updateCurrentSongFromDatabase()
     
+
     def songTextChanged(self):
         """
         Called when the song lyric text is modified by the user.
@@ -1333,13 +1340,10 @@ class App:
             note_id = (new_key_index-1) / 2
             is_major = (new_key_index-1) % 2
         
-        if note_id != self.current_song.key_note_id and is_major != self.current_song.key_is_major:
+        if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
             # Do not run this code if the value of the menu is first initialized
             self.execute('UPDATE songs SET key_note_id=%i, key_is_major=%i WHERE id=%i' % (note_id, is_major, song_id))
-            
-            # Update the song table from database:
-            self.updateFromDatabase()
-    
+            self.updateCurrentSongFromDatabase()
 
     
     def createNewSong(self):
@@ -1353,8 +1357,6 @@ class App:
         row = self.execute("SELECT MAX(id) from songs").fetchone()
         id = row[0] + 1
         
-        #print 'new id:', id
-
         out = self.execute("INSERT INTO songs (id, number, text, title) " + \
                         'VALUES (%i, %i, "%s", "%s")' % (id, song_number, song_text, song_title))
         
@@ -1498,8 +1500,6 @@ class App:
             if y < chords_top or y > lyrics_bottom:
                 continue # Not this line
             
-            #print 'mouse event on line:', linenum
-            
             # Figure out the lyric letter for the mouse location:
             song_char_num = -1
             for line_char_num in range(len(line_text)):
@@ -1508,8 +1508,6 @@ class App:
                 if x > left and x < right:
                     song_char_num = self.current_song.lineCharToSongChar(linenum, line_char_num)
                     break
-            
-            #print 'song_char_num:', song_char_num
             
             if y < chords_bottom:
                 is_chord = True
@@ -1651,7 +1649,7 @@ class App:
         song_title = ""
         
         
-        print '\n\nSONG', song_num, song_title.encode('utf-8')
+        #print '\n\nSONG', song_num, song_title.encode('utf-8')
 
 
         song_lines = [] # each item is a tuple of line text and chord list.
@@ -1697,7 +1695,7 @@ class App:
                 # This is a lyrics line
                 if prev_chords:
                     chord_spacing = len(line) / len(prev_chords)
-                    print 'line length:', len(line), 'chord_spacing:', chord_spacing
+                    #print 'line length:', len(line), 'chord_spacing:', chord_spacing
                     
                     # Space out the chords:
                     chords_dict = {}
@@ -1727,7 +1725,7 @@ class App:
             line_start_char_num += len(lyrics) + 1 # 1 for the EOL character
         
         
-        print 'IMPORTING'
+        #print 'IMPORTING'
         
         song_id = 0
         for row in self.execute("SELECT MAX(id) from songs"):
