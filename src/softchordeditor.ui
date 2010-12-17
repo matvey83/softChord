@@ -332,6 +332,9 @@
    <property name="text">
     <string>Print...</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
+   </property>
   </action>
   <action name="actionLyricsFont">
    <property name="text">

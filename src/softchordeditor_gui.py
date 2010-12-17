@@ -1260,7 +1260,7 @@ class App:
 
         pdf_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save PDF file as:",
-                    ".", # initial dir
+                    QtCore.QDir.home().path(), # initial dir
                     "PDF format (*.pdf)",
         )
         if pdf_file: 
@@ -1269,7 +1269,7 @@ class App:
             try:
                 printer = QtGui.QPrinter()
                 printer.setFullPage(True)
-                #printer.setPageSize(QtGui.QPrinter.Letter)
+                printer.setPageSize(QtGui.QPrinter.Letter)
                 printer.setOrientation(QtGui.QPrinter.Portrait)
                 printer.setOutputFileName(pdf_file)
                 printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
@@ -1296,7 +1296,7 @@ class App:
         
         text_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save text file as:",
-                    ".", # initial dir
+                    QtCore.QDir.home().path(), # initial dir
                     "Text format (*.txt)",
         )
         if text_file:
@@ -1632,7 +1632,7 @@ class App:
         """
         text_file = QtGui.QFileDialog.getOpenFileName(self.ui,
                     "Select a text file to import",
-                    ".", # initial dir
+                    QtCore.QDir.home().path(), # initial dir
                     "Text format (*.txt)",
         )
         if text_file:
