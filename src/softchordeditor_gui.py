@@ -210,6 +210,8 @@ class Song:
             if self.key_note_id == None:
                 self.key_note_id = -1
             self.key_is_major = row[4]
+            if self.key_is_major == None:
+                self.key_is_major = 0
             break
         
         song_chords = []
