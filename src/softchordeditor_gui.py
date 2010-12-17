@@ -1258,12 +1258,12 @@ class App:
         Exports the selected songs to a PDF file.
         """
 
-        outfile = QtGui.QFileDialog.getSaveFileName(self.ui,
+        pdf_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save PDF file as:",
                     ".", # initial dir
                     "PDF format (*.pdf)",
         )
-        if outfile: 
+        if pdf_file: 
             num_exported = 0
             self.setWaitCursor()
             try:
@@ -1271,7 +1271,7 @@ class App:
                 printer.setFullPage(True)
                 #printer.setPageSize(QtGui.QPrinter.Letter)
                 printer.setOrientation(QtGui.QPrinter.Portrait)
-                printer.setOutputFileName(outfile)
+                printer.setOutputFileName(pdf_file)
                 printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
                 
                 num_exported = self._paintToPrinter(printer)
@@ -1285,7 +1285,7 @@ class App:
                 else:
                     num_str = "%i songs" % num_exported
                 self.restoreCursor()
-                self.info("Exported %s to PDF: %s" % (num_str, outfile))
+                self.info("Exported %s to PDF: %s" % (num_str, pdf_file))
     
     
     
@@ -1294,16 +1294,16 @@ class App:
         Exports the selected song (one) to a TEXT file.
         """
         
-        outfile = QtGui.QFileDialog.getSaveFileName(self.ui,
+        text_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save text file as:",
                     ".", # initial dir
                     "Text format (*.txt)",
         )
-        if outfile:
+        if text_file:
             self.setWaitCursor()
             try:
-                fh = codecs.open(outfile, 'w', encoding='utf-8')
-                fh = open(outfile, 'w')
+                #fh = codecs.open( unicode(text_file).encode('utf-8'), 'w', encoding='utf-8')
+                fh = open( unicode(text_file).encode('utf-8'), 'w' )
                 
                 for song_index, song_id in enumerate(self.getSelectedSongIds()):
                     # NOTE for now there will always be only one song exported.
@@ -1636,10 +1636,7 @@ class App:
                     "Text format (*.txt)",
         )
         if text_file:
-            #text_file = str(text_file).decode('utf-8')
-            #text = codecs.open(text_file, encoding='utf-8').read()
-            #text_file = str(text_file).encode('utf-8')
-            text = open(text_file).read()
+            text = open( unicode(text_file).encode('utf-8') ).read()
             # Decode UTF-8 into Unicode:
             text = text.decode('utf-8')
             self.importSongFromText(text)
