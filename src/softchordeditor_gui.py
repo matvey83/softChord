@@ -1875,13 +1875,21 @@ class App:
 
 
 
-# Main event loop:
 
-qapp = QtGui.QApplication(sys.argv)
-window = App()
-window.ui.show()
-window.ui.raise_()
-sys.exit(qapp.exec_())
+def main():
+    """
+    The main event loop. This function is also run by the Windows executable.
+    """
+
+    qapp = QtGui.QApplication(sys.argv)
+    window = App()
+    window.ui.show()
+    window.ui.raise_()
+    sys.exit(qapp.exec_())
+
+
+if __name__ == "__main__":
+    main()
 
 
 #EOF
