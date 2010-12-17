@@ -135,7 +135,7 @@ class SongChord:
 
         if marker == u"-1" or marker == None or marker == "None":
             # FIXME the database should have only one of these in it
-            marker = None
+            marker = ""
         self.marker = marker
 
         if in_parentheses == None:
@@ -149,7 +149,8 @@ class SongChord:
         <steps> can be negative.
         """
         self.note_id = transpose_note(self.note_id, steps)
-        self.bass_note_id = transpose_note(self.bass_note_id, steps)
+        if self.bass_note_id != -1:
+            self.bass_note_id = transpose_note(self.bass_note_id, steps)
         
         self.app.updateChordToDatabase(self)
         
@@ -344,8 +345,15 @@ class Song:
             else:
                 out_char_num += len(line_text) + 1 # Add one for the end-of-line character
         raise RuntimeError()
+    
 
-
+    def getChord(self, song_char_num):
+        for chord_song_char_num, chord in self.all_chords.iteritems():
+            if chord_song_char_num == song_char_num:
+                return chord
+        raise ValueError("There is no chord for character %i" % song_char_num)
+                
+    
     def getAsText(self):
         """
         Return a text string for this song. This text will have proper
@@ -412,6 +420,27 @@ class Song:
         if self.key_note_id != -1:
             self.key_note_id = transpose_note(self.key_note_id, steps)
             self.app.execute('UPDATE songs SET key_note_id=%i WHERE id=%i' % (self.key_note_id, self.id))
+
+    
+    def moveChord(self, song_char_num, new_song_char_num, copy=False):
+        """
+        Move the specified chord to a new position.
+        If new_song_char_num == -1, then the chord is deleted.
+        
+        If copy is True, then copy the chord instead of moving it.
+        """
+        
+        if copy:
+            orig_chord = self.getChord(song_char_num)
+            new_chord = copy.copy(orig_chord)
+            new_chord.character_num = new_song_char_num
+            self.all_chords[new_song_char_num] = new_chord
+        else:
+            chord = self.getChord(song_char_num)
+            chord.character_num = new_song_char_num
+            
+            self.all_chords[new_song_char_num] = chord
+            del self.all_chords[song_char_num]
 
 
 class PrintWidget(QtGui.QWidget):
@@ -500,7 +529,7 @@ class PrintWidget(QtGui.QWidget):
                                 if not ctrl_down:
                                     #print '  no longer copying, removing orig chord'
                                     # Just stopped copying, remove the orig chord.
-                                    self.app.moveChord(self.dragging_chord_orig_position, -1)
+                                    self.app.current_song.moveChord(self.dragging_chord_orig_position, -1)
                                     self.copying_chord = False
                                 """
                             else:
@@ -509,12 +538,12 @@ class PrintWidget(QtGui.QWidget):
                                 if ctrl_down:
                                     #print '  will start copying, adding the original chord'
                                     # Copy the chord to the original position as well
-                                    self.app.moveChord(self.dragging_chord_curr_position, self.dragging_chord_orig_position, copy=True)
+                                    self.app.current_song.moveChord(self.dragging_chord_curr_position, self.dragging_chord_orig_position, copy=True)
                                     self.copying_chord = True
                                 #print '  control is not pressed'
 
                             #print 'moving the dragged chord'
-                            self.app.moveChord(self.dragging_chord_curr_position, song_char_num)
+                            self.app.current_song.moveChord(self.dragging_chord_curr_position, song_char_num)
                             self.dragging_chord_curr_position = song_char_num
                             
                             # Show hover feedback on the new letter:
@@ -565,10 +594,17 @@ class PrintWidget(QtGui.QWidget):
 
         # Stop dragging of the chord (it's already in the correct position):
         if self.dragging_chord_curr_position != -1:
+            if self.dragging_chord_curr_position != self.dragging_chord_orig_position:
+                new_chord = self.app.current_song.getChord(self.dragging_chord_curr_position)
+                self.app.addChordToDatabase(new_chord)
+                if not self.copying_chord:
+                    self.app.execute('DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i'
+                        % (self.app.current_song.id, self.dragging_chord_orig_position))
+            
             self.dragging_chord_curr_position = -1
             self.dragging_chord_orig_position = -1
-        
-        
+    
+
     def mouseDoubleClickEvent(self, event):
         """
         Called when mouse is DOUBLE-CLICKED in the song chords widget.
@@ -606,8 +642,6 @@ class ChordDialog:
         notes_list = []
 
         for (note_text, note_alt_text) in self.app.notes_list:
-            note_text = row[1]
-            note_alt_text = row[2]
             if note_text == note_alt_text:
                 combined_text = note_text
             else:
@@ -646,7 +680,7 @@ class ChordDialog:
             # -1 becomes 0, etc:
             self.ui.bass_menu.setCurrentIndex(bass_note_id+1)
         
-        if marker == -1 or marker == "":
+        if marker == -1 or marker == "" or marker == "None":
             marker = ""
         self.ui.marker_ef.setText(marker)
         
@@ -803,6 +837,10 @@ class App:
             self.ui.songs_view.selectRow(index.row())
     
 
+    def deleteChordFromDatabase(self, chord):
+        self.execute('DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i'
+            % (chord.song_id, chord.character_num))
+    
     def addChordToDatabase(self, chord):
         """
         Add this code to the database.
@@ -1090,41 +1128,6 @@ class App:
         self.ignore_song_text_changed = False
     
 
-    def moveChord(self, song_char_num, new_song_char_num, copy=False):
-        """
-        Move the specified chord to a new position.
-        If new_song_char_num == -1, then the chord is deleted.
-        
-        If copy is True, then copy the chord instead of moving it.
-        """
-        
-        # Renumber the chords:
-        song_id = self.current_song.id
-        row = self.execute("SELECT id, note_id, chord_type_id, bass_note_id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)).fetchone()
-        id = row[0]
-        
-        if new_song_char_num == -1:
-            # Delete
-            self.execute("DELETE FROM song_chord_link WHERE id=%i" % id)
-        else:
-            if copy:
-                # Copy
-                note_id = row[1]
-                chord_type_id = row[2]
-                bass_note_id = row[3]
-                
-                # Get the next available ID:
-                row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
-                new_id = row[0] + 1
-                
-                self.execute("INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id) " + \
-                            "VALUES (%i, %i, %i, %i, %i, %i)" % (new_id, song_id, new_song_char_num, note_id, chord_type_id, bass_note_id))
-            else:
-                # Move
-                # self.updateChordToDatabase(chord)
-                self.execute("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
-        self.updateCurrentSongFromDatabase()
-    
     
     def transposeUp(self):
         self._transposeCurrentSong(1)
@@ -1168,9 +1171,9 @@ class App:
         
         print_dialog = QtGui.QPrintDialog(printer, self.ui)
         if print_dialog.exec_() == QtGui.QDialog.Accepted:
-            print 'printing'
+            #print 'printing'
             num_printed = self._paintToPrinter(printer)
-            print 'printed %s songs' % num_printed
+            #print 'printed %s songs' % num_printed
 
 
     """
@@ -1272,7 +1275,7 @@ class App:
         if outfile:
             self.setWaitCursor()
             try:
-                print 'generating text file:', outfile
+                #print 'generating text file:', outfile
                 
                 fh = codecs.open(outfile, 'w', encoding='utf-8')
                 fh = open(outfile, 'w')
@@ -1567,6 +1570,7 @@ class App:
         
         # Check whether this character already has a chord:
         song_id = self.current_song.id
+        chord = None
         for row in self.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)):
             #id = row[0]
             note_id = row[2]
@@ -1574,14 +1578,15 @@ class App:
             bass_note_id = row[4]
             marker = row[5]
             in_parentheses = row[6]
-            
             chord = SongChord(self, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
-        else:
+            break
+        
+        if chord == None:
             # New chord
             #row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
             #id = row[0] + 1
             chord = SongChord(self, song_id, song_char_num, 0, 0, -1, "", False)
-            
+        
         modified_chord = ChordDialog(self).display(chord)
         
         if modified_chord:
