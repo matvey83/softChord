@@ -904,15 +904,14 @@ class App:
         """
         
         if self.selected_char_num != None and self.current_song:
-            song_char_num = self.selected_char_num
+            for chord in self.current_song.all_chords:
+                if chord.character_num == self.selected_char_num:
+                    self.current_song.all_chords.remove(chord)
+                    break
             
-            song_id = self.current_song.id
-            
-            self.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num))
-            
-            self.selected_char_num = None
-            self.updateCurrentSongFromDatabase()
+            self.current_song.sendToDatabase()
             self.print_widget.repaint()
+
 
     def warning(self, text):
         """ Display a warning dialog box with the given text """
@@ -993,6 +992,13 @@ class App:
         else:
             self.current_song = None
         
+        self.updateStates()
+    
+
+    def updateStates(self):
+
+        selected_song_ids = self.getSelectedSongIds()
+        
         if self.current_song == None:
             self.ui.song_text_edit.setPlainText("")
             self.previous_song_text = None
@@ -1069,7 +1075,7 @@ class App:
         
         self.current_song.transpose(steps)
         self.current_song.sendToDatabase()
-        self.updateCurrentSongFromDatabase()
+        self.print_widget.repaint()
     
 
     def songTextChanged(self):
@@ -1118,34 +1124,28 @@ class App:
                     break
             num_preserved_end_chars = i
             
-
-
-            # Renumber the chords:
-            tmp_ids_to_delete = []
-            tmp_id_song_char_num_dict = {}
-            song_id = self.current_song.id
-            for row in self.execute("SELECT id, character_num FROM song_chord_link WHERE song_id=%i" % song_id):
-                id = row[0]
-                song_char_num = row[1]
-                try:
-                    new_song_char_num = renumber_map[song_char_num]
-                    tmp_id_song_char_num_list = []
-                except KeyError:
-                    tmp_ids_to_delete.append(id)
-                else:
-                    tmp_id_song_char_num_dict[id] = new_song_char_num
             
-            for id in tmp_ids_to_delete:    
-                self.execute("DELETE FROM song_chord_link WHERE id=%i" % id)
-
-            for id, new_song_char_num in tmp_id_song_char_num_dict.iteritems():
+            new_all_chords = []
+            for chord in self.current_song.all_chords:
+                try:
+                    chord.character_num = renumber_map[chord.character_num]
+                except KeyError:
+                    continue
+                else:
+                    new_all_chords.append(chord)
+            
+            self.current_song.all_chords = new_all_chords
+            
+            #for id, new_song_char_num in tmp_id_song_char_num_dict.iteritems():
                 #self.updateChordToDatabase(chord)
-                self.execute("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
-
+            #    self.execute("UPDATE song_chord_link SET character_num=%i WHERE id=%i" % (new_song_char_num, id))
 
             # Renumber the selection:
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(self.selected_char_num)
+
+            self.current_song.all_text = song_text
+
         
         self.previous_song_text = song_text
         
@@ -1153,7 +1153,11 @@ class App:
         
         self.current_song.sendToDatabase()
         
+
+        # FIXME  Would be nice to get rid of this call, but doing so breaks lyrics editing:
         self.updateCurrentSongFromDatabase()
+        
+        self.print_widget.repaint()
         
         self.ignore_song_text_changed = False
     
@@ -1376,7 +1380,7 @@ class App:
 
             # Do not run this code if the value of the menu is first initialized
             self.current_song.sendToDatabase()
-            self.updateCurrentSongFromDatabase()
+            self.print_widget.repaint()
 
     
     def createNewSong(self):
@@ -1618,8 +1622,8 @@ class App:
                 self.current_song.all_chords.append(chord)
             
             self.current_song.sendToDatabase()
-
-            self.updateCurrentSongFromDatabase()
+            
+            self.print_widget.repaint()
                 
 
 
