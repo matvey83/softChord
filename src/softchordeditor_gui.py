@@ -429,17 +429,32 @@ class Song:
         Save this song to the database.
         """
         
-        # Add new chords
+        chords_in_database = []
+        for row in self.app.execute("SELECT character_num FROM song_chord_link WHERE song_id=%i" % self.id):
+            chords_in_database.append(row[0])
+        
+        for chord in self.all_chords:
+            # Update existing chords
+            if chord.character_num in chords_in_database:
+                self.app.updateChordToDatabase(chord)
+                #self.app.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
+                #    % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
+                chords_in_database.remove(chord.character_num)
+        
+            else:
+                # Add new chords
+                self.app.execute('INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+                        'VALUES (%i, %i, %i, %i, %i, "%s", %i)' % (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
 
         # Remove old chords
-
-        # Update existing chords
-        for chord in self.all_chords:
-            self.app.updateChordToDatabase(chord)
+        for song_char_num in chords_in_database:
+            self.app.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
         
-        self.app.execute('UPDATE songs SET key_note_id=%i WHERE id=%i' % (self.key_note_id, self.id))
+        self.app.execute('UPDATE songs SET number=%i, title="%s", text="%s", key_note_id=%i, key_is_major=%i WHERE id=%i' % 
+            (self.number, self.title, self.all_text, self.key_note_id, self.key_is_major, self.id))
+    
 
-        
+    
     def moveChord(self, song_char_num, new_song_char_num, copy=False):
         """
         Move the specified chord to a new position.
@@ -613,12 +628,14 @@ class PrintWidget(QtGui.QWidget):
         # Stop dragging of the chord (it's already in the correct position):
         if self.dragging_chord_curr_position != -1:
             if self.dragging_chord_curr_position != self.dragging_chord_orig_position:
-                new_chord = self.app.current_song.getChord(self.dragging_chord_curr_position)
-                self.app.addChordToDatabase(new_chord)
-                if not self.copying_chord:
-                    self.app.execute('DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i'
-                        % (self.app.current_song.id, self.dragging_chord_orig_position))
-            
+                #new_chord = self.app.current_song.getChord(self.dragging_chord_curr_position)
+                #self.app.addChordToDatabase(new_chord)
+                #if not self.copying_chord:
+                #    self.app.execute('DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i'
+                #        % (self.app.current_song.id, self.dragging_chord_orig_position))
+                
+                self.app.current_song.sendToDatabase()
+
             self.dragging_chord_curr_position = -1
             self.dragging_chord_orig_position = -1
     
@@ -676,11 +693,10 @@ class ChordDialog:
     def display(self, chord):
         """
         Display the chord-editing dialog box.
-        Returns a modified chord if OK was pressed. Returns None if Cancel.
+        Modify the passed chord if OK is pressed.
+        Returns False if user pressed Cancel.
         """
-
-        import copy
-        chord = copy.copy(chord)
+        
         note_id = chord.note_id
         chord_type_id = chord.chord_type_id
         bass_note_id = chord.bass_note_id
@@ -706,18 +722,17 @@ class ChordDialog:
         self.ui.raise_()
         out = self.ui.exec_()
         if out: # OK pressed:
-            new_chord = copy.copy(chord)
-            new_chord.note_id = self.ui.note_menu.currentIndex()
-            new_chord.chord_type_id = self.ui.chord_type_menu.currentIndex()
+            chord.note_id = self.ui.note_menu.currentIndex()
+            chord.chord_type_id = self.ui.chord_type_menu.currentIndex()
             # 0 (first item) will become -1 (invalid):
-            new_chord.bass_note_id = self.ui.bass_menu.currentIndex() - 1
-            new_chord.marker = self.ui.marker_ef.text()
-            new_chord.in_parentheses = in_parentheses # FIXME
+            chord.bass_note_id = self.ui.bass_menu.currentIndex() - 1
+            chord.marker = self.ui.marker_ef.text()
+            chord.in_parentheses = in_parentheses # FIXME
             
-            return new_chord
+            return True
         else:
             # Cancel pressed
-            return None
+            return False
 
 
 class App:
@@ -1136,7 +1151,7 @@ class App:
         
         song_id = self.current_song.id
         
-        self.execute('UPDATE songs SET text="%s" WHERE id=%i' % (song_text, song_id))
+        self.current_song.sendToDatabase()
         
         self.updateCurrentSongFromDatabase()
         
@@ -1310,7 +1325,9 @@ class App:
         Called when the user modifies the selected song's title.
         """
         if self.current_song:
+            self.current_song.title = new_title
             self.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+            # self.current_song.sendToDatabase()
             
             # Update the song table from database:
             self.updateFromDatabase()
@@ -1328,7 +1345,9 @@ class App:
             except:
                 self.error("Invalid song number")
             else:
+                self.current_song.number = new_num
                 self.execute('UPDATE songs SET number=%i WHERE id=%i' % (new_num, self.current_song.id))
+                # self.current_song.sendToDatabase()
                 
                 # Update the song table from database:
                 self.updateFromDatabase()
@@ -1352,8 +1371,11 @@ class App:
             is_major = (new_key_index-1) % 2
         
         if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
+            self.current_song.key_note_id = note_id
+            self.current_song.key_is_major = is_major
+
             # Do not run this code if the value of the menu is first initialized
-            self.execute('UPDATE songs SET key_note_id=%i, key_is_major=%i WHERE id=%i' % (note_id, is_major, song_id))
+            self.current_song.sendToDatabase()
             self.updateCurrentSongFromDatabase()
 
     
@@ -1578,46 +1600,25 @@ class App:
         the specified position.
         """
         
-        # Check whether this character already has a chord:
-        song_id = self.current_song.id
+        add_new = True
         chord = None
-        for row in self.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)):
-            #id = row[0]
-            note_id = row[2]
-            chord_type_id = row[3]
-            bass_note_id = row[4]
-            marker = row[5]
-            in_parentheses = row[6]
-            chord = SongChord(self, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
-            break
+        for iter_chord in self.current_song.all_chords:
+            if iter_chord.character_num == song_char_num:
+                add_new = False
+                chord = iter_chord
+                break
         
-        if chord == None:
-            # New chord
-            #row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
-            #id = row[0] + 1
-            chord = SongChord(self, song_id, song_char_num, 0, 0, -1, "", False)
+        if add_new:
+            chord = SongChord(self, self.current_song.id, song_char_num, 0, 0, -1, "", False)
         
-        modified_chord = ChordDialog(self).display(chord)
-        
-        if modified_chord:
+        ok = ChordDialog(self).display(chord)
+        if ok:
             # Ok pressed
-            note_id = modified_chord.note_id
-            chord_type_id = modified_chord.chord_type_id
-            bass_note_id = modified_chord.bass_note_id
-            marker = modified_chord.marker
-            in_parentheses = modified_chord.in_parentheses
+            if add_new:
+                self.current_song.all_chords.append(chord)
             
-            # Check whether this character already has a chord, if so, alter it:
-            for row in self.execute("SELECT id FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (song_id, song_char_num)):
-                # Replacing exising chord
-                #id = row[0]
-                self.updateChordToDatabase(modified_chord)
-            else:
-                # Adding a new chord
-                #row = self.execute("SELECT MAX(id) from song_chord_link").fetchone()
-                #id = row[0] + 1
-                #id = modified_chord.id
-                self.addChordToDatabase(modified_chord)
+            self.current_song.sendToDatabase()
+
             self.updateCurrentSongFromDatabase()
                 
 
