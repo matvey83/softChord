@@ -426,6 +426,8 @@ class Song:
             self.key_note_id = transpose_note(self.key_note_id, steps)
         
         self.sendToDatabase()
+        # Update the current song from the database:
+        self.app.updateCurrentSongFromDatabase()
         
 
     def sendToDatabase(self):
@@ -781,27 +783,16 @@ class App:
         # Make a list of all notes and keys:
         self.notes_list = []
         self.note_text_id_dict = {}
-        keys_list = ["None"]
-        
-        # Make a list of all keys:
         for row in self.execute("SELECT id, text, alt_text FROM notes"):
             note_id = row[0]
             text = row[1]
             alt_text = row[2]
-            if text == alt_text:
-                combined_text = text
-            else:
-                combined_text = text + u'/' + alt_text #u"%s/%s" % (text, alt_text)
-            keys_list.append(combined_text + u" Major")
-            keys_list.append(combined_text + u" Minor")
-
             self.notes_list.append( (text, alt_text) )
             self.note_text_id_dict[text] = note_id
             self.note_text_id_dict[alt_text] = note_id
         
-        self.ui.song_key_menu.addItems(keys_list)
         
-        
+         
         self.songs_model = SongTableModel(self)
         
         self.ui.songs_view.setModel(self.songs_model)
@@ -829,6 +820,7 @@ class App:
         
         self.c( self.ui.song_title_ef, "textEdited(QString)", self.currentSongTitleEdited )
         self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
+        self.ignore_song_key_changed = False
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
         
         # Menu actions:
@@ -849,6 +841,8 @@ class App:
 
         
         self.current_song = None
+        self.populateSongKeyMenu()
+
         # The letter/chord that is currently selected:
         self.selected_char_num = None
         # The letter/chord that is currently hover (mouse hoveing over it):
@@ -862,7 +856,9 @@ class App:
         
         self._orig_keyPressEvent = self.ui.keyPressEvent
         self.ui.keyPressEvent = self.keyPressEvent
-
+        
+    
+    
     def __del__(self):
         pass
     
@@ -872,6 +868,28 @@ class App:
         self.curs.commit()
         return out
     
+    
+    def populateSongKeyMenu(self):
+        # Populate the song key pull-down menu:
+        keys_list = ["None"]
+
+        if self.current_song:
+            for note_id, (text, alt_text) in enumerate(self.notes_list):
+                if note_id in [3, 8, 10]: # Eb, Ab, or Bb
+                    combined_text = alt_text
+                else:
+                    combined_text = text
+                
+                keys_list.append(combined_text + u" Major")
+                keys_list.append(combined_text + u" Minor")
+        
+        self.ignore_song_key_changed = True
+        self.ui.song_key_menu.clear()
+        self.ui.song_key_menu.addItems(keys_list)
+        self.ignore_song_key_changed = False
+        
+        self.ui.song_key_menu.setEnabled( bool(self.current_song) )
+        
     
     def updateFromDatabase(self):
         """
@@ -995,6 +1013,7 @@ class App:
             self.print_widget.resize(widget_width, widget_height)
         else:
             self.current_song = None
+            self.populateSongKeyMenu()
         
         self.updateStates()
         self.restoreCursor()
@@ -1030,6 +1049,7 @@ class App:
         """
         
         self.current_song = Song(self, song_id)
+        self.populateSongKeyMenu()
         
         if not self.ignore_song_text_changed:
             self.ignore_song_text_changed = True
@@ -1344,6 +1364,9 @@ class App:
         Called when the user modifies the selected song's key.
         """
         
+        if self.ignore_song_key_changed:
+            return
+        
         if self.current_song == None:
             return
         
@@ -1362,6 +1385,7 @@ class App:
 
             # Do not run this code if the value of the menu is first initialized
             self.current_song.sendToDatabase()
+            #self.updateCurrentSongFromDatabase()
             self.print_widget.repaint()
 
     

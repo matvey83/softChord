@@ -122,7 +122,14 @@
            </widget>
           </item>
           <item>
-           <widget class="QComboBox" name="song_key_menu"/>
+           <widget class="QComboBox" name="song_key_menu">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>0</height>
+             </size>
+            </property>
+           </widget>
           </item>
           <item>
            <widget class="QLabel" name="label_6">
@@ -254,8 +261,8 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>525</width>
-                 <height>328</height>
+                 <width>543</width>
+                 <height>339</height>
                 </rect>
                </property>
               </widget>
@@ -277,7 +284,7 @@
      <x>0</x>
      <y>0</y>
      <width>1091</width>
-     <height>22</height>
+     <height>25</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuSong">
