@@ -485,7 +485,6 @@ class PrintWidget(QtGui.QWidget):
         QtGui.QWidget.__init__(self, app.ui)
         self.app = app
         self.dragging_chord_orig_position = -1
-        self.dragging_chord_curr_position = -1
         self.dragging_chord = None
         self.copying_chord = False # Whether the chord that is dragged will be copied instead of moved
 
@@ -537,55 +536,51 @@ class PrintWidget(QtGui.QWidget):
             (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
             # Mouse is over a vlid chord/letter
             
-            if self.dragging_chord_curr_position == -1:
+            if not self.dragging_chord:
                 # Hovering, highlight the new chord/letter
                 self.app.hover_char_num = song_char_num
                 
+                # No chord is being currently dragged. Clear previous selection:
+                # WHEN? self.app.selected_char_num = song_char_num
+                
             else:
-                # Dragging
-                if self.dragging_chord_curr_position != -1:
-                    # A chord is being dragged
-                    
-                    if song_char_num != self.dragging_chord_curr_position:
-                        # The dragged chord was moved to a new position
-                    
-                        #key_modifiers = QtGui.QApplication.instance().keyboardModifiers() 
-                        key_modifiers = event.modifiers() 
-                        # shiftdown = key_modifiers & Qt.ShiftModifier
-                        ctrl_down = bool(key_modifiers & Qt.ControlModifier)
-                        #print 'ctrl_down:', ctrl_down
+                # Dragging - A chord is being dragged
+                
+                if song_char_num != self.dragging_chord.character_num:
+                    # The dragged chord was moved to a new position
+                
+                    #key_modifiers = QtGui.QApplication.instance().keyboardModifiers() 
+                    key_modifiers = event.modifiers() 
+                    # shiftdown = key_modifiers & Qt.ShiftModifier
+                    ctrl_down = bool(key_modifiers & Qt.ControlModifier)
+                    #print 'ctrl_down:', ctrl_down
 
-                        if self.copying_chord:
-                            #print 'currently copying'
-                            # The chord is currently drawn in both the original position and the curr_position
-                            pass
-                            """
-                            if not ctrl_down:
-                                #print '  no longer copying, removing orig chord'
-                                # Just stopped copying, remove the orig chord.
-                                self.app.current_song.moveChord(self.dragging_chord_orig_position, -1)
-                                self.copying_chord = False
-                            """
-                        else:
-                            #print 'currently not copying'
-                            # The chord is currently drawn only in the the curr_position
-                            if ctrl_down:
-                                #print '  will start copying, adding the original chord'
-                                # Copy the chord to the original position as well
-                                self.app.current_song.moveChord(self.dragging_chord_curr_position, self.dragging_chord_orig_position, copy=True)
-                                self.copying_chord = True
-                            #print '  control is not pressed'
+                    if self.copying_chord:
+                        #print 'currently copying'
+                        # The chord is currently drawn in both the original position and the curr_position
+                        pass
+                        """
+                        if not ctrl_down:
+                            #print '  no longer copying, removing orig chord'
+                            # Just stopped copying, remove the orig chord.
+                            self.app.current_song.moveChord(self.dragging_chord_orig_position, -1)
+                            self.copying_chord = False
+                        """
+                    else:
+                        #print 'currently not copying'
+                        # The chord is currently drawn only in the the curr_position
+                        if ctrl_down:
+                            #print '  will start copying, adding the original chord'
+                            # Copy the chord to the original position as well
+                            self.app.current_song.moveChord(self.dragging_chord.character_num, self.dragging_chord_orig_position, copy=True)
+                            self.copying_chord = True
+                        #print '  control is not pressed'
 
-                        #print 'moving the dragged chord'
-                        self.dragging_chord.character_num = song_char_num
-                        #self.app.current_song.moveChord(self.dragging_chord_curr_position, song_char_num)
-                        self.dragging_chord_curr_position = song_char_num
-                        
-                        # Show hover feedback on the new letter:
-                        self.app.hover_char_num = song_char_num
-                else:
-                    # No chord is being currently dragged. Clear previous selection:
-                    self.app.selected_char_num = song_char_num
+                    #print 'moving the dragged chord'
+                    self.dragging_chord.character_num = song_char_num
+                    
+                    # Show hover feedback on the new letter:
+                    self.app.hover_char_num = song_char_num
         
         self.app.print_widget.repaint()
 
@@ -604,25 +599,19 @@ class PrintWidget(QtGui.QWidget):
                 # A valid letter/chord was clicked, select it:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
                 
-                if self.app.selected_char_num == song_char_num and is_chord:
+                #if self.app.selected_char_num == song_char_num and is_chord:
+                if is_chord:
                     # User clicked on the selected chord, initiate drag:
-                    self.dragging_chord_curr_position = song_char_num
-                    self.dragging_chord_orig_position = song_char_num
                     self.dragging_chord = self.app.current_song.getChord(song_char_num)
+                    self.dragging_chord_orig_position = song_char_num
                     self.copying_chord = False
-                else:
+                    
+                elif self.app.selected_char_num != song_char_num:
                     # User clicked on an un-selected letter. Select it:
                     self.app.selected_char_num = song_char_num
                     
-                    # Initiate a drag:
-                    if is_chord:
-                        self.dragging_chord_curr_position = song_char_num
-                        self.dragging_chord_orig_position = song_char_num
-                        self.dragging_chord = self.app.current_song.getChord(song_char_num)
-                        self.copying_chord = False
             else:
                 self.app.selected_char_num = None
-                self.dragging_chord_curr_position = -1
                 self.dragging_chord = None
             self.app.print_widget.repaint()
     
@@ -630,8 +619,8 @@ class PrintWidget(QtGui.QWidget):
     def mouseReleaseEvent(self, event):
 
         # Stop dragging of the chord (it's already in the correct position):
-        if self.dragging_chord_curr_position != -1:
-            if self.dragging_chord_curr_position != self.dragging_chord_orig_position:
+        if self.dragging_chord:
+            if self.dragging_chord.character_num != self.dragging_chord_orig_position:
                 
                 # Delete the previous chord, if any:
                 for other_chord in self.app.current_song.all_chords:
@@ -641,7 +630,6 @@ class PrintWidget(QtGui.QWidget):
                         break
                 self.app.current_song.sendToDatabase()
 
-            self.dragging_chord_curr_position = -1
             self.dragging_chord_orig_position = -1
             self.dragging_chord = None
     
