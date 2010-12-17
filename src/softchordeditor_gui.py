@@ -932,7 +932,11 @@ class App:
         self.selected_char_num = None # Remove the selection
         self.hover_char_num = None # Remove the hover highlighting
         self.updateCurrentSongFromDatabase()
-    
+
+        # Sroll the chords table to the top (and left):
+        self.ui.chord_scroll_area.horizontalScrollBar().setValue(0)
+        self.ui.chord_scroll_area.verticalScrollBar().setValue(0)
+
 
     def getSelectedSongIds(self):
         """
