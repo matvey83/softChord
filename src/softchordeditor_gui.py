@@ -630,9 +630,14 @@ class PrintWidget(QtGui.QWidget):
                 #if self.app.selected_char_num == song_char_num and is_chord:
                 if is_chord:
                     # User clicked on the selected chord, initiate drag:
-                    self.dragging_chord = self.app.current_song.getChord(song_char_num)
-                    self.dragging_chord_orig_position = song_char_num
-                    self.copying_chord = False
+                    try:
+                        self.dragging_chord = self.app.current_song.getChord(song_char_num)
+                    except ValueError:
+                        # User clicked on an empty chord space
+                        pass
+                    else:
+                        self.dragging_chord_orig_position = song_char_num
+                        self.copying_chord = False
                     
                     
             else:
