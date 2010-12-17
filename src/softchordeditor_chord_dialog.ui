@@ -96,6 +96,13 @@
     </layout>
    </item>
    <item>
+    <widget class="QCheckBox" name="in_parentheses_box">
+     <property name="text">
+      <string>In parentheses</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>

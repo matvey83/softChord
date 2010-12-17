@@ -727,9 +727,6 @@ class ChordDialog:
         marker = chord.marker
         in_parentheses = chord.in_parentheses
         
-        # FIXME add a marker-editing entry field.
-        
-
         if note_id != None:
             self.ui.note_menu.setCurrentIndex(note_id)
         if chord_type_id != None:
@@ -741,6 +738,8 @@ class ChordDialog:
         if marker == -1 or marker == "" or marker == "None":
             marker = ""
         self.ui.marker_ef.setText(marker)
+
+        self.ui.in_parentheses_box.setChecked(in_parentheses)
         
         self.ui.show()
         self.ui.raise_()
@@ -751,7 +750,7 @@ class ChordDialog:
             # 0 (first item) will become -1 (invalid):
             chord.bass_note_id = self.ui.bass_menu.currentIndex() - 1
             chord.marker = self.ui.marker_ef.text()
-            chord.in_parentheses = in_parentheses # FIXME
+            chord.in_parentheses = self.ui.in_parentheses_box.isChecked()
             
             return True
         else:
