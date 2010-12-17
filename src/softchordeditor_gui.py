@@ -486,6 +486,7 @@ class PrintWidget(QtGui.QWidget):
         self.app = app
         self.dragging_chord_orig_position = -1
         self.dragging_chord_curr_position = -1
+        self.dragging_chord = None
         self.copying_chord = False # Whether the chord that is dragged will be copied instead of moved
 
         # So that hover mouse move events are generated:
@@ -576,7 +577,8 @@ class PrintWidget(QtGui.QWidget):
                             #print '  control is not pressed'
 
                         #print 'moving the dragged chord'
-                        self.app.current_song.moveChord(self.dragging_chord_curr_position, song_char_num)
+                        self.dragging_chord.character_num = song_char_num
+                        #self.app.current_song.moveChord(self.dragging_chord_curr_position, song_char_num)
                         self.dragging_chord_curr_position = song_char_num
                         
                         # Show hover feedback on the new letter:
@@ -606,6 +608,7 @@ class PrintWidget(QtGui.QWidget):
                     # User clicked on the selected chord, initiate drag:
                     self.dragging_chord_curr_position = song_char_num
                     self.dragging_chord_orig_position = song_char_num
+                    self.dragging_chord = self.app.current_song.getChord(song_char_num)
                     self.copying_chord = False
                 else:
                     # User clicked on an un-selected letter. Select it:
@@ -615,10 +618,12 @@ class PrintWidget(QtGui.QWidget):
                     if is_chord:
                         self.dragging_chord_curr_position = song_char_num
                         self.dragging_chord_orig_position = song_char_num
+                        self.dragging_chord = self.app.current_song.getChord(song_char_num)
                         self.copying_chord = False
             else:
                 self.app.selected_char_num = None
                 self.dragging_chord_curr_position = -1
+                self.dragging_chord = None
             self.app.print_widget.repaint()
     
 
@@ -627,10 +632,18 @@ class PrintWidget(QtGui.QWidget):
         # Stop dragging of the chord (it's already in the correct position):
         if self.dragging_chord_curr_position != -1:
             if self.dragging_chord_curr_position != self.dragging_chord_orig_position:
+                
+                # Delete the previous chord, if any:
+                for other_chord in self.app.current_song.all_chords:
+                    if other_chord.character_num == self.dragging_chord.character_num and other_chord != self.dragging_chord:
+                        self.app.current_song.all_chords.remove(other_chord)
+                        self.app.print_widget.repaint()
+                        break
                 self.app.current_song.sendToDatabase()
 
             self.dragging_chord_curr_position = -1
             self.dragging_chord_orig_position = -1
+            self.dragging_chord = None
     
 
     def mouseDoubleClickEvent(self, event):
@@ -957,6 +970,7 @@ class App:
         Re-reads the current song from the database.
         """
         
+        self.setWaitCursor()
         selected_song_ids = self.getSelectedSongIds()
         
         if len(selected_song_ids) == 1:
@@ -990,7 +1004,8 @@ class App:
             self.current_song = None
         
         self.updateStates()
-    
+        self.restoreCursor()
+
 
     def updateStates(self):
 
