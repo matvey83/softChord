@@ -28,6 +28,7 @@ else:
 
 script_ui_file = os.path.join(exec_dir, "softchordeditor.ui" )
 chord_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_chord_dialog.ui")
+pdf_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_pdf_dialog.ui")
 
 #print 'script_ui_file:', script_ui_file
 #print 'exists:', os.path.isfile(script_ui_file)
@@ -758,6 +759,58 @@ class ChordDialog:
             return False
 
 
+
+class PdfOptions:
+    def __init__(self):
+        self.left_margin = 0.4
+        self.right_margin = 0.2
+        self.alternate_margins = False
+        self.print_4_per_page = False
+
+
+
+class PdfDialog:
+    """
+    Dialog for allowing the user to set up printing and PDF export options.
+    """
+
+    def c(self, widget, signal_str, slot):
+        self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
+    def __init__(self, app):
+        self.app = app
+        self.ui = uic.loadUi(pdf_dialog_ui_file)
+        self.ui.left_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
+        self.ui.right_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
+    
+    def display(self, pdf_options):
+        """
+        Display a dialog that alters the PdfOptions if OK is pressed.
+        Returns False if user pressed Cancel.
+        """
+        
+        self.ui.left_margin_ef.setText( str(pdf_options.left_margin) )
+        self.ui.right_margin_ef.setText( str(pdf_options.right_margin) )
+        
+        self.ui.alternate_margins_box.setChecked(pdf_options.alternate_margins)
+        self.ui.print_4_per_page_box.setChecked(pdf_options.print_4_per_page)
+        
+        self.ui.show()
+        self.ui.raise_()
+        out = self.ui.exec_()
+        if out: # OK pressed:
+            # FIXME what if the user entered ""?
+            pdf_options.left_margin = float(self.ui.left_margin_ef.text())
+            pdf_options.right_margin = float(self.ui.right_margin_ef.text())
+            pdf_options.alternate_margins = self.ui.alternate_margins_box.isChecked()
+            pdf_options.print_4_per_page = self.ui.print_4_per_page_box.isChecked()
+            return True
+        else:
+            # Cancel pressed
+            return False
+
+            
+
+
 class App:
     """
     The main application class.
@@ -772,8 +825,9 @@ class App:
         # This will be used for Python (sqlite3) operations:
         self.curs = sqlite3.connect(db_file)
         
+        self.pdf_options = PdfOptions()
         
-
+        
         # Make a list of all chord types:
         self.chord_type_names = []
         self.chord_type_prints = []
@@ -825,6 +879,7 @@ class App:
         
         self.c( self.ui.song_title_ef, "textEdited(QString)", self.currentSongTitleEdited )
         self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
+        self.ui.song_num_ef.setValidator( QtGui.QIntValidator(0, 1000000000, self.ui) )
         self.ignore_song_key_changed = False
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
         
@@ -1270,6 +1325,10 @@ class App:
         """
         Exports the selected songs to a PDF file.
         """
+        
+        #ok = PdfDialog(self).display(self.pdf_options)
+        #if not ok:
+        #    return
 
         pdf_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save PDF file as:",
