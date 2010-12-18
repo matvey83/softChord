@@ -164,7 +164,12 @@ class SongChord:
 
         # FIXME should work on the song of this chord instead of the current
         # song.
-        if self.app.current_song.sharpsOrFlats() == 1:
+        if self.app.current_song and self.song_id == self.app.current_song.id:
+            song = self.app.current_song
+        else:
+            song = Song(self.app, self.song_id)
+
+        if song.sharpsOrFlats() == 1:
             return note_text
         else:
             return note_alt_text
@@ -531,7 +536,13 @@ class PrintWidget(QtGui.QWidget):
         painter.fillRect(rect, bgbrush)
         
         if self.app.current_song:
-            self.app.drawSongToRect(self.app.current_song, painter, rect)
+            left_margin = 20
+            top_margin = 10
+            width = 10000 # Unlimited
+            height = 10000 # Unlimited
+            paint_rect = QtCore.QRect(left_margin, top_margin, width, height)
+            
+            self.app.drawSongToRect(self.app.current_song, painter, paint_rect)
         
         painter.end()
     
@@ -762,8 +773,10 @@ class ChordDialog:
 
 class PdfOptions:
     def __init__(self):
-        self.left_margin = 0.4
-        self.right_margin = 0.2
+        self.left_margin = 0.5
+        self.right_margin = 0.5
+        self.top_margin = 0.5
+        self.bottom_margin = 0.5
         self.alternate_margins = False
         self.print_4_per_page = False
 
@@ -781,6 +794,10 @@ class PdfDialog:
         self.ui = uic.loadUi(pdf_dialog_ui_file)
         self.ui.left_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
         self.ui.right_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
+        self.ui.top_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
+        self.ui.bottom_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
+    
+    
     
     def display(self, pdf_options):
         """
@@ -790,6 +807,8 @@ class PdfDialog:
         
         self.ui.left_margin_ef.setText( str(pdf_options.left_margin) )
         self.ui.right_margin_ef.setText( str(pdf_options.right_margin) )
+        self.ui.top_margin_ef.setText( str(pdf_options.top_margin) )
+        self.ui.bottom_margin_ef.setText( str(pdf_options.bottom_margin) )
         
         self.ui.alternate_margins_box.setChecked(pdf_options.alternate_margins)
         self.ui.print_4_per_page_box.setChecked(pdf_options.print_4_per_page)
@@ -801,6 +820,8 @@ class PdfDialog:
             # FIXME what if the user entered ""?
             pdf_options.left_margin = float(self.ui.left_margin_ef.text())
             pdf_options.right_margin = float(self.ui.right_margin_ef.text())
+            pdf_options.top_margin = float(self.ui.top_margin_ef.text())
+            pdf_options.bottom_margin = float(self.ui.bottom_margin_ef.text())
             pdf_options.alternate_margins = self.ui.alternate_margins_box.isChecked()
             pdf_options.print_4_per_page = self.ui.print_4_per_page_box.isChecked()
             return True
@@ -1052,7 +1073,7 @@ class App:
             widget_width = 0
             widget_height = 0 
             line_left = 20
-            prev_line_bottom = 20
+            prev_line_bottom = 10
             
             for linenum, line_text in enumerate(self.current_song.iterateOverLines()):
                 chords_height, lyrics_height, line_height = self.current_song.getLineHeights(linenum)
@@ -1062,8 +1083,6 @@ class App:
                 lyrics_top = lyrics_bottom - lyrics_height
                 prev_line_bottom = lyrics_bottom
                 
-
-
                 line_right = line_left + self.lyrics_font_metrics.width(line_text)
                 if line_right > widget_width:
                     widget_width = line_right
@@ -1301,20 +1320,34 @@ class App:
         #print 'page order:', printer.pageOrder()
         #print 'print range:', printer.printRange()
 
+        
         painter = QtGui.QPainter()
         painter.begin(printer) # may fail to open the file
         
         num_printed = 0
-        for song_index, song_id in enumerate(self.getSelectedSongIds()):
+        for page_num, song_id in enumerate(self.getSelectedSongIds(), start=1):
             #print 'exporting song_id:', song_id
-            if song_index != 0:
+            if page_num != 1:
                 printer.newPage()
             
-            page_height = printer.height()
-            page_width = printer.width()
+            print 'page:', page_num
+            
+            # Convert to points (from inches):
+            left_margin = self.pdf_options.left_margin * 72
+            right_margin = self.pdf_options.right_margin * 72
+            top_margin = self.pdf_options.top_margin * 72
+            bottom_margin = self.pdf_options.bottom_margin * 72
+            if self.pdf_options.alternate_margins and page_num / 2:
+                # This page is even
+                left_margin, right_margin = right_margin, left_margin
+            
+            width = printer.width() - top_margin - bottom_margin
+            height = printer.height() - left_margin - right_margin
+            
+            paint_rect = QtCore.QRect(left_margin, top_margin, width, height)
             
             song = Song(self, song_id)
-            self.drawSongToRect(song, painter, None, draw_markers=False)
+            self.drawSongToRect(song, painter, paint_rect, draw_markers=False)
             num_printed += 1
         
         painter.end()
@@ -1326,9 +1359,9 @@ class App:
         Exports the selected songs to a PDF file.
         """
         
-        #ok = PdfDialog(self).display(self.pdf_options)
-        #if not ok:
-        #    return
+        ok = PdfDialog(self).display(self.pdf_options)
+        if not ok:
+            return
 
         pdf_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save PDF file as:",
@@ -1505,11 +1538,11 @@ class App:
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
-        line_left = 20
-        prev_line_bottom = 20
+        line_left = rect.left()
+        prev_line_bottom = rect.top()
         
         for linenum, line_text in enumerate(song.iterateOverLines()):
-            chords_height, lyrics_height, line_height = self.current_song.getLineHeights(linenum)
+            chords_height, lyrics_height, line_height = song.getLineHeights(linenum)
             chords_top = prev_line_bottom # Bottom of the previous line
             chords_bottom = chords_top + chords_height
             lyrics_bottom = chords_top + line_height
@@ -1592,7 +1625,7 @@ class App:
             return None
 
         line_left = 20
-        prev_line_bottom = 20
+        prev_line_bottom = 10
 
         for linenum in range(self.current_song.getNumLines()):
             line_text = unicode( self.current_song.getLineText(linenum) )

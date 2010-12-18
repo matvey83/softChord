@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>359</width>
-    <height>205</height>
+    <height>222</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,13 +17,67 @@
    <item>
     <layout class="QGridLayout" name="gridLayout">
      <item row="0" column="0">
+      <widget class="QLabel" name="label_7">
+       <property name="text">
+        <string>Top margin:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLineEdit" name="top_margin_ef">
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>0.5</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="2">
+      <widget class="QLabel" name="label_6">
+       <property name="text">
+        <string>inches</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="label_8">
+       <property name="text">
+        <string>Bottom margin:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QLineEdit" name="bottom_margin_ef">
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>0.5</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="2">
+      <widget class="QLabel" name="label_5">
+       <property name="text">
+        <string>inches</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="0">
       <widget class="QLabel" name="label_2">
        <property name="text">
         <string>Left margin:</string>
        </property>
       </widget>
      </item>
-     <item row="0" column="1">
+     <item row="2" column="1">
       <widget class="QLineEdit" name="left_margin_ef">
        <property name="maximumSize">
         <size>
@@ -32,11 +86,18 @@
         </size>
        </property>
        <property name="text">
-        <string>0.4</string>
+        <string>0.5</string>
        </property>
       </widget>
      </item>
-     <item row="0" column="3" rowspan="2">
+     <item row="2" column="2">
+      <widget class="QLabel" name="label_3">
+       <property name="text">
+        <string>inches</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="3">
       <spacer name="horizontalSpacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
@@ -49,14 +110,14 @@
        </property>
       </spacer>
      </item>
-     <item row="1" column="0">
+     <item row="3" column="0">
       <widget class="QLabel" name="label">
        <property name="text">
         <string>Right margin</string>
        </property>
       </widget>
      </item>
-     <item row="1" column="1">
+     <item row="3" column="1">
       <widget class="QLineEdit" name="right_margin_ef">
        <property name="maximumSize">
         <size>
@@ -65,18 +126,11 @@
         </size>
        </property>
        <property name="text">
-        <string>0.2</string>
+        <string>0.5</string>
        </property>
       </widget>
      </item>
-     <item row="0" column="2">
-      <widget class="QLabel" name="label_3">
-       <property name="text">
-        <string>inches</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="2">
+     <item row="3" column="2">
       <widget class="QLabel" name="label_4">
        <property name="text">
         <string>inches</string>
@@ -107,7 +161,7 @@
      <property name="sizeHint" stdset="0">
       <size>
        <width>20</width>
-       <height>38</height>
+       <height>0</height>
       </size>
      </property>
     </spacer>
