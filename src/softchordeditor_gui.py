@@ -1330,8 +1330,11 @@ class App:
             if page_num != 1:
                 printer.newPage()
             
-            print 'page:', page_num
+            print 'Drawing page:', page_num
+            song = Song(self, song_id)
             
+
+            # Figure out what the margins should be:
             # Convert to points (from inches):
             left_margin = self.pdf_options.left_margin * 72
             right_margin = self.pdf_options.right_margin * 72
@@ -1341,13 +1344,29 @@ class App:
                 # This page is even
                 left_margin, right_margin = right_margin, left_margin
             
-            width = printer.width() - top_margin - bottom_margin
-            height = printer.height() - left_margin - right_margin
+            width = printer.width()
+            height = printer.height()
             
-            paint_rect = QtCore.QRect(left_margin, top_margin, width, height)
-            
-            song = Song(self, song_id)
-            self.drawSongToRect(song, painter, paint_rect, draw_markers=False)
+            if self.pdf_options.print_4_per_page:
+                width /= 2
+                height /= 2
+                for (x, y) in ( (0,0), (0,1), (1,0), (1,1) ):
+                    print '  Drawing sub-page:', x,y
+                    song_width = width - top_margin - bottom_margin
+                    song_height = height - left_margin - right_margin
+                    
+                    song_top = top_margin + y*height
+                    song_left = left_margin + x*width
+                    
+                    paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
+                    self.drawSongToRect(song, painter, paint_rect, draw_markers=False)
+            else:
+                song_width = width - top_margin - bottom_margin
+                song_height = height - left_margin - right_margin
+                song_top = top_margin
+                song_left = left_margin
+                paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
+                self.drawSongToRect(song, painter, paint_rect, draw_markers=False)
             num_printed += 1
         
         painter.end()
