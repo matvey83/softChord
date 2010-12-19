@@ -1662,29 +1662,16 @@ class App:
                         if char.chord_right:
                             painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, selection_brush)
                 
-            
-            painter.setFont(self.lyrics_font)
-            line_right = self.lyrics_font_metrics.width(line.text)
-            painter.drawText(0, line.lyrics_top, line_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, line.text)
-
-            painter.setFont(self.chord_font)
-
-
-            for chord in line.chords:
-                song_char_num = chord.character_num
-                chord_linenum, line_char_num = song.songCharToLineChar(song_char_num)
+                # Draw this character:
+                painter.setFont(self.lyrics_font)
+                painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
                 
-                letter_left = self.lyrics_font_metrics.width( line.text[:line_char_num] )
-                letter_right = self.lyrics_font_metrics.width( line.text[:line_char_num+1] )
-                chord_middle = (letter_left + letter_right) / 2 # Average of left and right
-                
-                chord_text = chord.getChordString()
-                chord_width = self.chord_font_metrics.width(chord_text)
-                chord_left = chord_middle - (chord_width/2)
-                chord_right = chord_middle + chord_width - (chord_width/2)
-                
-                painter.drawText(chord_left, line.chords_top, chord_right-chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, chord_text)
-            
+                # Draw this chord (if any):
+                if char.chord_right:
+                    painter.setFont(self.chord_font)
+                    chord_text = char.chord.getChordString()
+                    painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, chord_text)
+        
         
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
@@ -1710,23 +1697,23 @@ class App:
             if y < line.chords_top or y > line.lyrics_bottom:
                 continue # Not this line
             
+            #print 'mouse on line:', line
             for char in line.iterateCharacters():
                 song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
                 if y < line.chords_bottom:
+                    #print 'mouse on chord:', char.chord_left, char.chord_right
                     if char.chord_left and x > char.chord_left and x < char.chord_right:
                         is_chord = True
                         return (is_chord, line.linenum, char.line_char_num, song_char_num)
-                else:
-                    if x > char.char_left and x < char.char_right:
-                        is_chord = False
-                        return (is_chord, line.linenum, char.line_char_num, song_char_num)
+                
+                #print 'mouse on letter:', char.char_left, char.char_right
+                if x > char.char_left and x < char.char_right:
+                    is_chord = False
+                    return (is_chord, line.linenum, char.line_char_num, song_char_num)
         
         # Location is NOT on an existing chord or lyric
+        #print 'mouse is not above letter'
         return None
-        #return (False, None, -1, -1)
-            
-            
-
         
     
     def processSongCharEdit(self, song_char_num):
