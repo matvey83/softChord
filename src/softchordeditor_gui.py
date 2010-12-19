@@ -1646,30 +1646,22 @@ class App:
 
         
         for line in song.iterateOverLines():
-            if draw_markers:
-                if self.hover_char_num != None:
-                    # Mouse is currently hovering over this letter:
-                    try:
-                       hover_linenum, hover_line_char_num = song.songCharToLineChar(self.hover_char_num)
-                    except RuntimeError:
-                       raise RuntimeError('failed to find hover char: %i' % self.hover_char_num)
-                       continue
-                    if hover_linenum == line.linenum:
-                        letter_left = self.lyrics_font_metrics.width( line.text[:hover_line_char_num] )
-                        letter_right = self.lyrics_font_metrics.width( line.text[:hover_line_char_num+1] )
-                        
-                        # Draw a selection rectangle:
-                        painter.fillRect(letter_left, line.lyrics_top, letter_right-letter_left, line.lyrics_bottom-line.lyrics_top, hover_brush)
-                
-                if self.selected_char_num != None:
-                    selected_linenum, selected_line_char_num = song.songCharToLineChar(self.selected_char_num)
-                    if selected_linenum == line.linenum:
-                        letter_left = self.lyrics_font_metrics.width( line.text[:selected_line_char_num] )
-                        letter_right = self.lyrics_font_metrics.width( line.text[:selected_line_char_num+1] )
-                
-                        # Draw a selection rectangle:
-                        painter.fillRect(letter_left, line.lyrics_top, letter_right-letter_left, line.lyrics_bottom-line.lyrics_top, selection_brush)
+            for char in line.iterateCharacters():
+                song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
+                if draw_markers:
+                    if self.hover_char_num == song_char_num:
+                        # Mouse is currently hovering over this letter:
+                        # Draw a hover rectangle:
+                        painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, hover_brush)
+                        if char.chord_right:
+                            painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, hover_brush)
 
+                    if self.selected_char_num == song_char_num:
+                        # Draw a selection rectangle:
+                        painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, selection_brush)
+                        if char.chord_right:
+                            painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, selection_brush)
+                
             
             painter.setFont(self.lyrics_font)
             line_right = self.lyrics_font_metrics.width(line.text)
@@ -1691,15 +1683,6 @@ class App:
                 chord_left = chord_middle - (chord_width/2)
                 chord_right = chord_middle + chord_width - (chord_width/2)
                 
-                if draw_markers:
-                    if song_char_num == self.hover_char_num:
-                        # Draw a hover rectangle:
-                        painter.fillRect(chord_left, line.chords_top, chord_right-chord_left, line.chords_bottom-line.chords_top, hover_brush)
-                    
-                    if song_char_num == self.selected_char_num:
-                        # Draw a selection rectangle:
-                        painter.fillRect(chord_left, line.chords_top, chord_right-chord_left, line.chords_bottom-line.chords_top, selection_brush)
-                    
                 painter.drawText(chord_left, line.chords_top, chord_right-chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, chord_text)
             
         
