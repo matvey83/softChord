@@ -215,6 +215,47 @@ class SongLine:
         self.lyrics_bottom = lyrics_bottom
     
 
+    def iterateCharacters(self):
+        # Figure out which cord corresponds to which character:
+        char_num_chord_dict = {}
+        for chord in self.chords:
+            linenum, line_char_num = self.song.songCharToLineChar(chord.character_num)
+            char_num_chord_dict[line_char_num] = chord
+        
+        for line_char_num, char_text in enumerate(self.text):
+            # Figure out the y position where the letter should be drawn:
+            char_left = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num] )
+            char_right = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num+1] )
+            
+            chord = char_num_chord_dict.get(line_char_num)
+            if chord:
+                # Figure out the chord's y position range:
+                chord_middle = (char_left + char_right) / 2 # Average of left and right
+                chord_text = chord.getChordString()
+                chord_width = self.song.app.chord_font_metrics.width(chord_text)
+                chord_left = chord_middle - (chord_width/2)
+                chord_right = chord_middle + (chord_width/2)
+            else:
+                chord_left = chord_right = None
+            
+            song_char = SongChar(char_text, line_char_num, chord, char_left, char_right, chord_left, chord_right)
+            yield song_char
+
+        
+
+
+class SongChar:
+    def __init__(self, text, line_char_num, chord, char_left, char_right, chord_left, chord_right):
+        self.text = text
+        self.line_char_num = line_char_num
+        self.chord = chord
+        self.char_left = char_left
+        self.char_right = char_right
+        self.chord_left = chord_left
+        self.chord_right = chord_right
+
+
+
 class Song:
     """
     Stores information for a particular song.
@@ -1683,59 +1724,25 @@ class App:
         y -= 10
         
         for line in self.current_song.iterateOverLines():
-            
             if y < line.chords_top or y > line.lyrics_bottom:
                 continue # Not this line
             
-            # Figure out the lyric letter for the mouse location:
-            song_char_num = -1
-            for line_char_num in range(len(line.text)):
-                left = self.lyrics_font_metrics.width( line.text[:line_char_num] )
-                right = self.lyrics_font_metrics.width( line.text[:line_char_num+1] )
-                if x > left and x < right:
-                    song_char_num = self.current_song.lineCharToSongChar(line.linenum, line_char_num)
-                    break
-            
-            if y < line.chords_bottom:
-                is_chord = True
-                
-                # Figure out if a chord is attached to this letter:
-                for chord in line.chords:
-                    chord_song_char_num = chord.character_num
-                    chord_linenum, line_char_num = self.current_song.songCharToLineChar(chord_song_char_num)
-                    
-                    # Figure out the y position where the should be drawn:
-                    letter_left = self.lyrics_font_metrics.width( line.text[:line_char_num] )
-                    letter_right = self.lyrics_font_metrics.width( line.text[:line_char_num+1] )
-
-                    chord_middle = (letter_left + letter_right) / 2 # Average of left and right
-                    
-                    chord_text = chord.getChordString()
-                    chord_width = self.chord_font_metrics.width(chord_text)
-                    chord_left = chord_middle - (chord_width/2)
-                    chord_right = chord_middle + (chord_width/2)
-                    
-                    if x > chord_left and x < chord_right:
-                        chord_song_char_num = self.current_song.lineCharToSongChar(line.linenum, line_char_num)
-                        # Location is on an existing chord
-                        return (is_chord, line.linenum, line_char_num, chord_song_char_num)
-                
-                # Location is NOT on an existing chord
-                if song_char_num == -1:
-                    return None
-
-                return (is_chord, None, None, song_char_num)
-            
-            
-            elif y > line.lyrics_top:
-                # Location is above a lyric letter
-                is_chord = False
-                if song_char_num == -1:
-                    return None
-                
-                return (is_chord, None, None, song_char_num)
+            for char in line.iterateCharacters():
+                song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
+                if y < line.chords_bottom:
+                    if char.chord_left and x > char.chord_left and x < char.chord_right:
+                        is_chord = True
+                        return (is_chord, line.linenum, char.line_char_num, song_char_num)
+                else:
+                    if x > char.char_left and x < char.char_right:
+                        is_chord = False
+                        return (is_chord, line.linenum, char.line_char_num, song_char_num)
         
+        # Location is NOT on an existing chord or lyric
         return None
+        #return (False, None, -1, -1)
+            
+            
 
         
     
