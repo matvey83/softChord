@@ -969,8 +969,8 @@ class App:
         
         zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
         self.ui.comboTextSize.addItems(zoom_items)
-        self.ui.comboTextSize.setCurrentIndex(1) # 100%
         self.c( self.ui.comboTextSize, "currentIndexChanged(QString)", self.comboTextSizeChanged)
+        self.ui.comboTextSize.setCurrentIndex(2) # 100%
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
@@ -1323,14 +1323,6 @@ class App:
     def comboTextSizeChanged(self, new_text):
 
         self.scale_font =  int(new_text[:-1]) / 100.0        
-        """
-        if new_index == 0:
-            self.scale_font = 1
-        elif new_index == 1:
-            self.scale_font = 0.5
-        else:
-            self.scale_font = 0.25
-        """
         print "new scale is " + str(self.scale_font)
         self.print_widget.repaint()
         
@@ -1666,7 +1658,8 @@ class App:
         
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
-        painter.scale(self.scale_font, self.scale_font)
+	if draw_markers:
+	    painter.scale(self.scale_font, self.scale_font)
         
         for line in song.iterateOverLines():
             for char in line.iterateCharacters():
@@ -1703,7 +1696,8 @@ class App:
         painter.translate(-rect.left(), -rect.top())
         
         # Undo the scaling:
-        painter.scale(-self.scale_font, -self.scale_font)
+	if draw_markers:
+	    painter.scale(-self.scale_font, -self.scale_font)
 
     
     def determineClickedLetter(self, x, y):
