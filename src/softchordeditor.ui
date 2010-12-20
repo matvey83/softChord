@@ -184,6 +184,16 @@
            </widget>
           </item>
           <item>
+           <widget class="QLabel" name="label_8">
+            <property name="text">
+             <string>Zoom:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboTextSize"/>
+          </item>
+          <item>
            <spacer name="horizontalSpacer_3">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -261,8 +271,8 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>543</width>
-                 <height>339</height>
+                 <width>563</width>
+                 <height>328</height>
                 </rect>
                </property>
               </widget>
@@ -284,7 +294,7 @@
      <x>0</x>
      <y>0</y>
      <width>1091</width>
-     <height>25</height>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuSong">

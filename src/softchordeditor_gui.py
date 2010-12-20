@@ -967,6 +967,11 @@ class App:
         self.previous_song_text = None # Song text before last user's edit operation
         self.c( self.ui.song_text_edit, "textChanged()", self.songTextChanged )
         
+        zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
+        self.ui.comboTextSize.addItems(zoom_items)
+        self.ui.comboTextSize.setCurrentIndex(1) # 100%
+        self.c( self.ui.comboTextSize, "currentIndexChanged(QString)", self.comboTextSizeChanged)
+        
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
         self.c( self.ui.chord_font_button, "clicked()", self.changeChordFont )
@@ -1016,6 +1021,9 @@ class App:
         
         self._orig_keyPressEvent = self.ui.keyPressEvent
         self.ui.keyPressEvent = self.keyPressEvent
+
+        #the scale font at first is 1, no change
+        self.scale_font = 1.0
         
     
     
@@ -1311,6 +1319,21 @@ class App:
         
         self.ignore_song_text_changed = False
     
+
+    def comboTextSizeChanged(self, new_text):
+
+        self.scale_font =  int(new_text[:-1]) / 100.0        
+        """
+        if new_index == 0:
+            self.scale_font = 1
+        elif new_index == 1:
+            self.scale_font = 0.5
+        else:
+            self.scale_font = 0.25
+        """
+        print "new scale is " + str(self.scale_font)
+        self.print_widget.repaint()
+        
 
     
     def transposeUp(self):
@@ -1643,7 +1666,7 @@ class App:
         
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
-
+        painter.scale(self.scale_font, self.scale_font)
         
         for line in song.iterateOverLines():
             for char in line.iterateCharacters():
@@ -1661,6 +1684,9 @@ class App:
                         painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, selection_brush)
                         if char.chord_right:
                             painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, selection_brush)
+
+
+                
                 
                 # Draw this character:
                 painter.setFont(self.lyrics_font)
@@ -1675,7 +1701,9 @@ class App:
         
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
-            
+        
+        # Undo the scaling:
+        painter.scale(-self.scale_font, -self.scale_font)
 
     
     def determineClickedLetter(self, x, y):
