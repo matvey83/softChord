@@ -52,7 +52,19 @@ class SoftChordEditorTest(unittest.TestCase):
         orig_lines = open(song_file).readlines()
         self.assertEqual(lines, orig_lines)
         os.remove(out_song_file)
+        
 
+        # Test export to PDF:
+        out_pdf_file = "out.pdf"
+        if os.path.isfile(out_pdf_file):
+            os.remove(out_pdf_file)
+        
+        app.exportToPdf(out_pdf_file)
+        
+        self.assert_( os.path.isfile(out_pdf_file) )
+        
+        os.remove(out_pdf_file)
+        
 
 if __name__ == "__main__":
     unittest.TextTestRunner(verbosity=2)

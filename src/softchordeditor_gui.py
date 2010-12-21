@@ -1450,20 +1450,22 @@ class App:
         return num_printed
 
 
-    def exportToPdf(self):
+    def exportToPdf(self, pdf_file=None):
         """
         Exports the selected songs to a PDF file.
         """
         
-        ok = PdfDialog(self).display(self.pdf_options)
-        if not ok:
-            return
+        if not pdf_file:
+            ok = PdfDialog(self).display(self.pdf_options)
+            if not ok:
+                return
 
-        pdf_file = QtGui.QFileDialog.getSaveFileName(self.ui,
-                    "Save PDF file as:",
-                    QtCore.QDir.home().path(), # initial dir
-                    "PDF format (*.pdf)",
-        )
+            pdf_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+                        "Save PDF file as:",
+                        QtCore.QDir.home().path(), # initial dir
+                        "PDF format (*.pdf)",
+            )
+
         if pdf_file: 
             num_exported = 0
             self.setWaitCursor()
