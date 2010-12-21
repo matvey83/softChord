@@ -215,7 +215,7 @@ class SongLine:
         self.lyrics_bottom = lyrics_bottom
     
 
-    def iterateCharacters(self, zoomEnabled):
+    def iterateCharacters(self):
         # Figure out which cord corresponds to which character:
         
         char_num_chord_dict = {}
@@ -226,19 +226,16 @@ class SongLine:
         for line_char_num, char_text in enumerate(self.text):
             # Figure out the y position where the letter should be drawn:
 
-            char_left = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num] ) * (
-                self.song.app.scale_font if zoomEnabled else 1.0);
-
-            char_right = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num+1] ) * (
-                self.song.app.scale_font if zoomEnabled else 1.0);
-	
+            char_left = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num] )
+            
+            char_right = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num+1] )
+        
             chord = char_num_chord_dict.get(line_char_num)
             if chord:
                 # Figure out the chord's y position range:
                 chord_middle = (char_left + char_right) / 2 # Average of left and right
                 chord_text = chord.getChordString()
-                chord_width = self.song.app.chord_font_metrics.width(chord_text) * (
-                    self.song.app.scale_font if zoomEnabled else 1.0);
+                chord_width = self.song.app.chord_font_metrics.width(chord_text)
                 chord_left = chord_middle - (chord_width/2)
                 chord_right = chord_middle + (chord_width/2)
             else:
@@ -360,17 +357,15 @@ class Song:
         return False
     
     
-    def getLineHeights(self, linenum, zoomEnabled):
+    def getLineHeights(self, linenum):
         """
         Returns top & bottom y positions of the chords and lyrics texts
         for the specified line.
         """
 
-        lyrics_height = self.app.lyrics_font_metrics.height() * (self.app.scale_font if
-                                                                 zoomEnabled else 1.0)
+        lyrics_height = self.app.lyrics_font_metrics.height()
         if self.doesLineHaveChords(linenum):
-            chords_height = self.app.chord_font_metrics.height() * (self.app.scale_font if
-                                                                    zoomEnabled else 1.0)
+            chords_height = self.app.chord_font_metrics.height()
             line_height = lyrics_height + chords_height * 0.9 # So that there is less spacing between the chords and the text
         else:
             chords_height = 0
@@ -569,7 +564,7 @@ class Song:
             return 1 # sharp
 
 
-    def iterateOverLines(self, zoomEnabled):
+    def iterateOverLines(self):
         
         chords_by_line = {}
         for chord in self.all_chords:
@@ -582,7 +577,7 @@ class Song:
         
         prev_line_bottom = 0
         for linenum, line_text in enumerate(self.iterateOverLineTexts()):
-            chords_height, lyrics_height, line_height = self.getLineHeights(linenum, zoomEnabled)
+            chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
             chords_top = prev_line_bottom # Bottom of the previous line
             chords_bottom = chords_top + chords_height
             lyrics_bottom = chords_top + line_height
@@ -1032,7 +1027,6 @@ class App:
 
         #the scale font at first is 1, no change
         self.scale_font = 1.0
-        
     
     
     def __del__(self):
@@ -1174,15 +1168,19 @@ class App:
         self.restoreCursor()
         
     def resizePrintWidget(self):
-        song_width = 0
-        song_height = 0 
+        song_width = 0.0
+        song_height = 0.0
         if self.current_song:
-	    for line in self.current_song.iterateOverLines(True):
-		line_width = self.lyrics_font_metrics.width(line.text) * self.scale_font
-		if line_width > song_width:
-		    song_width = line_width
-		if line.lyrics_bottom > song_height:
-		    song_height = line.lyrics_bottom
+            for line in self.current_song.iterateOverLines():
+                line_width = self.lyrics_font_metrics.width(line.text)
+                if line_width > song_width:
+                    song_width = line_width
+                if line.lyrics_bottom > song_height:
+                    song_height = line.lyrics_bottom
+        
+        song_width *= self.scale_font
+        song_height *= self.scale_font
+
         self.print_widget.resize(song_width+20, song_height+10)
 
 
@@ -1334,7 +1332,7 @@ class App:
 
     def comboTextSizeChanged(self, new_text):
 
-        self.scale_font =  int(new_text[:-1]) / 100.0        
+        self.scale_font = int(new_text[:-1]) / 100.0        
         print "new scale is " + str(self.scale_font)
         self.resizePrintWidget()
         self.print_widget.repaint()
@@ -1643,11 +1641,11 @@ class App:
             self.restoreCursor()
     
 
-    def iterateOverLineHeights(self, zoomEnabled):
+    def iterateOverLineHeights(self):
         
         prev_line_bottom = 0
         for linenum, line_text in enumerate(self.current_song.iterateOverLineTexts()):
-            chords_height, lyrics_height, line_height = song.getLineHeights(linenum, zoomEnabled)
+            chords_height, lyrics_height, line_height = song.getLineHeights(linenum)
             chords_top = prev_line_bottom # Bottom of the previous line
             chords_bottom = chords_top + chords_height
             lyrics_bottom = chords_top + line_height
@@ -1667,18 +1665,15 @@ class App:
         
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
-
-        #they are really the same, but zoomEnabled is more expressive.
-        zoomEnabled = draw_markers
-        if draw_markers:
-            painter.scale(self.scale_font, self.scale_font)
-        zoomEnabled = False
         
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
+
+        if draw_markers:
+            painter.scale(self.scale_font, self.scale_font)
         
-        for line in song.iterateOverLines(zoomEnabled):
-            for char in line.iterateCharacters(zoomEnabled):
+        for line in song.iterateOverLines():
+            for char in line.iterateCharacters():
                 song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
                 if draw_markers:
                     if self.hover_char_num == song_char_num:
@@ -1712,10 +1707,11 @@ class App:
                     painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, chord_text)
         
         
-        # Go to the original reference frame:
-        painter.translate(-rect.left(), -rect.top())
         if draw_markers:
             painter.scale(-self.scale_font, -self.scale_font)
+
+        # Go to the original reference frame:
+        painter.translate(-rect.left(), -rect.top())
         
     
     def determineClickedLetter(self, x, y):
@@ -1732,13 +1728,17 @@ class App:
         # Place the coordinates into the songs frame of reference:
         x -= 20
         y -= 10
+
+        # Scale:
+        x = float(x) / self.scale_font
+        y = float(y) / self.scale_font
         
-        for line in self.current_song.iterateOverLines(True):
+        for line in self.current_song.iterateOverLines():
             if y < line.chords_top or y > line.lyrics_bottom:
                 continue # Not this line
             
             #print 'mouse on line:', line
-            for char in line.iterateCharacters(True):
+            for char in line.iterateCharacters():
                 song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
                 if y < line.chords_bottom:
                     #print 'mouse on chord:', char.chord_left, char.chord_right
