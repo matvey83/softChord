@@ -217,6 +217,7 @@ class SongLine:
 
     def iterateCharacters(self, zoomEnabled):
         # Figure out which cord corresponds to which character:
+        
         char_num_chord_dict = {}
         for chord in self.chords:
             linenum, line_char_num = self.song.songCharToLineChar(chord.character_num)
@@ -1669,8 +1670,10 @@ class App:
 
         #they are really the same, but zoomEnabled is more expressive.
         zoomEnabled = draw_markers
+        if draw_markers:
+            painter.scale(self.scale_font, self.scale_font)
+        zoomEnabled = False
         
-
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
         
@@ -1697,7 +1700,10 @@ class App:
                 # Draw this character:
                 painter.setFont(self.lyrics_font)
                 #print 'char_left, char_right:', char.char_left, char.char_right
-                painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
+                #painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
+                char_width = (char.char_right - char.char_left)
+                painter.drawText(char.char_left, line.lyrics_top, char_width, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignCenter, char.text)
+
                 
                 # Draw this chord (if any):
                 if char.chord_right:
@@ -1708,6 +1714,8 @@ class App:
         
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
+        if draw_markers:
+            painter.scale(-self.scale_font, -self.scale_font)
         
     
     def determineClickedLetter(self, x, y):
