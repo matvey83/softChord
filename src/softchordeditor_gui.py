@@ -1700,9 +1700,9 @@ class App:
                 # Draw this character:
                 painter.setFont(self.lyrics_font)
                 #print 'char_left, char_right:', char.char_left, char.char_right
-                #painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
-                char_width = (char.char_right - char.char_left)
-                painter.drawText(char.char_left, line.lyrics_top, char_width, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignCenter, char.text)
+                painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
+                #char_width = (char.char_right - char.char_left)
+                #painter.drawText(char.char_left, line.lyrics_top, char_width, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignCenter, char.text)
 
                 
                 # Draw this chord (if any):
