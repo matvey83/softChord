@@ -198,11 +198,10 @@ class SongChord:
 
 
 class SongLine:
-    def __init__(self, song, text, chords, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom):
+    def __init__(self, song, text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom):
         self.song = song
         self.linenum = linenum
         self.text = text
-        self.chords = chords
         self.chords_top = chords_top
         self.chords_bottom = chords_bottom
         self.lyrics_top = lyrics_top
@@ -566,16 +565,6 @@ class Song:
 
 
     def iterateOverLines(self):
-        
-        chords_by_line = {}
-        for chord in self.all_chords:
-            song_char_num = chord.character_num
-            chord_linenum, line_char_num = self.songCharToLineChar(song_char_num)
-            try:
-                chords_by_line[chord_linenum].append(chord)
-            except KeyError:
-                chords_by_line[chord_linenum] = [chord]
-        
         prev_line_bottom = 0
         for linenum, line_text in enumerate(self.iterateOverLineTexts()):
             chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
@@ -584,9 +573,7 @@ class Song:
             lyrics_bottom = chords_top + line_height
             lyrics_top = lyrics_bottom - lyrics_height
             prev_line_bottom = lyrics_bottom
-            chords = chords_by_line.get(linenum, [])
-            
-            line = SongLine(self, line_text, chords, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
+            line = SongLine(self, line_text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
             yield line
             
 
