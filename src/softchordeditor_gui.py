@@ -215,7 +215,7 @@ class SongLine:
         self.lyrics_bottom = lyrics_bottom
     
 
-    def iterateCharacters(self):
+    def iterateCharacters(self, zoomEnabled):
         # Figure out which cord corresponds to which character:
         char_num_chord_dict = {}
         for chord in self.chords:
@@ -224,15 +224,20 @@ class SongLine:
         
         for line_char_num, char_text in enumerate(self.text):
             # Figure out the y position where the letter should be drawn:
-            char_left = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num] )
-            char_right = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num+1] )
-            
+
+            char_left = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num] ) * (
+                self.song.app.scale_font if zoomEnabled else 1.0);
+
+            char_right = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num+1] ) * (
+                self.song.app.scale_font if zoomEnabled else 1.0);
+	
             chord = char_num_chord_dict.get(line_char_num)
             if chord:
                 # Figure out the chord's y position range:
                 chord_middle = (char_left + char_right) / 2 # Average of left and right
                 chord_text = chord.getChordString()
-                chord_width = self.song.app.chord_font_metrics.width(chord_text)
+                chord_width = self.song.app.chord_font_metrics.width(chord_text) * (
+                    self.song.app.scale_font if zoomEnabled else 1.0);
                 chord_left = chord_middle - (chord_width/2)
                 chord_right = chord_middle + (chord_width/2)
             else:
@@ -354,15 +359,17 @@ class Song:
         return False
     
     
-    def getLineHeights(self, linenum):
+    def getLineHeights(self, linenum, zoomEnabled):
         """
         Returns top & bottom y positions of the chords and lyrics texts
         for the specified line.
         """
 
-        lyrics_height = self.app.lyrics_font_metrics.height()
+        lyrics_height = self.app.lyrics_font_metrics.height() * (self.app.scale_font if
+                                                                 zoomEnabled else 1.0)
         if self.doesLineHaveChords(linenum):
-            chords_height = self.app.chord_font_metrics.height()
+            chords_height = self.app.chord_font_metrics.height() * (self.app.scale_font if
+                                                                    zoomEnabled else 1.0)
             line_height = lyrics_height + chords_height * 0.9 # So that there is less spacing between the chords and the text
         else:
             chords_height = 0
@@ -561,7 +568,7 @@ class Song:
             return 1 # sharp
 
 
-    def iterateOverLines(self):
+    def iterateOverLines(self, zoomEnabled):
         
         chords_by_line = {}
         for chord in self.all_chords:
@@ -574,7 +581,7 @@ class Song:
         
         prev_line_bottom = 0
         for linenum, line_text in enumerate(self.iterateOverLineTexts()):
-            chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
+            chords_height, lyrics_height, line_height = self.getLineHeights(linenum, zoomEnabled)
             chords_top = prev_line_bottom # Bottom of the previous line
             chords_bottom = chords_top + chords_height
             lyrics_bottom = chords_top + line_height
@@ -610,15 +617,14 @@ class PrintWidget(QtGui.QWidget):
         
         # Draw into the whole widget:
         rect = self.rect()
-        
-        bgbrush = QtGui.QBrush(QtGui.QColor("white"))
-        painter.fillRect(rect, bgbrush)
+        #bgbrush = QtGui.QBrush(QtGui.QColor("white"))
+        #painter.fillRect(rect, bgbrush)
         
         if self.app.current_song:
             left_margin = 20
             top_margin = 10
-            width = 10000 # Unlimited
-            height = 10000 # Unlimited
+            width = 100000 # Unlimited
+            height = 100000 # Unlimited
             paint_rect = QtCore.QRect(left_margin, top_margin, width, height)
             
             self.app.drawSongToRect(self.app.current_song, painter, paint_rect)
@@ -967,11 +973,6 @@ class App:
         self.previous_song_text = None # Song text before last user's edit operation
         self.c( self.ui.song_text_edit, "textChanged()", self.songTextChanged )
         
-        zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
-        self.ui.comboTextSize.addItems(zoom_items)
-        self.c( self.ui.comboTextSize, "currentIndexChanged(QString)", self.comboTextSizeChanged)
-        self.ui.comboTextSize.setCurrentIndex(2) # 100%
-        
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
         self.c( self.ui.chord_font_button, "clicked()", self.changeChordFont )
@@ -1003,9 +1004,15 @@ class App:
         self.ui.chord_scroll_area.setWidget(self.print_widget)
         # Set the background to white (instead of grey):
         self.ui.chord_scroll_area.setBackgroundRole(QtGui.QPalette.Light)
-
         
         self.current_song = None
+        
+        zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
+        self.ui.comboTextSize.addItems(zoom_items)
+        self.c( self.ui.comboTextSize, "currentIndexChanged(QString)", self.comboTextSizeChanged)
+        self.ui.comboTextSize.setCurrentIndex(2) # 100%
+        
+        
         self.populateSongKeyMenu()
 
         # The letter/chord that is currently selected:
@@ -1157,21 +1164,25 @@ class App:
             self.setCurrentSong(song_id)
             
             # Update the print_widget size:
-            song_width = 0
-            song_height = 0 
-            for line in self.current_song.iterateOverLines():
-                line_width = self.lyrics_font_metrics.width(line.text)
-                if line_width > song_width:
-                    song_width = line_width
-                if line.lyrics_bottom > song_height:
-                    song_height = line.lyrics_bottom
-            self.print_widget.resize(song_width+20, song_height+10)
+            self.resizePrintWidget()
         else:
             self.current_song = None
             self.populateSongKeyMenu()
         
         self.updateStates()
         self.restoreCursor()
+        
+    def resizePrintWidget(self):
+        song_width = 0
+        song_height = 0 
+        if self.current_song:
+	    for line in self.current_song.iterateOverLines(True):
+		line_width = self.lyrics_font_metrics.width(line.text) * self.scale_font
+		if line_width > song_width:
+		    song_width = line_width
+		if line.lyrics_bottom > song_height:
+		    song_height = line.lyrics_bottom
+        self.print_widget.resize(song_width+20, song_height+10)
 
 
     def updateStates(self):
@@ -1324,6 +1335,7 @@ class App:
 
         self.scale_font =  int(new_text[:-1]) / 100.0        
         print "new scale is " + str(self.scale_font)
+        self.resizePrintWidget()
         self.print_widget.repaint()
         
 
@@ -1630,11 +1642,11 @@ class App:
             self.restoreCursor()
     
 
-    def iterateOverLineHeights(self):
+    def iterateOverLineHeights(self, zoomEnabled):
         
         prev_line_bottom = 0
         for linenum, line_text in enumerate(self.current_song.iterateOverLineTexts()):
-            chords_height, lyrics_height, line_height = song.getLineHeights(linenum)
+            chords_height, lyrics_height, line_height = song.getLineHeights(linenum, zoomEnabled)
             chords_top = prev_line_bottom # Bottom of the previous line
             chords_bottom = chords_top + chords_height
             lyrics_bottom = chords_top + line_height
@@ -1654,15 +1666,16 @@ class App:
         
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
+
+        #they are really the same, but zoomEnabled is more expressive.
+        zoomEnabled = draw_markers
         
-        
+
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
-	if draw_markers:
-	    painter.scale(self.scale_font, self.scale_font)
         
-        for line in song.iterateOverLines():
-            for char in line.iterateCharacters():
+        for line in song.iterateOverLines(zoomEnabled):
+            for char in line.iterateCharacters(zoomEnabled):
                 song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
                 if draw_markers:
                     if self.hover_char_num == song_char_num:
@@ -1683,6 +1696,7 @@ class App:
                 
                 # Draw this character:
                 painter.setFont(self.lyrics_font)
+                #print 'char_left, char_right:', char.char_left, char.char_right
                 painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
                 
                 # Draw this chord (if any):
@@ -1695,10 +1709,6 @@ class App:
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
         
-        # Undo the scaling:
-	if draw_markers:
-	    painter.scale(-self.scale_font, -self.scale_font)
-
     
     def determineClickedLetter(self, x, y):
         """
@@ -1715,12 +1725,12 @@ class App:
         x -= 20
         y -= 10
         
-        for line in self.current_song.iterateOverLines():
+        for line in self.current_song.iterateOverLines(True):
             if y < line.chords_top or y > line.lyrics_bottom:
                 continue # Not this line
             
             #print 'mouse on line:', line
-            for char in line.iterateCharacters():
+            for char in line.iterateCharacters(True):
                 song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
                 if y < line.chords_bottom:
                     #print 'mouse on chord:', char.chord_left, char.chord_right
