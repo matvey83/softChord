@@ -213,15 +213,15 @@ class SongLine:
         # Figure out which cord corresponds to which character:
         
         line_start_char_num = self.song.lineCharToSongChar(self.linenum, 0)
+        line_end_char_num = line_start_char_num + len(self.text)
         
         char_num_chord_dict = {}
         for chord in self.song.all_chords:
             song_char_num = chord.character_num
-            chord_linenum, line_char_num = self.song.songCharToLineChar(song_char_num)
-            if chord_linenum == self.linenum:
+            if song_char_num >= line_start_char_num and song_char_num <= line_end_char_num:
+                line_char_num = song_char_num - line_start_char_num
                 char_num_chord_dict[line_char_num] = chord
         
-
         for line_char_num, char_text in enumerate(self.text):
             # Figure out the y position where the letter should be drawn:
             song_char_num = line_char_num + line_start_char_num
