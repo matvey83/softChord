@@ -453,9 +453,13 @@ class Song:
 
                         if chord_linenum != linenum:
                             continue
-                            
-                        chord_left = line_char_num - ( len(chord.chord_text) / 2 )
-                        chord_right = line_char_num + ( len(chord.chord_text) / 2 )
+                        
+                        chord_len = len(chord.chord_text)
+                        chord_left = line_char_num - (chord_len/2)
+                        if not (chord_len % 2): # Even number of characters:
+                            # Offset the chord so that the chord-letter is closer to the middle of the chord text
+                            chord_left += 1
+                        chord_right = chord_left + chord_len
                         
                         # Make sure that the chord does not go beyond the start-of-line:
                         while chord_left < 0:
@@ -478,7 +482,11 @@ class Song:
                 song_text += line_chord_text + u"\n"
             
             song_text += line_text + u"\n"
-            
+        
+        # Remove the last end-of-line:
+        if song_text[-1] == "\n":
+            song_text = song_text[:-1]
+        
         return song_text
         
     
@@ -1481,16 +1489,17 @@ class App:
     
     
     
-    def exportToText(self):
+    def exportToText(self, text_file=None):
         """
         Exports the selected song (one) to a TEXT file.
         """
         
-        text_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+        if not text_file:
+            text_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save text file as:",
                     QtCore.QDir.home().path(), # initial dir
                     "Text format (*.txt)",
-        )
+            )
         if text_file:
             self.setWaitCursor()
             try:
@@ -1757,15 +1766,17 @@ class App:
     
 
 
-    def importFromText(self):
+    def importFromText(self, text_file=None):
         """
         Lets the user select a text file to import.
         """
-        text_file = QtGui.QFileDialog.getOpenFileName(self.ui,
+        if not text_file:
+            text_file = QtGui.QFileDialog.getOpenFileName(self.ui,
                     "Select a text file to import",
                     QtCore.QDir.home().path(), # initial dir
                     "Text format (*.txt)",
-        )
+            )
+        
         if text_file:
             text = open( unicode(text_file).encode('utf-8') ).read()
             # Decode UTF-8 into Unicode:
@@ -1786,8 +1797,11 @@ class App:
             if print_text == 'sus4':
                 self.chord_type_texts_dict['sus'] = id
         
-        
         song_text = input_text.split('\n')
+        # Remove the 2 last empty lines:
+        if song_text[-1] == "":
+            song_text.pop(-1)
+        
         song_num = -1
         song_title = ""
         
@@ -1828,7 +1842,7 @@ class App:
                         current_word += char
                     else:
                         on_break = True
-                        words.append( (current_word, current_word_start, i) )
+                        words.append( (current_word, current_word_start, i-1) )
                         current_word = None
 
             if current_word:
@@ -1845,7 +1859,16 @@ class App:
                         tmp_warnings.append( 'WARNING: %s CHORD "%s"' % (str(err), word.encode('utf-8')) )
                         num_non_chords += 1
                     else:
+                        #print 'word_start, word_end:', word_start, word_end
                         chord_middle_char = (word_start + word_end) / 2
+                        #print '  len:', word_end - word_start + 1
+                        #if not (word_end - word_start) % 2:
+                        #    print '  len is even'
+                            # This chord has an even number of characters:
+                            # We need to move it closer to the "word_start" letter:
+                            #chord_middle_char -= 1
+                        #print 'middle_char:', chord_middle_char
+                        
                         num_chords += 1
                         tmp_chords[chord_middle_char] = converted_chord
                         char_num += 6
