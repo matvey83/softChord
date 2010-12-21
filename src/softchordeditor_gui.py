@@ -126,9 +126,10 @@ class SongChord:
     specific letter in a specific song.
     """
     
-    def __init__(self, app, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses):
-        self.app = app
-        self.song_id = song_id
+    def __init__(self, song, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses):
+        self.app = song.app
+        self.song = song
+        self.song_id = song.id
         self.character_num = character_num
         self.note_id = note_id
         self.chord_type_id = chord_type_id
@@ -162,14 +163,7 @@ class SongChord:
         #for (note_text, note_alt_text) in self.app.notes_list[note_id]:
         note_text, note_alt_text = self.app.notes_list[note_id]
 
-        # FIXME should work on the song of this chord instead of the current
-        # song.
-        if self.app.current_song and self.song_id == self.app.current_song.id:
-            song = self.app.current_song
-        else:
-            song = Song(self.app, self.song_id)
-
-        if song.sharpsOrFlats() == 1:
+        if self.song.sharpsOrFlats() == 1:
             return note_text
         else:
             return note_alt_text
@@ -218,18 +212,24 @@ class SongLine:
     def iterateCharacters(self):
         # Figure out which cord corresponds to which character:
         
-        char_num_chord_dict = {}
-        for chord in self.chords:
-            linenum, line_char_num = self.song.songCharToLineChar(chord.character_num)
-            char_num_chord_dict[line_char_num] = chord
+        line_start_char_num = self.song.lineCharToSongChar(self.linenum, 0)
         
+        char_num_chord_dict = {}
+        for chord in self.song.all_chords:
+            song_char_num = chord.character_num
+            chord_linenum, line_char_num = self.song.songCharToLineChar(song_char_num)
+            if chord_linenum == self.linenum:
+                char_num_chord_dict[line_char_num] = chord
+        
+
         for line_char_num, char_text in enumerate(self.text):
             # Figure out the y position where the letter should be drawn:
-
+            song_char_num = line_char_num + line_start_char_num
+            
             char_left = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num] )
             
             char_right = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num+1] )
-        
+            
             chord = char_num_chord_dict.get(line_char_num)
             if chord:
                 # Figure out the chord's y position range:
@@ -241,15 +241,16 @@ class SongLine:
             else:
                 chord_left = chord_right = None
             
-            song_char = SongChar(char_text, line_char_num, chord, char_left, char_right, chord_left, chord_right)
+            song_char = SongChar(char_text, song_char_num, line_char_num, chord, char_left, char_right, chord_left, chord_right)
             yield song_char
 
         
 
 
 class SongChar:
-    def __init__(self, text, line_char_num, chord, char_left, char_right, chord_left, chord_right):
+    def __init__(self, text, song_char_num, line_char_num, chord, char_left, char_right, chord_left, chord_right):
         self.text = text
+        self.song_char_num = song_char_num
         self.line_char_num = line_char_num
         self.chord = chord
         self.char_left = char_left
@@ -288,7 +289,7 @@ class Song:
             bass_note_id = row[4]
             marker = row[5]
             in_parentheses = row[6]
-            chord = SongChord(app, song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
+            chord = SongChord(self, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
             song_chords.append(chord)
         self.all_chords = song_chords
 
@@ -1674,16 +1675,15 @@ class App:
         
         for line in song.iterateOverLines():
             for char in line.iterateCharacters():
-                song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
                 if draw_markers:
-                    if self.hover_char_num == song_char_num:
+                    if self.hover_char_num == char.song_char_num:
                         # Mouse is currently hovering over this letter:
                         # Draw a hover rectangle:
                         painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, hover_brush)
                         if char.chord_right:
                             painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, hover_brush)
 
-                    if self.selected_char_num == song_char_num:
+                    if self.selected_char_num == char.song_char_num:
                         # Draw a selection rectangle:
                         painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, selection_brush)
                         if char.chord_right:
@@ -1739,17 +1739,16 @@ class App:
             
             #print 'mouse on line:', line
             for char in line.iterateCharacters():
-                song_char_num = self.current_song.lineCharToSongChar(line.linenum, char.line_char_num)
                 if y < line.chords_bottom:
                     #print 'mouse on chord:', char.chord_left, char.chord_right
                     if char.chord_left and x > char.chord_left and x < char.chord_right:
                         is_chord = True
-                        return (is_chord, line.linenum, char.line_char_num, song_char_num)
+                        return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
                 
                 #print 'mouse on letter:', char.char_left, char.char_right
                 if x > char.char_left and x < char.char_right:
                     is_chord = False
-                    return (is_chord, line.linenum, char.line_char_num, song_char_num)
+                    return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
         
         # Location is NOT on an existing chord or lyric
         #print 'mouse is not above letter'
@@ -1771,7 +1770,7 @@ class App:
                 break
         
         if add_new:
-            chord = SongChord(self, self.current_song.id, song_char_num, 0, 0, -1, "", False)
+            chord = SongChord(self.current_song, song_char_num, 0, 0, -1, "", False)
         
         ok = ChordDialog(self).display(chord)
         if ok:
