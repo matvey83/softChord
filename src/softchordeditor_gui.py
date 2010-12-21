@@ -143,6 +143,8 @@ class SongChord:
         if in_parentheses == None:
             in_parentheses = 0
         self.in_parentheses = in_parentheses
+        
+        self.chord_text = self._getChordString()
 
 
     def transpose(self, steps):
@@ -168,7 +170,7 @@ class SongChord:
         else:
             return note_alt_text
         
-    def getChordString(self):
+    def _getChordString(self):
         """
         Returns string of the chord.
         For example, "Fm" or "Bbsus4"
@@ -233,8 +235,7 @@ class SongLine:
             if chord:
                 # Figure out the chord's y position range:
                 chord_middle = (char_left + char_right) / 2 # Average of left and right
-                chord_text = chord.getChordString()
-                chord_width = self.song.app.chord_font_metrics.width(chord_text)
+                chord_width = self.song.app.chord_font_metrics.width(chord.chord_text)
                 chord_left = chord_middle - (chord_width/2)
                 chord_right = chord_middle + (chord_width/2)
             else:
@@ -254,6 +255,7 @@ class SongChar:
         self.chord = chord
         self.char_left = char_left
         self.char_right = char_right
+        self.has_chord = bool(chord_right)
         self.chord_left = chord_left
         self.chord_right = chord_right
 
@@ -452,9 +454,8 @@ class Song:
                         if chord_linenum != linenum:
                             continue
                             
-                        chord_text = chord.getChordString()
-                        chord_left = line_char_num - ( len(chord_text) / 2 )
-                        chord_right = line_char_num + ( len(chord_text) / 2 )
+                        chord_left = line_char_num - ( len(chord.chord_text) / 2 )
+                        chord_right = line_char_num + ( len(chord.chord_text) / 2 )
                         
                         # Make sure that the chord does not go beyond the start-of-line:
                         while chord_left < 0:
@@ -467,9 +468,9 @@ class Song:
                             chord_left -= 1
                         
                         # For each letter in the chord text:
-                        for i in range(len(chord_text)):
+                        for i in range(len(chord.chord_text)):
                             pos = i + chord_left
-                            line_chord_text_list[pos] = chord_text[i]
+                            line_chord_text_list[pos] = chord.chord_text[i]
 
 
             
@@ -523,24 +524,14 @@ class Song:
     
 
     
-    def moveChord(self, song_char_num, new_song_char_num, copy=False):
+    def copyChord(self, chord, new_song_char_num):
         """
-        Move the specified chord to a new position.
-        If new_song_char_num == -1, then the chord is deleted.
-        
-        If copy is True, then copy the chord instead of moving it.
+        Copy the specified chord to a new position.
         """
         
-        #print '  before move:', [chord.character_num for chord in self.all_chords]
-        if copy:
-            orig_chord = self.getChord(song_char_num)
-            new_chord = copy.copy(orig_chord)
-            new_chord.character_num = new_song_char_num
-            self.all_chords.append(new_chord)
-        else:
-            chord = self.getChord(song_char_num)
-            chord.character_num = new_song_char_num
-        #print '  after move:', [chord.character_num for chord in self.all_chords]
+        new_chord = copy.copy(chord)
+        new_chord.character_num = new_song_char_num
+        self.all_chords.append(new_chord)
        
             
     def sharpsOrFlats(self):
@@ -631,8 +622,6 @@ class PrintWidget(QtGui.QWidget):
         Called when mouse is DRAGGED or HOVERED in the song chords widget.
         """
         
-        self.app.hover_char_num = None
-        
         localx = event.pos().x()
         localy = event.pos().y()
         letter_tuple = self.app.determineClickedLetter(localx, localy)
@@ -647,19 +636,20 @@ class PrintWidget(QtGui.QWidget):
                 
                 # No chord is being currently dragged. Clear previous selection:
                 # WHEN? self.app.selected_char_num = song_char_num
+                # self.app.selected_char_num = None
                 
             else:
                 # Dragging - A chord is being dragged
                 
                 if song_char_num != self.dragging_chord.character_num:
                     # The dragged chord was moved to a new position
-                
+                    
                     #key_modifiers = QtGui.QApplication.instance().keyboardModifiers() 
                     key_modifiers = event.modifiers() 
                     # shiftdown = key_modifiers & Qt.ShiftModifier
                     ctrl_down = bool(key_modifiers & Qt.ControlModifier)
                     #print 'ctrl_down:', ctrl_down
-
+                    
                     if self.copying_chord:
                         #print 'currently copying'
                         # The chord is currently drawn in both the original position and the curr_position
@@ -668,25 +658,24 @@ class PrintWidget(QtGui.QWidget):
                         if not ctrl_down:
                             #print '  no longer copying, removing orig chord'
                             # Just stopped copying, remove the orig chord.
-                            self.app.current_song.moveChord(self.dragging_chord_orig_position, -1)
+                            self.app.current_song.deleteChord(self.dragging_chord, -1)
                             self.copying_chord = False
                         """
                     else:
-                        #print 'currently not copying'
                         # The chord is currently drawn only in the the curr_position
                         if ctrl_down:
-                            #print '  will start copying, adding the original chord'
                             # Copy the chord to the original position as well
-                            self.app.current_song.moveChord(self.dragging_chord.character_num, self.dragging_chord_orig_position, copy=True)
+                            self.app.current_song.copyChord(self.dragging_chord, self.dragging_chord_orig_position, copy=True)
                             self.copying_chord = True
-                        #print '  control is not pressed'
-
-                    #print 'moving the dragged chord'
+                    
                     self.dragging_chord.character_num = song_char_num
                     
                     # Show hover feedback on the new letter:
                     self.app.hover_char_num = song_char_num
-        
+        else:
+            # The mouse is NOT over a letter
+            if not self.dragging_chord:
+                self.app.hover_char_num = None
         self.app.print_widget.repaint()
 
 
@@ -713,6 +702,7 @@ class PrintWidget(QtGui.QWidget):
                     # User clicked on the selected chord, initiate drag:
                     try:
                         self.dragging_chord = self.app.current_song.getChord(song_char_num)
+                        self.app.selected_char_num = None # FIXME remove
                     except ValueError:
                         # User clicked on an empty chord space
                         pass
@@ -1321,7 +1311,6 @@ class App:
     def comboTextSizeChanged(self, new_text):
 
         self.scale_font = int(new_text[:-1]) / 100.0        
-        print "new scale is " + str(self.scale_font)
         self.resizePrintWidget()
         self.print_widget.repaint()
         
@@ -1369,9 +1358,7 @@ class App:
         
         print_dialog = QtGui.QPrintDialog(printer, self.ui)
         if print_dialog.exec_() == QtGui.QDialog.Accepted:
-            #print 'printing'
             num_printed = self._paintToPrinter(printer)
-            #print 'printed %s songs' % num_printed
 
 
     """
@@ -1441,14 +1428,14 @@ class App:
                     song_left = left_margin + x*width
                     
                     paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
-                    self.drawSongToRect(song, painter, paint_rect, draw_markers=False)
+                    self.drawSongToRect(song, painter, paint_rect, exporting=True)
             else:
                 song_width = width - top_margin - bottom_margin
                 song_height = height - left_margin - right_margin
                 song_top = top_margin
                 song_left = left_margin
                 paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
-                self.drawSongToRect(song, painter, paint_rect, draw_markers=False)
+                self.drawSongToRect(song, painter, paint_rect, exporting=True)
             num_printed += 1
         
         painter.end()
@@ -1644,57 +1631,52 @@ class App:
             
 
 
-    def drawSongToRect(self, song, painter, rect, draw_markers=True):
+    def drawSongToRect(self, song, painter, rect, exporting=False):
         """
         Draws the current song text to the specified rect.
 
-        draw_markers - whether to draw the selection & hover markers
+        exporting - whether we are drawing to a PDF/Print instead of the screen.
         """
         
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
+        #print 'drawSongToRect()'
+        
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
 
-        if draw_markers:
+        if not exporting:
             painter.scale(self.scale_font, self.scale_font)
         
         for line in song.iterateOverLines():
             for char in line.iterateCharacters():
-                if draw_markers:
+                if not exporting:
                     if self.hover_char_num == char.song_char_num:
                         # Mouse is currently hovering over this letter:
                         # Draw a hover rectangle:
                         painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, hover_brush)
-                        if char.chord_right:
+                        if char.has_chord:
                             painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, hover_brush)
-
+                    
                     if self.selected_char_num == char.song_char_num:
                         # Draw a selection rectangle:
                         painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, selection_brush)
-                        if char.chord_right:
+                        if char.has_chord:
                             painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, selection_brush)
-
-
                 
                 
-                # Draw this character:
+                # Draw this lyric character:
                 painter.setFont(self.lyrics_font)
-                #print 'char_left, char_right:', char.char_left, char.char_right
                 painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
-                #char_width = (char.char_right - char.char_left)
-                #painter.drawText(char.char_left, line.lyrics_top, char_width, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignCenter, char.text)
-
                 
                 # Draw this chord (if any):
-                if char.chord_right:
+                if char.has_chord:
                     painter.setFont(self.chord_font)
-                    chord_text = char.chord.getChordString()
-                    painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, chord_text)
+                    painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
         
         
-        if draw_markers:
+        if not exporting:
             painter.scale(-self.scale_font, -self.scale_font)
 
         # Go to the original reference frame:
@@ -1711,6 +1693,7 @@ class App:
         if not self.current_song:
             return None
         
+        #print 'determineClickedLetter()'
 
         # Place the coordinates into the songs frame of reference:
         x -= 20
@@ -1724,21 +1707,17 @@ class App:
             if y < line.chords_top or y > line.lyrics_bottom:
                 continue # Not this line
             
-            #print 'mouse on line:', line
             for char in line.iterateCharacters():
                 if y < line.chords_bottom:
-                    #print 'mouse on chord:', char.chord_left, char.chord_right
                     if char.chord_left and x > char.chord_left and x < char.chord_right:
                         is_chord = True
                         return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
                 
-                #print 'mouse on letter:', char.char_left, char.char_right
                 if x > char.char_left and x < char.char_right:
                     is_chord = False
                     return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
         
         # Location is NOT on an existing chord or lyric
-        #print 'mouse is not above letter'
         return None
         
     
