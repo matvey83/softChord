@@ -1746,6 +1746,9 @@ class App:
             
             self.current_song.sendToDatabase()
             
+            # Update the current song from the database:
+            self.updateCurrentSongFromDatabase()
+            
             self.print_widget.repaint()
                 
 
