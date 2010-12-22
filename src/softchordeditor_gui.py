@@ -752,7 +752,6 @@ class PrintWidget(QtGui.QWidget):
     def mouseReleaseEvent(self, event):
 
         # Stop dragging of the chord (it's already in the correct position):
-        print 'released'
         if self.dragging_chord:
             if self.dragging_chord.character_num != self.dragging_chord_orig_position:
                 
@@ -1757,10 +1756,9 @@ class App:
             
             for char in line.iterateCharacters():
                 if y < line.chords_bottom:
-                    if char.chord_left and x > char.chord_left and x < char.chord_right:
+                    if char.has_chord and x > char.chord_left and x < char.chord_right:
                         is_chord = True
                         return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
-                
                 if x > char.char_left and x < char.char_right:
                     is_chord = False
                     return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
