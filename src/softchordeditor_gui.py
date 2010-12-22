@@ -4,7 +4,7 @@
 The main source file for softChord Editor
 
 Writen by: Matvey Adzhigirey
-Development started in December 2010
+Development started in 10 December 2010
 
 """
 
@@ -73,7 +73,7 @@ class SongTableModel(QtCore.QAbstractTableModel):
         """
         self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
         self._data = []
-        for row in self.app.execute("SELECT id, number, title FROM songs"):
+        for row in self.app.curs.execute("SELECT id, number, title FROM songs"):
             self._data.append(row)
         self.emit(QtCore.SIGNAL("layoutChanged()")) # Forces the view to redraw
     
@@ -269,7 +269,7 @@ class Song:
         self.app = app
         self.id = song_id
         
-        for row in self.app.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
+        for row in self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
             self.title = row[0]
             self.number = row[1]
             self.all_text = row[2]
@@ -282,7 +282,7 @@ class Song:
             break
         
         song_chords = []
-        for row in self.app.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % song_id):
+        for row in self.app.curs.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % song_id):
             id = row[0]
             song_char_num = row[1]
             note_id = row[2]
@@ -371,7 +371,7 @@ class Song:
         
         if self.doesLineHaveChords(linenum):
             chords_height = self.app.chord_font_metrics.height()
-            line_height = (lyrics_height + chords_height) * 0.85 # So that there is less spacing between the chords and the text
+            line_height = (lyrics_height + chords_height) * 0.9 # So that there is less spacing between the chords and the text
             #line_height = lyrics_height + chords_height - self.app.lyrics_font_metrics.leading() - self.app.chord_font_metrics.leading() # So that there is less spacing between the chords and the text
         else:
             chords_height = 0
@@ -511,29 +511,33 @@ class Song:
         Save this song to the database.
         """
         
-        chords_in_database = []
-        for row in self.app.execute("SELECT character_num FROM song_chord_link WHERE song_id=%i" % self.id):
-            chords_in_database.append(row[0])
-        
-        for chord in self.all_chords:
-            # Update existing chords
-            if chord.character_num in chords_in_database:
-                self.app.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
-                    % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
-                chords_in_database.remove(chord.character_num)
-        
-            else:
-                # Add new chords
-                self.app.execute('INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                        'VALUES (%i, %i, %i, %i, %i, "%s", %i)' % (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
+        self.app.setWaitCursor()
+        try:
+            chords_in_database = []
+            for row in self.app.curs.execute("SELECT character_num FROM song_chord_link WHERE song_id=%i" % self.id):
+                chords_in_database.append(row[0])
+            
+            for chord in self.all_chords:
+                # Update existing chords
+                if chord.character_num in chords_in_database:
+                    self.app.curs.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
+                        % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
+                    chords_in_database.remove(chord.character_num)
+            
+                else:
+                    # Add new chords
+                    self.app.curs.execute('INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+                            'VALUES (%i, %i, %i, %i, %i, "%s", %i)' % (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
 
-        # Remove old chords
-        for song_char_num in chords_in_database:
-            self.app.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
-        
-        self.app.execute('UPDATE songs SET number=%i, title="%s", text="%s", key_note_id=%i, key_is_major=%i WHERE id=%i' % 
-            (self.number, self.title, self.all_text, self.key_note_id, self.key_is_major, self.id))
-    
+            # Remove old chords
+            for song_char_num in chords_in_database:
+                self.app.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
+            
+            self.app.curs.execute('UPDATE songs SET number=%i, title="%s", text="%s", key_note_id=%i, key_is_major=%i WHERE id=%i' % 
+                (self.number, self.title, self.all_text, self.key_note_id, self.key_is_major, self.id))
+            self.app.curs.commit()
+        finally:
+            self.app.restoreCursor()
 
     
     def copyChord(self, chord, new_song_char_num):
@@ -554,7 +558,7 @@ class Song:
         
         num_prefer_sharp = 0
         num_prefer_flat = 0
-        for row in self.app.execute("SELECT note_id FROM song_chord_link WHERE song_id=%i" % self.id):
+        for row in self.app.curs.execute("SELECT note_id FROM song_chord_link WHERE song_id=%i" % self.id):
             note_id = row[0]
             if note_id in [1, 6]: # C# or F#
                 num_prefer_sharp += 1
@@ -748,6 +752,7 @@ class PrintWidget(QtGui.QWidget):
     def mouseReleaseEvent(self, event):
 
         # Stop dragging of the chord (it's already in the correct position):
+        print 'released'
         if self.dragging_chord:
             if self.dragging_chord.character_num != self.dragging_chord_orig_position:
                 
@@ -939,7 +944,7 @@ class App:
         # Make a list of all chord types:
         self.chord_type_names = []
         self.chord_type_prints = []
-        for row in self.execute("SELECT id, name, print FROM chord_types"):
+        for row in self.curs.execute("SELECT id, name, print FROM chord_types"):
             chord_type_id = row[0]
             name = row[1]
             print_text = row[2]
@@ -950,7 +955,7 @@ class App:
         # Make a list of all notes and keys:
         self.notes_list = []
         self.note_text_id_dict = {}
-        for row in self.execute("SELECT id, text, alt_text FROM notes"):
+        for row in self.curs.execute("SELECT id, text, alt_text FROM notes"):
             note_id = row[0]
             text = row[1]
             alt_text = row[2]
@@ -1039,11 +1044,6 @@ class App:
         pass
     
 
-    def execute(self, query):
-        out = self.curs.execute(query)
-        self.curs.commit()
-        return out
-    
     
     def populateSongKeyMenu(self):
         # Populate the song key pull-down menu:
@@ -1547,10 +1547,11 @@ class App:
         """
         if self.current_song:
             self.current_song.title = new_title
-            self.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+            self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
             # self.current_song.sendToDatabase()
             
             # Update the song table from database:
+            self.curs.commit()
             self.updateFromDatabase()
         
     
@@ -1567,7 +1568,8 @@ class App:
                 self.error("Invalid song number")
             else:
                 self.current_song.number = new_num
-                self.execute('UPDATE songs SET number=%i WHERE id=%i' % (new_num, self.current_song.id))
+                self.curs.execute('UPDATE songs SET number=%i WHERE id=%i' % (new_num, self.current_song.id))
+                self.curs.commit()
                 # self.current_song.sendToDatabase()
                 
                 # Update the song table from database:
@@ -1612,11 +1614,12 @@ class App:
         song_number = -1 # NULL
         song_title = ""
         
-        row = self.execute("SELECT MAX(id) from songs").fetchone()
+        row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
         id = row[0] + 1
         
-        out = self.execute("INSERT INTO songs (id, number, text, title) " + \
+        out = self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
                         'VALUES (%i, %i, "%s", "%s")' % (id, song_number, song_text, song_title))
+        self.curs.commit()
         
         # Update the song table from database:
         self.updateFromDatabase()
@@ -1632,10 +1635,11 @@ class App:
         try:
             selected_song_ids = self.getSelectedSongIds()
             for song_id in selected_song_ids:
-                self.execute("DELETE FROM songs WHERE id=%i" % song_id)
+                self.curs.execute("DELETE FROM songs WHERE id=%i" % song_id)
                 
                 # Delete all associated chords:   
-                self.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
+                self.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
+                self.curs.commit()
             
             # Update the song table from database:
             self.updateFromDatabase()
@@ -1940,13 +1944,13 @@ class App:
         
         
         song_id = 0
-        for row in self.execute("SELECT MAX(id) from songs"):
+        for row in self.curs.execute("SELECT MAX(id) from songs"):
             song_id = row[0] + 1
         
         # Replace all double quotes with single quotes:
         global_song_text = global_song_text.replace('"', "'")
 
-        self.execute("INSERT INTO songs (id, number, text, title) " + \
+        self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
             'VALUES (%i, %i, "%s", "%s")' % (song_id, song_num, global_song_text, song_title))
         
         for song_char_num, chord in global_song_chords.iteritems():
@@ -1958,10 +1962,10 @@ class App:
             
             # Get the next available ID:
             chord_id = 0
-            for row in self.execute("SELECT MAX(id) from song_chord_link"):
+            for row in self.curs.execute("SELECT MAX(id) from song_chord_link"):
                 chord_id = row[0] + 1
             
-            self.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+            self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
                         'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
         
         self.curs.commit()
