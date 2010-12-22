@@ -735,7 +735,6 @@ class PrintWidget(QtGui.QWidget):
                     # User clicked on the selected chord, initiate drag:
                     try:
                         self.dragging_chord = self.app.current_song.getChord(song_char_num)
-                        #self.app.selected_char_num = None # FIXME remove
                     except ValueError:
                         # User clicked on an empty chord space
                         pass
@@ -998,6 +997,7 @@ class App:
         
         # Menu actions:
         self.c( self.ui.actionPrint, "triggered()", self.printSelectedSongs )
+        self.c( self.ui.actionQuit, "triggered()", self.ui.close )
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
         self.c( self.ui.actionDeleteSongs, "triggered()", self.deleteSelectedSong )
         self.c( self.ui.actionExportPdf, "triggered()", self.exportToPdf )
@@ -1982,7 +1982,6 @@ class App:
         
         input_chord_str = chord_str[:]
         
-        # FIXME
         in_parentheses = chord_str.startswith('(') and chord_str.endswith(')')
         if in_parentheses:
             chord_str = chord_str[1:-1]

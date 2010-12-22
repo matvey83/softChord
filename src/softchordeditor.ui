@@ -271,8 +271,8 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>563</width>
-                 <height>328</height>
+                 <width>444</width>
+                 <height>365</height>
                 </rect>
                </property>
               </widget>
@@ -294,7 +294,7 @@
      <x>0</x>
      <y>0</y>
      <width>1091</width>
-     <height>22</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuSong">
@@ -312,6 +312,7 @@
      <string>File</string>
     </property>
     <addaction name="actionPrint"/>
+    <addaction name="actionQuit"/>
    </widget>
    <widget class="QMenu" name="menuSettings">
     <property name="title">
@@ -366,6 +367,14 @@
   <action name="actionImportText">
    <property name="text">
     <string>Import from TEXT...</string>
+   </property>
+  </action>
+  <action name="actionQuit">
+   <property name="text">
+    <string>Quit</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
    </property>
   </action>
  </widget>
