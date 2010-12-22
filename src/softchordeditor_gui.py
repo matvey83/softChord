@@ -575,6 +575,22 @@ class Song:
             line = SongLine(self, line_text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
             yield line
             
+            
+    def getWidthHeight(self):
+        """
+        Returns the width and the height of this song.
+        """
+        song_height = song_width = 0.0
+        for line in self.iterateOverLines():
+            # FIXME account for chords that will go beyond the width of the lyrics text
+            line_width = self.app.lyrics_font_metrics.width(line.text)
+            if line_width > song_width:
+                song_width = float(line_width)
+            if line.lyrics_bottom > song_height:
+                song_height = float(line.lyrics_bottom)
+        
+        return song_width, song_height
+
 
 class PrintWidget(QtGui.QWidget):
     """
@@ -1157,12 +1173,7 @@ class App:
         song_width = 0.0
         song_height = 0.0
         if self.current_song:
-            for line in self.current_song.iterateOverLines():
-                line_width = self.lyrics_font_metrics.width(line.text)
-                if line_width > song_width:
-                    song_width = line_width
-                if line.lyrics_bottom > song_height:
-                    song_height = line.lyrics_bottom
+            song_width, song_height = self.current_song.getWidthHeight()
         
         song_width *= self.scale_font
         song_height *= self.scale_font
@@ -1421,16 +1432,16 @@ class App:
                 # This page is even
                 left_margin, right_margin = right_margin, left_margin
             
-            width = printer.width()
-            height = printer.height()
+            width = printer.width() #- 300
+            height = printer.height() #- 300
             
             if self.pdf_options.print_4_per_page:
                 width /= 2
                 height /= 2
                 for (x, y) in ( (0,0), (0,1), (1,0), (1,1) ):
                     print '  Drawing sub-page:', x,y
-                    song_width = width - top_margin - bottom_margin
-                    song_height = height - left_margin - right_margin
+                    song_width = width - left_margin - right_margin
+                    song_height = height - top_margin - bottom_margin
                     
                     song_top = top_margin + y*height
                     song_left = left_margin + x*width
@@ -1438,8 +1449,8 @@ class App:
                     paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
                     self.drawSongToRect(song, painter, paint_rect, exporting=True)
             else:
-                song_width = width - top_margin - bottom_margin
-                song_height = height - left_margin - right_margin
+                song_width = width - left_margin - right_margin
+                song_height = height - top_margin - bottom_margin
                 song_top = top_margin
                 song_left = left_margin
                 paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
@@ -1658,7 +1669,21 @@ class App:
         painter.translate(rect.left(), rect.top())
 
         if not exporting:
-            painter.scale(self.scale_font, self.scale_font)
+            scale_ratio = self.scale_font
+        else:
+            # Exporting, make sure the song fits into the specified <rect>:
+            song_width, song_height = song.getWidthHeight()
+            width_ratio = song_width / rect.width()
+            height_ratio = song_height / rect.height()
+            scale_ratio = max(width_ratio, height_ratio)
+            
+            if scale_ratio > 1.0:
+                scale_ratio = 1.0 / scale_ratio
+            else:
+                # Do not make songs any bigger
+                scale_ratio = 1.0
+        
+        painter.scale(scale_ratio, scale_ratio)
         
         for line in song.iterateOverLines():
             for char in line.iterateCharacters():
@@ -1686,10 +1711,10 @@ class App:
                     painter.setFont(self.chord_font)
                     painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
         
-        
-        if not exporting:
-            painter.scale(-self.scale_font, -self.scale_font)
 
+        # Redo the effect of scaling:
+        painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
+        
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
         
