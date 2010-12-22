@@ -656,7 +656,8 @@ class PrintWidget(QtGui.QWidget):
         
         localx = event.pos().x()
         localy = event.pos().y()
-        letter_tuple = self.app.determineClickedLetter(localx, localy)
+        dragging = (self.dragging_chord != None)
+        letter_tuple = self.app.determineClickedLetter(localx, localy, dragging)
         
         if letter_tuple != None:
             (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
@@ -721,7 +722,7 @@ class PrintWidget(QtGui.QWidget):
         if event.button() == Qt.LeftButton:
             localx = event.pos().x()
             localy = event.pos().y()
-            letter_tuple = self.app.determineClickedLetter(localx, localy)
+            letter_tuple = self.app.determineClickedLetter(localx, localy, False)
             if letter_tuple:
                 # A valid letter/chord was clicked, select it:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
@@ -775,7 +776,7 @@ class PrintWidget(QtGui.QWidget):
         if event.button() == Qt.LeftButton:
             localx = event.pos().x()
             localy = event.pos().y()
-            letter_tuple = self.app.determineClickedLetter(localx, localy)
+            letter_tuple = self.app.determineClickedLetter(localx, localy, False)
             if letter_tuple:
                 # A valid chord/letter was double-clicked, edit it:
                 (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
@@ -1731,7 +1732,7 @@ class App:
         painter.translate(-rect.left(), -rect.top())
         
     
-    def determineClickedLetter(self, x, y):
+    def determineClickedLetter(self, x, y, dragging):
         """
         Determine where the specified (local) mouse coordinates position.
         That is, which lyric or chord letter was the mouse above when this
@@ -1741,8 +1742,6 @@ class App:
         if not self.current_song:
             return None
         
-        #print 'determineClickedLetter()'
-
         # Place the coordinates into the songs frame of reference:
         x -= 20
         y -= 10
@@ -1755,14 +1754,18 @@ class App:
             if y < line.chords_top or y > line.lyrics_bottom:
                 continue # Not this line
             
-            for char in line.iterateCharacters():
-                if y < line.chords_bottom:
+            if y < line.chords_bottom and not dragging:
+                # Mouse is over the chord height:
+                for char in line.iterateCharacters():
                     if char.has_chord and x > char.chord_left and x < char.chord_right:
                         is_chord = True
                         return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
-                if x > char.char_left and x < char.char_right:
-                    is_chord = False
-                    return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
+            else:
+                # Mouse is over the lyrics height OR we are dragging
+                for char in line.iterateCharacters():
+                    if x > char.char_left and x < char.char_right:
+                        is_chord = False
+                        return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
         
         # Location is NOT on an existing chord or lyric
         return None
@@ -1897,16 +1900,7 @@ class App:
                         tmp_warnings.append( 'WARNING: %s CHORD "%s"' % (str(err), word.encode('utf-8')) )
                         num_non_chords += 1
                     else:
-                        #print 'word_start, word_end:', word_start, word_end
                         chord_middle_char = (word_start + word_end) / 2
-                        #print '  len:', word_end - word_start + 1
-                        #if not (word_end - word_start) % 2:
-                        #    print '  len is even'
-                            # This chord has an even number of characters:
-                            # We need to move it closer to the "word_start" letter:
-                            #chord_middle_char -= 1
-                        #print 'middle_char:', chord_middle_char
-                        
                         num_chords += 1
                         tmp_chords[chord_middle_char] = converted_chord
                         char_num += 6
