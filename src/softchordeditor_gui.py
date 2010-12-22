@@ -704,6 +704,7 @@ class PrintWidget(QtGui.QWidget):
                     
                     # Show hover feedback on the new letter:
                     self.app.hover_char_num = song_char_num
+                    self.app.selected_char_num = song_char_num
         else:
             # The mouse is NOT over a letter
             if not self.dragging_chord:
@@ -734,7 +735,7 @@ class PrintWidget(QtGui.QWidget):
                     # User clicked on the selected chord, initiate drag:
                     try:
                         self.dragging_chord = self.app.current_song.getChord(song_char_num)
-                        self.app.selected_char_num = None # FIXME remove
+                        #self.app.selected_char_num = None # FIXME remove
                     except ValueError:
                         # User clicked on an empty chord space
                         pass
