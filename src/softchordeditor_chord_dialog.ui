@@ -31,7 +31,14 @@
       </widget>
      </item>
      <item>
-      <widget class="QComboBox" name="note_menu"/>
+      <widget class="QComboBox" name="note_menu">
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+      </widget>
      </item>
      <item>
       <widget class="QComboBox" name="chord_type_menu"/>
