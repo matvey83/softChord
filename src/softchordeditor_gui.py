@@ -371,7 +371,8 @@ class Song:
         
         if self.doesLineHaveChords(linenum):
             chords_height = self.app.chord_font_metrics.height()
-            line_height = lyrics_height + chords_height * 0.9 # So that there is less spacing between the chords and the text
+            line_height = (lyrics_height + chords_height) * 0.85 # So that there is less spacing between the chords and the text
+            #line_height = lyrics_height + chords_height - self.app.lyrics_font_metrics.leading() - self.app.chord_font_metrics.leading() # So that there is less spacing between the chords and the text
         else:
             chords_height = 0
             line_height = lyrics_height
