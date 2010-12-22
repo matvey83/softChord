@@ -366,6 +366,9 @@ class Song:
         """
 
         lyrics_height = self.app.lyrics_font_metrics.height()
+        #print 'lyrics_height:', lyrics_height
+        #print '     a height:', self.app.lyrics_font_metrics.height("a")
+        
         if self.doesLineHaveChords(linenum):
             chords_height = self.app.chord_font_metrics.height()
             line_height = lyrics_height + chords_height * 0.9 # So that there is less spacing between the chords and the text
@@ -1008,7 +1011,7 @@ class App:
         zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
         self.ui.comboTextSize.addItems(zoom_items)
         self.c( self.ui.comboTextSize, "currentIndexChanged(QString)", self.comboTextSizeChanged)
-        self.ui.comboTextSize.setCurrentIndex(2) # 100%
+        self.ui.comboTextSize.setCurrentIndex(3) # 80%
         
         
         self.populateSongKeyMenu()
@@ -1018,9 +1021,9 @@ class App:
         # The letter/chord that is currently hover (mouse hoveing over it):
         self.hover_char_num = None
         
-        self.lyrics_font = QtGui.QFont("Times", 14)
+        self.lyrics_font = QtGui.QFont("Times", 16)
         self.lyrics_font_metrics = QtGui.QFontMetrics(self.lyrics_font)
-        self.chord_font = QtGui.QFont("Times", 10, QtGui.QFont.Bold)
+        self.chord_font = QtGui.QFont("Times", 12, QtGui.QFont.Bold)
         self.chord_font_metrics = QtGui.QFontMetrics(self.chord_font)
         self.ui.song_text_edit.setFont(self.lyrics_font)
         
@@ -1071,9 +1074,13 @@ class App:
         selected_row_indecies = self.ui.songs_view.selectionModel().selectedRows()
         
         self.songs_model.updateFromDatabase()
-
+        
+        # Make the row heights smaller:
+        self.ui.songs_view.resizeRowsToContents()
+        
         for index in selected_row_indecies:
             self.ui.songs_view.selectRow(index.row())
+        
     
     
     def keyPressEvent(self, event):
