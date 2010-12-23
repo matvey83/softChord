@@ -316,7 +316,7 @@ class SongLine:
             song_char = SongChar(char_text, song_char_num, line_char_num, chord, char_left, char_right, chord_left, chord_right)
             yield song_char
 
-        
+
 
 
 class SongChar:
@@ -344,7 +344,7 @@ class Song:
         for row in self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
             self.title = row[0]
             self.number = row[1]
-            self.all_text = row[2]
+            all_text = unicode(row[2])
             self.key_note_id = row[3] # Can be None or -1
             if self.key_note_id == None:
                 self.key_note_id = -1
@@ -369,16 +369,19 @@ class Song:
         
         # Break the song text into multiple lines:
         self._lines_list = []
-        line_start_offset = 0
-        line_end_offset = None
         
+        self.setAllText(all_text)
+    
 
-        self.all_text = unicode(self.all_text)
-        remaining_text = self.all_text
+    def setAllText(self, all_text):
+        remaining_text = all_text
+        line_end_offset = None
+        line_start_offset = 0
         
+        self._lines_list = []
         exit = False
         while not exit:
-            char_num = unicode(remaining_text).find('\n')
+            char_num = remaining_text.find('\n')
             if char_num == -1:
                 # This is the last line in the song
                 exit = True
@@ -396,6 +399,13 @@ class Song:
                 # The start of the next line will be offset by char_num:
                 line_start_offset += char_num+1
     
+
+
+    def getAllText(self):
+        all_text = ""
+        for line in self._lines_list:
+            all_text += line+'\n'
+        return all_text
 
     def getNumLines(self):
         """
@@ -606,7 +616,7 @@ class Song:
                 self.app.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
             
             self.app.curs.execute('UPDATE songs SET number=%i, title="%s", text="%s", key_note_id=%i, key_is_major=%i WHERE id=%i' % 
-                (self.number, self.title, self.all_text, self.key_note_id, self.key_is_major, self.id))
+                (self.number, self.title, self.getAllText(), self.key_note_id, self.key_is_major, self.id))
             self.app.curs.commit()
         finally:
             self.app.restoreCursor()
@@ -644,6 +654,9 @@ class Song:
 
 
     def iterateOverLines(self):
+        #for line in self._lines:
+        #    yield line
+        
         prev_line_bottom = 0
         for linenum, line_text in enumerate(self.iterateOverLineTexts()):
             chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
@@ -1105,7 +1118,7 @@ class App:
         self.ui.keyPressEvent = self.keyPressEvent
 
         #the scale font at first is 1, no change
-        self.scale_font = 1.0
+        self.zoom_factor = 1.0
     
     
     def __del__(self):
@@ -1256,8 +1269,8 @@ class App:
         if self.current_song:
             song_width, song_height = self.current_song.getWidthHeight()
         
-        song_width *= self.scale_font
-        song_height *= self.scale_font
+        song_width *= self.zoom_factor
+        song_height *= self.zoom_factor
 
         self.print_widget.resize(song_width+20, song_height+10)
 
@@ -1295,9 +1308,9 @@ class App:
         
         if not self.ignore_song_text_changed:
             self.ignore_song_text_changed = True
-            self.ui.song_text_edit.setPlainText(self.current_song.all_text)
+            self.ui.song_text_edit.setPlainText(self.current_song.getAllText())
             self.ignore_song_text_changed = False
-            self.previous_song_text = self.current_song.all_text
+            self.previous_song_text = self.current_song.getAllText()
         
         if self.current_song.key_note_id == -1:
             self.ui.song_key_menu.setCurrentIndex( 0 )
@@ -1389,7 +1402,7 @@ class App:
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(self.selected_char_num)
 
-            self.current_song.all_text = song_text
+            self.current_song.setAllText(song_text)
 
         
         self.previous_song_text = song_text
@@ -1409,7 +1422,7 @@ class App:
 
     def comboTextSizeChanged(self, new_text):
 
-        self.scale_font = int(new_text[:-1]) / 100.0        
+        self.zoom_factor = int(new_text[:-1]) / 100.0        
         self.resizePrintWidget()
         self.print_widget.repaint()
         
@@ -1566,10 +1579,9 @@ class App:
                 printer.setPageSize(QtGui.QPrinter.Letter)
                 printer.setOrientation(QtGui.QPrinter.Portrait)
                 printer.setOutputFileName(pdf_file)
-                #printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
-                print 'printer width, height:', printer.width(), printer.height()
-                print 'is valid:', printer.isValid()
-
+                printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+                print 'width, height:', printer.width(), printer.height()
+                
                 num_exported = self._paintToPrinter(printer)
             except Exception, err:
                 self.restoreCursor()
@@ -1759,13 +1771,14 @@ class App:
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
-        #print 'drawSongToRect()'
+        print 'drawSongToRect()'
+        sys.stdout.flush()
         
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
 
         if not exporting:
-            scale_ratio = self.scale_font
+            scale_ratio = self.zoom_factor
         else:
             # Exporting, make sure the song fits into the specified <rect>:
             song_width, song_height = song.getWidthHeight()
@@ -1807,12 +1820,14 @@ class App:
                     painter.setFont(self.chord_font)
                     painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
         
-
+        
         # Redo the effect of scaling:
         painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
         
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
+        print '  end drawSongToRect()'
+        sys.stdout.flush()
         
     
     def determineClickedLetter(self, x, y, dragging):
@@ -1830,8 +1845,8 @@ class App:
         y -= 10
 
         # Scale:
-        x = float(x) / self.scale_font
-        y = float(y) / self.scale_font
+        x = float(x) / self.zoom_factor
+        y = float(y) / self.zoom_factor
         
         for line in self.current_song.iterateOverLines():
             if y < line.chords_top or y > line.lyrics_bottom:
@@ -2086,7 +2101,11 @@ class App:
         
         # Get the next available ID:
         row = self.curs.execute("SELECT MAX(id) from song_chord_link").fetchone()
-        chord_id = row[0]+1 if row[0] != None else 0
+        if row[0] == None:
+            chord_id = 0
+        else:
+            chord_id = row[0]+1
+        #chord_id = row[0]+1 if row[0] != None else 0
         
         for song_char_num, chord in global_song_chords.iteritems():
             (marker, note_id, type_id, bass_id, in_parentheses) = chord
