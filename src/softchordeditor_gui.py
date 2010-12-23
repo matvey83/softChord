@@ -1349,10 +1349,7 @@ class App:
             song_text = self.current_song.getAllText()
             self.ui.song_text_edit.setPlainText(song_text)
             self.ignore_song_text_changed = False
-            #self.previous_song_text = song_text
-            print '\nlen after getAllText():', len(song_text)
-            self.previous_song_text = unicode(self.ui.song_text_edit.toPlainText())
-            print 'len after toPlainText():', len(self.previous_song_text)
+            self.previous_song_text = song_text
         
         if self.current_song.key_note_id == -1:
             self.ui.song_key_menu.setCurrentIndex( 0 )
@@ -1399,7 +1396,7 @@ class App:
         # Compare the new text to the previous text:
         
         if self.previous_song_text and self.previous_song_text != song_text:
-            print 'len mismatch:', len(self.previous_song_text), len(song_text)
+            #print 'len mismatch:', len(self.previous_song_text), len(song_text)
             
             # For each character: key: old position, value: new position
             renumber_map = {}
@@ -1433,7 +1430,6 @@ class App:
             
             new_all_chords = []
             for chord in self.current_song.iterateOverAllChords():
-                chord = copy.copy(chord)
                 try:
                     chord.character_num = renumber_map[chord.character_num]
                 except KeyError:
@@ -1452,7 +1448,7 @@ class App:
         self.current_song.sendToDatabase()
         
         # FIXME  Would be nice to get rid of this call, but doing so breaks lyrics editing:
-        self.updateCurrentSongFromDatabase()
+        #self.updateCurrentSongFromDatabase()
         
         self.print_widget.repaint()
         
@@ -1781,6 +1777,7 @@ class App:
             
             # Clear the selection:
             self.ui.songs_view.selectionModel().clearSelection()
+            self.current_song = None
         finally:
             self.restoreCursor()
     
@@ -1961,8 +1958,12 @@ class App:
                     
                     #print 'Importing:', filename
                     filename = filename.decode('utf-8')
-                    text = open( unicode(filename).encode('utf-8') ).read()
-                    #text = open( unicode(filename).encode('cp1251') ).read()
+                    
+                    # "rU" makes sure that the line endings are handled properly:
+                    
+                    text = open( unicode(filename).encode('utf-8'), 'rU' ).read()
+                    #text = open( unicode(filename).encode('cp1251'), 'rU' ).read()
+                    
                     # Decode UTF-8 into Unicode:
                     try:
                         text = text.decode('utf-8')
@@ -2018,6 +2019,8 @@ class App:
         
         prev_chords = {}
         for line in song_text:
+            #line = line[:-1]
+            #print 'line:', line.encode('utf-8')
             
             # Attempt to convert the line to chords:
             num_chords = 0
