@@ -38,6 +38,47 @@ db_file = os.path.join( exec_dir, "song_database.sqlite" )
 
 
 
+
+
+paper_sizes_list = [
+        (QtGui.QPrinter.Letter, "Letter (8.5 x 11 inches, 216 x 279 mm)"),
+        (QtGui.QPrinter.Legal, "Legal (8.5 x 14 inches, 216 x 356 mm)"),
+        (QtGui.QPrinter.A0, "A0 (841 x 1189 mm)"),
+        (QtGui.QPrinter.A1, "A1 (94 x 841 mm)"),
+        (QtGui.QPrinter.A2, "A2 (420 x 594 mm)"),
+        (QtGui.QPrinter.A3, "A3 (297 x 420 mm)"),
+        (QtGui.QPrinter.A4, "A4 (210 x 297 mm, 8.26 x 11.69 inches)"),
+        (QtGui.QPrinter.A5, "A5 (148 x 210 mm)"),
+        (QtGui.QPrinter.A6, "A6 (105 x 148 mm)"),
+        (QtGui.QPrinter.A7, "A7 (74 x 105 mm)"),
+        (QtGui.QPrinter.A8, "A8 (52 x 74 mm)"),
+        (QtGui.QPrinter.A9, "A9 (37 x 52 mm)"),
+        (QtGui.QPrinter.B0, "B0 (1030 x 1456 mm)"),
+        (QtGui.QPrinter.B1, "B1 (728 x 1030 mm)"),
+        (QtGui.QPrinter.B2, "B2 (515 x 728 mm)"),
+        (QtGui.QPrinter.B3, "B3 (364 x 515 mm)"),
+        (QtGui.QPrinter.B4, "B4 (257 x 364 mm)"),
+        (QtGui.QPrinter.B5, "B5 (182 x 257 mm, 7.17 x 10.13 inches)"),
+        (QtGui.QPrinter.B6, "B6 (128 x 182 mm)"),
+        (QtGui.QPrinter.B7, "B7 (91 x 128 mm)"),
+        (QtGui.QPrinter.B8, "B8 (64 x 91 mm)"),
+        (QtGui.QPrinter.B9, "B9 (45 x 64 mm)"),
+        (QtGui.QPrinter.B10, "B10 (32 x 45 mm)"),
+        (QtGui.QPrinter.C5E, "C5E (163 x 229 mm)"),
+        (QtGui.QPrinter.Comm10E, "Comm10E (105 x 241 mm, U.S. Common 10 Envelope)"),
+        (QtGui.QPrinter.DLE, "DLE (110 x 220 mm)"),
+        (QtGui.QPrinter.Executive, "Executive (7.5 x 10 inches, 191 x 254 mm)"),
+        (QtGui.QPrinter.Folio, "Folio (210 x 330 mm)"),
+        (QtGui.QPrinter.Ledger, "Ledger (432 x 279 mm)"),
+        (QtGui.QPrinter.Tabloid, "Tabloid (279 x 432 mm)"),
+]
+
+
+
+
+
+
+
 def tr(text):
     """
     Returns translated GUI text. Not implemented yet.
@@ -1377,6 +1418,11 @@ class App:
         Bring up a print dialog box.
         """
         
+        if not self.getSelectedSongIds():
+            self.error("No songs are selected")
+            return
+        
+        
         printer = QtGui.QPrinter()
         printer.setFullPage(True)
         printer.setPageSize(QtGui.QPrinter.Letter)
@@ -1386,26 +1432,11 @@ class App:
         
         print_dialog = QtGui.QPrintDialog(printer, self.ui)
         if print_dialog.exec_() == QtGui.QDialog.Accepted:
+	    ok = PdfDialog(self).display(self.pdf_options)
+	    if not ok:
+		return
             num_printed = self._paintToPrinter(printer)
 
-
-    """
-        QPrinter printer;
-        printer.setOutputFormat(QPrinter::PdfFormat);
-        printer.setOutputFileName("/foobar/nonwritable.pdf");
-        QPainter painter;
-        if (! painter.begin(&printer)) { // failed to open file
-        qWarning("failed to open file, is it writable?");
-        return 1;
-        }
-        painter.drawText(10, 10, "Test");
-        if (! printer.newPage()) {
-        qWarning("failed in flushing page to disk, disk full?");
-        return 1;
-        }
-        painter.drawText(10, 10, "Test 2");
-        painter.end();
-    """
 
     
     def _paintToPrinter(self, printer):
@@ -1419,27 +1450,32 @@ class App:
 
         
         painter = QtGui.QPainter()
-        painter.begin(printer) # may fail to open the file
+        if not painter.begin(printer):
+            raise IOError("Failed to open the output file for writing")
+	
+        # Figure out what the margins should be:
+	# Convert to points (from inches):
+	left_margin = self.pdf_options.left_margin * 72
+	right_margin = self.pdf_options.right_margin * 72
+	top_margin = self.pdf_options.top_margin * 72
+	bottom_margin = self.pdf_options.bottom_margin * 72
         
         num_printed = 0
-        for page_num, song_id in enumerate(self.getSelectedSongIds(), start=1):
+        page_num = 0
+        for song_id in self.getSelectedSongIds():
+            page_num += 1
             #print 'exporting song_id:', song_id
             if page_num != 1:
-                printer.newPage()
+                if not printer.newPage():
+                    raise IOError("Failed to flush page to disk, disk full?")
             
             print 'Drawing page:', page_num
             song = Song(self, song_id)
             
-
-            # Figure out what the margins should be:
-            # Convert to points (from inches):
-            left_margin = self.pdf_options.left_margin * 72
-            right_margin = self.pdf_options.right_margin * 72
-            top_margin = self.pdf_options.top_margin * 72
-            bottom_margin = self.pdf_options.bottom_margin * 72
-            if self.pdf_options.alternate_margins and page_num / 2:
-                # This page is even
+            
+            if self.pdf_options.alternate_margins and page_num != 1:
                 left_margin, right_margin = right_margin, left_margin
+            print 'left, right margins:', left_margin, right_margin
             
             width = printer.width() #- 300
             height = printer.height() #- 300
@@ -1467,6 +1503,7 @@ class App:
             num_printed += 1
         
         painter.end()
+        print "Done drawing"
         return num_printed
 
 
@@ -1474,6 +1511,10 @@ class App:
         """
         Exports the selected songs to a PDF file.
         """
+        
+        if not self.getSelectedSongIds():
+            self.error("No songs are selected")
+            return
         
         if not pdf_file:
             ok = PdfDialog(self).display(self.pdf_options)
@@ -1491,16 +1532,18 @@ class App:
             self.setWaitCursor()
             try:
                 printer = QtGui.QPrinter()
-                printer.setFullPage(True)
+                printer.setFullPage(True) # considers whole page instead of only printable area.
                 printer.setPageSize(QtGui.QPrinter.Letter)
                 printer.setOrientation(QtGui.QPrinter.Portrait)
                 printer.setOutputFileName(pdf_file)
-                printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
-                
+                #printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+                print 'printer width, height:', printer.width(), printer.height()
+                print 'is valid:', printer.isValid()
+
                 num_exported = self._paintToPrinter(printer)
-            except:
+            except Exception, err:
                 self.restoreCursor()
-                self.error("Error generating PDF")
+                self.error("Error generating PDF:\n%s" % str(err))
                 raise
             else:
                 if num_exported == 1:
@@ -1515,6 +1558,13 @@ class App:
         """
         Exports the selected song (one) to a TEXT file.
         """
+        
+        if not self.getSelectedSongIds():
+            self.error("No songs are selected")
+            return
+        elif self.getSelectedSongIds() != 1:
+            self.error("More than song is selected.")
+            return
         
         if not text_file:
             text_file = QtGui.QFileDialog.getSaveFileName(self.ui,
