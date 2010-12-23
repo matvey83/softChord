@@ -15,7 +15,7 @@ from PyQt4.QtCore import Qt
 import sys, os
 import sqlite3
 import codecs
-
+import copy
 
 
 chord_types_list = [
@@ -203,6 +203,7 @@ class SongChord:
         self.song = song
         self.song_id = song.id
         self.character_num = character_num
+        self.line_char_num = None
         self.note_id = note_id
         self.chord_type_id = chord_type_id
         self.bass_note_id = bass_note_id
@@ -273,14 +274,16 @@ class SongChord:
 
 class TempSongLine:
     def __init__(self):
-        pass
+        self.text = ""
+        self.chords = []
 
 
-class SongLine:
+class SongLineWithHeights:
     def __init__(self, song, text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom):
         self.song = song
         self.linenum = linenum
         self.text = text
+
         self.chords_top = chords_top
         self.chords_bottom = chords_bottom
         self.lyrics_top = lyrics_top
@@ -381,7 +384,7 @@ class Song:
     
 
     def setAllText(self, all_text, all_chords):
-        remaining_text = all_text
+        remaining_text = unicode(all_text)
         line_end_offset = None
         line_start_offset = 0
         
@@ -407,7 +410,7 @@ class Song:
                 # The start of the next line will be offset by char_num:
                 line_start_offset += char_num+1
         
-
+        
         chords_by_line = {}
         for chord in all_chords:
             song_char_num = chord.character_num
@@ -420,6 +423,7 @@ class Song:
                 if song_char_num < line_global_end-1:
                     # This character is in this line
                     line_char_num = song_char_num - line_global_start
+                    chord.line_char_num = line_char_num
                     try:
                         chords_by_line[linenum].append(chord)
                     except KeyError:
@@ -443,11 +447,12 @@ class Song:
             for chord in tmp_line.chords:
                 yield chord
     
+
     def addChord(self, chord):
         chord_song_char_num = chord.character_num
         chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
         tmp_line = self._lines[chord_linenum]
-        tmp_line.append(chord)
+        tmp_line.chords.append(chord)
     
     
     def deleteChord(self, chord):
@@ -456,9 +461,11 @@ class Song:
                 tmp_line.chords.remove(chord)
     
     def getAllText(self):
+        #return "\n".join( [line.text for line in self._lines ] )
+        
         all_text = ""
         for line in self._lines:
-            all_text += line.text+'\n'
+            all_text += line.text +'\n'
         return all_text
     
     
@@ -470,19 +477,6 @@ class Song:
             yield line.text
     
     
-    def doesLineHaveChords(self, linenum):
-        """
-        Return True/False, whether the given line has at least one chord
-        associated with it.
-        """
-
-        for chord in self.iterateOverAllChords():
-            song_char_num = chord.character_num
-            chord_linenum, line_char_num = self.songCharToLineChar(song_char_num)
-            if chord_linenum == linenum:
-                return True
-        return False
-    
     
     def getLineHeights(self, linenum):
         """
@@ -491,10 +485,8 @@ class Song:
         """
 
         lyrics_height = self.app.lyrics_font_metrics.height()
-        #print 'lyrics_height:', lyrics_height
-        #print '     a height:', self.app.lyrics_font_metrics.height("a")
         
-        if self.doesLineHaveChords(linenum):
+        if self._lines[linenum].chords:
             chords_height = self.app.chord_font_metrics.height()
             line_height = (lyrics_height + chords_height) * 0.9 # So that there is less spacing between the chords and the text
             #line_height = lyrics_height + chords_height - self.app.lyrics_font_metrics.leading() - self.app.chord_font_metrics.leading() # So that there is less spacing between the chords and the text
@@ -564,7 +556,7 @@ class Song:
         for linenum, line in enumerate(self._lines):
             line_text = unicode(line.text)
             
-            if self.doesLineHaveChords(linenum):
+            if line.chords:
                 # Add the chords line above this line
                 
                 line_chord_text_list =  [u' '] * len(line_text) # FIXME add a few to the end???
@@ -636,6 +628,12 @@ class Song:
         Save this song to the database.
         """
         
+        #print 'sending to database:',
+        #for line in self._lines:
+        #    print '   line'
+        #    for chord in line.chords:
+        #        print '       chord'
+
         self.app.setWaitCursor()
         try:
             chords_in_database = []
@@ -705,7 +703,7 @@ class Song:
             lyrics_bottom = chords_top + line_height
             lyrics_top = lyrics_bottom - lyrics_height
             prev_line_bottom = lyrics_bottom
-            line = SongLine(self, tmp_line.text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
+            line = SongLineWithHeights(self, tmp_line.text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
             yield line
         
             
@@ -744,7 +742,7 @@ class PrintWidget(QtGui.QWidget):
         Called when the widget needs to draw the current song.
         """
 
-        print 'begin paintEvent'        
+        #print 'begin paintEvent'        
 
         painter = QtGui.QPainter()
         painter.begin(self)
@@ -764,7 +762,7 @@ class PrintWidget(QtGui.QWidget):
             self.app.drawSongToRect(self.app.current_song, painter, paint_rect)
         
         painter.end()
-        print '   end paintEvent'
+        #print '   end paintEvent'
     
 
     def leaveEvent(self, event):
@@ -1283,7 +1281,7 @@ class App:
         Re-reads the current song from the database.
         """
         
-        print 'begin updateCurrentSongFromDatabase()'
+        #print 'begin updateCurrentSongFromDatabase()'
         self.setWaitCursor()
         selected_song_ids = self.getSelectedSongIds()
         
@@ -1293,17 +1291,17 @@ class App:
             
             # Update the print_widget size:
             self.resizePrintWidget()
-            print 'end updateCurrentSongFromDatabase()', song_id
+            #print 'end updateCurrentSongFromDatabase()', song_id
         else:
             self.current_song = None
             self.populateSongKeyMenu()
-            print 'end updateCurrentSongFromDatabase()', None
+            #print 'end updateCurrentSongFromDatabase()', None
         
         self.updateStates()
         self.restoreCursor()
         
     def resizePrintWidget(self):
-        print 'resizePrintWidget() called'
+        #print 'resizePrintWidget() called'
         song_width = 0.0
         song_height = 0.0
         if self.current_song:
@@ -1348,9 +1346,13 @@ class App:
         
         if not self.ignore_song_text_changed:
             self.ignore_song_text_changed = True
-            self.ui.song_text_edit.setPlainText(self.current_song.getAllText())
+            song_text = self.current_song.getAllText()
+            self.ui.song_text_edit.setPlainText(song_text)
             self.ignore_song_text_changed = False
-            self.previous_song_text = self.current_song.getAllText()
+            #self.previous_song_text = song_text
+            print '\nlen after getAllText():', len(song_text)
+            self.previous_song_text = unicode(self.ui.song_text_edit.toPlainText())
+            print 'len after toPlainText():', len(self.previous_song_text)
         
         if self.current_song.key_note_id == -1:
             self.ui.song_key_menu.setCurrentIndex( 0 )
@@ -1386,16 +1388,18 @@ class App:
         """
         if self.ignore_song_text_changed:
             return
+
         if not self.current_song:
             return
         
         self.ignore_song_text_changed = True
         
-        song_text = self.ui.song_text_edit.toPlainText()
+        song_text = unicode(self.ui.song_text_edit.toPlainText())
         
         # Compare the new text to the previous text:
         
         if self.previous_song_text and self.previous_song_text != song_text:
+            print 'len mismatch:', len(self.previous_song_text), len(song_text)
             
             # For each character: key: old position, value: new position
             renumber_map = {}
@@ -1429,6 +1433,7 @@ class App:
             
             new_all_chords = []
             for chord in self.current_song.iterateOverAllChords():
+                chord = copy.copy(chord)
                 try:
                     chord.character_num = renumber_map[chord.character_num]
                 except KeyError:
@@ -1436,22 +1441,16 @@ class App:
                 else:
                     new_all_chords.append(chord)
             
-            #self.current_song.all_chords = new_all_chords
-            
             # Renumber the selection:
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(self.selected_char_num)
-
+            
             self.current_song.setAllText(song_text, new_all_chords)
-
+            self.previous_song_text = song_text
         
-        self.previous_song_text = song_text
-        
-        song_id = self.current_song.id
         
         self.current_song.sendToDatabase()
         
-
         # FIXME  Would be nice to get rid of this call, but doing so breaks lyrics editing:
         self.updateCurrentSongFromDatabase()
         
@@ -1558,7 +1557,7 @@ class App:
             
             if self.pdf_options.alternate_margins and page_num != 1:
                 left_margin, right_margin = right_margin, left_margin
-            print 'left, right margins:', left_margin, right_margin
+            #print 'left, right margins:', left_margin, right_margin
             
             width = printer.width() #- 300
             height = printer.height() #- 300
@@ -1797,7 +1796,7 @@ class App:
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
-        print 'drawSongToRect()'
+        #print 'drawSongToRect()'
         sys.stdout.flush()
         
         # Go to songs's reference frame:
@@ -1852,7 +1851,7 @@ class App:
         
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
-        print '  end drawSongToRect()'
+        #print '  end drawSongToRect()'
         sys.stdout.flush()
         
     
@@ -1950,9 +1949,9 @@ class App:
                 for filename in text_files:
                     song_title = os.path.splitext(os.path.basename(filename))[0]
                     try:
-                            song_title = song_title.decode('utf-8')
+                        song_title = song_title.decode('utf-8')
                     except UnicodeDecodeError:
-                        print 'song_title:', song_title
+                        #print 'song_title:', song_title
                         try:
                            # Try Cyrillic 1251:
                            song_title = song_title.decode('cp1251')
