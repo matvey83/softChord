@@ -18,6 +18,37 @@ import codecs
 
 
 
+chord_types_list = [
+  (0, u"Major", u""),
+  (1, u"Minor", u"m"),
+  (2, u"Suspended 4th", u"sus4"),
+  (3, u"Major 7th", u"M7"),
+  (4, u"Minor 7th", u"m7"),
+  (5, u"Dominant 7th", u"7"),
+  (6, u"Add 9", u"9"),
+  (7, u"Diminished", u"dim"),
+  (8, u"Major 6th", u"6"),
+  (9, u"Minor 6th", u"m6"),
+  (10, u"11th", u"11"),
+  (11, u"Diminished", u"°"),
+  (12, u"Diminished 7th", u"°7"),
+]
+
+global_notes_list = [
+  (0, u"C", u"C"),
+  (1, u"C♯", u"D♭"),
+  (2, u"D", u"D"),
+  (3, u"D♯", u"E♭"),
+  (4, u"E", u"E"),
+  (5, u"F", u"F"),
+  (6, u"F♯", u"G♭"),
+  (7, u"G", u"G"),
+  (8, u"G♯", u"A♭"),
+  (9, u"A", u"A"),
+  (10, u"A♯", u"B♭"),
+  (11, u"B", u"B"), 
+]
+
 
 #print 'executable:', sys.executable
 #print 'dir executable:', dir(sys.executable)
@@ -659,7 +690,9 @@ class PrintWidget(QtGui.QWidget):
         """
         Called when the widget needs to draw the current song.
         """
-        
+
+        print 'begin paintEvent'        
+
         painter = QtGui.QPainter()
         painter.begin(self)
         
@@ -678,6 +711,7 @@ class PrintWidget(QtGui.QWidget):
             self.app.drawSongToRect(self.app.current_song, painter, paint_rect)
         
         painter.end()
+        print '   end paintEvent'
     
 
     def leaveEvent(self, event):
@@ -985,27 +1019,19 @@ class App:
         # Make a list of all chord types:
         self.chord_type_names = []
         self.chord_type_prints = []
-        for row in self.curs.execute("SELECT id, name, print FROM chord_types"):
-            chord_type_id = row[0]
-            name = row[1]
-            print_text = row[2]
+        for chord_type_id, name, print_text in chord_types_list:
             self.chord_type_names.append(name)
             self.chord_type_prints.append(print_text)
         
-
+        
         # Make a list of all notes and keys:
         self.notes_list = []
         self.note_text_id_dict = {}
-        for row in self.curs.execute("SELECT id, text, alt_text FROM notes"):
-            note_id = row[0]
-            text = row[1]
-            alt_text = row[2]
+        for note_id, text, alt_text in global_notes_list:
             self.notes_list.append( (text, alt_text) )
             self.note_text_id_dict[text] = note_id
             self.note_text_id_dict[alt_text] = note_id
         
-        
-         
         self.songs_model = SongTableModel(self)
         
         self.ui.songs_view.setModel(self.songs_model)
@@ -1123,6 +1149,7 @@ class App:
         
         for index in selected_row_indecies:
             self.ui.songs_view.selectRow(index.row())
+            break
         
     
     
@@ -1203,6 +1230,7 @@ class App:
         Re-reads the current song from the database.
         """
         
+        print 'begin updateCurrentSongFromDatabase()'
         self.setWaitCursor()
         selected_song_ids = self.getSelectedSongIds()
         
@@ -1212,14 +1240,17 @@ class App:
             
             # Update the print_widget size:
             self.resizePrintWidget()
+            print 'end updateCurrentSongFromDatabase()', song_id
         else:
             self.current_song = None
             self.populateSongKeyMenu()
+            print 'end updateCurrentSongFromDatabase()', None
         
         self.updateStates()
         self.restoreCursor()
         
     def resizePrintWidget(self):
+        print 'resizePrintWidget() called'
         song_width = 0.0
         song_height = 0.0
         if self.current_song:
@@ -1251,7 +1282,6 @@ class App:
         self.ui.export_pdf_button.setEnabled( len(selected_song_ids) > 0 )
         self.ui.export_text_button.setEnabled( len(selected_song_ids) == 1 )
         
-        self.print_widget.repaint()
             
     
     def setCurrentSong(self, song_id):
@@ -1432,9 +1462,9 @@ class App:
         
         print_dialog = QtGui.QPrintDialog(printer, self.ui)
         if print_dialog.exec_() == QtGui.QDialog.Accepted:
-	    ok = PdfDialog(self).display(self.pdf_options)
-	    if not ok:
-		return
+            ok = PdfDialog(self).display(self.pdf_options)
+            if not ok:
+                return
             num_printed = self._paintToPrinter(printer)
 
 
@@ -1452,13 +1482,13 @@ class App:
         painter = QtGui.QPainter()
         if not painter.begin(printer):
             raise IOError("Failed to open the output file for writing")
-	
+        
         # Figure out what the margins should be:
-	# Convert to points (from inches):
-	left_margin = self.pdf_options.left_margin * 72
-	right_margin = self.pdf_options.right_margin * 72
-	top_margin = self.pdf_options.top_margin * 72
-	bottom_margin = self.pdf_options.bottom_margin * 72
+        # Convert to points (from inches):
+        left_margin = self.pdf_options.left_margin * 72
+        right_margin = self.pdf_options.right_margin * 72
+        top_margin = self.pdf_options.top_margin * 72
+        bottom_margin = self.pdf_options.bottom_margin * 72
         
         num_printed = 0
         page_num = 0
@@ -1597,13 +1627,16 @@ class App:
         Called when the user modifies the selected song's title.
         """
         if self.current_song:
-            self.current_song.title = new_title
-            self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
-            # self.current_song.sendToDatabase()
-            
-            # Update the song table from database:
-            self.curs.commit()
-            self.updateFromDatabase()
+            self.current_song.title = unicode(new_title).strip() # Remove any EOL characters, etc.
+            self.setWaitCursor()
+            try:
+                self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+                self.curs.commit()
+                
+                # Update the song table from database:
+                self.updateFromDatabase()
+            finally:
+                self.restoreCursor()
         
     
     def currentSongNumberEdited(self, new_num_str):
@@ -1690,7 +1723,7 @@ class App:
                 
                 # Delete all associated chords:   
                 self.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
-                self.curs.commit()
+            self.curs.commit()
             
             # Update the song table from database:
             self.updateFromDatabase()
@@ -1862,40 +1895,83 @@ class App:
         Lets the user select a text file to import.
         """
         if not text_file:
-            text_file = QtGui.QFileDialog.getOpenFileName(self.ui,
+            text_files = QtGui.QFileDialog.getOpenFileNames(self.ui,
                     "Select a text file to import",
                     QtCore.QDir.home().path(), # initial dir
                     "Text format (*.txt)",
             )
+        else:
+            text_files = [text_file]
         
-        if text_file:
-            text = open( unicode(text_file).encode('utf-8') ).read()
-            # Decode UTF-8 into Unicode:
-            text = text.decode('utf-8')
-            self.importSongFromText(text)
+        if text_files:
+            self.setWaitCursor()
+            try:
+                for filename in text_files:
+                    song_title = os.path.splitext(os.path.basename(filename))[0]
+                    try:
+                            song_title = song_title.decode('utf-8')
+                    except UnicodeDecodeError:
+                        print 'song_title:', song_title
+                        try:
+                           # Try Cyrillic 1251:
+                           song_title = song_title.decode('cp1251')
+                        except UnicodeDecodeError:
+                           song_title = ""
+                           print "WARNING File name could not be decoded"
+                    
+                    #print 'Importing:', filename
+                    filename = filename.decode('utf-8')
+                    text = open( unicode(filename).encode('utf-8') ).read()
+                    #text = open( unicode(filename).encode('cp1251') ).read()
+                    # Decode UTF-8 into Unicode:
+                    try:
+                        text = text.decode('utf-8')
+                    except UnicodeDecodeError:
+                        try:
+                            text = text.decode('cp1251')
+                        except UnicodeDecodeError:
+                            print "ERROR: Could not decode the song text"
+                            raise
+                    
+                    self.importSongFromText(text, song_title)
+            finally:
+                self.restoreCursor()
     
-    
-    def importSongFromText(self, input_text):
+    def importSongFromText(self, input_text, song_title):
         """
         Adds the song specified with the given text to the database.
         input_text should contain all lines, decoded, in Unicode.
         """
+        
+        alternative_type_names = {
+           "sus" : "sus4",
+           "s4" : "sus4",
+           "maj7" : "M7",
+           "2" : "9",
+           "(7)" : "7",
+           "dim" : "°",
+           "dim7" : "°7",
+        }
 
         # Key: chord type text, value: chord type ID
         self.chord_type_texts_dict = {}
         for id, print_text in enumerate(self.chord_type_prints):
             self.chord_type_texts_dict[print_text] = id
-            if print_text == 'sus4':
-                self.chord_type_texts_dict['sus'] = id
+            for alternative_name, official_name in alternative_type_names.iteritems():
+                if print_text == official_name:
+                    self.chord_type_texts_dict[alternative_name] = id
         
         song_text = input_text.split('\n')
         # Remove the 2 last empty lines:
         if song_text[-1] == "":
             song_text.pop(-1)
         
+        # Attempt to derive the song number from the title:
         song_num = -1
-        song_title = ""
-        
+        try:
+            song_num = int(song_title)
+        except:
+            pass
         
         song_lines = [] # each item is a tuple of line text and chord list.
         
@@ -1947,7 +2023,7 @@ class App:
                     try:
                         converted_chord = self.convertChordFromString(word)
                     except ValueError, err:
-                        tmp_warnings.append( 'WARNING: %s CHORD "%s"' % (str(err), word.encode('utf-8')) )
+                        tmp_warnings.append( 'WARNING: %s; chord: "%s"' % (str(err), word.encode('utf-8')) )
                         num_non_chords += 1
                     else:
                         chord_middle_char = (word_start + word_end) / 2
@@ -1964,6 +2040,16 @@ class App:
             else:
                 # This is a lyrics line
                 if prev_chords:
+                    # Strip the EOF character (not always present):
+                    line = line.rstrip()
+                    
+                    # Add spaces to the end of <line> if necessary:
+                    for line_char_num in prev_chords.keys():
+                        if line_char_num >= len(line):
+                            #print 'Extending line from %i to %i' % (len(line), line_char_num+1)
+                            line += ' ' * (line_char_num - len(line) + 1)
+                            #print '   new length:', len(line)
+                            #print '   new line: "%s"' % line
                     song_lines.append( (line, prev_chords) )
                 else:
                     # The line before was NOT a chords line - no chords for this lyrics line
@@ -1986,15 +2072,21 @@ class App:
         
         
         
-        song_id = 0
-        for row in self.curs.execute("SELECT MAX(id) from songs"):
-            song_id = row[0] + 1
+        row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
+        if row[0] == None:
+            song_id = 0
+        else:
+            song_id = row[0]+1
         
         # Replace all double quotes with single quotes:
         global_song_text = global_song_text.replace('"', "'")
 
         self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
             'VALUES (%i, %i, "%s", "%s")' % (song_id, song_num, global_song_text, song_title))
+        
+        # Get the next available ID:
+        row = self.curs.execute("SELECT MAX(id) from song_chord_link").fetchone()
+        chord_id = row[0]+1 if row[0] != None else 0
         
         for song_char_num, chord in global_song_chords.iteritems():
             (marker, note_id, type_id, bass_id, in_parentheses) = chord
@@ -2003,14 +2095,9 @@ class App:
             
             in_parentheses = int(in_parentheses)
             
-            # Get the next available ID:
-            chord_id = 0
-            for row in self.curs.execute("SELECT MAX(id) from song_chord_link"):
-                chord_id = row[0] + 1
-            
             self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
                         'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
-        
+            chord_id += 1 # Increment the ID for the next chord.
         self.curs.commit()
         
         # Update the song table from database:
@@ -2038,14 +2125,22 @@ class App:
                 raise ValueError("Not a chord (nothing after a colon")
             
             marker = chord_str[:colon]
+            #print 'before stripping marker:', chord_str
             chord_str = chord_str[colon+1:]
+            #print 'after stripping marker:', chord_str
         
         slash = chord_str.find('/')
         if slash != -1:
-            bass = chord_str[slash+1:]
+            bass_str = chord_str[slash+1:]
+            #print 'before stripping bass:', chord_str
             chord_str = chord_str[:slash]
+            #print 'after stripping bass:', chord_str
+            if len(chord_str) == 0:
+                raise ValueError("No characters present before the bass slash")
+            if len(bass_str) == 0:
+                raise ValueError("No character present after the bass slash")
         else:
-            bass = None
+            bass_str = None
         
         if chord_str[0] == u'Е': # Russian letter
             chord_str = 'E' + chord_str[1:]
@@ -2055,6 +2150,8 @@ class App:
             chord_str = 'B' + chord_str[1:]
         if chord_str[0] == u'А': # Russian letter
             chord_str = 'A' + chord_str[1:]
+        if chord_str[0] == 'H': # European style (H instead of B)
+            chord_str = 'B' + chord_str[1:]
         
         if chord_str[0] in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
             if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
@@ -2071,15 +2168,18 @@ class App:
                 note = note[0] + u'♯'
             elif note[1] == u'b':
                 note = note[0] + u'♭'
-        if bass and len(bass) > 1:
-            if bass[1] == u'#':
-                bass = bass[0] + u'♯'
-            elif bass[1] == u'b':
-                bass = bass[0] + u'♭'
+        if bass_str and len(bass_str) > 1:
+            if bass_str[1] == u'#':
+                bass_str = bass_str[0] + u'♯'
+            elif bass_str[1] == u'b':
+                bass_str = bass_str[0] + u'♭'
         
         note_id = self.note_text_id_dict[note]
-        if bass != None:
-            bass_id = self.note_text_id_dict[bass]
+        if bass_str != None:
+            try:
+                bass_id = self.note_text_id_dict[bass_str]
+            except KeyError:
+                raise ValueError("Unrecognized bass note string")
         else:
             bass_id = -1
         
@@ -2101,9 +2201,11 @@ def main():
     """
 
     qapp = QtGui.QApplication(sys.argv)
-    window = App()
-    window.ui.show()
-    window.ui.raise_()
+    app = App()
+    app.ui.show()
+    app.ui.raise_()
+    for filename in sys.argv[1:]:
+       app.importFromText(filename)
     sys.exit(qapp.exec_())
 
 
