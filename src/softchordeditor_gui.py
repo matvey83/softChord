@@ -13,6 +13,9 @@ Development started in 10 December 2010
 # Use Unicode for all strings:
 from __future__ import unicode_literals
 
+from __future__ import division
+
+
 from PyQt4 import QtCore, QtGui, uic
 from PyQt4.QtCore import Qt
 import sys, os
@@ -725,6 +728,10 @@ class Song:
             if line.lyrics_bottom > song_height:
                 song_height = float(line.lyrics_bottom)
         
+        chord_char_width = self.app.chord_font_metrics.width("C")
+        song_width += chord_char_width # In case part of a chord goes beyond 
+        # FIXME this will not always work, as some chords may go farther than 1 char.
+        
         return song_width, song_height
 
 
@@ -1276,10 +1283,8 @@ class App:
 
         selected_song_ids = []
         for index in self.ui.songs_view.selectionModel().selectedRows():
-            print 'selected index:', index, index.row()
             song_id = self.songs_model.getRowSongID(index.row())
             selected_song_ids.append(song_id)
-        print 'num selected:', len(selected_song_ids)
         return selected_song_ids
     
 
