@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+
+# Use Unicode for all strings:
+from __future__ import unicode_literals
 
 import unittest
 import os, sys
@@ -34,6 +38,8 @@ class SoftChordEditorTest(unittest.TestCase):
         app.importFromText(song_file)
         
         self.assertEqual( app.songs_model.rowCount(), prev_rows+1 )
+        
+        qapp.processEvents()
         
         # Export back to text:
         out_song_file = "out_song.txt"

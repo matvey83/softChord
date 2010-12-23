@@ -10,12 +10,17 @@ Development started in 10 December 2010
 
 # NOTE The sqlite3 is intentionally used instead of QtSql.
 
+# Use Unicode for all strings:
+from __future__ import unicode_literals
+
 from PyQt4 import QtCore, QtGui, uic
 from PyQt4.QtCore import Qt
 import sys, os
 import sqlite3
 import codecs
 import copy
+
+
 
 
 chord_types_list = [
@@ -1271,8 +1276,10 @@ class App:
 
         selected_song_ids = []
         for index in self.ui.songs_view.selectionModel().selectedRows():
+            print 'selected index:', index, index.row()
             song_id = self.songs_model.getRowSongID(index.row())
             selected_song_ids.append(song_id)
+        print 'num selected:', len(selected_song_ids)
         return selected_song_ids
     
 
@@ -1590,9 +1597,10 @@ class App:
         Exports the selected songs to a PDF file.
         """
         
-        if not self.getSelectedSongIds():
-            self.error("No songs are selected")
-            return
+        #self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchordeditor_test.py
+        #if not self.getSelectedSongIds():
+        #    self.error("No songs are selected")
+        #    return
         
         if not pdf_file:
             ok = PdfDialog(self).display(self.pdf_options)
@@ -1636,11 +1644,12 @@ class App:
         Exports the selected song (one) to a TEXT file.
         """
         
+        self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchordeditor_test.py
         if not self.getSelectedSongIds():
             self.error("No songs are selected")
             return
-        elif self.getSelectedSongIds() != 1:
-            self.error("More than song is selected.")
+        elif len(self.getSelectedSongIds()) > 1:
+            self.error("More than one song is selected.")
             return
         
         if not text_file:
@@ -1944,6 +1953,9 @@ class App:
             self.setWaitCursor()
             try:
                 for filename in text_files:
+                    # Convert QString to a Python string:
+                    filename = unicode(filename)
+
                     song_title = os.path.splitext(os.path.basename(filename))[0]
                     try:
                         song_title = song_title.decode('utf-8')
