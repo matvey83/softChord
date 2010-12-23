@@ -268,7 +268,12 @@ class SongChord:
             chord_str = "(%s)" % chord_str
 
         return chord_str
-    
+
+
+
+class TempSongLine:
+    def __init__(self):
+        pass
 
 
 class SongLine:
@@ -289,7 +294,7 @@ class SongLine:
         line_end_char_num = line_start_char_num + len(self.text)
         
         char_num_chord_dict = {}
-        for chord in self.song.all_chords:
+        for chord in self.song.iterateOverAllChords():
             song_char_num = chord.character_num
             if song_char_num >= line_start_char_num and song_char_num <= line_end_char_num:
                 line_char_num = song_char_num - line_start_char_num
@@ -364,21 +369,25 @@ class Song:
             in_parentheses = row[6]
             chord = SongChord(self, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
             song_chords.append(chord)
-        self.all_chords = song_chords
+        
 
-        
-        # Break the song text into multiple lines:
-        self._lines_list = []
-        
-        self.setAllText(all_text)
+        self.setAllText(all_text, song_chords)
     
 
-    def setAllText(self, all_text):
+    def iterateOverAllChords(self):
+        for tmp_line in self._lines:
+            for chord in tmp_line.chords:
+                yield chord
+    
+
+    def setAllText(self, all_text, all_chords):
         remaining_text = all_text
         line_end_offset = None
         line_start_offset = 0
         
-        self._lines_list = []
+        lines_list = []
+        
+        line_start_char = 0
         exit = False
         while not exit:
             char_num = remaining_text.find('\n')
@@ -392,39 +401,73 @@ class Song:
                 line_text = remaining_text[:char_num] # text for this line
                 remaining_text = remaining_text[char_num+1:]
                 line_end_offset = char_num + line_start_offset
-            
-            self._lines_list.append(line_text)
+                lines_list.append(line_text)
             
             if char_num:
                 # The start of the next line will be offset by char_num:
                 line_start_offset += char_num+1
+        
+
+        chords_by_line = {}
+        for chord in all_chords:
+            song_char_num = chord.character_num
+            
+            # Determine which line this chord is part of:
+            line_global_start = 0
+            line_global_end = 0
+            for linenum, line_text in enumerate(lines_list):
+                line_global_end += len(line_text) + 1
+                if song_char_num < line_global_end-1:
+                    # This character is in this line
+                    line_char_num = song_char_num - line_global_start
+                    try:
+                        chords_by_line[linenum].append(chord)
+                    except KeyError:
+                        chords_by_line[linenum] = [chord]
+                    break
+                line_global_start += len(line_text) + 1
+        
+
+        self._lines = []
+        prev_line_bottom = 0
+        for linenum, line_text in enumerate(lines_list):
+            line = TempSongLine()
+            line.text = line_text
+            line.chords = chords_by_line.get(linenum, [])
+            self._lines.append(line)
+        
+        
     
-
-
+    def iterateOverAllChords(self):
+        for tmp_line in self._lines:
+            for chord in tmp_line.chords:
+                yield chord
+    
+    def addChord(self, chord):
+        chord_song_char_num = chord.character_num
+        chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
+        tmp_line = self._lines[chord_linenum]
+        tmp_line.append(chord)
+    
+    
+    def deleteChord(self, chord):
+        for tmp_line in self._lines:
+            if chord in tmp_line.chords:
+                tmp_line.chords.remove(chord)
+    
     def getAllText(self):
         all_text = ""
-        for line in self._lines_list:
-            all_text += line+'\n'
+        for line in self._lines:
+            all_text += line.text+'\n'
         return all_text
-
-    def getNumLines(self):
-        """
-        Returns the number of lines in this song.
-        """
-        return len(self._lines_list)
     
-    def getLineText(self, linenum):
-        """
-        Return the text for the specified line.
-        """
-        return self._lines_list[linenum]
     
     def iterateOverLineTexts(self):
         """
         Iterate over each the lines in this song.
         """
-        for line in self._lines_list:
-            yield line
+        for line in self._lines:
+            yield line.text
     
     
     def doesLineHaveChords(self, linenum):
@@ -433,7 +476,7 @@ class Song:
         associated with it.
         """
 
-        for chord in self.all_chords:
+        for chord in self.iterateOverAllChords():
             song_char_num = chord.character_num
             chord_linenum, line_char_num = self.songCharToLineChar(song_char_num)
             if chord_linenum == linenum:
@@ -503,7 +546,7 @@ class Song:
     
 
     def getChord(self, song_char_num):
-        for chord in self.all_chords:
+        for chord in self.iterateOverAllChords():
             chord_song_char_num = chord.character_num
             if chord_song_char_num == song_char_num:
                 return chord
@@ -518,8 +561,8 @@ class Song:
         
         song_text = unicode()
         
-        for linenum in range(self.getNumLines()):
-            line_text = unicode( self.getLineText(linenum) )
+        for linenum, line in enumerate(self._lines):
+            line_text = unicode(line.text)
             
             if self.doesLineHaveChords(linenum):
                 # Add the chords line above this line
@@ -533,7 +576,7 @@ class Song:
                     
                     
                     # Figure out if a chord is attached to this letter:
-                    for chord in self.all_chords:
+                    for chord in self.iterateOverAllChords():
                         chord_song_char_num = chord.character_num
                         chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
 
@@ -577,7 +620,7 @@ class Song:
         
     
     def transpose(self, steps):
-        for chord in self.all_chords:
+        for chord in self.iterateOverAllChords():
             chord.transpose(steps)
         
         if self.key_note_id != -1:
@@ -599,7 +642,7 @@ class Song:
             for row in self.app.curs.execute("SELECT character_num FROM song_chord_link WHERE song_id=%i" % self.id):
                 chords_in_database.append(row[0])
             
-            for chord in self.all_chords:
+            for chord in self.iterateOverAllChords():
                 # Update existing chords
                 if chord.character_num in chords_in_database:
                     self.app.curs.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
@@ -629,7 +672,7 @@ class Song:
         
         new_chord = copy.copy(chord)
         new_chord.character_num = new_song_char_num
-        self.all_chords.append(new_chord)
+        self.addChord(new_chord)
        
             
     def sharpsOrFlats(self):
@@ -654,20 +697,17 @@ class Song:
 
 
     def iterateOverLines(self):
-        #for line in self._lines:
-        #    yield line
-        
         prev_line_bottom = 0
-        for linenum, line_text in enumerate(self.iterateOverLineTexts()):
+        for linenum, tmp_line in enumerate(self._lines):
             chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
             chords_top = prev_line_bottom # Bottom of the previous line
             chords_bottom = chords_top + chords_height
             lyrics_bottom = chords_top + line_height
             lyrics_top = lyrics_bottom - lyrics_height
             prev_line_bottom = lyrics_bottom
-            line = SongLine(self, line_text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
+            line = SongLine(self, tmp_line.text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
             yield line
-            
+        
             
     def getWidthHeight(self):
         """
@@ -845,9 +885,9 @@ class PrintWidget(QtGui.QWidget):
             if self.dragging_chord.character_num != self.dragging_chord_orig_position:
                 
                 # Delete the previous chord, if any:
-                for other_chord in self.app.current_song.all_chords:
+                for other_chord in self.app.current_song.iterateOverAllChords():
                     if other_chord.character_num == self.dragging_chord.character_num and other_chord != self.dragging_chord:
-                        self.app.current_song.all_chords.remove(other_chord)
+                        self.app.current_song.deleteChord(other_chord)
                         self.app.print_widget.repaint()
                         break
                 self.app.current_song.sendToDatabase()
@@ -1183,9 +1223,9 @@ class App:
         """
         
         if self.selected_char_num != None and self.current_song:
-            for chord in self.current_song.all_chords:
+            for chord in self.current_song.iterateOverAllChords():
                 if chord.character_num == self.selected_char_num:
-                    self.current_song.all_chords.remove(chord)
+                    self.current_song.deleteChord(chord)
                     break
             
             self.current_song.sendToDatabase()
@@ -1388,7 +1428,7 @@ class App:
             
             
             new_all_chords = []
-            for chord in self.current_song.all_chords:
+            for chord in self.current_song.iterateOverAllChords():
                 try:
                     chord.character_num = renumber_map[chord.character_num]
                 except KeyError:
@@ -1396,13 +1436,13 @@ class App:
                 else:
                     new_all_chords.append(chord)
             
-            self.current_song.all_chords = new_all_chords
+            #self.current_song.all_chords = new_all_chords
             
             # Renumber the selection:
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(self.selected_char_num)
 
-            self.current_song.setAllText(song_text)
+            self.current_song.setAllText(song_text, new_all_chords)
 
         
         self.previous_song_text = song_text
@@ -1746,20 +1786,6 @@ class App:
             self.restoreCursor()
     
 
-    def iterateOverLineHeights(self):
-        
-        prev_line_bottom = 0
-        for linenum, line_text in enumerate(self.current_song.iterateOverLineTexts()):
-            chords_height, lyrics_height, line_height = song.getLineHeights(linenum)
-            chords_top = prev_line_bottom # Bottom of the previous line
-            chords_bottom = chords_top + chords_height
-            lyrics_bottom = chords_top + line_height
-            lyrics_top = lyrics_bottom - lyrics_height
-            prev_line_bottom = lyrics_bottom
-            
-            yield (linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
-            
-
 
     def drawSongToRect(self, song, painter, rect, exporting=False):
         """
@@ -1877,7 +1903,7 @@ class App:
         
         add_new = True
         chord = None
-        for iter_chord in self.current_song.all_chords:
+        for iter_chord in self.current_song.iterateOverAllChords():
             if iter_chord.character_num == song_char_num:
                 add_new = False
                 chord = iter_chord
@@ -1890,7 +1916,7 @@ class App:
         if ok:
             # Ok pressed
             if add_new:
-                self.current_song.all_chords.append(chord)
+                self.current_song.addChord(chord)
             
             self.current_song.sendToDatabase()
             
