@@ -1108,6 +1108,7 @@ class App:
         
         self.ignore_song_text_changed = False
         self.previous_song_text = None # Song text before last user's edit operation
+        self.ui.song_text_edit.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
         self.c( self.ui.song_text_edit, "textChanged()", self.songTextChanged )
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
