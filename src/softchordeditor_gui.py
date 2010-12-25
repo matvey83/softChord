@@ -949,11 +949,14 @@ class ChordDialog:
                 combined_text = "%s/%s" % (note_text, note_alt_text)
             notes_list.append(combined_text)
         self.ui.note_menu.addItems(notes_list)
+        self.ui.note_menu.setMaxVisibleItems(12) # Show all notes
 
 
         self.ui.chord_type_menu.addItems(self.app.chord_type_names)
+        self.ui.chord_type_menu.setMaxVisibleItems(20) # Show more types
 
         self.ui.bass_menu.addItems(["None"] + notes_list)
+        self.ui.bass_menu.setMaxVisibleItems(12) # Show all notes
     
 
     def display(self, chord):
@@ -1196,6 +1199,7 @@ class App:
         self.ignore_song_key_changed = True
         self.ui.song_key_menu.clear()
         self.ui.song_key_menu.addItems(keys_list)
+        self.ui.song_key_menu.setMaxVisibleItems(25) # Show all keys (including "None")
         self.ignore_song_key_changed = False
         
         self.ui.song_key_menu.setEnabled( bool(self.current_song) )
