@@ -323,7 +323,7 @@ class SongLineWithHeights:
             if chord:
                 # Figure out the chord's y position range:
                 chord_middle = (char_left + char_right) / 2 # Average of left and right
-                chord_width = self.song.app.chord_font_metrics.width(chord.chord_text)
+                chord_width = self.song.app.chords_font_metrics.width(chord.chord_text)
                 chord_left = chord_middle - (chord_width/2)
                 chord_right = chord_middle + (chord_width/2)
             else:
@@ -495,9 +495,9 @@ class Song:
         lyrics_height = self.app.lyrics_font_metrics.height()
         
         if self._lines[linenum].chords:
-            chords_height = self.app.chord_font_metrics.height()
+            chords_height = self.app.chords_font_metrics.height()
             line_height = (lyrics_height + chords_height) * 0.9 # So that there is less spacing between the chords and the text
-            #line_height = lyrics_height + chords_height - self.app.lyrics_font_metrics.leading() - self.app.chord_font_metrics.leading() # So that there is less spacing between the chords and the text
+            #line_height = lyrics_height + chords_height - self.app.lyrics_font_metrics.leading() - self.app.chords_font_metrics.leading() # So that there is less spacing between the chords and the text
         else:
             chords_height = 0
             line_height = lyrics_height
@@ -728,7 +728,7 @@ class Song:
             if line.lyrics_bottom > song_height:
                 song_height = float(line.lyrics_bottom)
         
-        chord_char_width = self.app.chord_font_metrics.width("C")
+        chord_char_width = self.app.chords_font_metrics.width("C")
         song_width += chord_char_width # In case part of a chord goes beyond 
         # FIXME this will not always work, as some chords may go farther than 1 char.
         
@@ -1160,9 +1160,11 @@ class App:
         self.hover_char_num = None
         
         self.lyrics_font = QtGui.QFont("Times", 16)
+	self.lyrics_color = QtGui.QColor("BLACK")
         self.lyrics_font_metrics = QtGui.QFontMetrics(self.lyrics_font)
-        self.chord_font = QtGui.QFont("Times", 12, QtGui.QFont.Bold)
-        self.chord_font_metrics = QtGui.QFontMetrics(self.chord_font)
+        self.chords_font = QtGui.QFont("Times", 12, QtGui.QFont.Bold)
+        self.chords_font_metrics = QtGui.QFontMetrics(self.chords_font)
+        self.chords_color = QtGui.QColor("DARK BLUE")
         self.ui.song_text_edit.setFont(self.lyrics_font)
         
         self._orig_keyPressEvent = self.ui.keyPressEvent
@@ -1486,10 +1488,10 @@ class App:
         """
         Brings up a dialog to let the user modify the chords font.
         """
-        new_font, ok = QtGui.QFontDialog.getFont(self.chord_font, self.ui)
+        new_font, ok = QtGui.QFontDialog.getFont(self.chords_font, self.ui)
         if ok:
-            self.chord_font = new_font
-            self.chord_font_metrics = QtGui.QFontMetrics(self.chord_font)
+            self.chords_font = new_font
+            self.chords_font_metrics = QtGui.QFontMetrics(self.chords_font)
             self.print_widget.repaint()
 
     def changeLyricsFont(self):
@@ -1850,11 +1852,13 @@ class App:
                 
                 # Draw this lyric character:
                 painter.setFont(self.lyrics_font)
+		painter.setPen(self.lyrics_color)
                 painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
                 
                 # Draw this chord (if any):
                 if char.has_chord:
-                    painter.setFont(self.chord_font)
+                    painter.setFont(self.chords_font)
+                    painter.setPen(self.chords_color)
                     painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
         
         
