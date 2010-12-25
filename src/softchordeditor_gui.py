@@ -72,7 +72,6 @@ pdf_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_pdf_dialog.ui")
 #print 'script_ui_file:', script_ui_file
 #print 'exists:', os.path.isfile(script_ui_file)
 
-
 db_file = os.path.join( exec_dir, "song_database.sqlite" )
 
 
@@ -153,8 +152,10 @@ class SongTableModel(QtCore.QAbstractTableModel):
         """
         self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
         self._data = []
-        for row in self.app.curs.execute("SELECT id, number, title FROM songs"):
-            self._data.append(row)
+        if self.app.curs:
+            # A songbook is currently open
+            for row in self.app.curs.execute("SELECT id, number, title FROM songs"):
+                self._data.append(row)
         self.emit(QtCore.SIGNAL("layoutChanged()")) # Forces the view to redraw
     
     def rowCount(self, parent=QtCore.QModelIndex()):
@@ -1071,13 +1072,24 @@ class App:
     """
     def c(self, widget, signal_str, slot):
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
+
+    def setCurrentDatabase(self, filename):
+        if filename == None:
+            self.curs = None
+        else:
+            #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(filename)))
+            self.curs = sqlite3.connect(filename)
+        self.current_song = None
+        self.updateFromDatabase()
+        self.updateStates()
+    
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
-
-        #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(db_file)))
         
-        # This will be used for Python (sqlite3) operations:
-        self.curs = sqlite3.connect(db_file)
+        
+        #self.curs = sqlite3.connect(db_file)
+        self.curs = None
+        self.current_song = None
         
         self.pdf_options = PdfOptions()
         
@@ -1107,6 +1119,7 @@ class App:
         self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
             self.songsSelectionChangedCallback )
 
+        self.setCurrentDatabase(db_file)        
         self.updateFromDatabase()
         
         self.ignore_song_text_changed = False
@@ -1131,6 +1144,10 @@ class App:
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
         
         # Menu actions:
+        self.ui.actionNewSongbook.triggered.connect(self.newSongbook)
+        self.ui.actionOpenSongbook.triggered.connect(self.openSongbook)
+        self.ui.actionCloseSongbook.triggered.connect(self.closeSongbook)
+        
         self.c( self.ui.actionPrint, "triggered()", self.printSelectedSongs )
         self.c( self.ui.actionQuit, "triggered()", self.ui.close )
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
@@ -1147,7 +1164,6 @@ class App:
         # Set the background to white (instead of grey):
         self.ui.chord_scroll_area.setBackgroundRole(QtGui.QPalette.Light)
         
-        self.current_song = None
         
         zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
         self.ui.comboTextSize.addItems(zoom_items)
@@ -2264,7 +2280,21 @@ class App:
         return (marker, note_id, type_id, bass_id, in_parentheses)
 
 
-
+    def newSongbook(self):
+        self.error("Not implemented yet")
+        
+    
+    def openSongbook(self):
+        db_file = QtGui.QFileDialog.getOpenFileName(self.ui,
+                "Select a songbook to open",
+                QtCore.QDir.home().path(), # initial dir
+                "Songbook format (*.sqlite)",
+        )
+        if db_file:
+            self.setCurrentDatabase( unicode(db_file) )
+    
+    def closeSongbook(self):
+        self.setCurrentDatabase(None)
 
 
 
