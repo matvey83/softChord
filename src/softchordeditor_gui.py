@@ -1664,13 +1664,18 @@ class App:
             ok = PdfDialog(self).display(self.pdf_options)
             if not ok:
                 return
-
+            
+            if len(self.getSelectedSongIds()) == 1:
+                suggested_path = os.path.join( unicode(QtCore.QDir.home().path()), unicode(self.current_song.title) + ".pdf" )
+            else:
+                suggested_path = QtCore.QDir.home().path()
+            
             pdf_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                         "Save PDF file as:",
-                        QtCore.QDir.home().path(), # initial dir
+                        suggested_path,
                         "PDF format (*.pdf)",
             )
-
+        
         if pdf_file: 
             num_exported = 0
             self.setWaitCursor()
@@ -1711,9 +1716,11 @@ class App:
             return
         
         if not text_file:
+            suggested_path = os.path.join( unicode(QtCore.QDir.home().path()), unicode(self.current_song.title) + ".txt" )
+            
             text_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save text file as:",
-                    QtCore.QDir.home().path(), # initial dir
+                    suggested_path,
                     "Text format (*.txt)",
             )
         if text_file:
