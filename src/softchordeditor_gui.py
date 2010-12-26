@@ -1764,15 +1764,16 @@ class App:
         if text_file:
             self.setWaitCursor()
             try:
-                #fh = codecs.open( unicode(text_file).encode('utf-8'), 'w', encoding='utf-8')
-                fh = open( unicode(text_file).encode('utf-8'), 'w' )
+                fh = codecs.open( unicode(text_file).encode('utf-8'), 'w', encoding='utf_8_sig') #encoding='utf-8')
+                #fh = open( unicode(text_file).encode('utf-8'), 'w' )
                 
                 for song_index, song_id in enumerate(self.getSelectedSongIds()):
                     # NOTE for now there will always be only one song exported.
                     song = Song(self, song_id)
                     
                     # Encode the unicode string as UTF-8 before writing to file:
-                    song_text = song.getAsText().encode('utf-8')
+                    #song_text = song.getAsText().encode('utf-8')
+                    song_text = song.getAsText()
                     
                     fh.write(song_text)
                 
@@ -2086,9 +2087,9 @@ class App:
                     
                     # "rU" makes sure that the line endings are handled properly:
                     
-                    text = open( unicode(filename).encode('utf-8'), 'rU' ).read()
-                    
-                    
+                    #text = open( unicode(filename).encode('utf-8'), 'rU' ).read()
+                    text = codecs.open( unicode(text_file).encode('utf-8'), 'rU', encoding='utf_8_sig').read()
+                    """
                     # Decode UTF-8 into Unicode:
                     try:
                         text = text.decode('utf-8')
@@ -2098,7 +2099,7 @@ class App:
                         except UnicodeDecodeError:
                             print "ERROR: Could not decode the song text"
                             raise
-                    
+                    """
                     self.importSongFromText(text, song_title)
             finally:
                 self.restoreCursor()
