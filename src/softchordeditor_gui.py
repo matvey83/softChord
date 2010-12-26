@@ -349,10 +349,10 @@ class SongLineWithHeights:
             chord = char_num_chord_dict.get(line_char_num)
             if chord:
                 # Figure out the chord's y position range:
-                chord_middle = (char_left + char_right) / 2 # Average of left and right
+                chord_middle = (char_left + char_right) // 2 # Average of left and right
                 chord_width = self.song.app.chords_font_metrics.width(chord.chord_text)
-                chord_left = chord_middle - (chord_width/2)
-                chord_right = chord_middle + (chord_width/2)
+                chord_left = chord_middle - (chord_width//2)
+                chord_right = chord_middle + (chord_width//2)
             else:
                 chord_left = chord_right = None
             
@@ -611,7 +611,7 @@ class Song:
                             continue
                         
                         chord_len = len(chord.chord_text)
-                        chord_left = line_char_num - (chord_len/2)
+                        chord_left = line_char_num - (chord_len//2)
                         if not (chord_len % 2): # Even number of characters:
                             # Offset the chord so that the chord-letter is closer to the middle of the chord text
                             chord_left += 1
@@ -1661,8 +1661,8 @@ class App:
             height = printer.height() #- 300
             
             if self.pdf_options.print_4_per_page:
-                width /= 2
-                height /= 2
+                width  = width // 2
+                height = height // 2
                 for (x, y) in ( (0,0), (0,1), (1,0), (1,1) ):
                     print '  Drawing sub-page:', x,y
                     song_width = width - left_margin - right_margin
@@ -1835,7 +1835,7 @@ class App:
             note_id = -1
             is_major = 1
         else:
-            note_id = (new_key_index-1) / 2
+            note_id = (new_key_index-1) // 2
             is_major = (new_key_index-1) % 2
         
         if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
@@ -1918,8 +1918,8 @@ class App:
         else:
             # Exporting, make sure the song fits into the specified <rect>:
             song_width, song_height = song.getWidthHeight()
-            width_ratio = song_width / rect.width()
-            height_ratio = song_height / rect.height()
+            width_ratio = song_width // rect.width()
+            height_ratio = song_height // rect.height()
             scale_ratio = max(width_ratio, height_ratio)
             
             if scale_ratio > 1.0:
