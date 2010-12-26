@@ -23,7 +23,7 @@
       <widget class="QWidget" name="layoutWidget">
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0,0,0">
+         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0">
           <item>
            <widget class="QPushButton" name="new_song_button">
             <property name="text">
@@ -56,20 +56,6 @@
            <widget class="QPushButton" name="export_text_button">
             <property name="text">
              <string>Export selected to TEXT...</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="chord_font_button">
-            <property name="text">
-             <string>Chord Font...</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="text_font_button">
-            <property name="text">
-             <string>Text Font...</string>
             </property>
            </widget>
           </item>
