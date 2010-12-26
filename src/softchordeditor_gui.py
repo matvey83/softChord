@@ -135,7 +135,7 @@ def transpose_note(note_id, steps):
     return note_id
 
 
-class SongTableModel(QtCore.QAbstractTableModel):
+class SongsTableModel(QtCore.QAbstractTableModel):
     """
     Class for storing table information.
     """
@@ -199,6 +199,34 @@ class SongTableModel(QtCore.QAbstractTableModel):
         """
         return self._data[row][0]
 
+
+class SongsProxyModel(QtGui.QSortFilterProxyModel):
+    """ 
+    Proxy model that allows showing/hiding rows in the residues table.
+    """
+
+    def __init__(self, parent):
+        self.parent = parent
+        QtGui.QSortFilterProxyModel.__init__(self, parent)
+
+    def filterAcceptsRow(self, sourceRow, sourceParent):
+        model = self.sourceModel()
+        
+        return True
+    
+    def lessThan(self, left, right):
+        leftData = self.sourceModel().data(left)
+        rightData = self.sourceModel().data(right)
+        
+        # Convert strings to floats:
+        leftDataFloat, leftOk = leftData.toDouble()
+        rightDataFloat, rightOk = rightData.toDouble()
+        if leftOk and rightOk:
+            return leftDataFloat < rightDataFloat
+        else:
+            # Non-number value ("NA", for example):
+            return leftData.toString() < rightData.toString()
+        
 
 
 class SongChord:
@@ -1110,9 +1138,13 @@ class App:
             self.note_text_id_dict[text] = note_id
             self.note_text_id_dict[alt_text] = note_id
         
-        self.songs_model = SongTableModel(self)
+        self.songs_model = SongsTableModel(self)
+        self.songs_proxy_model = SongsProxyModel(self.ui)
+        self.songs_proxy_model.setSourceModel(self.songs_model)
         
-        self.ui.songs_view.setModel(self.songs_model)
+        self.ui.songs_view.setModel(self.songs_proxy_model)
+        self.ui.songs_view.setSortingEnabled(True)
+
         self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
         self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         self.ui.songs_view.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
@@ -1129,8 +1161,6 @@ class App:
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
-        self.c( self.ui.chord_font_button, "clicked()", self.changeChordFont )
-        self.c( self.ui.text_font_button, "clicked()", self.changeLyricsFont )
         self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
         self.c( self.ui.import_text_button, "clicked()", self.importFromText )
         self.c( self.ui.export_text_button, "clicked()", self.exportToText )
