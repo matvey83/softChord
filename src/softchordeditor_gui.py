@@ -2057,7 +2057,7 @@ class App:
                     # "rU" makes sure that the line endings are handled properly:
                     
                     text = open( unicode(filename).encode('utf-8'), 'rU' ).read()
-                    #text = open( unicode(filename).encode('cp1251'), 'rU' ).read()
+                    
                     
                     # Decode UTF-8 into Unicode:
                     try:
@@ -2161,10 +2161,10 @@ class App:
                     try:
                         converted_chord = self.convertChordFromString(word)
                     except ValueError, err:
-                        tmp_warnings.append( 'WARNING: %s; chord: "%s"' % (str(err), word.encode('utf-8')) )
+                        tmp_warnings.append( 'WARNING: %s; chord: "%s"' % (str(err), word) ) #word.encode('utf-8')) )
                         num_non_chords += 1
                     else:
-                        chord_middle_char = (word_start + word_end) / 2
+                        chord_middle_char = (word_start + word_end) // 2
                         num_chords += 1
                         tmp_chords[chord_middle_char] = converted_chord
                         char_num += 6
@@ -2186,8 +2186,6 @@ class App:
                         if line_char_num >= len(line):
                             #print 'Extending line from %i to %i' % (len(line), line_char_num+1)
                             line += ' ' * (line_char_num - len(line) + 1)
-                            #print '   new length:', len(line)
-                            #print '   new line: "%s"' % line
                     song_lines.append( (line, prev_chords) )
                 else:
                     # The line before was NOT a chords line - no chords for this lyrics line
@@ -2267,16 +2265,12 @@ class App:
                 raise ValueError("Not a chord (nothing after a colon")
             
             marker = chord_str[:colon]
-            #print 'before stripping marker:', chord_str
             chord_str = chord_str[colon+1:]
-            #print 'after stripping marker:', chord_str
         
         slash = chord_str.find('/')
         if slash != -1:
             bass_str = chord_str[slash+1:]
-            #print 'before stripping bass:', chord_str
             chord_str = chord_str[:slash]
-            #print 'after stripping bass:', chord_str
             if len(chord_str) == 0:
                 raise ValueError("No characters present before the bass slash")
             if len(bass_str) == 0:
@@ -2375,8 +2369,12 @@ def main():
     app = App()
     app.ui.show()
     app.ui.raise_()
-    for filename in sys.argv[1:]:
-       app.importFromText(filename)
+    if len(sys.argv) > 1:
+        if sys.argv[1].endswith(".songbook"):
+            app.setCurrentSongbook(sys.argv[1])
+        else:
+            for filename in sys.argv[1:]:
+               app.importFromText(filename)
     sys.exit(qapp.exec_())
 
 
