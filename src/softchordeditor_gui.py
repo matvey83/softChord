@@ -640,8 +640,8 @@ class Song:
             song_text += line_text + u"\n"
         
         # Remove the last end-of-line:
-        if song_text[-1] == "\n":
-            song_text = song_text[:-1]
+        #if song_text[-1] == "\n":
+        #    song_text = song_text[:-1]
         
         return song_text
         
@@ -1347,6 +1347,7 @@ class App:
 
         selected_song_ids = []
         for index in self.ui.songs_view.selectionModel().selectedRows():
+            index = self.songs_proxy_model.mapToSource(index)
             song_id = self.songs_model.getRowSongID(index.row())
             selected_song_ids.append(song_id)
         return selected_song_ids
@@ -1870,6 +1871,9 @@ class App:
         self.updateFromDatabase()
         
         # Select the newly added song:
+        # FIXME
+        #source_index = self.songs_model.index(self.songs_modw
+        #index = self.songs_proxy_model.mapToSource(index)
         self.ui.songs_view.selectRow( self.songs_model.rowCount()-1 )
         self.updateCurrentSongFromDatabase()
     
@@ -2064,6 +2068,7 @@ class App:
                     filename = unicode(filename)
 
                     song_title = os.path.splitext(os.path.basename(filename))[0]
+                    """
                     try:
                         song_title = song_title.decode('utf-8')
                     except UnicodeDecodeError:
@@ -2074,9 +2079,10 @@ class App:
                         except UnicodeDecodeError:
                            song_title = ""
                            print "WARNING File name could not be decoded"
+                    """
                     
                     #print 'Importing:', filename
-                    filename = filename.decode('utf-8')
+                    #filename = filename.decode('utf-8')
                     
                     # "rU" makes sure that the line endings are handled properly:
                     
@@ -2267,6 +2273,7 @@ class App:
         # Update the song table from database:
         self.updateFromDatabase()
         
+        # FIXME #index = self.songs_proxy_model.mapToSource(index)
         self.ui.songs_view.selectRow( self.songs_model.rowCount()-1 )
 
 
