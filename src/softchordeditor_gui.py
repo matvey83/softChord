@@ -72,8 +72,6 @@ pdf_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_pdf_dialog.ui")
 #print 'script_ui_file:', script_ui_file
 #print 'exists:', os.path.isfile(script_ui_file)
 
-db_file = os.path.join( exec_dir, "song_database.sqlite" )
-
 
 
 
@@ -1101,7 +1099,7 @@ class App:
     def c(self, widget, signal_str, slot):
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
 
-    def setCurrentDatabase(self, filename):
+    def setCurrentSongbook(self, filename):
         if filename == None:
             self.curs = None
         else:
@@ -1150,8 +1148,17 @@ class App:
         self.ui.songs_view.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
             self.songsSelectionChangedCallback )
+        
 
-        self.setCurrentDatabase(db_file)        
+        default_db_file1 = os.path.join( exec_dir, "solo_and_group_songs.songbook")
+        default_db_file2 = os.path.join( exec_dir, "song_database.sqlite" )
+        if os.path.isfile(default_db_file1):
+            self.setCurrentSongbook(default_db_file1)
+        elif os.path.isfile(default_db_file2):
+            self.setCurrentSongbook(default_db_file2)
+        else:
+            self.setCurrentSongbook(None)
+        
         self.updateFromDatabase()
         
         self.ignore_song_text_changed = False
@@ -1209,7 +1216,7 @@ class App:
         self.hover_char_num = None
         
         self.lyrics_font = QtGui.QFont("Times", 16)
-	self.lyrics_color = QtGui.QColor("BLACK")
+        self.lyrics_color = QtGui.QColor("BLACK")
         self.lyrics_font_metrics = QtGui.QFontMetrics(self.lyrics_font)
         self.chords_font = QtGui.QFont("Times", 12, QtGui.QFont.Bold)
         self.chords_font_metrics = QtGui.QFontMetrics(self.chords_font)
@@ -1221,7 +1228,8 @@ class App:
 
         #the scale font at first is 1, no change
         self.zoom_factor = 1.0
-    
+        
+        self.updateStates()
     
     def __del__(self):
         pass
@@ -1397,6 +1405,11 @@ class App:
         
         self.ui.export_pdf_button.setEnabled( len(selected_song_ids) > 0 )
         self.ui.export_text_button.setEnabled( len(selected_song_ids) == 1 )
+        
+        # Whether there is an open songbook:
+        db_open = (self.curs != None)
+        self.ui.import_text_button.setEnabled(db_open)
+        self.ui.new_song_button.setEnabled(db_open)
         
             
     
@@ -2324,7 +2337,7 @@ class App:
         db_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save songbook as:",
                     QtCore.QDir.home().path(), # initial dir
-                    "Songbook format (*.sqlite)",
+                    "Songbook format (*.songbook)",
         )
         if db_file:
             # Overwrite a previous songbook (if any):
@@ -2336,20 +2349,20 @@ class App:
 
             self.curs.execute("CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)")
             self.curs.execute("CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, key_note_id INTEGER, key_is_major INTEGER)")
-            self.setCurrentDatabase( unicode(db_file) )
+            self.setCurrentSongbook( unicode(db_file) )
         
     
     def openSongbook(self):
         db_file = QtGui.QFileDialog.getOpenFileName(self.ui,
                 "Select a songbook to open",
                 QtCore.QDir.home().path(), # initial dir
-                "Songbook format (*.sqlite)",
+                "Songbook format (*.songbook)",
         )
         if db_file:
-            self.setCurrentDatabase( unicode(db_file) )
+            self.setCurrentSongbook( unicode(db_file) )
     
     def closeSongbook(self):
-        self.setCurrentDatabase(None)
+        self.setCurrentSongbook(None)
 
 
 
