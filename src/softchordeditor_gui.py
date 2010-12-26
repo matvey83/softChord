@@ -1783,7 +1783,10 @@ class App:
         song_title = ""
         
         row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
-        id = row[0] + 1
+        if row[0] == None:
+            id = 0
+        else:
+            id = row[0] + 1
         
         out = self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
                         'VALUES (%i, %i, "%s", "%s")' % (id, song_number, song_text, song_title))
@@ -2281,7 +2284,22 @@ class App:
 
 
     def newSongbook(self):
-        self.error("Not implemented yet")
+        db_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+                    "Save songbook as:",
+                    QtCore.QDir.home().path(), # initial dir
+                    "Songbook format (*.sqlite)",
+        )
+        if db_file:
+            # Overwrite a previous songbook (if any):
+            if os.path.isfile(db_file):
+                os.remove(db_file)
+
+            # Open an empty satabase:
+            self.curs = sqlite3.connect(unicode(db_file))
+
+            self.curs.execute("CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)")
+            self.curs.execute("CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, key_note_id INTEGER, key_is_major INTEGER)")
+            self.setCurrentDatabase( unicode(db_file) )
         
     
     def openSongbook(self):
