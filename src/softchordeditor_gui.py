@@ -1105,7 +1105,7 @@ class App:
         else:
             #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(filename)))
             self.curs = sqlite3.connect(filename)
-        self.current_song = None
+        self.setCurrentSong(None)
         self.updateFromDatabase()
         self.updateStates()
     
@@ -1150,18 +1150,6 @@ class App:
             self.songsSelectionChangedCallback )
         
 
-        default_db_file1 = os.path.join( exec_dir, "solo_and_group_songs.songbook")
-        default_db_file2 = os.path.join( exec_dir, "song_database.sqlite" )
-        if os.path.isfile(default_db_file1):
-            self.setCurrentSongbook(default_db_file1)
-        elif os.path.isfile(default_db_file2):
-            self.setCurrentSongbook(default_db_file2)
-        else:
-            self.setCurrentSongbook(None)
-        
-        self.updateFromDatabase()
-        
-        self.ignore_song_text_changed = False
         self.previous_song_text = None # Song text before last user's edit operation
         self.ui.song_text_edit.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
         self.c( self.ui.song_text_edit, "textChanged()", self.songTextChanged )
@@ -1207,9 +1195,9 @@ class App:
         self.c( self.ui.comboTextSize, "currentIndexChanged(QString)", self.comboTextSizeChanged)
         self.ui.comboTextSize.setCurrentIndex(3) # 80%
         
+        self.ignore_song_text_changed = False
         
-        self.populateSongKeyMenu()
-
+        
         # The letter/chord that is currently selected:
         self.selected_char_num = None
         # The letter/chord that is currently hover (mouse hoveing over it):
@@ -1229,8 +1217,23 @@ class App:
         #the scale font at first is 1, no change
         self.zoom_factor = 1.0
         
+        self.populateSongKeyMenu()
+        
+        default_db_file1 = os.path.join( exec_dir, "solo_and_group_songs.songbook")
+        default_db_file2 = os.path.join( exec_dir, "song_database.sqlite" )
+        if os.path.isfile(default_db_file1):
+            self.setCurrentSongbook(default_db_file1)
+        elif os.path.isfile(default_db_file2):
+            self.setCurrentSongbook(default_db_file2)
+        else:
+            self.setCurrentSongbook(None)
+        
+        self.updateFromDatabase()
+        
         self.updateStates()
     
+
+
     def __del__(self):
         pass
     
@@ -1397,19 +1400,33 @@ class App:
             self.ui.song_num_ef.setText("")
             self.ui.song_key_menu.setCurrentIndex(0) # None
         
+        num_selected = len(selected_song_ids)        
+        
         self.ui.song_text_edit.setEnabled( self.current_song != None )
         self.ui.song_title_ef.setEnabled( self.current_song != None )
         self.ui.song_num_ef.setEnabled( self.current_song != None )
         self.ui.song_key_menu.setEnabled( self.current_song != None )
-        self.ui.delete_song_button.setEnabled( len(selected_song_ids) > 0 )
         
-        self.ui.export_pdf_button.setEnabled( len(selected_song_ids) > 0 )
-        self.ui.export_text_button.setEnabled( len(selected_song_ids) == 1 )
+        self.ui.delete_song_button.setEnabled( num_selected > 0 )
+        self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )        
         
+        self.ui.export_pdf_button.setEnabled( num_selected > 0 )
+        self.ui.actionExportPdf.setEnabled( num_selected > 0 )
+        
+        self.ui.export_text_button.setEnabled( num_selected == 1 )
+        self.ui.actionExportText.setEnabled( num_selected == 1 )
+        
+        self.ui.actionPrint.setEnabled( num_selected == 1 )
+
         # Whether there is an open songbook:
         db_open = (self.curs != None)
         self.ui.import_text_button.setEnabled(db_open)
+        self.ui.actionImportText.setEnabled(db_open)
+        
         self.ui.new_song_button.setEnabled(db_open)
+        self.ui.actionNewSong.setEnabled(db_open)
+        
+        self.ui.actionCloseSongbook.setEnabled(db_open)
         
             
     
@@ -1419,28 +1436,35 @@ class App:
         Reads all song info from the database.
         """
         
-        self.current_song = Song(self, song_id)
-        self.populateSongKeyMenu()
-        
-        if not self.ignore_song_text_changed:
-            self.ignore_song_text_changed = True
-            song_text = self.current_song.getAllText()
-            self.ui.song_text_edit.setPlainText(song_text)
-            self.ignore_song_text_changed = False
-            self.previous_song_text = song_text
-        
-        if self.current_song.key_note_id == -1:
+        if song_id == None:
+            self.current_song = None
+            self.previous_song_text = None
             self.ui.song_key_menu.setCurrentIndex( 0 )
-        else:
-            self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major + 1)
-
-        self.ui.song_title_ef.setText(self.current_song.title)
-        if self.current_song.number == -1:
             self.ui.song_num_ef.setText("")
+            self.resizePrintWidget()
         else:
-            self.ui.song_num_ef.setText( str(self.current_song.number) )
+            self.current_song = Song(self, song_id)
+            self.populateSongKeyMenu()
         
+            if not self.ignore_song_text_changed:
+                self.ignore_song_text_changed = True
+                song_text = self.current_song.getAllText()
+                self.ui.song_text_edit.setPlainText(song_text)
+                self.ignore_song_text_changed = False
+                self.previous_song_text = song_text
+            
+            if self.current_song.key_note_id == -1:
+                self.ui.song_key_menu.setCurrentIndex( 0 )
+            else:
+                self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major + 1)
 
+            self.ui.song_title_ef.setText(self.current_song.title)
+            if self.current_song.number == -1:
+                self.ui.song_num_ef.setText("")
+            else:
+                self.ui.song_num_ef.setText( str(self.current_song.number) )
+            
+        self.print_widget.repaint()
 
 
     def _transposeCurrentSong(self, steps):
