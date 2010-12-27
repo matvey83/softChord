@@ -25,7 +25,6 @@ import copy
 
 
 
-
 chord_types_list = [
   (0, u"Major", u""),
   (1, u"Minor", u"m"),
@@ -279,7 +278,7 @@ class SongChord:
         #for (note_text, note_alt_text) in self.app.notes_list[note_id]:
         note_text, note_alt_text = self.app.notes_list[note_id]
 
-        if self.song.sharpsOrFlats() == 1:
+        if self.song.preferSharps():
             return note_text
         else:
             return note_alt_text
@@ -313,24 +312,13 @@ class SongChord:
 
 
 
-class TempSongLine:
-    def __init__(self):
-        self.text = ""
-        self.chords = []
-
-
-class SongLineWithHeights:
-    def __init__(self, song, text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom):
+class SongLine:
+    def __init__(self, song, text, chords):
         self.song = song
-        self.linenum = linenum
         self.text = text
-
-        self.chords_top = chords_top
-        self.chords_bottom = chords_bottom
-        self.lyrics_top = lyrics_top
-        self.lyrics_bottom = lyrics_bottom
+        self.chords = chords
     
-
+    
     def iterateCharacters(self):
         # Figure out which cord corresponds to which character:
         
@@ -338,11 +326,9 @@ class SongLineWithHeights:
         line_end_char_num = line_start_char_num + len(self.text)
         
         char_num_chord_dict = {}
-        for chord in self.song.iterateOverAllChords():
-            song_char_num = chord.character_num
-            if song_char_num >= line_start_char_num and song_char_num <= line_end_char_num:
-                line_char_num = song_char_num - line_start_char_num
-                char_num_chord_dict[line_char_num] = chord
+        for chord in self.chords:
+            line_char_num = chord.character_num - line_start_char_num
+            char_num_chord_dict[line_char_num] = chord
         
         for line_char_num, char_text in enumerate(self.text):
             # Figure out the y position where the letter should be drawn:
@@ -389,6 +375,8 @@ class Song:
     def __init__(self, app, song_id):
         self.app = app
         self.id = song_id
+        self._lines = []
+        self.prefer_sharps = True
         
         for row in self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
             self.title = row[0]
@@ -476,10 +464,10 @@ class Song:
         self._lines = []
         prev_line_bottom = 0
         for linenum, line_text in enumerate(lines_list):
-            line = TempSongLine()
-            line.text = line_text
-            line.chords = chords_by_line.get(linenum, [])
+            line_chords = chords_by_line.get(linenum, [])
+            line = SongLine(self, line_text, line_chords)
             self._lines.append(line)
+        self.updateSharpsOrFlats()
         
         
     
@@ -494,12 +482,14 @@ class Song:
         chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
         tmp_line = self._lines[chord_linenum]
         tmp_line.chords.append(chord)
+        self.updateSharpsOrFlats()
     
     
     def deleteChord(self, chord):
         for tmp_line in self._lines:
             if chord in tmp_line.chords:
                 tmp_line.chords.remove(chord)
+        self.updateSharpsOrFlats()
     
     def getAllText(self):
         #return "\n".join( [line.text for line in self._lines ] )
@@ -593,6 +583,7 @@ class Song:
         """
         
         song_text = unicode()
+        self.updateSharpsOrFlats()
         
         for linenum, line in enumerate(self._lines):
             line_text = unicode(line.text)
@@ -714,25 +705,23 @@ class Song:
         self.addChord(new_chord)
        
             
-    def sharpsOrFlats(self):
+    def updateSharpsOrFlats(self):
+        
+        num_prefer_sharp = 0
+        num_prefer_flat = 0
+        for chord in self.iterateOverAllChords():
+            if chord.note_id in [1, 6]: # C# or F#
+                num_prefer_sharp += 1
+            elif chord.note_id in [3, 10]: # Eb or Bb
+                num_prefer_flat += 1
+        return int(num_prefer_sharp >= num_prefer_flat)
+    
+    def preferSharps(self):
         """
         Returns 0 if "flat" versions of the chord should be printed,
         and returns 1 if "sharp" versions of the chords should be printed
         """
-        
-        num_prefer_sharp = 0
-        num_prefer_flat = 0
-        for row in self.app.curs.execute("SELECT note_id FROM song_chord_link WHERE song_id=%i" % self.id):
-            note_id = row[0]
-            if note_id in [1, 6]: # C# or F#
-                num_prefer_sharp += 1
-            elif note_id in [3, 10]: # Eb or Bb
-                num_prefer_flat += 1
-        
-        if num_prefer_flat > num_prefer_sharp:
-            return 0 # flat
-        else:
-            return 1 # sharp
+        return int(self.prefer_sharps)
 
 
     def iterateOverLines(self):
@@ -744,9 +733,14 @@ class Song:
             lyrics_bottom = chords_top + line_height
             lyrics_top = lyrics_bottom - lyrics_height
             prev_line_bottom = lyrics_bottom
-            line = SongLineWithHeights(self, tmp_line.text, linenum, chords_top, chords_bottom, lyrics_top, lyrics_bottom)
-            yield line
-        
+            
+            tmp_line.linenum = linenum
+            tmp_line.chords_top = chords_top
+            tmp_line.chords_bottom = chords_bottom
+            tmp_line.lyrics_top = lyrics_top
+            tmp_line.lyrics_bottom = lyrics_bottom
+            yield tmp_line
+
             
     def getWidthHeight(self):
         """
@@ -1986,7 +1980,7 @@ class App:
         hover_brush = QtGui.QColor("light grey")
         
         #print 'drawSongToRect()'
-        sys.stdout.flush()
+        #sys.stdout.flush()
         
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
@@ -2006,7 +2000,7 @@ class App:
                 # Do not make songs any bigger
                 scale_ratio = 1.0
         
-        painter.scale(scale_ratio, scale_ratio)
+        #painter.scale(scale_ratio, scale_ratio)
         
         for line in song.iterateOverLines():
             for char in line.iterateCharacters():
@@ -2027,7 +2021,7 @@ class App:
                 
                 # Draw this lyric character:
                 painter.setFont(self.lyrics_font)
-		painter.setPen(self.lyrics_color)
+                painter.setPen(self.lyrics_color)
                 painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
                 
                 # Draw this chord (if any):
@@ -2036,14 +2030,13 @@ class App:
                     painter.setPen(self.chords_color)
                     painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
         
-        
         # Redo the effect of scaling:
-        painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
+        #painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
         
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
         #print '  end drawSongToRect()'
-        sys.stdout.flush()
+        #sys.stdout.flush()
         
     
     def determineClickedLetter(self, x, y, dragging):
