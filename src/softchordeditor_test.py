@@ -34,7 +34,7 @@ class SoftChordEditorTest(unittest.TestCase):
         self.assertEqual( app.songs_model.rowCount(), prev_rows )
         
         # Import the test song:
-        song_file = "test_song.txt"
+        song_file = "test_тест_song.txt"
         app.importFromText(song_file)
         
         self.assertEqual( app.songs_model.rowCount(), prev_rows+1 )
@@ -57,7 +57,7 @@ class SoftChordEditorTest(unittest.TestCase):
         # Compare the lines:
         orig_lines = open(song_file).readlines()
         self.assertEqual(lines, orig_lines)
-        os.remove(out_song_file)
+        #os.remove(out_song_file)
         
 
         # Test export to PDF:
