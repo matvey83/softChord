@@ -197,6 +197,12 @@ class SongsTableModel(QtCore.QAbstractTableModel):
         """
         return self._data[row][0]
 
+    def getSongsRow(self, song):
+        for i, row in enumerate(self._data):
+            if row[0] == song.id:
+                return i
+        raise ValueError("No such song in the model")
+        
 
 class SongsProxyModel(QtGui.QSortFilterProxyModel):
     """ 
@@ -1339,7 +1345,7 @@ class App:
         
         if add_new:
             chord_type_id = 0 # Major
-            chord = SongChord(self, self.selected_char_num, note_id, chord_type_id, -1, "", False)
+            chord = SongChord(self.current_song, self.selected_char_num, note_id, chord_type_id, -1, "", False)
             self.current_song.addChord(chord)
         else:
             if chord.note_id == note_id:
@@ -1854,8 +1860,15 @@ class App:
                 self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
                 self.curs.commit()
                 
+                selected_row_num = self.songs_model.getSongsRow(self.current_song)
+                
                 # Update the song table from database:
                 self.updateFromDatabase()
+                
+                # Re-select this song:
+                source_index = self.songs_model.index(selected_row_num, 0)
+                proxy_index = self.songs_proxy_model.mapFromSource(source_index)
+                self.ui.songs_view.selectRow(proxy_index.row())
             finally:
                 self.restoreCursor()
         
@@ -1933,10 +1946,9 @@ class App:
         self.updateFromDatabase()
         
         # Select the newly added song:
-        # FIXME
-        #source_index = self.songs_model.index(self.songs_modw
-        #index = self.songs_proxy_model.mapToSource(index)
-        self.ui.songs_view.selectRow( self.songs_model.rowCount()-1 )
+        source_index = self.songs_model.index(self.songs_model.rowCount() - 1, 0)
+        proxy_index = self.songs_proxy_model.mapFromSource(source_index)
+        self.ui.songs_view.selectRow(proxy_index.row())
         self.updateCurrentSongFromDatabase()
     
 
@@ -2148,19 +2160,8 @@ class App:
                     
                     # "rU" makes sure that the line endings are handled properly:
                     
-                    #text = open( unicode(filename).encode('utf-8'), 'rU' ).read()
-                    text = codecs.open( unicode(text_file).encode('utf-8'), 'rU', encoding='utf_8_sig').read()
-                    """
-                    # Decode UTF-8 into Unicode:
-                    try:
-                        text = text.decode('utf-8')
-                    except UnicodeDecodeError:
-                        try:
-                            text = text.decode('cp1251')
-                        except UnicodeDecodeError:
-                            print "ERROR: Could not decode the song text"
-                            raise
-                    """
+                    text = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig').read()
+                    
                     self.importSongFromText(text, song_title)
             finally:
                 self.restoreCursor()
