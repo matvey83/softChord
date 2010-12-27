@@ -519,6 +519,7 @@ class Song:
         
         if self._lines[linenum].chords:
             chords_height = self.app.chords_font_metrics.height()
+            #line_height = (lyrics_height + chords_height)
             line_height = (lyrics_height + chords_height) * 0.9 # So that there is less spacing between the chords and the text
             #line_height = lyrics_height + chords_height - self.app.lyrics_font_metrics.leading() - self.app.chords_font_metrics.leading() # So that there is less spacing between the chords and the text
         else:
@@ -2000,7 +2001,7 @@ class App:
                 # Do not make songs any bigger
                 scale_ratio = 1.0
         
-        #painter.scale(scale_ratio, scale_ratio)
+        painter.scale(scale_ratio, scale_ratio)
         
         for line in song.iterateOverLines():
             for char in line.iterateCharacters():
@@ -2022,16 +2023,19 @@ class App:
                 # Draw this lyric character:
                 painter.setFont(self.lyrics_font)
                 painter.setPen(self.lyrics_color)
-                painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
+                #painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
+                #painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, char.text)
+                painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, char.text)
                 
                 # Draw this chord (if any):
                 if char.has_chord:
                     painter.setFont(self.chords_font)
                     painter.setPen(self.chords_color)
-                    painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
+                    #painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
+                    painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, char.chord.chord_text)
         
         # Redo the effect of scaling:
-        #painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
+        painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
         
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
