@@ -330,13 +330,15 @@ class SongLine:
             line_char_num = chord.character_num - line_start_char_num
             char_num_chord_dict[line_char_num] = chord
         
+        prev_char_y = 0
         for line_char_num, char_text in enumerate(self.text):
             # Figure out the y position where the letter should be drawn:
             song_char_num = line_char_num + line_start_char_num
             
-            char_left = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num] )
-            
-            char_right = self.song.app.lyrics_font_metrics.width( self.text[:line_char_num+1] )
+            # Optimization:
+            char_left = prev_char_y
+            char_right = char_left + self.song.app.lyrics_font_metrics.width( self.text[line_char_num] )
+            prev_char_y = char_right            
             
             chord = char_num_chord_dict.get(line_char_num)
             if chord:
