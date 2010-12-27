@@ -491,6 +491,18 @@ class Song:
                 tmp_line.chords.remove(chord)
         self.updateSharpsOrFlats()
     
+    def moveChord(self, chord, new_song_char_num):
+        new_chord_linenum, new_line_char_num = self.songCharToLineChar(new_song_char_num)
+        for linenum, tmp_line in enumerate(self._lines):
+            if chord in tmp_line.chords:
+                chord.character_num = new_song_char_num
+                if new_chord_linenum != linenum:
+                    # Chord moved to another line                
+                    tmp_line.chords.remove(chord)
+                    self.addChord(chord)
+                break
+
+    
     def getAllText(self):
         #return "\n".join( [line.text for line in self._lines ] )
         
@@ -867,7 +879,7 @@ class PrintWidget(QtGui.QWidget):
                             self.app.current_song.copyChord(self.dragging_chord, self.dragging_chord_orig_position, copy=True)
                             self.copying_chord = True
                     
-                    self.dragging_chord.character_num = song_char_num
+                    self.app.current_song.moveChord(self.dragging_chord, song_char_num)
                     
                     # Show hover feedback on the new letter:
                     self.app.hover_char_num = song_char_num
@@ -1204,10 +1216,10 @@ class App:
         # The letter/chord that is currently hover (mouse hoveing over it):
         self.hover_char_num = None
         
-        self.lyrics_font = QtGui.QFont("Times", 16)
+        self.lyrics_font = QtGui.QFont("Times New Roman", 18)
         self.lyrics_color = QtGui.QColor("BLACK")
         self.lyrics_font_metrics = QtGui.QFontMetrics(self.lyrics_font)
-        self.chords_font = QtGui.QFont("Times", 12, QtGui.QFont.Bold)
+        self.chords_font = QtGui.QFont("Times New Roman", 14, QtGui.QFont.Bold)
         self.chords_font_metrics = QtGui.QFontMetrics(self.chords_font)
         self.chords_color = QtGui.QColor("DARK BLUE")
         self.ui.song_text_edit.setFont(self.lyrics_font)
@@ -1965,6 +1977,7 @@ class App:
             # Clear the selection:
             self.ui.songs_view.selectionModel().clearSelection()
             self.current_song = None
+            self.print_widget.repaint()
         finally:
             self.restoreCursor()
     
@@ -2020,19 +2033,21 @@ class App:
                             painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, selection_brush)
                 
                 
-                # Draw this lyric character:
-                painter.setFont(self.lyrics_font)
-                painter.setPen(self.lyrics_color)
-                #painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop, char.text)
-                #painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, char.text)
-                painter.drawText(char.char_left, line.lyrics_top, char.char_right, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, char.text)
-                
                 # Draw this chord (if any):
                 if char.has_chord:
                     painter.setFont(self.chords_font)
                     painter.setPen(self.chords_color)
                     #painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
                     painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, char.chord.chord_text)
+                    #painter.drawText(char.chord_left, line.chords_bottom, char.chord.chord_text)
+            
+            # Draw this line:
+            painter.setFont(self.lyrics_font)
+            painter.setPen(self.lyrics_color)
+            painter.drawText(0, line.lyrics_top, 10000, line.lyrics_bottom-line.lyrics_top, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, line.text)
+            #painter.drawText(0, line.lyrics_bottom, line.text)
+            
+            # Draw this chord (if any):
         
         # Redo the effect of scaling:
         painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
