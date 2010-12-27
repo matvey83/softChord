@@ -1288,7 +1288,8 @@ class App:
         if key == Qt.Key_Delete or key == Qt.Key_Backspace:
             self.deleteSelectedChord()
         else:
-            self._orig_keyPressEvent(event)
+            if not self.processKeyPressed(key):
+                self._orig_keyPressEvent(event)
     
 
     def deleteSelectedChord(self):
@@ -1304,7 +1305,67 @@ class App:
             
             self.current_song.sendToDatabase()
             self.print_widget.repaint()
+    
+    def processKeyPressed(self, key):
+        """
+        """
+        
+        if self.selected_char_num == None:
+            return False
+        
+        key_note_dict = {
+            Qt.Key_C : 0,
+            Qt.Key_D : 2,
+            Qt.Key_E : 4,
+            Qt.Key_F : 5,
+            Qt.Key_G : 7,
+            Qt.Key_A : 9,
+            Qt.Key_B : 11,
+        }
+        note_id = key_note_dict.get(key)
+        if note_id == None:
+            return False        
+        
+        #print 'note id:', note_id
+        
+        # Check whether we are editing an existing chord or adding a new one:
+        add_new = True
+        chord = None
+        for iter_chord in self.current_song.iterateOverAllChords():
+            if iter_chord.character_num == self.selected_char_num:
+                add_new = False
+                chord = iter_chord
+                break
+        
+        if add_new:
+            chord_type_id = 0 # Major
+            chord = SongChord(self, self.selected_char_num, note_id, chord_type_id, -1, "", False)
+            self.current_song.addChord(chord)
+        else:
+            if chord.note_id == note_id:
+                # Key of the current chord note was pressed, reverse Major/minor:
+                if chord.chord_type_id == 0:
+                    chord.chord_type_id = 1
+                else:
+                    chord.chord_type_id = 0
+            else:
+                # A different note, change to <note> major:
+                chord.note_id = note_id
+                chord.chord_type_id = 0
+                chord.marker = ""
+                chord.in_parentheses = False
+        
+        self.current_song.sendToDatabase()
+        
+        # Update the current song from the database:
+        self.updateCurrentSongFromDatabase()
+        
+        self.print_widget.repaint()
+                
 
+
+        
+    
 
     def warning(self, text):
         """ Display a warning dialog box with the given text """
