@@ -10,6 +10,7 @@ Development started in 10 December 2010
 
 # NOTE The sqlite3 is intentionally used instead of QtSql.
 
+# These are imported for Python 3 compatability:
 # Use Unicode for all strings:
 from __future__ import unicode_literals
 
@@ -122,6 +123,10 @@ def tr(text):
 
 
 def transpose_note(note_id, steps):
+    """
+    Transpose the given note ID up by <steps>.
+    Returns the transposed note ID.
+    """
     note_id += steps
 
     if note_id < 0:
@@ -256,8 +261,13 @@ class SongChord:
         if in_parentheses == None:
             in_parentheses = 0
         self.in_parentheses = in_parentheses
-        
+    
+        self.updateChordString()
+    
+
+    def updateChordString(self):    
         self.chord_text = self._getChordString()
+    
 
 
     def transpose(self, steps):
@@ -268,7 +278,9 @@ class SongChord:
         self.note_id = transpose_note(self.note_id, steps)
         if self.bass_note_id != -1:
             self.bass_note_id = transpose_note(self.bass_note_id, steps)
+        self.updateChordString()
     
+
     def _getNoteString(self, note_id):
         """
         Returns the specified note as a string, using sharps vs flats
@@ -665,9 +677,11 @@ class Song:
         if self.key_note_id != -1:
             self.key_note_id = transpose_note(self.key_note_id, steps)
         
+        self.updateSharpsOrFlats()
+        
         self.sendToDatabase()
-        # Update the current song from the database:
-        self.app.updateCurrentSongFromDatabase()
+        
+        self.app.print_widget.repaint()
         
 
     def sendToDatabase(self):
@@ -1121,7 +1135,7 @@ class App:
             #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(filename)))
             self.curs = sqlite3.connect(filename)
         self.setCurrentSong(None)
-        self.updateFromDatabase()
+        self.songs_model.updateFromDatabase()
         self.updateStates()
     
     def __init__(self):
@@ -1243,7 +1257,7 @@ class App:
         else:
             self.setCurrentSongbook(None)
         
-        self.updateFromDatabase()
+        self.songs_model.updateFromDatabase()
         
         self.updateStates()
     
@@ -1275,23 +1289,6 @@ class App:
         self.ignore_song_key_changed = False
         
         self.ui.song_key_menu.setEnabled( bool(self.current_song) )
-        
-    
-    def updateFromDatabase(self):
-        """
-        Re-create the songs model to re-read it from the database.
-        """
-        
-        selected_row_indecies = self.ui.songs_view.selectionModel().selectedRows()
-        
-        self.songs_model.updateFromDatabase()
-        
-        # Make the row heights smaller:
-        self.ui.songs_view.resizeRowsToContents()
-        
-        for index in selected_row_indecies:
-            self.ui.songs_view.selectRow(index.row())
-            break
         
     
     
@@ -1373,7 +1370,7 @@ class App:
         self.current_song.sendToDatabase()
         
         # Update the current song from the database:
-        self.updateCurrentSongFromDatabase()
+        #self.updateCurrentSongFromDatabase()
         
         self.print_widget.repaint()
                 
@@ -1872,7 +1869,7 @@ class App:
                 selected_row_num = self.songs_model.getSongsRow(self.current_song)
                 
                 # Update the song table from database:
-                self.updateFromDatabase()
+                self.songs_model.updateFromDatabase()
                 
                 # Re-select this song:
                 source_index = self.songs_model.index(selected_row_num, 0)
@@ -1899,8 +1896,18 @@ class App:
                 self.curs.commit()
                 # self.current_song.sendToDatabase()
                 
+                # Save the selection:
+                selected_row_num = self.songs_model.getSongsRow(self.current_song)
+                
                 # Update the song table from database:
-                self.updateFromDatabase()
+                self.songs_model.updateFromDatabase()
+                
+                # Re-select this song:
+                source_index = self.songs_model.index(selected_row_num, 0)
+                proxy_index = self.songs_proxy_model.mapFromSource(source_index)
+                self.ui.songs_view.selectRow(proxy_index.row())
+            finally:
+                self.restoreCursor()
         
     
     def currentSongKeyChanged(self, new_key_index):
@@ -1952,7 +1959,7 @@ class App:
         self.curs.commit()
         
         # Update the song table from database:
-        self.updateFromDatabase()
+        self.songs_model.updateFromDatabase()
         
         # Select the newly added song:
         source_index = self.songs_model.index(self.songs_model.rowCount() - 1, 0)
@@ -1963,6 +1970,9 @@ class App:
 
 
     def deleteSelectedSong(self):
+        """
+        Deletes the selected song(s).
+        """
         self.setWaitCursor()
         try:
             selected_song_ids = self.getSelectedSongIds()
@@ -1974,7 +1984,7 @@ class App:
             self.curs.commit()
             
             # Update the song table from database:
-            self.updateFromDatabase()
+            self.songs_model.updateFromDatabase()
             
             # Clear the selection:
             self.ui.songs_view.selectionModel().clearSelection()
@@ -1997,6 +2007,7 @@ class App:
         
         #print 'drawSongToRect()'
         #sys.stdout.flush()
+        
         
         # Go to songs's reference frame:
         painter.translate(rect.left(), rect.top())
@@ -2125,7 +2136,7 @@ class App:
             self.current_song.sendToDatabase()
             
             # Update the current song from the database:
-            self.updateCurrentSongFromDatabase()
+            #self.updateCurrentSongFromDatabase()
             
             self.print_widget.repaint()
                 
@@ -2180,6 +2191,7 @@ class App:
             finally:
                 self.restoreCursor()
     
+
     def importSongFromText(self, input_text, song_title):
         """
         Adds the song specified with the given text to the database.
@@ -2348,7 +2360,7 @@ class App:
         self.curs.commit()
         
         # Update the song table from database:
-        self.updateFromDatabase()
+        self.songs_model.updateFromDatabase()
         
         # FIXME #index = self.songs_proxy_model.mapToSource(index)
         self.ui.songs_view.selectRow( self.songs_model.rowCount()-1 )
