@@ -1420,15 +1420,19 @@ class App:
                 break
         
         if add_new:
+            #print 'new'
             chord_type_id = 0 # Major
             chord = SongChord(self.current_song, self.selected_char_num, note_id, chord_type_id, -1, "", False)
             self.current_song.addChord(chord)
         else:
+            #print 'edit'
             if chord.note_id == note_id:
                 # Key of the current chord note was pressed, reverse Major/minor:
                 if chord.chord_type_id == 0:
+                    #print 'changed to minor'
                     chord.chord_type_id = 1
                 else:
+                    #print 'changed to major'
                     chord.chord_type_id = 0
             else:
                 # A different note, change to <note> major:
@@ -1436,12 +1440,17 @@ class App:
                 chord.chord_type_id = 0
                 chord.marker = ""
                 chord.in_parentheses = False
+            chord.updateChordString()
         
-        #self.current_song.sendToDatabase()
+        # FIXME
+        
         self.current_song.changed()
+
+        #self.current_song.sendToDatabase()
         
         self.print_widget.repaint()
-                
+        return True
+        
     
     def undo(self):
         print 'undo'
