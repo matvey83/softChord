@@ -272,12 +272,6 @@ class SongChord:
             in_parentheses = 0
         self.in_parentheses = in_parentheses
     
-        self.updateChordString()
-    
-
-    def updateChordString(self):    
-        self.chord_text = self._getChordString()
-    
 
 
     def transpose(self, steps):
@@ -288,7 +282,6 @@ class SongChord:
         self.note_id = transpose_note(self.note_id, steps)
         if self.bass_note_id != -1:
             self.bass_note_id = transpose_note(self.bass_note_id, steps)
-        self.updateChordString()
     
 
     def _getNoteString(self, note_id):
@@ -305,7 +298,7 @@ class SongChord:
         else:
             return note_alt_text
         
-    def _getChordString(self):
+    def getChordText(self):
         """
         Returns string of the chord.
         For example, "Fm" or "Bbsus4"
@@ -366,7 +359,7 @@ class SongLine:
             if chord:
                 # Figure out the chord's y position range:
                 chord_middle = (char_left + char_right) // 2 # Average of left and right
-                chord_width = self.song.app.chords_font_metrics.width(chord.chord_text)
+                chord_width = self.song.app.chords_font_metrics.width(chord.getChordText())
                 chord_left = chord_middle - (chord_width//2)
                 chord_right = chord_middle + (chord_width//2)
             else:
@@ -417,6 +410,7 @@ class Song:
         self.key_is_major = 0
 
         self.updateSongFromDatabase()
+        self.updateSharpsOrFlats()
     
     def updateSongFromDatabase(self):
         
@@ -460,6 +454,7 @@ class Song:
         line_start_offset = 0
         
         lines_list = []
+        self.updateSharpsOrFlats()
         
         line_start_char = 0
         exit = False
@@ -509,7 +504,6 @@ class Song:
             line_chords = chords_by_line.get(linenum, [])
             line = SongLine(self, line_text, line_chords)
             self._lines.append(line)
-        self.updateSharpsOrFlats()
         
         
     
@@ -662,7 +656,9 @@ class Song:
                         if chord_linenum != linenum:
                             continue
                         
-                        chord_len = len(chord.chord_text)
+                        chord_text = chord.getCordText()
+                        
+                        chord_len = len(chord_text)
                         chord_left = line_char_num - (chord_len//2)
                         if not (chord_len % 2): # Even number of characters:
                             # Offset the chord so that the chord-letter is closer to the middle of the chord text
@@ -680,9 +676,9 @@ class Song:
                             chord_left -= 1
                         
                         # For each letter in the chord text:
-                        for i in range(len(chord.chord_text)):
+                        for i in range(len(chord_text)):
                             pos = i + chord_left
-                            line_chord_text_list[pos] = chord.chord_text[i]
+                            line_chord_text_list[pos] = chord_text[i]
 
 
             
@@ -720,7 +716,7 @@ class Song:
         Save this song to the database.
         """
         
-        print 'sendToDatabase'
+        #print 'sendToDatabase'
 
         self.app.setWaitCursor()
         try:
@@ -777,14 +773,15 @@ class Song:
                 num_prefer_sharp += 1
             elif chord.note_id in [3, 10]: # Eb or Bb
                 num_prefer_flat += 1
-        return int(num_prefer_sharp >= num_prefer_flat)
+        #print 'num prefer sharp, flat:', num_prefer_sharp, num_prefer_flat
+        self.prefer_sharps = (num_prefer_sharp >= num_prefer_flat)
     
     def preferSharps(self):
         """
-        Returns 0 if "flat" versions of the chord should be printed,
-        and returns 1 if "sharp" versions of the chords should be printed
+        Returns False if "flat" versions of the chord should be printed,
+        and returns True if "sharp" versions of the chords should be printed
         """
-        return int(self.prefer_sharps)
+        return self.prefer_sharps
 
 
     def iterateOverLines(self):
@@ -2152,8 +2149,7 @@ class App:
                 if char.has_chord:
                     painter.setFont(self.chords_font)
                     painter.setPen(self.chords_color)
-                    #painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignBottom, char.chord.chord_text)
-                    painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, char.chord.chord_text)
+                    painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, char.chord.getChordText())
                     #painter.drawText(char.chord_left, line.chords_bottom, char.chord.chord_text)
             
             # Draw this line:
