@@ -1302,8 +1302,8 @@ class App:
         
         self.populateSongKeyMenu()
         
-        default_db_file1 = os.path.join( exec_dir, "solo_and_group_songs.songbook")
-        default_db_file2 = os.path.join( exec_dir, "song_database.sqlite" )
+        default_db_file1 = os.path.join( exec_dir, "zvuki_neba.songbook" )
+        default_db_file2 = os.path.join( exec_dir, "solo_and_group_songs.songbook")
         if os.path.isfile(default_db_file1):
             self.setCurrentSongbook(default_db_file1)
         elif os.path.isfile(default_db_file2):
