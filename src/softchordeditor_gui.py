@@ -111,8 +111,18 @@ paper_sizes_list = [
 
 
 
+"""
+class AddCommand( QtGui.QUndoCommand ):
+    def __init__(self, item, position):
+        self.parent = 0
+    
+    def undo(self):
+        
+    
+    def redo(self):
 
 
+"""
 
 
 def tr(text):
@@ -386,13 +396,31 @@ class Song:
     """
     Stores information for a particular song.
     """
+    def copy(self):
+        song_copy = copy.copy(self)
+        
+        song_text = self.getAllText()
+        song_chords = list( self.iterateOverAllChords() )
+        song_copy.setAllText(song_text, song_chords)
+        
+        return song_copy
+    
+    
     def __init__(self, app, song_id):
         self.app = app
         self.id = song_id
         self._lines = []
+        self.number = -1
+        self.title = ""
         self.prefer_sharps = True
+        self.key_note_id = -1
+        self.key_is_major = 0
+
+        self.updateSongFromDatabase()
+    
+    def updateSongFromDatabase(self):
         
-        for row in self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % song_id):
+        for row in self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % self.id):
             self.title = row[0]
             self.number = row[1]
             all_text = unicode(row[2])
@@ -405,7 +433,7 @@ class Song:
             break
         
         song_chords = []
-        for row in self.app.curs.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % song_id):
+        for row in self.app.curs.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % self.id):
             id = row[0]
             song_char_num = row[1]
             note_id = row[2]
@@ -679,21 +707,20 @@ class Song:
         
         self.updateSharpsOrFlats()
         
-        self.sendToDatabase()
-        
-        self.app.print_widget.repaint()
-        
+        #self.sendToDatabase()
+        self.changed()
 
+        self.app.print_widget.repaint()
+    
+    def changed(self):
+        self.app.enableUndo()
+    
     def sendToDatabase(self):
         """
         Save this song to the database.
         """
         
-        #print 'sending to database:',
-        #for line in self._lines:
-        #    print '   line'
-        #    for chord in line.chords:
-        #        print '       chord'
+        print 'sendToDatabase'
 
         self.app.setWaitCursor()
         try:
@@ -722,8 +749,10 @@ class Song:
             self.app.curs.commit()
         finally:
             self.app.restoreCursor()
-
+        
+        self.app.disableUndo()
     
+
     def copyChord(self, chord, new_song_char_num):
         """
         Copy the specified chord to a new position.
@@ -732,9 +761,14 @@ class Song:
         new_chord = copy.copy(chord)
         new_chord.character_num = new_song_char_num
         self.addChord(new_chord)
+        return new_chord
        
             
     def updateSharpsOrFlats(self):
+        """
+        Determines whether this song prefers notes to be displayed with flats
+        or with sharps, and updates this song.
+        """
         
         num_prefer_sharp = 0
         num_prefer_flat = 0
@@ -754,6 +788,9 @@ class Song:
 
 
     def iterateOverLines(self):
+        """
+        Iterates over all lines in this song.
+        """
         prev_line_bottom = 0
         for linenum, tmp_line in enumerate(self._lines):
             chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
@@ -800,7 +837,7 @@ class PrintWidget(QtGui.QWidget):
         self.app = app
         self.dragging_chord_orig_position = -1
         self.dragging_chord = None
-        self.copying_chord = False # Whether the chord that is dragged will be copied instead of moved
+        self.original_chord = None
 
         # So that hover mouse move events are generated:
         self.setMouseTracking(True)
@@ -841,7 +878,38 @@ class PrintWidget(QtGui.QWidget):
         # Clear the hovering highlighting:
         self.hover_char_num = None
         self.repaint()
-
+    
+    """
+    def keyPressEvent(self, event):
+        print 'key press'
+        key = event.key()
+        if key == Qt.Key_Alt:
+            self.optionKeyToggled(True)
+        QtGui.QWidget.keyPressEvent(self, event)
+        
+    
+    def keyReleaseEvent(self, event):
+        print 'key release'
+        key = event.key()
+        if key == Qt.Key_Alt:
+            self.optionKeyToggled(False)
+        QtGui.QWidget.keyReleaseEvent(self, event)
+    """ 
+    
+    def optionKeyToggled(self, pressed):
+        if self.dragging_chord == None:
+            return
+        
+        if pressed:
+            # Copy the dragging chord into the original location:
+            self.original_chord = self.app.current_song.copyChord(self.dragging_chord, self.dragging_chord_orig_position)
+            self.repaint()
+        else:
+            # Remove the original chord:
+            self.app.current_song.deleteChord(self.original_chord)
+            self.original_chord = None
+            self.repaint()
+    
     
     def mouseMoveEvent(self, event):
         """
@@ -870,30 +938,6 @@ class PrintWidget(QtGui.QWidget):
                 
                 if song_char_num != self.dragging_chord.character_num:
                     # The dragged chord was moved to a new position
-                    
-                    #key_modifiers = QtGui.QApplication.instance().keyboardModifiers() 
-                    key_modifiers = event.modifiers() 
-                    # shiftdown = key_modifiers & Qt.ShiftModifier
-                    ctrl_down = bool(key_modifiers & Qt.ControlModifier)
-                    #print 'ctrl_down:', ctrl_down
-                    
-                    if self.copying_chord:
-                        #print 'currently copying'
-                        # The chord is currently drawn in both the original position and the curr_position
-                        pass
-                        """
-                        if not ctrl_down:
-                            #print '  no longer copying, removing orig chord'
-                            # Just stopped copying, remove the orig chord.
-                            self.app.current_song.deleteChord(self.dragging_chord, -1)
-                            self.copying_chord = False
-                        """
-                    else:
-                        # The chord is currently drawn only in the the curr_position
-                        if ctrl_down:
-                            # Copy the chord to the original position as well
-                            self.app.current_song.copyChord(self.dragging_chord, self.dragging_chord_orig_position, copy=True)
-                            self.copying_chord = True
                     
                     self.app.current_song.moveChord(self.dragging_chord, song_char_num)
                     
@@ -935,9 +979,14 @@ class PrintWidget(QtGui.QWidget):
                         pass
                     else:
                         self.dragging_chord_orig_position = song_char_num
-                        self.copying_chord = False
-                    
-                    
+                        
+                        # If option is held, copy the chord:
+                        key_modifiers = event.modifiers() 
+                        if bool(key_modifiers & Qt.AltModifier):
+                            self.original_chord = self.app.current_song.copyChord(self.dragging_chord, self.dragging_chord_orig_position)
+                        else:
+                            self.original_chord = None
+
             else:
                 self.app.selected_char_num = None
                 self.dragging_chord = None
@@ -956,7 +1005,8 @@ class PrintWidget(QtGui.QWidget):
                         self.app.current_song.deleteChord(other_chord)
                         self.app.print_widget.repaint()
                         break
-                self.app.current_song.sendToDatabase()
+                #self.app.current_song.sendToDatabase()
+                self.app.current_song.changed()
 
             self.dragging_chord_orig_position = -1
             self.dragging_chord = None
@@ -1128,15 +1178,6 @@ class App:
     def c(self, widget, signal_str, slot):
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
 
-    def setCurrentSongbook(self, filename):
-        if filename == None:
-            self.curs = None
-        else:
-            #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(filename)))
-            self.curs = sqlite3.connect(filename)
-        self.setCurrentSong(None)
-        self.songs_model.updateFromDatabase()
-        self.updateStates()
     
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
@@ -1148,7 +1189,11 @@ class App:
         
         self.pdf_options = PdfOptions()
         
+        self.undo_stack = QtGui.QUndoStack()
+        self.undo_stack.canUndoChanged.connect(self.ui.actionUndo.setEnabled)
+        self.undo_stack.canRedoChanged.connect(self.ui.actionRedo.setEnabled)
         
+
         # Make a list of all chord types:
         self.chord_type_names = []
         self.chord_type_prints = []
@@ -1211,6 +1256,9 @@ class App:
         self.c( self.ui.actionImportText, "triggered()", self.importFromText )
         self.c( self.ui.actionLyricsFont, "triggered()", self.changeLyricsFont )
         self.c( self.ui.actionChordsFont, "triggered()", self.changeChordFont )
+
+        self.ui.actionUndo.triggered.connect(self.undo_stack.undo)
+        self.ui.actionRedo.triggered.connect(self.undo_stack.redo)
         
         self.print_widget = PrintWidget(self)
         self.ui.chord_scroll_area.setWidgetResizable(False)
@@ -1242,6 +1290,12 @@ class App:
         
         self._orig_keyPressEvent = self.ui.keyPressEvent
         self.ui.keyPressEvent = self.keyPressEvent
+        
+        self._orig_keyReleaseEvent = self.ui.keyReleaseEvent
+        self.ui.keyReleaseEvent = self.keyReleaseEvent
+
+        self._orig_closeEvent = self.ui.closeEvent
+        self.ui.closeEvent = self.closeEvent
 
         #the scale font at first is 1, no change
         self.zoom_factor = 1.0
@@ -1297,13 +1351,29 @@ class App:
         Will get called when a key is pressed
         """
         key = event.key()
+        if key == Qt.Key_Alt:
+            self.print_widget.optionKeyToggled(True)
+             
         if key == Qt.Key_Delete or key == Qt.Key_Backspace:
             self.deleteSelectedChord()
         else:
             if not self.processKeyPressed(key):
                 self._orig_keyPressEvent(event)
     
+    def keyReleaseEvent(self, event):
+        key = event.key()
+        if key == Qt.Key_Alt:
+            self.print_widget.optionKeyToggled(False)
+        
+        self._orig_keyReleaseEvent(event)
 
+
+    def closeEvent(self, event):
+        if self.current_song:
+            # Update the current song in the database:
+            self.current_song.sendToDatabase()
+        self._orig_closeEvent(event)
+    
     def deleteSelectedChord(self):
         """
         Deletes the currently selected chord from the song.
@@ -1367,18 +1437,38 @@ class App:
                 chord.marker = ""
                 chord.in_parentheses = False
         
-        self.current_song.sendToDatabase()
-        
-        # Update the current song from the database:
-        #self.updateCurrentSongFromDatabase()
+        #self.current_song.sendToDatabase()
+        self.current_song.changed()
         
         self.print_widget.repaint()
                 
-
-
-        
     
-
+    def undo(self):
+        print 'undo'
+        self.updateUndoRedo()
+        self.print_widget.repaint()
+    
+    def redo(self):
+        print 'redo'
+        self.updateUndoRedo()
+        self.print_widget.repaint()
+    
+    def updateUndoRedo(self):
+        if self.current_song == None:
+            self.undo_possible = False
+            self.redo_possible = False
+        self.ui.actionUndo.setEnabled(self.undo_possible)
+        self.ui.actionRedo.setEnabled(self.redo_possible)
+    
+    def enableUndo(self):
+        #print 'enable undo'
+        pass
+    
+    def disableUndo(self):
+        #print 'disable undo'
+        self.undo_stack.clear()
+    
+    
     def warning(self, text):
         """ Display a warning dialog box with the given text """
         QtGui.QMessageBox.warning(self.ui, "Warning", text)
@@ -1404,6 +1494,10 @@ class App:
         """
         Called when the song selection changes.
         """
+        
+        # Commit any changes in the current song:
+        self.curs.commit()
+        
         self.selected_char_num = None # Remove the selection
         self.hover_char_num = None # Remove the hover highlighting
         self.updateCurrentSongFromDatabase()
@@ -1431,21 +1525,15 @@ class App:
         Re-reads the current song from the database.
         """
         
-        #print 'begin updateCurrentSongFromDatabase()'
         self.setWaitCursor()
         selected_song_ids = self.getSelectedSongIds()
         
         if len(selected_song_ids) == 1:
             song_id = selected_song_ids[0]
-            self.setCurrentSong(song_id)
-            
-            # Update the print_widget size:
-            self.resizePrintWidget()
-            #print 'end updateCurrentSongFromDatabase()', song_id
+            song = Song(self, song_id)
+            self.setCurrentSong(song)
         else:
-            self.current_song = None
-            self.populateSongKeyMenu()
-            #print 'end updateCurrentSongFromDatabase()', None
+            self.setCurrentSong(None)
         
         self.updateStates()
         self.restoreCursor()
@@ -1502,22 +1590,26 @@ class App:
         
         self.ui.actionCloseSongbook.setEnabled(db_open)
         
+        self.updateUndoRedo()
             
     
-    def setCurrentSong(self, song_id):
+    def setCurrentSong(self, song):
         """
         Sets the current song to the specified song.
         Reads all song info from the database.
         """
         
-        if song_id == None:
+        if self.current_song:
+            # Update the current song in the database
+            self.current_song.sendToDatabase()
+
+        if song == None:
             self.current_song = None
             self.previous_song_text = None
             self.ui.song_key_menu.setCurrentIndex( 0 )
             self.ui.song_num_ef.setText("")
-            self.resizePrintWidget()
         else:
-            self.current_song = Song(self, song_id)
+            self.current_song = song
             self.populateSongKeyMenu()
         
             if not self.ignore_song_text_changed:
@@ -1537,7 +1629,10 @@ class App:
                 self.ui.song_num_ef.setText("")
             else:
                 self.ui.song_num_ef.setText( str(self.current_song.number) )
-            
+        
+        self.resizePrintWidget()
+        self.disableUndo()
+        
         self.print_widget.repaint()
 
 
@@ -1549,7 +1644,8 @@ class App:
         self.setWaitCursor()
         try:
             self.current_song.transpose(steps)
-            self.current_song.sendToDatabase()
+            #self.current_song.sendToDatabase()
+            self.current_song.changed()
             self.print_widget.repaint()
         finally:
             self.restoreCursor()
@@ -1621,10 +1717,8 @@ class App:
             self.previous_song_text = song_text
         
         
-        self.current_song.sendToDatabase()
-        
-        # FIXME  Would be nice to get rid of this call, but doing so breaks lyrics editing:
-        #self.updateCurrentSongFromDatabase()
+        #self.current_song.sendToDatabase()
+        self.current_song.changed()
         
         self.print_widget.repaint()
         
@@ -1935,8 +2029,8 @@ class App:
             self.current_song.key_is_major = is_major
 
             # Do not run this code if the value of the menu is first initialized
-            self.current_song.sendToDatabase()
-            #self.updateCurrentSongFromDatabase()
+            self.current_song.changed()
+            #self.current_song.sendToDatabase()
             self.print_widget.repaint()
 
     
@@ -1988,8 +2082,7 @@ class App:
             
             # Clear the selection:
             self.ui.songs_view.selectionModel().clearSelection()
-            self.current_song = None
-            self.print_widget.repaint()
+            self.setCurrentSong(None)
         finally:
             self.restoreCursor()
     
@@ -2133,10 +2226,8 @@ class App:
             if add_new:
                 self.current_song.addChord(chord)
             
-            self.current_song.sendToDatabase()
-            
-            # Update the current song from the database:
-            #self.updateCurrentSongFromDatabase()
+            #self.current_song.sendToDatabase()
+            self.current_song.changed()
             
             self.print_widget.repaint()
                 
@@ -2446,7 +2537,18 @@ class App:
         
         return (marker, note_id, type_id, bass_id, in_parentheses)
 
-
+    
+    def setCurrentSongbook(self, filename):
+        if filename == None:
+            self.curs = None
+        else:
+            #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(filename)))
+            self.curs = sqlite3.connect(filename)
+        self.setCurrentSong(None)
+        self.songs_model.updateFromDatabase()
+        self.updateStates()
+        
+        
     def newSongbook(self):
         db_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save songbook as:",
@@ -2476,6 +2578,9 @@ class App:
             self.setCurrentSongbook( unicode(db_file) )
     
     def closeSongbook(self):
+        if self.current_song:
+            # Update the current song in the database:
+            self.current_song.sendToDatabase()
         self.setCurrentSongbook(None)
 
 
