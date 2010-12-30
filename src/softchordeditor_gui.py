@@ -533,7 +533,7 @@ class Song:
         for line in self._lines:
             if len(line.text) == 0:
                 # Do not add the empty line to QTextLayout (to avoid issues with wrapping)
-                pass
+                song_text += ' ' # Just so that the counts are correct
             else:
                 song_text += line.text +'\n'
         
