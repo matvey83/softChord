@@ -878,24 +878,75 @@ class CustomTextEdit(QtGui.QTextEdit):
     def __init__(self, app):
         QtGui.QWidget.__init__(self, app.ui)
         self.app = app
-        #self.viewport().setContentsMargins(20, 30, 10, 10)
     
-
+    def setMargins(self):
+        
+        tf = self.document().rootFrame()
+        tff = tf.frameFormat()
+        tff.setMargin(20)
+        tf.setFrameFormat(tff)
+        self.document().markContentsDirty(0,100000)
+        
+        block = self.document().begin()
+        while True:
+            format = block.blockFormat()
+            format.setTopMargin(20.0)
+            
+            cursor = QtGui.QTextCursor(block)
+            cursor.setBlockFormat(format)
+            
+            if block == self.document().end():
+                break
+            
+            block = block.next()
+        
+        self.verticalScrollBar().setValue(0)
+        
+    
     def paintEvent(self, event):
         """
         Called when the widget needs to draw the current song.
         """
 
         
+        """
+
+        virtual void paintEvent(QPaintEvent *e)
+        {
+            e->accept();
+
+            QPainter p(this);
+
+            int m_lineNumber = 1;
+            const QFontMetrics fm = fontMetrics();
+            const int ascent = fontMetrics().ascent() + 1;
+            QTextBlock block = m_area->document()->begin();
+            int contentsY = m_area->verticalScrollBar()->value();
+            qreal pageBottom = contentsY + m_area->viewport()->height();
+
+            for ( ; block.isValid(); block = block.next(), ++m_lineNumber )
+            {
+                QTextLayout* layout = block.layout();
+                QPointF position = layout->position();
+                const QRectF boundingRect = layout->boundingRect();
+
+                if ( position.y() + boundingRect.height() < contentsY )
+                    continue;
+
+                    if ( position.y() > pageBottom )
+                        break;
+
+                        const QString txt = QString::number( m_lineNumber );
+
+                        p.drawText(width() - fm.width(txt) - 2, qRound(position.y()) - contentsY + ascent, txt);
+            }
+        }
+        """
+
         
         painter = QtGui.QPainter()
         left_margin = 20
         top_margin = 10
-        
-        v = self.viewport()
-        x = v.x()
-        y = v.y()
-        #v.move( x + left_margin, y + top_margin )
         
         
         QtGui.QTextEdit.paintEvent(self, event)
@@ -908,7 +959,6 @@ class CustomTextEdit(QtGui.QTextEdit):
             song = self.app.current_song
             
             cursor = self.textCursor()
-            #cursor = self.cursorForPosition(5)
             bgbrush = QtGui.QBrush(QtGui.QColor("green"))
             for chord in song.iterateAllChords():
                 cursor.setPosition(chord.character_num)
@@ -933,14 +983,9 @@ class CustomTextEdit(QtGui.QTextEdit):
                 painter.drawText(chord_left, chord_top, chord_right-chord_left, chord_bottom-chord_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, chord_text)
                 
             
-            #painter.translate(-left_margin, -top_margin)
-            
-
             painter.end()
             
         
-        #v.move(x, y)
-
 
 
 
@@ -1346,6 +1391,9 @@ class App:
         
 
         self.ui.lyrics_editor = CustomTextEdit(self)
+        
+        
+        
         self.ui.lyric_editor_layout.addWidget(self.ui.lyrics_editor)
 
         self.ui.lyrics_editor.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
@@ -1456,27 +1504,33 @@ class App:
         self.songs_model.updateFromDatabase()
         
         self.ui.lyrics_editor_box.toggled.connect( self.lyricsEditorToggled )
-        self.ui.lyrics_editor_box.setChecked(False)
         self.lyricsEditorToggled()
 
         self.updateStates()
 
 
     def lyricsEditorToggled(self, ignored=None):
-
+        
         if self.ui.lyrics_editor_box.isChecked():
-            #self.ui.song_text_edit_label.show()
+            self.ui.lyrics_editor_label.show()
+            self.ui.chords_editor_label.hide()
             self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
             self.ui.chord_scroll_area.hide()
-            self.ui.lyrics_editor.show()
             self.ui.lyric_editor_layout.addWidget(self.ui.lyrics_editor)
+            self.ui.lyrics_editor.show()
         else:
-            #self.ui.song_text_edit_label.hide()
+            self.ui.lyrics_editor_label.hide()
+            self.ui.chords_editor_label.show()
             self.ui.lyric_editor_layout.removeWidget(self.ui.lyrics_editor)
             self.ui.lyrics_editor.hide()
-            self.ui.chord_scroll_area.show()
             self.ui.lyric_editor_layout.addWidget(self.ui.chord_scroll_area)
+            self.ui.chord_scroll_area.show()
         
+        if self.ui.lyrics_editor_box.isChecked():
+            if self.current_song:
+                song_text = self.current_song.getAllText()
+                self.ui.lyrics_editor.setPlainText(song_text)
+                self.ui.lyrics_editor.setMargins()
     
 
 
@@ -1730,8 +1784,6 @@ class App:
         selected_song_ids = self.getSelectedSongIds()
         
         if self.current_song == None:
-            self.ui.lyrics_editor.setPlainText("")
-            self.previous_song_text = None
             self.ui.song_title_ef.setText("")
             self.ui.song_num_ef.setText("")
             self.ui.song_key_menu.setCurrentIndex(0) # None
@@ -1776,12 +1828,14 @@ class App:
         if self.current_song:
             # Update the current song in the database
             self.current_song.sendToDatabase()
-
+        
         if song == None:
             self.current_song = None
             self.previous_song_text = None
             self.ui.song_key_menu.setCurrentIndex( 0 )
             self.ui.song_num_ef.setText("")
+            self.ui.lyrics_editor.setPlainText("")
+            self.ui.lyrics_editor.setMargins()
         else:
             self.current_song = song
             self.populateSongKeyMenu()
@@ -1790,6 +1844,8 @@ class App:
                 self.ignore_song_text_changed = True
                 song_text = self.current_song.getAllText()
                 self.ui.lyrics_editor.setPlainText(song_text)
+                self.ui.lyrics_editor.setMargins()
+                #self.ui.lyrics_editor.document().setDefaultStyleSheet(self.ui.lyrics_editor.style_str)
                 self.ignore_song_text_changed = False
                 self.previous_song_text = song_text
             

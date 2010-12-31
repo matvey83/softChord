@@ -218,7 +218,7 @@
           <widget class="QWidget" name="layoutWidget">
            <layout class="QVBoxLayout" name="lyric_editor_layout">
             <item>
-             <widget class="QLabel" name="song_text_edit_label">
+             <widget class="QLabel" name="lyrics_editor_label">
               <property name="text">
                <string>Lyric Editor - Paste and modify song lyrics here.</string>
               </property>
@@ -228,7 +228,7 @@
              </widget>
             </item>
             <item>
-             <widget class="QLabel" name="label_2">
+             <widget class="QLabel" name="chords_editor_label">
               <property name="text">
                <string>Chord Editor - Double-click on a lyric letter to add or modify a chord; drag a chord to move it; select and press &quot;Delete&quot; to delete.</string>
               </property>
@@ -263,7 +263,7 @@
                  <height>307</height>
                 </rect>
                </property>
-               <zorder>song_text_edit_label</zorder>
+               <zorder>lyrics_editor_label</zorder>
               </widget>
              </widget>
             </item>
