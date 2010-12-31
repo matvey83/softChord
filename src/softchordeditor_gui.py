@@ -1397,9 +1397,9 @@ class App:
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
-        self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
-        self.c( self.ui.import_text_button, "clicked()", self.importFromText )
-        self.c( self.ui.export_text_button, "clicked()", self.exportToText )
+        #self.c( self.ui.export_pdf_button, "clicked()", self.exportToPdf )
+        #self.c( self.ui.import_text_button, "clicked()", self.importFromText )
+        #self.c( self.ui.export_text_button, "clicked()", self.exportToText )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSong )
         
@@ -1797,17 +1797,17 @@ class App:
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )        
         
-        self.ui.export_pdf_button.setEnabled( num_selected > 0 )
+        #self.ui.export_pdf_button.setEnabled( num_selected > 0 )
         self.ui.actionExportPdf.setEnabled( num_selected > 0 )
         
-        self.ui.export_text_button.setEnabled( num_selected == 1 )
+        #self.ui.export_text_button.setEnabled( num_selected == 1 )
         self.ui.actionExportText.setEnabled( num_selected == 1 )
         
         self.ui.actionPrint.setEnabled( num_selected == 1 )
 
         # Whether there is an open songbook:
         db_open = (self.curs != None)
-        self.ui.import_text_button.setEnabled(db_open)
+        #self.ui.import_text_button.setEnabled(db_open)
         self.ui.actionImportText.setEnabled(db_open)
         
         self.ui.new_song_button.setEnabled(db_open)

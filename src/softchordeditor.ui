@@ -6,27 +6,44 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1091</width>
-    <height>878</height>
+    <width>920</width>
+    <height>861</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>softChord Editor</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout_5">
+   <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
-     <widget class="QSplitter" name="splitter_2">
+     <widget class="QSplitter" name="splitter">
       <property name="orientation">
-       <enum>Qt::Vertical</enum>
-      </property>
-      <property name="handleWidth">
-       <number>4</number>
+       <enum>Qt::Horizontal</enum>
       </property>
       <widget class="QWidget" name="layoutWidget">
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0">
+         <widget class="QLabel" name="label_3">
+          <property name="text">
+           <string>Songs in the opened songbook (select to view or edit):</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableView" name="songs_view">
+          <property name="minimumSize">
+           <size>
+            <width>100</width>
+            <height>80</height>
+           </size>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0">
           <item>
            <widget class="QPushButton" name="new_song_button">
             <property name="text">
@@ -38,27 +55,6 @@
            <widget class="QPushButton" name="delete_song_button">
             <property name="text">
              <string>Delete selected</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="import_text_button">
-            <property name="text">
-             <string>Import from TEXT...</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="export_pdf_button">
-            <property name="text">
-             <string>Export selected to PDF...</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="export_text_button">
-            <property name="text">
-             <string>Export selected to TEXT...</string>
             </property>
            </widget>
           </item>
@@ -77,36 +73,29 @@
           </item>
          </layout>
         </item>
-        <item>
-         <widget class="QLabel" name="label_3">
-          <property name="text">
-           <string>Song Selector:</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QTableView" name="songs_view">
-          <property name="minimumSize">
-           <size>
-            <width>100</width>
-            <height>80</height>
-           </size>
-          </property>
-          <property name="selectionBehavior">
-           <enum>QAbstractItemView::SelectRows</enum>
-          </property>
-         </widget>
-        </item>
        </layout>
       </widget>
-      <widget class="QWidget" name="layoutWidget">
-       <layout class="QVBoxLayout" name="verticalLayout_4" stretch="0,0,1">
+      <widget class="QWidget" name="">
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <property name="spacing">
+         <number>2</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="label">
+          <property name="text">
+           <string>Select song:</string>
+          </property>
+         </widget>
+        </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout">
+          <property name="spacing">
+           <number>-1</number>
+          </property>
           <item>
            <widget class="QLabel" name="label_5">
             <property name="text">
-             <string>Song key:</string>
+             <string>Key:</string>
             </property>
            </widget>
           </item>
@@ -138,6 +127,23 @@
            </widget>
           </item>
           <item>
+           <spacer name="horizontalSpacer_4">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <item>
            <widget class="QLabel" name="label_4">
             <property name="text">
              <string>Title:</string>
@@ -150,11 +156,11 @@
          </layout>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_3">
+         <layout class="QHBoxLayout" name="horizontalLayout_5">
           <item>
-           <widget class="QLabel" name="label_7">
+           <widget class="QPushButton" name="transpose_up_button">
             <property name="text">
-             <string>Song actions:</string>
+             <string>Transpose Up</string>
             </property>
            </widget>
           </item>
@@ -166,12 +172,22 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="transpose_up_button">
-            <property name="text">
-             <string>Transpose Up</string>
+           <spacer name="horizontalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
             </property>
-           </widget>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
           </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
           <item>
            <widget class="QLabel" name="label_8">
             <property name="text">
@@ -205,74 +221,57 @@
          </layout>
         </item>
         <item>
-         <widget class="QSplitter" name="splitter">
-          <property name="midLineWidth">
-           <number>0</number>
-          </property>
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="handleWidth">
-           <number>4</number>
-          </property>
-          <widget class="QWidget" name="layoutWidget">
-           <layout class="QVBoxLayout" name="lyric_editor_layout">
-            <item>
-             <widget class="QLabel" name="lyrics_editor_label">
-              <property name="text">
-               <string>Lyric Editor - Paste and modify song lyrics here.</string>
-              </property>
-              <property name="wordWrap">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLabel" name="chords_editor_label">
-              <property name="text">
-               <string>Chord Editor - Double-click on a lyric letter to add or modify a chord; drag a chord to move it; select and press &quot;Delete&quot; to delete.</string>
-              </property>
-              <property name="wordWrap">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QScrollArea" name="chord_scroll_area">
-              <property name="minimumSize">
-               <size>
-                <width>100</width>
-                <height>100</height>
-               </size>
-              </property>
-              <property name="frameShape">
-               <enum>QFrame::StyledPanel</enum>
-              </property>
-              <property name="frameShadow">
-               <enum>QFrame::Sunken</enum>
-              </property>
-              <property name="widgetResizable">
-               <bool>true</bool>
-              </property>
-              <widget class="QWidget" name="scrollAreaWidgetContents">
-               <property name="geometry">
-                <rect>
-                 <x>0</x>
-                 <y>0</y>
-                 <width>1047</width>
-                 <height>307</height>
-                </rect>
-               </property>
-               <zorder>lyrics_editor_label</zorder>
-              </widget>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-          <widget class="QWidget" name="layoutWidget">
-           <layout class="QVBoxLayout" name="verticalLayout"/>
-          </widget>
-         </widget>
+         <layout class="QVBoxLayout" name="lyric_editor_layout">
+          <item>
+           <widget class="QLabel" name="lyrics_editor_label">
+            <property name="text">
+             <string>Lyric Editor - Paste and modify song lyrics here.</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="chords_editor_label">
+            <property name="text">
+             <string>Chord Editor - Double-click on a lyric letter to add or modify a chord; drag a chord to move it; select and press &quot;Delete&quot; to delete.</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QScrollArea" name="chord_scroll_area">
+            <property name="minimumSize">
+             <size>
+              <width>100</width>
+              <height>100</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::StyledPanel</enum>
+            </property>
+            <property name="frameShadow">
+             <enum>QFrame::Sunken</enum>
+            </property>
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="scrollAreaWidgetContents">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>418</width>
+               <height>585</height>
+              </rect>
+             </property>
+            </widget>
+           </widget>
+          </item>
+         </layout>
         </item>
        </layout>
       </widget>
@@ -285,7 +284,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1091</width>
+     <width>920</width>
      <height>22</height>
     </rect>
    </property>
