@@ -881,16 +881,18 @@ class CustomTextEdit(QtGui.QTextEdit):
     
     def setMargins(self):
         
+        # Set the margin for the first line (the top of the document):
         tf = self.document().rootFrame()
         tff = tf.frameFormat()
-        tff.setMargin(20)
+        tff.setMargin(21.0)
         tf.setFrameFormat(tff)
-        self.document().markContentsDirty(0,100000)
         
+        # Set the margin for the subsequent lines:
+        margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
         block = self.document().begin()
         while True:
             format = block.blockFormat()
-            format.setTopMargin(20.0)
+            format.setTopMargin(margin_height)
             
             cursor = QtGui.QTextCursor(block)
             cursor.setBlockFormat(format)
@@ -944,45 +946,39 @@ class CustomTextEdit(QtGui.QTextEdit):
         """
 
         
-        painter = QtGui.QPainter()
-        left_margin = 20
-        top_margin = 10
         
         
+        # Paint the lyrics text:
         QtGui.QTextEdit.paintEvent(self, event)
         
         
+        # Paint the chords:
         if self.app.current_song:
-
+            painter = QtGui.QPainter()
             painter.begin(self.viewport())
+            
+            margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
+            painter.setFont(self.app.chords_tiny_font)
+            painter.setPen(self.app.chords_color)
 
             song = self.app.current_song
             
             cursor = self.textCursor()
-            bgbrush = QtGui.QBrush(QtGui.QColor("green"))
             for chord in song.iterateAllChords():
                 cursor.setPosition(chord.character_num)
                 left_rect = self.cursorRect(cursor)
                 cursor.setPosition(chord.character_num+1)
                 right_rect = self.cursorRect(cursor)
                 
-                #print 'chord rect:', rect
                 chord_text = chord.getChordText()
-                
-                rect = QtCore.QRect(left_rect.left(), left_rect.top(), right_rect.left()-left_rect.left(), left_rect.bottom()-left_rect.top())
-                #painter.fillRect(rect, bgbrush)
                 
                 chord_left = left_rect.left() - 20.0
                 chord_right = right_rect.right() + 20.0
-                chord_top = left_rect.top() - 5.0
-                chord_bottom = left_rect.top() + 5.0
-                
-                painter.setFont(self.app.chords_tiny_font)
-                painter.setPen(self.app.chords_color)
+                chord_top = left_rect.top() - margin_height
+                chord_bottom = left_rect.top() + margin_height
                 
                 painter.drawText(chord_left, chord_top, chord_right-chord_left, chord_bottom-chord_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, chord_text)
                 
-            
             painter.end()
             
         
@@ -1021,7 +1017,7 @@ class PrintWidget(QtGui.QWidget):
         #painter.fillRect(rect, bgbrush)
         
         if self.app.current_song:
-            left_margin = 20
+            left_margin = 21
             top_margin = 10
             width = 100000 # Unlimited
             height = 100000 # Unlimited
@@ -1439,9 +1435,9 @@ class App:
         
         
         zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
-        self.ui.comboTextSize.addItems(zoom_items)
-        self.c( self.ui.comboTextSize, "currentIndexChanged(QString)", self.comboTextSizeChanged)
-        self.ui.comboTextSize.setCurrentIndex(3) # 80%
+        self.ui.zoom_combo_box.addItems(zoom_items)
+        self.c( self.ui.zoom_combo_box, "currentIndexChanged(QString)", self.comboTextSizeChanged)
+        self.ui.zoom_combo_box.setCurrentIndex(3) # 80%
         
         self.ignore_song_text_changed = False
         
@@ -1459,6 +1455,7 @@ class App:
         # Font that will be used if no good fonts are found:
         self.chords_font = QtGui.QFont("Times New Roman", 14, QtGui.QFont.Bold)
         self.chords_tiny_font = QtGui.QFont("Times New Roman", 10, QtGui.QFont.Bold)
+        self.chords_tiny_font_metrics = QtGui.QFontMetrics(self.chords_tiny_font)
         
         # Search for a font that can display sharp and flat characters correctly:
         """
@@ -1518,6 +1515,7 @@ class App:
             self.ui.chord_scroll_area.hide()
             self.ui.lyric_editor_layout.addWidget(self.ui.lyrics_editor)
             self.ui.lyrics_editor.show()
+            self.ui.zoom_combo_box.setEnabled(True)
         else:
             self.ui.lyrics_editor_label.hide()
             self.ui.chords_editor_label.show()
@@ -1525,6 +1523,7 @@ class App:
             self.ui.lyrics_editor.hide()
             self.ui.lyric_editor_layout.addWidget(self.ui.chord_scroll_area)
             self.ui.chord_scroll_area.show()
+            self.ui.zoom_combo_box.setEnabled(True)
         
         if self.ui.lyrics_editor_box.isChecked():
             if self.current_song:

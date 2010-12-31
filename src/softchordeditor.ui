@@ -180,7 +180,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QComboBox" name="comboTextSize"/>
+           <widget class="QComboBox" name="zoom_combo_box"/>
           </item>
           <item>
            <widget class="QCheckBox" name="lyrics_editor_box">
