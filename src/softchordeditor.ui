@@ -183,6 +183,13 @@
            <widget class="QComboBox" name="comboTextSize"/>
           </item>
           <item>
+           <widget class="QCheckBox" name="lyrics_editor_box">
+            <property name="text">
+             <string>Lyric editor</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <spacer name="horizontalSpacer_3">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -209,9 +216,9 @@
            <number>4</number>
           </property>
           <widget class="QWidget" name="layoutWidget">
-           <layout class="QVBoxLayout" name="verticalLayout_2">
+           <layout class="QVBoxLayout" name="lyric_editor_layout">
             <item>
-             <widget class="QLabel" name="label">
+             <widget class="QLabel" name="song_text_edit_label">
               <property name="text">
                <string>Lyric Editor - Paste and modify song lyrics here.</string>
               </property>
@@ -220,20 +227,6 @@
               </property>
              </widget>
             </item>
-            <item>
-             <widget class="QPlainTextEdit" name="song_text_edit">
-              <property name="minimumSize">
-               <size>
-                <width>100</width>
-                <height>100</height>
-               </size>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-          <widget class="QWidget" name="layoutWidget">
-           <layout class="QVBoxLayout" name="verticalLayout">
             <item>
              <widget class="QLabel" name="label_2">
               <property name="text">
@@ -266,14 +259,18 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>564</width>
-                 <height>329</height>
+                 <width>1047</width>
+                 <height>307</height>
                 </rect>
                </property>
+               <zorder>song_text_edit_label</zorder>
               </widget>
              </widget>
             </item>
            </layout>
+          </widget>
+          <widget class="QWidget" name="layoutWidget">
+           <layout class="QVBoxLayout" name="verticalLayout"/>
           </widget>
          </widget>
         </item>

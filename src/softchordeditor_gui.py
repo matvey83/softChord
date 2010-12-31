@@ -540,6 +540,8 @@ class Song:
         
         
         self.app.text_layout = QtGui.QTextLayout(song_text, self.app.lyrics_font) #, pic_painter)
+        self.app.text_layout.setCacheEnabled(True) # speed-up
+
         height = 0.0
         #leading = self.app.lyrics_font_metrics.leading()
         
@@ -863,6 +865,83 @@ class Song:
         and returns True if "sharp" versions of the chords should be printed
         """
         return self.prefer_sharps
+
+
+
+
+
+
+
+class CustomTextEdit(QtGui.QTextEdit):
+    """
+    """
+    def __init__(self, app):
+        QtGui.QWidget.__init__(self, app.ui)
+        self.app = app
+        #self.viewport().setContentsMargins(20, 30, 10, 10)
+    
+
+    def paintEvent(self, event):
+        """
+        Called when the widget needs to draw the current song.
+        """
+
+        
+        
+        painter = QtGui.QPainter()
+        left_margin = 20
+        top_margin = 10
+        
+        v = self.viewport()
+        x = v.x()
+        y = v.y()
+        #v.move( x + left_margin, y + top_margin )
+        
+        
+        QtGui.QTextEdit.paintEvent(self, event)
+        
+        
+        if self.app.current_song:
+
+            painter.begin(self.viewport())
+
+            song = self.app.current_song
+            
+            cursor = self.textCursor()
+            #cursor = self.cursorForPosition(5)
+            bgbrush = QtGui.QBrush(QtGui.QColor("green"))
+            for chord in song.iterateAllChords():
+                cursor.setPosition(chord.character_num)
+                left_rect = self.cursorRect(cursor)
+                cursor.setPosition(chord.character_num+1)
+                right_rect = self.cursorRect(cursor)
+                
+                #print 'chord rect:', rect
+                chord_text = chord.getChordText()
+                
+                rect = QtCore.QRect(left_rect.left(), left_rect.top(), right_rect.left()-left_rect.left(), left_rect.bottom()-left_rect.top())
+                #painter.fillRect(rect, bgbrush)
+                
+                chord_left = left_rect.left() - 20.0
+                chord_right = right_rect.right() + 20.0
+                chord_top = left_rect.top() - 5.0
+                chord_bottom = left_rect.top() + 5.0
+                
+                painter.setFont(self.app.chords_tiny_font)
+                painter.setPen(self.app.chords_color)
+                
+                painter.drawText(chord_left, chord_top, chord_right-chord_left, chord_bottom-chord_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, chord_text)
+                
+            
+            #painter.translate(-left_margin, -top_margin)
+            
+
+            painter.end()
+            
+        
+        #v.move(x, y)
+
+
 
 
 
@@ -1264,8 +1343,13 @@ class App:
         
 
         self.previous_song_text = None # Song text before last user's edit operation
-        self.ui.song_text_edit.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
-        self.c( self.ui.song_text_edit, "textChanged()", self.songTextChanged )
+        
+
+        self.ui.lyrics_editor = CustomTextEdit(self)
+        self.ui.lyric_editor_layout.addWidget(self.ui.lyrics_editor)
+
+        self.ui.lyrics_editor.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
+        self.c( self.ui.lyrics_editor, "textChanged()", self.songTextChanged )
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
@@ -1326,6 +1410,7 @@ class App:
 
         # Font that will be used if no good fonts are found:
         self.chords_font = QtGui.QFont("Times New Roman", 14, QtGui.QFont.Bold)
+        self.chords_tiny_font = QtGui.QFont("Times New Roman", 10, QtGui.QFont.Bold)
         
         # Search for a font that can display sharp and flat characters correctly:
         """
@@ -1343,7 +1428,7 @@ class App:
 
         self.chords_font_metrics = QtGui.QFontMetrics(self.chords_font)
         self.chords_color = QtGui.QColor("DARK BLUE")
-        self.ui.song_text_edit.setFont(self.lyrics_font)
+        self.ui.lyrics_editor.setFont(self.lyrics_font)
         
         self._orig_keyPressEvent = self.ui.keyPressEvent
         self.ui.keyPressEvent = self.keyPressEvent
@@ -1370,7 +1455,28 @@ class App:
         
         self.songs_model.updateFromDatabase()
         
+        self.ui.lyrics_editor_box.toggled.connect( self.lyricsEditorToggled )
+        self.ui.lyrics_editor_box.setChecked(False)
+        self.lyricsEditorToggled()
+
         self.updateStates()
+
+
+    def lyricsEditorToggled(self, ignored=None):
+
+        if self.ui.lyrics_editor_box.isChecked():
+            #self.ui.song_text_edit_label.show()
+            self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
+            self.ui.chord_scroll_area.hide()
+            self.ui.lyrics_editor.show()
+            self.ui.lyric_editor_layout.addWidget(self.ui.lyrics_editor)
+        else:
+            #self.ui.song_text_edit_label.hide()
+            self.ui.lyric_editor_layout.removeWidget(self.ui.lyrics_editor)
+            self.ui.lyrics_editor.hide()
+            self.ui.chord_scroll_area.show()
+            self.ui.lyric_editor_layout.addWidget(self.ui.chord_scroll_area)
+        
     
 
 
@@ -1624,7 +1730,7 @@ class App:
         selected_song_ids = self.getSelectedSongIds()
         
         if self.current_song == None:
-            self.ui.song_text_edit.setPlainText("")
+            self.ui.lyrics_editor.setPlainText("")
             self.previous_song_text = None
             self.ui.song_title_ef.setText("")
             self.ui.song_num_ef.setText("")
@@ -1632,7 +1738,7 @@ class App:
         
         num_selected = len(selected_song_ids)        
         
-        self.ui.song_text_edit.setEnabled( self.current_song != None )
+        self.ui.lyrics_editor.setEnabled( self.current_song != None )
         self.ui.song_title_ef.setEnabled( self.current_song != None )
         self.ui.song_num_ef.setEnabled( self.current_song != None )
         self.ui.song_key_menu.setEnabled( self.current_song != None )
@@ -1683,7 +1789,7 @@ class App:
             if not self.ignore_song_text_changed:
                 self.ignore_song_text_changed = True
                 song_text = self.current_song.getAllText()
-                self.ui.song_text_edit.setPlainText(song_text)
+                self.ui.lyrics_editor.setPlainText(song_text)
                 self.ignore_song_text_changed = False
                 self.previous_song_text = song_text
             
@@ -1731,7 +1837,7 @@ class App:
         
         self.ignore_song_text_changed = True
         
-        song_text = unicode(self.ui.song_text_edit.toPlainText())
+        song_text = unicode(self.ui.lyrics_editor.toPlainText())
         
         # Compare the new text to the previous text:
         
@@ -1825,7 +1931,7 @@ class App:
         if ok:
             self.lyrics_font = new_font
             self.lyrics_font_metrics = QtGui.QFontMetrics(self.lyrics_font)
-            self.ui.song_text_edit.setFont(self.lyrics_font)
+            self.ui.lyrics_editor.setFont(self.lyrics_font)
             self.print_widget.repaint()
         
     
@@ -2154,29 +2260,16 @@ class App:
         finally:
             self.restoreCursor()
     
-
-
-    def drawSongToRect(self, song, output_painter, rect, exporting=False):
-        """
-        Draws the current song text to the specified rect.
-
-        exporting - whether we are drawing to a PDF/Print instead of the screen.
-        """
+    
+    
+    
+    def _drawSongToPainter(self, song, pic_painter, exporting=False):
+        
+        song.calculateChars()
         
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
-        #print 'drawSongToRect()'
-        #sys.stdout.flush()
-        
-        pic = QtGui.QPicture()
-        pic_painter = QtGui.QPainter()
-        pic_painter.begin(pic)
-        
-        
-        song.calculateChars()
-        
-
         for line in self.current_song.iterateLines():
             for char in line.all_chars:
                 if not exporting:
@@ -2214,6 +2307,29 @@ class App:
         layout_bounding_rect = self.text_layout.boundingRect()
         pic_right = layout_bounding_rect.right()
         pic_bottom = layout_bounding_rect.bottom()
+
+        return pic_right, pic_bottom
+
+
+
+    def drawSongToRect(self, song, output_painter, rect, exporting=False):
+        """
+        Draws the current song text to the specified rect.
+
+        exporting - whether we are drawing to a PDF/Print instead of the screen.
+        """
+        
+        
+        #print 'drawSongToRect()'
+        #sys.stdout.flush()
+        
+        pic = QtGui.QPicture()
+        pic_painter = QtGui.QPainter()
+        pic_painter.begin(pic)
+        
+
+        pic_right, pic_bottom = self._drawSongToPainter(song, pic_painter, exporting)
+        
         
         pic_painter.end()
         
