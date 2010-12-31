@@ -923,7 +923,8 @@ class CustomTextEdit(QtGui.QTextEdit):
         block = self.document().begin()
         while True:
             format_index = block.blockFormatIndex()
-            if not format_index in processed_format_indecies:
+            # FIXME this code could be optimized (it's quite slow):
+            if True: #not format_index in processed_format_indecies:
                 processed_format_indecies.add(format_index)
                 format = block.blockFormat()
                 format.setTopMargin(margin_height)
