@@ -413,7 +413,7 @@ class Song:
     
 
     def iterateAllChords(self):
-        for tmp_line in self._lines:
+        for tmp_line in self.iterateLines():
             for chord in tmp_line.chords:
                 yield chord
     
@@ -435,11 +435,14 @@ class Song:
                 exit = True
                 line_text = remaining_text # text for this line
                 line_end_offset = len(line_text) + line_start_offset
+                #print '*** last line:', line_text
+                lines_list.append(line_text)
             else:
                 # This is NOT the last line in the song
                 line_text = remaining_text[:char_num] # text for this line
                 remaining_text = remaining_text[char_num+1:]
                 line_end_offset = char_num + line_start_offset
+                #print '******* line:', line_text
                 lines_list.append(line_text)
             
             if char_num:
@@ -467,18 +470,22 @@ class Song:
                     break
                 line_global_start += len(line_text) + 1
         
-
+        
         self._lines = []
         prev_line_bottom = 0
         for linenum, line_text in enumerate(lines_list):
             line_chords = chords_by_line.get(linenum, [])
             line = SongLine(self, line_text, line_chords)
             self._lines.append(line)
+            #print '  appending line:', line_text
         
+        # FIXME may not be necessary??
+        self.app.resizePrintWidget()
+        self.app.print_widget.repaint()
         
     
     def iterateAllChords(self):
-        for tmp_line in self._lines:
+        for tmp_line in self.iterateLines():
             for chord in tmp_line.chords:
                 yield chord
     
@@ -492,14 +499,14 @@ class Song:
     
     
     def deleteChord(self, chord):
-        for tmp_line in self._lines:
+        for tmp_line in self.iterateLines():
             if chord in tmp_line.chords:
                 tmp_line.chords.remove(chord)
         self.updateSharpsOrFlats()
     
     def moveChord(self, chord, new_song_char_num):
         new_chord_linenum, new_line_char_num = self.songCharToLineChar(new_song_char_num)
-        for linenum, tmp_line in enumerate(self._lines):
+        for linenum, tmp_line in enumerate(self.iterateLines()):
             if chord in tmp_line.chords:
                 chord.character_num = new_song_char_num
                 if new_chord_linenum != linenum:
@@ -513,16 +520,20 @@ class Song:
         #return "\n".join( [line.text for line in self._lines ] )
         
         all_text = ""
-        for line in self._lines:
+        for line in self.iterateLines():
             all_text += line.text +'\n'
         return all_text
     
+
+    def iterateLines(self):
+        for line in self.iterateLines():
+            yield line
     
-    def iterateAineTexts(self):
+    def iterateLineTexts(self):
         """
         Iterate over each the lines in this song.
         """
-        for line in self._lines:
+        for line in self.iterateLines():
             yield line.text
     
     
@@ -531,7 +542,7 @@ class Song:
         
         #song_text = self.getAllText()
         song_text = ""
-        for line in self._lines:
+        for line in self.iterateLines():
             if len(line.text) == 0:
                 # Do not add the empty line to QTextLayout (to avoid issues with wrapping)
                 song_text += ' ' # Just so that the counts are correct
@@ -552,7 +563,7 @@ class Song:
         #self.app.text_layout.setTextOption(text_option)
         
         prev_line_bottom = 0
-        for linenum, line in enumerate(self._lines):
+        for linenum, line in enumerate(self.iterateLines()):
             chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
             chords_top = prev_line_bottom # Bottom of the previous line
             chords_bottom = chords_top + chords_height
@@ -636,7 +647,7 @@ class Song:
         
         
     def iterateLines(self):
-        for line in self.all_lines:
+        for line in self._lines:
             yield line
     
     
@@ -671,7 +682,7 @@ class Song:
         line_global_start = 0
         line_global_end = 0
         linenum = -1
-        for line_text in self.iterateAineTexts():
+        for line_text in self.iterateLineTexts():
             linenum += 1
             line_global_end += len(line_text) + 1
             if song_char_num < line_global_end-1:
@@ -691,7 +702,7 @@ class Song:
         
         out_char_num = 0
         linenum = -1
-        for line_text in self.iterateAineTexts():
+        for line_text in self.iterateLineTexts():
             linenum += 1
             if linenum == char_linenum:
                 return out_char_num + char_num
@@ -717,7 +728,7 @@ class Song:
         song_text = unicode()
         self.updateSharpsOrFlats()
         
-        for linenum, line in enumerate(self._lines):
+        for linenum, line in enumerate(self.iterateLines()):
             line_text = unicode(line.text)
             
             if line.chords:
@@ -786,7 +797,6 @@ class Song:
         
         self.updateSharpsOrFlats()
         
-        #self.sendToDatabase()
         self.changed()
 
         self.app.print_widget.repaint()
@@ -1000,7 +1010,11 @@ class PrintWidget(QtGui.QWidget):
 
         # So that hover mouse move events are generated:
         self.setMouseTracking(True)
+        
+        self.left_margin = 21
+        self.top_margin = 10
     
+
     def paintEvent(self, ignored_event):
         """
         Called when the widget needs to draw the current song.
@@ -1017,11 +1031,9 @@ class PrintWidget(QtGui.QWidget):
         #painter.fillRect(rect, bgbrush)
         
         if self.app.current_song:
-            left_margin = 21
-            top_margin = 10
             width = 100000 # Unlimited
             height = 100000 # Unlimited
-            paint_rect = QtCore.QRect(left_margin, top_margin, width, height)
+            paint_rect = QtCore.QRect(self.left_margin, self.top_margin, width, height)
             
             self.app.drawSongToRect(self.app.current_song, painter, paint_rect)
         
@@ -1164,7 +1176,6 @@ class PrintWidget(QtGui.QWidget):
                         self.app.current_song.deleteChord(other_chord)
                         self.app.print_widget.repaint()
                         break
-                #self.app.current_song.sendToDatabase()
                 self.app.current_song.changed()
 
             self.dragging_chord_orig_position = -1
@@ -1525,12 +1536,6 @@ class App:
             self.ui.chord_scroll_area.show()
             self.ui.zoom_combo_box.setEnabled(True)
         
-        if self.ui.lyrics_editor_box.isChecked():
-            if self.current_song:
-                song_text = self.current_song.getAllText()
-                self.ui.lyrics_editor.setPlainText(song_text)
-                self.ui.lyrics_editor.setMargins()
-    
 
 
     def __del__(self):
@@ -1770,12 +1775,13 @@ class App:
             layout_bounding_rect = self.text_layout.boundingRect()
             song_width = layout_bounding_rect.right()
             song_height = layout_bounding_rect.bottom()
-
         
         song_width *= self.zoom_factor
         song_height *= self.zoom_factor
-
-        self.print_widget.resize(song_width+20, song_height+10)
+        song_width += self.print_widget.left_margin
+        song_height += self.print_widget.top_margin
+        
+        self.print_widget.resize(song_width, song_height)
 
 
     def updateStates(self):
@@ -1844,7 +1850,6 @@ class App:
                 song_text = self.current_song.getAllText()
                 self.ui.lyrics_editor.setPlainText(song_text)
                 self.ui.lyrics_editor.setMargins()
-                #self.ui.lyrics_editor.document().setDefaultStyleSheet(self.ui.lyrics_editor.style_str)
                 self.ignore_song_text_changed = False
                 self.previous_song_text = song_text
             
@@ -1873,7 +1878,6 @@ class App:
         self.setWaitCursor()
         try:
             self.current_song.transpose(steps)
-            #self.current_song.sendToDatabase()
             self.current_song.changed()
             self.print_widget.repaint()
         finally:
@@ -1945,8 +1949,6 @@ class App:
             self.current_song.setAllText(song_text, new_all_chords)
             self.previous_song_text = song_text
         
-        
-        #self.current_song.sendToDatabase()
         self.current_song.changed()
         
         self.print_widget.repaint()
@@ -2217,7 +2219,6 @@ class App:
                 self.current_song.number = new_num
                 self.curs.execute('UPDATE songs SET number=%i WHERE id=%i' % (new_num, self.current_song.id))
                 self.curs.commit()
-                # self.current_song.sendToDatabase()
                 
                 # Save the selection:
                 selected_row_num = self.songs_model.getSongsRow(self.current_song)
@@ -2259,7 +2260,6 @@ class App:
 
             # Do not run this code if the value of the menu is first initialized
             self.current_song.changed()
-            #self.current_song.sendToDatabase()
             self.print_widget.repaint()
 
     
@@ -2492,7 +2492,6 @@ class App:
             if add_new:
                 self.current_song.addChord(chord)
             
-            #self.current_song.sendToDatabase()
             self.current_song.changed()
             
             self.print_widget.repaint()
