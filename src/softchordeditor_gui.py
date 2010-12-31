@@ -333,6 +333,11 @@ class SongChord:
 
 
 class SongLine:
+    """
+    Holds all information about a song line.
+    The chars attributed become populated only after calculateChars() is called,
+    and holds the paint bounds information about each character and chord.
+    """
     def __init__(self, song, text, chords):
         self.song = song
         self.text = text
@@ -342,6 +347,9 @@ class SongLine:
     
 
 class SongChar:
+    """
+    This class holds the paint bounds information for this character and its chord (if any).
+    """
     def __init__(self, text, song_char_num, line_char_num, chord, char_left, char_right, chord_left, chord_right):
         self.text = text
         self.song_char_num = song_char_num
@@ -359,15 +367,6 @@ class Song:
     """
     Stores information for a particular song.
     """
-    def copy(self):
-        song_copy = copy.copy(self)
-        
-        song_text = self.getAllText()
-        song_chords = list( self.iterateAllChords() )
-        song_copy.setAllText(song_text, song_chords)
-        
-        return song_copy
-    
     
     def __init__(self, app, song_id):
         self.app = app
@@ -479,10 +478,10 @@ class Song:
             line = SongLine(self, line_text, line_chords)
             self._lines.append(line)
             #print '  appending line:', line_text
+
+        #print 'setAllText'
+        self.calculateChars()
         
-        # FIXME may not be necessary??
-        self.app.resizePrintWidget()
-        self.app.print_widget.repaint()
         
     
     def iterateAllChords(self):
@@ -498,9 +497,6 @@ class Song:
         tmp_line.chords.append(chord)
         self.updateSharpsOrFlats()
         
-        # In case the added chord made the whole song higher:
-        self.app.resizePrintWidget()
-    
     
     def deleteChord(self, chord):
         for tmp_line in self.iterateLines():
@@ -530,7 +526,7 @@ class Song:
     
 
     def iterateLines(self):
-        for line in self.iterateLines():
+        for line in self._lines():
             yield line
     
     def iterateLineTexts(self):
@@ -543,6 +539,7 @@ class Song:
     
     
     def calculateChars(self):
+        #print '  calculateChars()'
         
         #song_text = self.getAllText()
         song_text = ""
@@ -554,7 +551,7 @@ class Song:
                 song_text += line.text +'\n'
         
         
-        self.app.text_layout = QtGui.QTextLayout(song_text, self.app.lyrics_font) #, pic_painter)
+        self.app.text_layout = QtGui.QTextLayout(song_text, self.app.lyrics_font) 
         self.app.text_layout.setCacheEnabled(True) # speed-up
 
         height = 0.0
@@ -648,6 +645,21 @@ class Song:
             self.all_lines.append(line)
         
         self.app.text_layout.endLayout()
+        
+        
+        # FIXME will not account for chord text:
+        layout_bounding_rect = self.app.text_layout.boundingRect()
+        song_width = layout_bounding_rect.right()
+        song_height = layout_bounding_rect.bottom()
+        
+        song_width *= self.app.zoom_factor
+        song_height *= self.app.zoom_factor
+        song_width += self.app.print_widget.left_margin
+        song_height += self.app.print_widget.top_margin
+        
+        self.app.print_widget.resize(song_width, song_height)
+
+        
         
         
     def iterateLines(self):
@@ -803,10 +815,11 @@ class Song:
         
         self.updateSharpsOrFlats()
         
+        self.calculateChars()
         self.changed()
-
         self.app.print_widget.repaint()
     
+
     def changed(self):
         self.app.enableUndo()
     
@@ -905,13 +918,18 @@ class CustomTextEdit(QtGui.QTextEdit):
         
         # Set the margin for the subsequent lines:
         margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
+        
+        processed_format_indecies = set()
         block = self.document().begin()
         while True:
-            format = block.blockFormat()
-            format.setTopMargin(margin_height)
-            
-            cursor = QtGui.QTextCursor(block)
-            cursor.setBlockFormat(format)
+            format_index = block.blockFormatIndex()
+            if not format_index in processed_format_indecies:
+                processed_format_indecies.add(format_index)
+                format = block.blockFormat()
+                format.setTopMargin(margin_height)
+                
+                cursor = QtGui.QTextCursor(block)
+                cursor.setBlockFormat(format)
             
             if block == self.document().end():
                 break
@@ -1080,12 +1098,13 @@ class PrintWidget(QtGui.QWidget):
         if pressed:
             # Copy the dragging chord into the original location:
             self.original_chord = self.app.current_song.copyChord(self.dragging_chord, self.dragging_chord_orig_position)
-            self.repaint()
         else:
             # Remove the original chord:
             self.app.current_song.deleteChord(self.original_chord)
             self.original_chord = None
-            self.repaint()
+
+        self.app.current_song.calculateChars()
+        self.repaint()
     
     
     def mouseMoveEvent(self, event):
@@ -1117,6 +1136,7 @@ class PrintWidget(QtGui.QWidget):
                     # The dragged chord was moved to a new position
                     
                     self.app.current_song.moveChord(self.dragging_chord, song_char_num)
+                    self.app.current_song.calculateChars()
                     
                     # Show hover feedback on the new letter:
                     self.app.hover_char_num = song_char_num
@@ -1167,6 +1187,8 @@ class PrintWidget(QtGui.QWidget):
             else:
                 self.app.selected_char_num = None
                 self.dragging_chord = None
+
+            self.app.current_song.calculateChars()
             self.app.print_widget.repaint()
     
 
@@ -1180,9 +1202,10 @@ class PrintWidget(QtGui.QWidget):
                 for other_chord in self.app.current_song.iterateAllChords():
                     if other_chord.character_num == self.dragging_chord.character_num and other_chord != self.dragging_chord:
                         self.app.current_song.deleteChord(other_chord)
-                        self.app.print_widget.repaint()
                         break
+                self.app.current_song.calculateChars()
                 self.app.current_song.changed()
+                self.app.print_widget.repaint()
 
             self.dragging_chord_orig_position = -1
             self.dragging_chord = None
@@ -1623,6 +1646,7 @@ class App:
                     self.current_song.deleteChord(chord)
                     break
             
+            self.current_song.calculateChars()
             self.current_song.sendToDatabase()
             self.print_widget.repaint()
     
@@ -1681,6 +1705,8 @@ class App:
             #chord.updateChordString()
         
         self.current_song.changed()
+        
+        self.current_song.calculateChars()
 
         self.print_widget.repaint()
         return True
@@ -1744,7 +1770,7 @@ class App:
         self.selected_char_num = None # Remove the selection
         self.hover_char_num = None # Remove the hover highlighting
         self.updateCurrentSongFromDatabase()
-
+        
         # Sroll the chords table to the top (and left):
         self.ui.chord_scroll_area.horizontalScrollBar().setValue(0)
         self.ui.chord_scroll_area.verticalScrollBar().setValue(0)
@@ -1783,27 +1809,11 @@ class App:
         self.updateStates()
         self.restoreCursor()
         
-    def resizePrintWidget(self):
-        #print 'resizePrintWidget() called'
-        song_width = 0.0
-        song_height = 0.0
-        if self.current_song:
-            self.current_song.calculateChars()
-            
-            # FIXME will not account for chord text:
-            layout_bounding_rect = self.text_layout.boundingRect()
-            song_width = layout_bounding_rect.right()
-            song_height = layout_bounding_rect.bottom()
-        
-        song_width *= self.zoom_factor
-        song_height *= self.zoom_factor
-        song_width += self.print_widget.left_margin
-        song_height += self.print_widget.top_margin
-        
-        self.print_widget.resize(song_width, song_height)
-
-
+    
     def updateStates(self):
+        """
+        Enable / disable buttons and other widgets as needed.
+        """
 
         selected_song_ids = self.getSelectedSongIds()
         
@@ -1818,6 +1828,8 @@ class App:
         self.ui.song_title_ef.setEnabled( self.current_song != None )
         self.ui.song_num_ef.setEnabled( self.current_song != None )
         self.ui.song_key_menu.setEnabled( self.current_song != None )
+        self.ui.transpose_up_button.setEnabled( self.current_song != None )
+        self.ui.transpose_down_button.setEnabled( self.current_song != None )
         
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )        
@@ -1860,6 +1872,9 @@ class App:
             self.ui.song_num_ef.setText("")
             self.ui.lyrics_editor.setPlainText("")
             self.ui.lyrics_editor.setMargins()
+            
+            self.print_widget.resize(0, 0)
+
         else:
             self.current_song = song
             self.populateSongKeyMenu()
@@ -1883,7 +1898,6 @@ class App:
             else:
                 self.ui.song_num_ef.setText( str(self.current_song.number) )
         
-        self.resizePrintWidget()
         self.disableUndo()
         
         self.print_widget.repaint()
@@ -1968,18 +1982,21 @@ class App:
             self.current_song.setAllText(song_text, new_all_chords)
             self.previous_song_text = song_text
         
+        self.current_song.calculateChars()
+        
         self.current_song.changed()
         
-        self.print_widget.repaint()
+        #self.print_widget.repaint()
         
         self.ignore_song_text_changed = False
     
 
     def comboTextSizeChanged(self, new_text):
 
-        self.zoom_factor = int(new_text[:-1]) / 100.0        
-        self.resizePrintWidget()
-        self.print_widget.repaint()
+        self.zoom_factor = int(new_text[:-1]) / 100.0
+        if self.current_song:
+            self.current_song.calculateChars()
+            self.print_widget.repaint()
         
 
     
@@ -2339,8 +2356,9 @@ class App:
     
     
     def _drawSongToPainter(self, song, pic_painter, exporting=False):
-        
-        song.calculateChars()
+        """
+        NOTE: calculateChars() must be called after any changes to the song and before calling this method.
+        """
         
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
@@ -2378,12 +2396,6 @@ class App:
         self.text_layout.draw( pic_painter, QtCore.QPointF(0.0, 0.0) )
 
 
-        # FIXME will not account for chord text:
-        layout_bounding_rect = self.text_layout.boundingRect()
-        pic_right = layout_bounding_rect.right()
-        pic_bottom = layout_bounding_rect.bottom()
-
-        return pic_right, pic_bottom
 
 
 
@@ -2396,17 +2408,13 @@ class App:
         
         
         #print 'drawSongToRect()'
-        #sys.stdout.flush()
-        
-        pic = QtGui.QPicture()
-        pic_painter = QtGui.QPainter()
-        pic_painter.begin(pic)
         
 
-        pic_right, pic_bottom = self._drawSongToPainter(song, pic_painter, exporting)
+        # FIXME will not account for chord text:
+        layout_bounding_rect = self.text_layout.boundingRect()
+        pic_right = layout_bounding_rect.right()
+        pic_bottom = layout_bounding_rect.bottom()
         
-        
-        pic_painter.end()
         
         
         # Figure out what the scaling factor should be:
@@ -2429,7 +2437,7 @@ class App:
         output_painter.translate(rect.left(), rect.top())
         output_painter.scale(scale_ratio, scale_ratio)
         
-        output_painter.drawPicture(0, 0, pic)
+        self._drawSongToPainter(song, output_painter, exporting)
         
         # Redo the effect of scaling:
         output_painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
@@ -2460,7 +2468,7 @@ class App:
         y = float(y) / self.zoom_factor
         
         
-        self.current_song.calculateChars()
+        #self.current_song.calculateChars()
         
         for line in self.current_song.iterateLines():
             
@@ -2513,6 +2521,8 @@ class App:
                 self.current_song.addChord(chord)
             
             self.current_song.changed()
+            
+            self.current_song.calculateChars()
             
             self.print_widget.repaint()
                 
