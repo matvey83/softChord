@@ -435,8 +435,9 @@ class Song:
                 exit = True
                 line_text = remaining_text # text for this line
                 line_end_offset = len(line_text) + line_start_offset
-                #print '*** last line:', line_text
-                lines_list.append(line_text)
+                if line_text != "":
+                    #print '*** last line:', line_text
+                    lines_list.append(line_text)
             else:
                 # This is NOT the last line in the song
                 line_text = remaining_text[:char_num] # text for this line
@@ -496,6 +497,9 @@ class Song:
         tmp_line = self._lines[chord_linenum]
         tmp_line.chords.append(chord)
         self.updateSharpsOrFlats()
+        
+        # In case the added chord made the whole song higher:
+        self.app.resizePrintWidget()
     
     
     def deleteChord(self, chord):
@@ -750,7 +754,7 @@ class Song:
                         if chord_linenum != linenum:
                             continue
                         
-                        chord_text = chord.getCordText()
+                        chord_text = chord.getChordText()
                         
                         chord_len = len(chord_text)
                         chord_left = line_char_num - (chord_len//2)
@@ -779,8 +783,10 @@ class Song:
                 line_chord_text = u''.join(line_chord_text_list).rstrip()
                 song_text += line_chord_text + u"\n"
             
+            #print 'LINE TEXT:', line_text
             song_text += line_text + u"\n"
         
+
         # Remove the last end-of-line:
         #if song_text[-1] == "\n":
         #    song_text = song_text[:-1]
@@ -1511,32 +1517,43 @@ class App:
         
         self.songs_model.updateFromDatabase()
         
-        self.ui.lyrics_editor_box.toggled.connect( self.lyricsEditorToggled )
-        self.lyricsEditorToggled()
+        
+        self.ui.lyric_editor_button.clicked.connect( self.lyricEditorSelected )
+        self.ui.chord_editor_button.clicked.connect( self.chordEditorSelected )
+        
+        self.chordEditorSelected()
 
         self.updateStates()
+    
 
-
-    def lyricsEditorToggled(self, ignored=None):
+    def lyricEditorSelected(self):
         
-        if self.ui.lyrics_editor_box.isChecked():
-            self.ui.lyrics_editor_label.show()
-            self.ui.chords_editor_label.hide()
-            self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
-            self.ui.chord_scroll_area.hide()
-            self.ui.lyric_editor_layout.addWidget(self.ui.lyrics_editor)
-            self.ui.lyrics_editor.show()
-            self.ui.zoom_combo_box.setEnabled(True)
-        else:
-            self.ui.lyrics_editor_label.hide()
-            self.ui.chords_editor_label.show()
-            self.ui.lyric_editor_layout.removeWidget(self.ui.lyrics_editor)
-            self.ui.lyrics_editor.hide()
-            self.ui.lyric_editor_layout.addWidget(self.ui.chord_scroll_area)
-            self.ui.chord_scroll_area.show()
-            self.ui.zoom_combo_box.setEnabled(True)
+        self.ui.lyric_editor_button.setDown(True)
+        self.ui.chord_editor_button.setDown(False)
         
+        self.ui.lyrics_editor_label.show()
+        self.ui.chords_editor_label.hide()
+        self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
+        self.ui.chord_scroll_area.hide()
+        self.ui.lyric_editor_layout.addWidget(self.ui.lyrics_editor)
+        self.ui.lyrics_editor.show()
+        self.ui.zoom_combo_box.setEnabled(False)
+    
 
+    def chordEditorSelected(self):
+        
+        self.ui.lyric_editor_button.setDown(False)
+        self.ui.chord_editor_button.setDown(True)
+
+        self.ui.lyrics_editor_label.hide()
+        self.ui.chords_editor_label.show()
+        self.ui.lyric_editor_layout.removeWidget(self.ui.lyrics_editor)
+        self.ui.lyrics_editor.hide()
+        self.ui.lyric_editor_layout.addWidget(self.ui.chord_scroll_area)
+        self.ui.chord_scroll_area.show()
+        self.ui.zoom_combo_box.setEnabled(True)
+    
+    
 
     def __del__(self):
         pass
@@ -1731,8 +1748,10 @@ class App:
         # Sroll the chords table to the top (and left):
         self.ui.chord_scroll_area.horizontalScrollBar().setValue(0)
         self.ui.chord_scroll_area.verticalScrollBar().setValue(0)
-
-
+        
+        self.chordEditorSelected()
+    
+    
     def getSelectedSongIds(self):
         """
         Returns a list of selected songs (their song_ids)
@@ -2289,7 +2308,8 @@ class App:
         proxy_index = self.songs_proxy_model.mapFromSource(source_index)
         self.ui.songs_view.selectRow(proxy_index.row())
         self.updateCurrentSongFromDatabase()
-    
+        
+        self.lyricEditorSelected()
 
 
     def deleteSelectedSong(self):
