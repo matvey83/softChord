@@ -262,7 +262,6 @@ class SongChord:
         self.song = song
         self.song_id = song.id
         self.character_num = character_num
-        self.line_char_num = None
         self.note_id = note_id
         self.chord_type_id = chord_type_id
         self.bass_note_id = bass_note_id
@@ -294,14 +293,14 @@ class SongChord:
         as appropriate.
         """
         
-        #for (note_text, note_alt_text) in self.app.notes_list[note_id]:
         note_text, note_alt_text = self.app.notes_list[note_id]
 
-        if self.song.preferSharps():
+        if self.song.prefer_sharps:
             return note_text
         else:
             return note_alt_text
         
+
     def getChordText(self):
         """
         Returns string of the chord.
@@ -350,10 +349,9 @@ class SongChar:
     """
     This class holds the paint bounds information for this character and its chord (if any).
     """
-    def __init__(self, text, song_char_num, line_char_num, chord, char_left, char_right, chord_left, chord_right):
+    def __init__(self, text, song_char_num, chord, char_left, char_right, chord_left, chord_right):
         self.text = text
         self.song_char_num = song_char_num
-        self.line_char_num = line_char_num
         self.chord = chord
         self.char_left = char_left
         self.char_right = char_right
@@ -371,7 +369,9 @@ class Song:
     def __init__(self, app, song_id):
         self.app = app
         self.id = song_id
-        self._lines = []
+        self._text = None
+        self._chords = []
+        self._all_chars = []
         self.number = -1
         self.title = ""
         self.prefer_sharps = True
@@ -380,6 +380,7 @@ class Song:
 
         self.updateSongFromDatabase()
         self.updateSharpsOrFlats()
+    
     
     def updateSongFromDatabase(self):
         
@@ -412,9 +413,8 @@ class Song:
     
 
     def iterateAllChords(self):
-        for tmp_line in self.iterateLines():
-            for chord in tmp_line.chords:
-                yield chord
+        for chord in self._chords:
+            yield chord
     
 
     def setAllText(self, all_text, all_chords):
@@ -461,8 +461,7 @@ class Song:
                 line_global_end += len(line_text) + 1
                 if song_char_num < line_global_end-1:
                     # This character is in this line
-                    line_char_num = song_char_num - line_global_start
-                    chord.line_char_num = line_char_num
+                    #line_char_num = song_char_num - line_global_start
                     try:
                         chords_by_line[linenum].append(chord)
                     except KeyError:
@@ -471,161 +470,101 @@ class Song:
                 line_global_start += len(line_text) + 1
         
         
-        self._lines = []
+        texts = []
+        self._chords = []
         prev_line_bottom = 0
         for linenum, line_text in enumerate(lines_list):
             line_chords = chords_by_line.get(linenum, [])
             line = SongLine(self, line_text, line_chords)
-            self._lines.append(line)
+            texts.append(line_text)
+            self._chords += line_chords
             #print '  appending line:', line_text
+        
+        self._text = "\n".join(texts)
 
         #print 'setAllText'
         self.calculateChars()
         
         
     
-    def iterateAllChords(self):
-        for tmp_line in self.iterateLines():
-            for chord in tmp_line.chords:
-                yield chord
-    
-
     def addChord(self, chord):
-        chord_song_char_num = chord.character_num
-        chord_linenum, line_char_num = self.songCharToLineChar(chord_song_char_num)
-        tmp_line = self._lines[chord_linenum]
-        tmp_line.chords.append(chord)
+        self._chords.append(chord)
         self.updateSharpsOrFlats()
         
     
     def deleteChord(self, chord):
-        for tmp_line in self.iterateLines():
-            if chord in tmp_line.chords:
-                tmp_line.chords.remove(chord)
+        self._chords.remove(chord)
         self.updateSharpsOrFlats()
     
-    def moveChord(self, chord, new_song_char_num):
-        new_chord_linenum, new_line_char_num = self.songCharToLineChar(new_song_char_num)
-        for linenum, tmp_line in enumerate(self.iterateLines()):
-            if chord in tmp_line.chords:
-                chord.character_num = new_song_char_num
-                if new_chord_linenum != linenum:
-                    # Chord moved to another line                
-                    tmp_line.chords.remove(chord)
-                    self.addChord(chord)
-                break
 
+    def moveChord(self, chord, new_song_char_num):
+        chord.character_num = new_song_char_num
     
     def getAllText(self):
-        #return "\n".join( [line.text for line in self._lines ] )
         
-        all_text = ""
-        for line in self.iterateLines():
-            all_text += line.text +'\n'
-        return all_text
+        #all_text = ""
+        #for text in self.iterateLineTexts():
+        #    all_text += text +'\n'
+        #return all_text
+        return self._text
     
 
-    def iterateLines(self):
-        for line in self._lines():
-            yield line
-    
     def iterateLineTexts(self):
         """
         Iterate over each the lines in this song.
         """
-        for line in self.iterateLines():
-            yield line.text
+        for text in self._text.split("\n"):
+            yield text
     
-    
-    
+
+    def iterateTextChars(self):
+        for char in self._text:
+            yield char
+
+
+
     def calculateChars(self):
-        #print '  calculateChars()'
         
-        #song_text = self.getAllText()
-        song_text = ""
-        for line in self.iterateLines():
-            if len(line.text) == 0:
-                # Do not add the empty line to QTextLayout (to avoid issues with wrapping)
-                song_text += ' ' # Just so that the counts are correct
-            else:
-                song_text += line.text +'\n'
+        te = self.app.ui.lyrics_editor
+        doc = te.document()
+        text_layout = doc.documentLayout()
+        #text_layout.setCacheEnabled(True) # speed-up
         
         
-        self.app.text_layout = QtGui.QTextLayout(song_text, self.app.lyrics_font) 
-        self.app.text_layout.setCacheEnabled(True) # speed-up
+        margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
+        
+        cursor = te.textCursor()
+        
+        # Make a list of chords:
+        char_num_chord_dict = {}
+        for chord in self._chords:
+            char_num_chord_dict[chord.character_num] = chord
+        
+        self._all_chars = []
+        
 
-        height = 0.0
-        #leading = self.app.lyrics_font_metrics.leading()
         
-        self.app.text_layout.beginLayout()
-        self.all_lines = []
-        
-        #text_option = self.app.text_layout.textOption()
-        #self.app.text_layout.setTextOption(text_option)
-        
-        prev_line_bottom = 0
-        for linenum, line in enumerate(self.iterateLines()):
-            chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
-            chords_top = prev_line_bottom # Bottom of the previous line
-            chords_bottom = chords_top + chords_height
-            lyrics_bottom = chords_top + line_height
-            lyrics_top = lyrics_bottom - lyrics_height
-            prev_line_bottom = lyrics_bottom
-            
-            line.linenum = linenum
-            line.chords_top = chords_top
-            line.chords_bottom = chords_bottom
-            line.lyrics_top = lyrics_top
-            line.lyrics_bottom = lyrics_bottom
-            
-            
-            
-            line_len = len(line.text)
-            #print 'line_len:', line_len, 'line text:', line.text
-            
-            line.all_chars = []
-            
-            if line_len == 0:
-                # Empty lines are not added
-                self.all_lines.append(line)
-                continue 
-            
-
-            text_line = self.app.text_layout.createLine()
-            if not text_line.isValid():
-                # Will hapen at the last line
-                break
-            
-            
-            height = line.lyrics_top
-            #height += leading
-            
-            #height += text_line.height()
-            text_line.setPosition( QtCore.QPointF(0, height) )
-            
-            text_line.setNumColumns(line_len)
-
-            line_start_char_num = self.lineCharToSongChar(linenum, 0)
-            
-            
-            char_num_chord_dict = {}
-            for chord in line.chords:
-                line_char_num = chord.character_num - line_start_char_num
-                char_num_chord_dict[line_char_num] = chord
-            
-            
-            prev_x = text_line.cursorToX(line_start_char_num)[0]
-            for line_char_num, char_text in enumerate(line.text):
+        for song_char_num, char_text in enumerate(self.iterateTextChars()):
                 # Figure out the y position where the letter should be drawn:
-                song_char_num = line_char_num + line_start_char_num
                 
                 # Find the bounding rect for this character:
-                chord = char_num_chord_dict.get(line_char_num)
+                chord = char_num_chord_dict.get(song_char_num)
                 
-                char_left = prev_x
-                char_right = text_line.cursorToX(song_char_num+1)[0]
-                prev_x = char_right
-
+                cursor.setPosition(song_char_num)
+                left_rect = te.cursorRect(cursor)
+                cursor.setPosition(song_char_num+1)
+                right_rect = te.cursorRect(cursor)
+                
+                char_left = left_rect.left()
+                char_right = right_rect.right()
+                
+                chord_top = left_rect.top() - margin_height
+                chord_bottom = left_rect.top() + margin_height
+                
+                char_top = left_rect.top()
+                char_bottom = left_rect.bottom()
+                
+                
                 # Find the bounding rect for this chord (if any):
                 if chord:
                     chord_text = chord.getChordText()
@@ -636,19 +575,21 @@ class Song:
                 else:
                     chord_left = chord_right = None
                 
-                char = SongChar(char_text, song_char_num, line_char_num, chord, char_left, char_right, chord_left, chord_right)
+                char = SongChar(char_text, song_char_num, chord, char_left, char_right, chord_left, chord_right)
                 if char.has_chord:
                     char.chord_text = chord_text
                 
-                line.all_chars.append(char)
+                char.chord_bottom = chord_bottom
+                char.chord_top = chord_top
+                char.char_bottom = char_bottom
+                char.char_top = char_top
+                
+                self._all_chars.append(char)
             
-            self.all_lines.append(line)
-        
-        self.app.text_layout.endLayout()
-        
         
         # FIXME will not account for chord text:
-        layout_bounding_rect = self.app.text_layout.boundingRect()
+        tf = doc.rootFrame()
+        layout_bounding_rect = text_layout.frameBoundingRect(tf)
         song_width = layout_bounding_rect.right()
         song_height = layout_bounding_rect.bottom()
         
@@ -659,14 +600,27 @@ class Song:
         
         self.app.print_widget.resize(song_width, song_height)
 
-        
-        
-        
-    def iterateLines(self):
-        for line in self._lines:
-            yield line
+
+
+
+
+
     
+    def iterateChars(self):
+        for char in self._all_chars:
+            yield char
     
+    def getLineHasChords(self, linenum):
+
+        chords_present = False
+        for chord in self._chords:
+            chord_linenum, line_char_num = self.songCharToLineChar(chord.character_num)
+            if chord_linenum == linenum:
+                chords_present = True
+                break
+
+        return chords_present
+
     def getLineHeights(self, linenum):
         """
         Returns top & bottom y positions of the chords and lyrics texts
@@ -675,7 +629,8 @@ class Song:
 
         lyrics_height = self.app.lyrics_font_metrics.height()
         
-        if self._lines[linenum].chords:
+            
+        if self.getLineHasChords(linenum):
             chords_height = self.app.chords_font_metrics.height()
             #line_height = (lyrics_height + chords_height)
             line_height = (lyrics_height + chords_height) * 0.9 # So that there is less spacing between the chords and the text
@@ -744,10 +699,9 @@ class Song:
         song_text = unicode()
         self.updateSharpsOrFlats()
         
-        for linenum, line in enumerate(self.iterateLines()):
-            line_text = unicode(line.text)
+        for linenum, line_text in enumerate(self.iterateLineTexts()):
             
-            if line.chords:
+            if self.getLineHasChords(linenum):
                 # Add the chords line above this line
                 
                 line_chord_text_list =  [u' '] * len(line_text) # FIXME add a few to the end???
@@ -888,14 +842,6 @@ class Song:
         #print 'num prefer sharp, flat:', num_prefer_sharp, num_prefer_flat
         self.prefer_sharps = (num_prefer_sharp >= num_prefer_flat)
     
-    def preferSharps(self):
-        """
-        Returns False if "flat" versions of the chord should be printed,
-        and returns True if "sharp" versions of the chords should be printed
-        """
-        return self.prefer_sharps
-
-
 
 
 
@@ -911,7 +857,9 @@ class CustomTextEdit(QtGui.QTextEdit):
     def setMargins(self):
         
         # Set the margin for the first line (the top of the document):
-        tf = self.document().rootFrame()
+        doc = self.document()
+        
+        tf = doc.rootFrame()
         tff = tf.frameFormat()
         tff.setMargin(21.0)
         tf.setFrameFormat(tff)
@@ -920,7 +868,7 @@ class CustomTextEdit(QtGui.QTextEdit):
         margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
         
         processed_format_indecies = set()
-        block = self.document().begin()
+        block = doc.begin()
         while True:
             format_index = block.blockFormatIndex()
             # FIXME this code could be optimized (it's quite slow):
@@ -932,7 +880,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                 cursor = QtGui.QTextCursor(block)
                 cursor.setBlockFormat(format)
             
-            if block == self.document().end():
+            if block == doc.end():
                 break
             
             block = block.next()
@@ -1119,7 +1067,7 @@ class PrintWidget(QtGui.QWidget):
         letter_tuple = self.app.determineClickedLetter(localx, localy, dragging)
         
         if letter_tuple != None:
-            (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
+            (is_chord, song_char_num) = letter_tuple
             # Mouse is over a vlid chord/letter
             
             if not self.dragging_chord:
@@ -1161,7 +1109,7 @@ class PrintWidget(QtGui.QWidget):
             letter_tuple = self.app.determineClickedLetter(localx, localy, False)
             if letter_tuple:
                 # A valid letter/chord was clicked, select it:
-                (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
+                (is_chord, song_char_num) = letter_tuple
                 
                 if self.app.selected_char_num != song_char_num:
                     # User clicked on an un-selected letter. Select it:
@@ -1223,7 +1171,7 @@ class PrintWidget(QtGui.QWidget):
             letter_tuple = self.app.determineClickedLetter(localx, localy, False)
             if letter_tuple:
                 # A valid chord/letter was double-clicked, edit it:
-                (is_chord, linenum, line_char_num, song_char_num) = letter_tuple
+                (is_chord, song_char_num) = letter_tuple
                 self.app.selected_char_num = song_char_num
                 self.app.processSongCharEdit(song_char_num)
             else:
@@ -1434,7 +1382,7 @@ class App:
         self.ui.lyric_editor_layout.addWidget(self.ui.lyrics_editor)
 
         self.ui.lyrics_editor.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
-        self.c( self.ui.lyrics_editor, "textChanged()", self.songTextChanged )
+        self.c( self.ui.lyrics_editor, "textChanged()", self.lyricsTextChanged )
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
@@ -1499,18 +1447,16 @@ class App:
         self.chords_tiny_font_metrics = QtGui.QFontMetrics(self.chords_tiny_font)
         
         # Search for a font that can display sharp and flat characters correctly:
-        """
-        for name in [
-            'MS Reference Sans Serif'
-            'Lucida Sans Unicode', 
-            'Arial Unicode MS', 
-                ]:
-            font = QtGui.QFont(name, 14, QtGui.QFont.Bold)
-            if font.exactMatch():
-                print '  using:', name
-                self.chords_font = font
-                break
-        """
+        #for name in [
+        #    'MS Reference Sans Serif'
+        #    'Lucida Sans Unicode', 
+        #    'Arial Unicode MS', 
+        #        ]:
+        #    font = QtGui.QFont(name, 14, QtGui.QFont.Bold)
+        #    if font.exactMatch():
+        #        print '  using:', name
+        #        self.chords_font = font
+        #        break
 
         self.chords_font_metrics = QtGui.QFontMetrics(self.chords_font)
         self.chords_color = QtGui.QColor("DARK BLUE")
@@ -1545,12 +1491,28 @@ class App:
         self.ui.lyric_editor_button.clicked.connect( self.lyricEditorSelected )
         self.ui.chord_editor_button.clicked.connect( self.chordEditorSelected )
         
-        self.chordEditorSelected()
+        self.chordEditorSelected(recalc=False)
 
         self.updateStates()
     
 
+    def populateLyricEditor(self):
+        # Populate the lyric editor:
+        self.ignore_song_text_changed = True
+        if self.current_song:
+            song_text = self.current_song.getAllText()
+            self.ui.lyrics_editor.setPlainText(song_text)
+            #print 'set text to len:', len(song_text)
+            self.ui.lyrics_editor.setMargins()
+            self.previous_song_text = song_text
+        else:
+            self.ui.lyrics_editor.setPlainText("")
+        self.ignore_song_text_changed = False
+    
+
     def lyricEditorSelected(self):
+        
+        #self.populateLyricEditor()
         
         self.ui.lyric_editor_button.setDown(True)
         self.ui.chord_editor_button.setDown(False)
@@ -1564,7 +1526,9 @@ class App:
         self.ui.zoom_combo_box.setEnabled(False)
     
 
-    def chordEditorSelected(self):
+    def chordEditorSelected(self, recalc=True):
+        
+        #self.populateLyricEditor()
         
         self.ui.lyric_editor_button.setDown(False)
         self.ui.chord_editor_button.setDown(True)
@@ -1576,7 +1540,10 @@ class App:
         self.ui.lyric_editor_layout.addWidget(self.ui.chord_scroll_area)
         self.ui.chord_scroll_area.show()
         self.ui.zoom_combo_box.setEnabled(True)
-    
+        
+        if recalc and self.current_song:
+            # The lines were updated in lyricsTextChanged(), so now re-calculate the positions:
+            self.current_song.calculateChars()
     
 
     def __del__(self):
@@ -1776,7 +1743,7 @@ class App:
         self.ui.chord_scroll_area.horizontalScrollBar().setValue(0)
         self.ui.chord_scroll_area.verticalScrollBar().setValue(0)
         
-        self.chordEditorSelected()
+        self.chordEditorSelected(recalc=True)#False)
     
     
     def getSelectedSongIds(self):
@@ -1835,23 +1802,20 @@ class App:
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )        
         
-        #self.ui.export_pdf_button.setEnabled( num_selected > 0 )
         self.ui.actionExportPdf.setEnabled( num_selected > 0 )
         
-        #self.ui.export_text_button.setEnabled( num_selected == 1 )
         self.ui.actionExportText.setEnabled( num_selected == 1 )
         
         self.ui.actionPrint.setEnabled( num_selected == 1 )
 
         # Whether there is an open songbook:
-        db_open = (self.curs != None)
-        #self.ui.import_text_button.setEnabled(db_open)
-        self.ui.actionImportText.setEnabled(db_open)
+        songbook_open = (self.curs != None)
+        self.ui.actionImportText.setEnabled(songbook_open)
         
-        self.ui.new_song_button.setEnabled(db_open)
-        self.ui.actionNewSong.setEnabled(db_open)
+        self.ui.new_song_button.setEnabled(songbook_open)
+        self.ui.actionNewSong.setEnabled(songbook_open)
         
-        self.ui.actionCloseSongbook.setEnabled(db_open)
+        self.ui.actionCloseSongbook.setEnabled(songbook_open)
         
         self.updateUndoRedo()
             
@@ -1875,7 +1839,6 @@ class App:
             self.ui.lyrics_editor.setMargins()
             
             self.print_widget.resize(0, 0)
-
         else:
             self.current_song = song
             self.populateSongKeyMenu()
@@ -1901,6 +1864,8 @@ class App:
         
         self.disableUndo()
         
+        #self.populateLyricEditor()
+
         self.print_widget.repaint()
 
 
@@ -1918,19 +1883,20 @@ class App:
             self.restoreCursor()
     
 
-    def songTextChanged(self):
+    def lyricsTextChanged(self):
         """
         Called when the song lyric text is modified by the user.
         """
         if self.ignore_song_text_changed:
             return
-
+        
         if not self.current_song:
             return
         
         self.ignore_song_text_changed = True
         
         song_text = unicode(self.ui.lyrics_editor.toPlainText())
+        #print 'text changed'
         
         # Compare the new text to the previous text:
         
@@ -1979,11 +1945,15 @@ class App:
             # Renumber the selection:
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(self.selected_char_num)
-            
-            self.current_song.setAllText(song_text, new_all_chords)
-            self.previous_song_text = song_text
+        else:
+            # No previous text
+            new_all_chords = []
+
+        self.current_song.setAllText(song_text, new_all_chords)
+
+        self.previous_song_text = song_text
         
-        self.current_song.calculateChars()
+        #self.current_song.calculateChars()
         
         self.current_song.changed()
         
@@ -2364,21 +2334,21 @@ class App:
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
-        for line in self.current_song.iterateLines():
-            for char in line.all_chars:
+        for char in self.current_song.iterateChars():
+
                 if not exporting:
                     if self.hover_char_num == char.song_char_num:
                         # Mouse is currently hovering over this letter:
                         # Draw a hover rectangle:
-                        pic_painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, hover_brush)
+                        pic_painter.fillRect(char.char_left, char.char_top, char.char_right-char.char_left, char.char_bottom-char.char_top, hover_brush)
                         if char.has_chord:
-                            pic_painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, hover_brush)
+                            pic_painter.fillRect(char.chord_left, char.chord_top, char.chord_right-char.chord_left, char.chord_bottom-char.chord_top, hover_brush)
                     
                     if self.selected_char_num == char.song_char_num:
                         # Draw a selection rectangle:
-                        pic_painter.fillRect(char.char_left, line.lyrics_top, char.char_right-char.char_left, line.lyrics_bottom-line.lyrics_top, selection_brush)
+                        pic_painter.fillRect(char.char_left, char.char_top, char.char_right-char.char_left, char.char_bottom-char.char_top, selection_brush)
                         if char.has_chord:
-                            pic_painter.fillRect(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, selection_brush)
+                            pic_painter.fillRect(char.chord_left, char.chord_top, char.chord_right-char.chord_left, char.chord_bottom-char.chord_top, selection_brush)
                 
                 if char.has_chord:
                     #chord_text = char.chord.getChordText()
@@ -2389,15 +2359,18 @@ class App:
                     # FIXME fix this bug:
                     #print 'drawing: "%s"' % chord_text
                     #chord_text = chord_text.replace('♭', 'b')
-                    pic_painter.drawText(char.chord_left, line.chords_top, char.chord_right-char.chord_left, line.chords_bottom-line.chords_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, chord_text)
+                    pic_painter.drawText(char.chord_left, char.chord_top, char.chord_right-char.chord_left, char.chord_bottom-char.chord_top, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter, chord_text)
 
         
         pic_painter.setFont(self.lyrics_font)
         pic_painter.setPen(self.lyrics_color)
-        self.text_layout.draw( pic_painter, QtCore.QPointF(0.0, 0.0) )
+        
+        # Draw the lyrics document:
+        doc = self.ui.lyrics_editor.document()
+        doc.drawContents( pic_painter, QtCore.QRectF(0.0, 0.0, 10000.0, 10000.0) )
 
 
-
+    
 
 
     def drawSongToRect(self, song, output_painter, rect, exporting=False):
@@ -2410,12 +2383,15 @@ class App:
         
         #print 'drawSongToRect()'
         
-
+        
         # FIXME will not account for chord text:
-        layout_bounding_rect = self.text_layout.boundingRect()
+        te = self.ui.lyrics_editor
+        doc = te.document()
+        tf = doc.rootFrame()
+        layout_bounding_rect = doc.documentLayout().frameBoundingRect(tf)
+
         pic_right = layout_bounding_rect.right()
         pic_bottom = layout_bounding_rect.bottom()
-        
         
         
         # Figure out what the scaling factor should be:
@@ -2447,7 +2423,6 @@ class App:
         output_painter.translate(-rect.left(), -rect.top())
         
         #print '  end drawSongToRect()'
-        #sys.stdout.flush()
         
     
     def determineClickedLetter(self, x, y, dragging):
@@ -2471,26 +2446,23 @@ class App:
         
         #self.current_song.calculateChars()
         
-        for line in self.current_song.iterateLines():
-            
-            if y < line.chords_top or y > line.lyrics_bottom:
+        for char in self.current_song.iterateChars():
+            if y < char.chord_top or y > char.char_bottom:
                 continue # Not this line
             
-            if y < line.chords_bottom and not dragging:
+            if y < char.chord_bottom and not dragging:
                 # Mouse is over the chord height:
-                for char in line.all_chars:
-                    if char.has_chord and x > char.chord_left and x < char.chord_right:
-                        is_chord = True
-                        return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
+                if char.has_chord and x > char.chord_left and x < char.chord_right:
+                    is_chord = True
+                    return (is_chord, char.song_char_num)
             else:
                 # Mouse is over the lyrics height OR we are dragging
-                for char in line.all_chars:
-                    if x > char.char_left and x < char.char_right:
-                        is_chord = False
-                        return (is_chord, line.linenum, char.line_char_num, char.song_char_num)
+                if x > char.char_left and x < char.char_right:
+                    is_chord = False
+                    return (is_chord, char.song_char_num)
         
-
         # Location is NOT on an existing chord or lyric
+        
         return None
 
 
@@ -2520,10 +2492,9 @@ class App:
             # Ok pressed
             if add_new:
                 self.current_song.addChord(chord)
+            self.current_song.calculateChars()
             
             self.current_song.changed()
-            
-            self.current_song.calculateChars()
             
             self.print_widget.repaint()
                 
