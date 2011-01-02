@@ -592,8 +592,8 @@ class Song:
         
         song_width *= self.app.zoom_factor
         song_height *= self.app.zoom_factor
-        song_width += self.app.print_widget.left_margin
-        song_height += self.app.print_widget.top_margin
+        song_width += self.app.left_margin
+        song_height += self.app.top_margin
         
         self.app.print_widget.resize(song_width, song_height)
 
@@ -850,7 +850,8 @@ class CustomTextEdit(QtGui.QTextEdit):
     def __init__(self, app):
         QtGui.QWidget.__init__(self, app.ui)
         self.app = app
-    
+        
+        self.setViewportMargins(self.app.left_margin, self.app.top_margin, 5, 5)
 
     def setMargins(self):
         
@@ -859,7 +860,6 @@ class CustomTextEdit(QtGui.QTextEdit):
         
         tf = doc.rootFrame()
         tff = tf.frameFormat()
-        tf.setFrameFormat(tff)
         
         tiny = False
 
@@ -871,6 +871,8 @@ class CustomTextEdit(QtGui.QTextEdit):
 
         #tff.setMargin(21.0)
         tff.setMargin(margin_height)
+        
+        tf.setFrameFormat(tff)
         
         processed_format_indecies = set()
         block = doc.begin()
@@ -897,7 +899,7 @@ class CustomTextEdit(QtGui.QTextEdit):
         """
         Called when the widget needs to draw the current song.
         """
-
+        
         
         """
 
@@ -933,15 +935,22 @@ class CustomTextEdit(QtGui.QTextEdit):
         }
         """
 
-        
         # Paint the lyrics text and cursor:
         QtGui.QTextEdit.paintEvent(self, event)
+        
         
         
         # Paint the chords:
         if self.app.current_song:
             painter = QtGui.QPainter()
             painter.begin(self.viewport())
+            
+            
+            # Draw background into the whole widget:
+            #rect = self.viewport().rect()
+            #bgbrush = QtGui.QBrush(QtGui.QColor("white"))
+            #painter.fillRect(rect, bgbrush)
+            
             
             #margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
             margin_height = self.app.chords_font_metrics.height() / 2.0
@@ -989,8 +998,6 @@ class PrintWidget(QtGui.QWidget):
         # So that hover mouse move events are generated:
         self.setMouseTracking(True)
         
-        self.left_margin = 21
-        self.top_margin = 10
     
 
     def paintEvent(self, ignored_event):
@@ -1013,7 +1020,7 @@ class PrintWidget(QtGui.QWidget):
             height = 100000 # Unlimited
             #self.left_margin = self.top_margin = 0.0
             
-            paint_rect = QtCore.QRect(self.left_margin, self.top_margin, width, height)
+            paint_rect = QtCore.QRect(self.app.left_margin, self.app.top_margin, width, height)
             self.app.drawSongToRect(self.app.current_song, painter, paint_rect)
         
         painter.end()
@@ -1331,6 +1338,9 @@ class App:
     """
     def c(self, widget, signal_str, slot):
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
+        
+        self.left_margin = 21
+        self.top_margin = 10
 
     
     def __init__(self):
