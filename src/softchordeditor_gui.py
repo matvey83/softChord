@@ -527,7 +527,8 @@ class Song:
         text_layout = doc.documentLayout()
         
         
-        margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
+        #margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
+        margin_height = self.app.chords_font_metrics.height() / 2.0
         
         cursor = te.textCursor()
         
@@ -860,8 +861,14 @@ class CustomTextEdit(QtGui.QTextEdit):
         tff = tf.frameFormat()
         tf.setFrameFormat(tff)
         
+        tiny = False
+
         # Set the margin for the subsequent lines:
-        margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
+        if tiny:
+            margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
+        else:
+            margin_height = self.app.chords_font_metrics.height() / 2.0
+
         #tff.setMargin(21.0)
         tff.setMargin(margin_height)
         
@@ -936,8 +943,10 @@ class CustomTextEdit(QtGui.QTextEdit):
             painter = QtGui.QPainter()
             painter.begin(self.viewport())
             
-            margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
-            painter.setFont(self.app.chords_tiny_font)
+            #margin_height = self.app.chords_tiny_font_metrics.height() / 2.0
+            margin_height = self.app.chords_font_metrics.height() / 2.0
+            #painter.setFont(self.app.chords_tiny_font)
+            painter.setFont(self.app.chords_font)
             painter.setPen(self.app.chords_color)
 
             song = self.app.current_song
@@ -1511,6 +1520,9 @@ class App:
     def lyricEditorSelected(self):
         
         #self.populateLyricEditor()
+        #if self.current_song:
+        #    self.ui.lyrics_editor.setMargins(tiny=True)
+        #    self.current_song.calculateChars()
         
         self.ui.lyric_editor_button.setDown(True)
         self.ui.chord_editor_button.setDown(False)
@@ -1527,6 +1539,9 @@ class App:
     def chordEditorSelected(self, recalc=True):
         
         #self.populateLyricEditor()
+        #if self.current_song:
+        #    self.ui.lyrics_editor.setMargins(tiny=False)
+        #    self.current_song.calculateChars()
         
         self.ui.lyric_editor_button.setDown(False)
         self.ui.chord_editor_button.setDown(True)
@@ -1954,7 +1969,7 @@ class App:
 
         #print 'setAllText1'
         self.current_song.setAllText(song_text, new_all_chords)
-        self.calculateChars()
+        self.current_song.calculateChars()
 
         self.previous_song_text = song_text
         
