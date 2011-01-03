@@ -758,7 +758,6 @@ class Song:
         Save this song to the database.
         """
         
-
         self.app.setWaitCursor()
         try:
             chords_in_database = []
@@ -1708,7 +1707,7 @@ class App:
         Reads all song info from the database.
         """
         
-        if self.current_song:
+        if self.current_song != None:
             # Update the current song in the database
             self.current_song.sendToDatabase()
         
@@ -2688,12 +2687,16 @@ class App:
 
     
     def setCurrentSongbook(self, filename):
+        self.ui.songs_view.selectionModel().clearSelection()
+        # Send the current song to database:
+        self.setCurrentSong(None)
+        
         if filename == None:
             self.curs = None
         else:
             #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(filename)))
             self.curs = sqlite3.connect(filename)
-        self.setCurrentSong(None)
+        
         self.songs_model.updateFromDatabase()
         self.updateStates()
         
@@ -2728,8 +2731,8 @@ class App:
     
     def closeSongbook(self):
         if self.current_song:
-            # Update the current song in the database:
-            self.current_song.sendToDatabase()
+            # Send the current song to the database:
+            self.setCurrentSong(None)
         self.setCurrentSongbook(None)
 
 
