@@ -2056,6 +2056,7 @@ class App:
             self.setWaitCursor()
             try:
                 fh = codecs.open( unicode(text_file).encode('utf-8'), 'w', encoding='utf_8_sig') #encoding='utf-8')
+                
                 #fh = open( unicode(text_file).encode('utf-8'), 'w' )
                 
                 for song_index, song_id in enumerate(self.getSelectedSongIds()):
@@ -2063,9 +2064,12 @@ class App:
                     song = Song(self, song_id)
                     
                     # Encode the unicode string as UTF-8 before writing to file:
-                    #song_text = song.getAsText().encode('utf-8')
                     song_text = song.getAsText()
+
+                    # Fix the line endings that that they work on all OSes, including Windows NotePad:
+                    song_text = song_text.replace('\n', '\r\n')
                     
+                    #song_text = song.getAsText().encode('utf_8_sig')
                     fh.write(song_text)
                 
                 fh.close()
