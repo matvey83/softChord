@@ -356,7 +356,6 @@ class Song:
     def __init__(self, app, song_id):
         self.app = app
         self.id = song_id
-        self._text = None
         self._chords = []
         self.number = -1
         self.title = ""
@@ -394,6 +393,8 @@ class Song:
             chord = SongChord(self, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
             song_chords.append(chord)
         
+        self.doc = QtGui.QTextDocument()
+        
         self.setAllText(all_text, song_chords)
         
         self.updateSharpsOrFlats()
@@ -407,17 +408,53 @@ class Song:
 
     def setAllText(self, all_text, all_chords):
         """
-        Populates the self._text and self._chords lists based on the specified
+        Populates the QTextDocument and self._chords lists based on the specified
         data.
         """
-
-        self._text = all_text
+        
+        self.doc.setPlainText(all_text)
         self._chords = all_chords
+        self.setDocMargins()
         
         self.updateSharpsOrFlats()
     
         
+    def setDocMargins(self):
         
+        # Set the margin for the first line (the top of the document):
+        doc = self.doc
+        
+        tf = doc.rootFrame()
+        tff = tf.frameFormat()
+        
+        # Set the margin for the subsequent lines:
+        margin_height = self.app.chords_font_metrics.height() / 2.0
+
+        #tff.setMargin(21.0)
+        tff.setMargin(margin_height)
+        
+        tf.setFrameFormat(tff)
+        
+        processed_format_indecies = set()
+        block = doc.begin()
+        while True:
+            format_index = block.blockFormatIndex()
+            # FIXME this code could be optimized (it's quite slow):
+            if True: #not format_index in processed_format_indecies:
+                processed_format_indecies.add(format_index)
+                format = block.blockFormat()
+                format.setTopMargin(margin_height)
+                
+                cursor = QtGui.QTextCursor(block)
+                cursor.setBlockFormat(format)
+            
+            if block == doc.end():
+                break
+            
+            block = block.next()
+        
+        #self.verticalScrollBar().setValue(0)
+
     
     def addChord(self, chord):
         self._chords.append(chord)
@@ -434,22 +471,22 @@ class Song:
     
     def getAllText(self):
         
-        #song_text = unicode(self.ui.lyrics_editor.toPlainText())
-        #return song_text
-
-        return self._text
-    
+        song_text = unicode(self.doc.toPlainText())
+        return song_text
+        
 
     def iterateLineTexts(self):
         """
         Iterate over each the lines in this song.
         """
-        for text in self._text.split("\n"):
+        all_text = self.getAllText()
+        for text in all_text.split("\n"):
             yield text
     
 
     def iterateTextChars(self):
-        for char in self._text:
+        all_text = self.getAllText()
+        for char in all_text:
             yield char
 
 
@@ -762,42 +799,6 @@ class CustomTextEdit(QtGui.QTextEdit):
         
         self.setViewportMargins(self.app.left_margin, self.app.top_margin, 5, 5)
 
-    def setMargins(self):
-        
-        # Set the margin for the first line (the top of the document):
-        doc = self.document()
-        
-        tf = doc.rootFrame()
-        tff = tf.frameFormat()
-        
-        
-        # Set the margin for the subsequent lines:
-        margin_height = self.app.chords_font_metrics.height() / 2.0
-
-        #tff.setMargin(21.0)
-        tff.setMargin(margin_height)
-        
-        tf.setFrameFormat(tff)
-        
-        processed_format_indecies = set()
-        block = doc.begin()
-        while True:
-            format_index = block.blockFormatIndex()
-            # FIXME this code could be optimized (it's quite slow):
-            if True: #not format_index in processed_format_indecies:
-                processed_format_indecies.add(format_index)
-                format = block.blockFormat()
-                format.setTopMargin(margin_height)
-                
-                cursor = QtGui.QTextCursor(block)
-                cursor.setBlockFormat(format)
-            
-            if block == doc.end():
-                break
-            
-            block = block.next()
-        
-        self.verticalScrollBar().setValue(0)
         
     
     def paintEvent(self, event):
@@ -1269,7 +1270,6 @@ class App:
         
 
         self.previous_song_text = None # Song text before last user's edit operation
-        
 
         self.ui.lyrics_editor = CustomTextEdit(self)
         
@@ -1389,19 +1389,6 @@ class App:
         self.updateStates()
     
 
-    def populateLyricEditor(self):
-        # Populate the lyric editor:
-        self.ignore_song_text_changed = True
-        if self.current_song:
-            song_text = self.current_song.getAllText()
-            self.ui.lyrics_editor.setPlainText(song_text)
-            self.ui.lyrics_editor.setMargins()
-            self.previous_song_text = song_text
-        else:
-            self.ui.lyrics_editor.setPlainText("")
-            self.previous_song_text = None
-        self.ignore_song_text_changed = False
-    
 
     def lyricEditorSelected(self):
         
@@ -1727,33 +1714,36 @@ class App:
             self.previous_song_text = None
             self.ui.song_key_menu.setCurrentIndex( 0 )
             self.ui.song_num_ef.setText("")
-            self.ui.lyrics_editor.setPlainText("")
-            self.ui.lyrics_editor.setMargins()
             
+            doc = QtGui.QTextDocument()
+            self.ui.lyrics_editor.setDocument(doc)
+            self.ui.lyrics_editor.verticalScrollBar().setValue(0)
             self.print_widget.resize(0, 0)
+        
         else:
             self.current_song = song
             self.populateSongKeyMenu()
         
             if not self.ignore_song_text_changed:
-                self.ignore_song_text_changed = True
                 song_text = self.current_song.getAllText()
-                self.ui.lyrics_editor.setPlainText(song_text)
-                self.ui.lyrics_editor.setMargins()
                 self.ignore_song_text_changed = False
                 self.previous_song_text = song_text
-            
+
             if self.current_song.key_note_id == -1:
                 self.ui.song_key_menu.setCurrentIndex( 0 )
             else:
                 self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major + 1)
-
+            
             self.ui.song_title_ef.setText(self.current_song.title)
             if self.current_song.number == -1:
                 self.ui.song_num_ef.setText("")
             else:
                 self.ui.song_num_ef.setText( str(self.current_song.number) )
             
+            song.doc.setDefaultFont(self.lyrics_font)
+            self.ui.lyrics_editor.setDocument(song.doc)
+            self.ui.lyrics_editor.verticalScrollBar().setValue(0)
+        
         self.disableUndo()
         
         self.print_widget.repaint()
@@ -1837,7 +1827,8 @@ class App:
             # No previous text
             new_all_chords = self.current_song._chords
         
-        self.current_song.setAllText(song_text, new_all_chords)
+        #self.current_song.setAllText(song_text, new_all_chords)
+        self.current_song._chords = new_all_chords
         
         self.previous_song_text = song_text
 
