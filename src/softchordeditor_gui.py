@@ -731,8 +731,8 @@ class Song:
         
 
         # Remove the last end-of-line:
-        #if song_text[-1] == "\n":
-        #    song_text = song_text[:-1]
+        if song_text[-1] == "\n":
+            song_text = song_text[:-1]
         
         return song_text
         
@@ -1284,7 +1284,7 @@ class App:
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
-        self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSong )
+        self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSongs )
         
         self.c( self.ui.song_title_ef, "textEdited(QString)", self.currentSongTitleEdited )
         self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
@@ -1300,7 +1300,7 @@ class App:
         self.c( self.ui.actionPrint, "triggered()", self.printSelectedSongs )
         self.c( self.ui.actionQuit, "triggered()", self.ui.close )
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
-        self.c( self.ui.actionDeleteSongs, "triggered()", self.deleteSelectedSong )
+        self.c( self.ui.actionDeleteSongs, "triggered()", self.deleteSelectedSongs )
         self.c( self.ui.actionExportPdf, "triggered()", self.exportToPdf )
         self.c( self.ui.actionExportText, "triggered()", self.exportToText )
         self.c( self.ui.actionImportText, "triggered()", self.importFromText )
@@ -2188,9 +2188,19 @@ class App:
         self.updateCurrentSongFromDatabase()
         
         self.lyricEditorSelected()
+    
+    
+    def _deleteSong(self, song_id):
+        
+        # Delete this song:
+        self.curs.execute("DELETE FROM songs WHERE id=%i" % song_id)
+        
+        # Delete all associated chords:   
+        self.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
+        self.curs.commit()
 
 
-    def deleteSelectedSong(self):
+    def deleteSelectedSongs(self):
         """
         Deletes the selected song(s).
         """
@@ -2198,11 +2208,8 @@ class App:
         try:
             selected_song_ids = self.getSelectedSongIds()
             for song_id in selected_song_ids:
-                self.curs.execute("DELETE FROM songs WHERE id=%i" % song_id)
-                
-                # Delete all associated chords:   
-                self.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
-            self.curs.commit()
+                self._deleteSong(song_id)
+            self.current_song = None
             
             # Update the song table from database:
             self.songs_model.updateFromDatabase()
