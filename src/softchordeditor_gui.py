@@ -1434,6 +1434,9 @@ class App:
         self.ui.lyric_editor_button.setDown(True)
         self.ui.chord_editor_button.setDown(False)
         
+        if self.current_song:
+            self.current_song.setDocMargins()
+
         self.ui.lyrics_editor_label.show()
         self.ui.chords_editor_label.hide()
         self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
