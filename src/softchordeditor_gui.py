@@ -419,50 +419,71 @@ class Song:
         
         self.updateSharpsOrFlats()
     
-        
+    
+
     def setDocMargins(self):
         
-        # Set the margin for the first line (the top of the document):
-        doc = self.doc
+        # Required to avoid circular calls:
+        self.app.ignore_song_text_changed = True
         
-        tf = doc.rootFrame()
-        tff = tf.frameFormat()
+
+        # Set the margin for the first line (the top of the document):
+        
+        #tf = self.doc.rootFrame()
+        #tff = tf.frameFormat()
         
         # WARNING: Setting the margin will mess up PDF export and printing
         
         #print 'setting margin of line 0:'
-        #chords_height, lyrics_height, line_height = song.getLineHeights(0)
         #tff.setMargin(line_height - lyrics_height)
         
-        tf.setFrameFormat(tff)
+        #tf.setFrameFormat(tff)
         
-        processed_format_indecies = set()
-        block = doc.begin()
+        # Determine which chars have chords:
+        chords_by_char = {}
+        for chord in self._chords:
+            chords_by_char[chord.character_num] = True
+        
+        
+        block = self.doc.begin()
+        
+        with_chords_format = block.blockFormat()
+        chords_height, lyrics_height, line_height = self.getHeightsWithChords()
+        with_chords_format.setTopMargin(line_height - lyrics_height)
+        
+        without_chords_format = block.blockFormat()
+        chords_height, lyrics_height, line_height = self.getHeightsWithoutChords()
+        without_chords_format.setTopMargin(line_height - lyrics_height)
+        
+        
         linenum = -1
-        while True:
-            format_index = block.blockFormatIndex()
-            # FIXME this code could be optimized (it's quite slow):
-            if True: #not format_index in processed_format_indecies:
-                cursor = QtGui.QTextCursor(block)
-                
-                # Determine the line number of this block:
-                linenum += 1
-                chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
-                
-                processed_format_indecies.add(format_index)
-                format = block.blockFormat()
-                
-                format.setTopMargin(line_height - lyrics_height)
-                
-                cursor.setBlockFormat(format)
+        line_start_char = 0
+        for line_text in self.iterateLineTexts():
+            linenum += 1
             
+            line_end_char = line_start_char + len(line_text)
             
-
-            if block == doc.end():
+            line_has_chords = False
+            for chord_num in chords_by_char.keys():
+                if chord_num >= line_start_char and chord_num <= line_end_char:
+                    line_has_chords = True
+                    break
+            
+            cursor = QtGui.QTextCursor(block)
+            
+            if line_has_chords:
+                cursor.setBlockFormat(with_chords_format)
+            else:
+                cursor.setBlockFormat(without_chords_format)
+            
+            if block == self.doc.end():
                 break
             
             block = block.next()
+
+            line_start_char += len(line_text) + 1 # Add the eof-of-line character
         
+        self.app.ignore_song_text_changed = False
 
     
     def addChord(self, chord):
@@ -519,7 +540,6 @@ class Song:
         line_start_char = 0
         for line_text in self.iterateLineTexts():
             linenum += 1
-            #chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
             
             line_end_char = line_start_char + len(line_text)
             
@@ -758,6 +778,7 @@ class Song:
     
 
     def changed(self):
+        self.setDocMargins()
         self.app.enableUndo()
     
     def sendToDatabase(self):
@@ -991,11 +1012,17 @@ class PrintWidget(QtGui.QWidget):
                 
             else:
                 # Dragging - A chord is being dragged
-                
+                song = self.app.current_song
+
                 if song_char_num != self.dragging_chord.character_num:
                     # The dragged chord was moved to a new position
                     
-                    self.app.current_song.moveChord(self.dragging_chord, song_char_num)
+                    #prev_chord_linenum, prev_line_char_num = song.songCharToLineChar(self.dragging_chord.character_num)
+                    
+                    song.moveChord(self.dragging_chord, song_char_num)
+                    
+                    # Update the margin of the document in case the chord was moved to a new line:
+                    song.setDocMargins()
                     
                     # Show hover feedback on the new letter:
                     self.app.hover_char_num = song_char_num
@@ -1777,10 +1804,13 @@ class App:
             self.restoreCursor()
     
 
+
+
     def lyricsTextChanged(self):
         """
         Called when the song lyric text is modified by the user.
         """
+        
         if self.ignore_song_text_changed:
             return
         
@@ -1843,7 +1873,7 @@ class App:
         
         self.current_song._chords = new_all_chords
         self.previous_song_text = song_text
-
+        
         self.current_song.changed()
         
         self.lyrics_editor.repaint()
@@ -2241,6 +2271,7 @@ class App:
         
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
+        
         
         for char in song.iterateCharDrawPositions():
             if not exporting:
