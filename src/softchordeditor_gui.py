@@ -519,7 +519,21 @@ class Song:
         line_start_char = 0
         for line_text in self.iterateLineTexts():
             linenum += 1
-            chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
+            #chords_height, lyrics_height, line_height = self.getLineHeights(linenum)
+            
+            line_end_char = line_start_char + len(line_text)
+            
+            line_has_chords = False
+            for chord_num in char_num_chord_dict.keys():
+                if chord_num >= line_start_char and chord_num <= line_end_char:
+                    line_has_chords = True
+                    break
+            
+            if line_has_chords:
+                chords_height, lyrics_height, line_height = self.getHeightsWithChords()
+            else:
+                chords_height, lyrics_height, line_height = self.getHeightsWithoutChords()
+            
             
             for line_char_num, char_text in enumerate(line_text):
                 song_char_num = line_start_char + line_char_num
@@ -546,7 +560,7 @@ class Song:
                 if chord:
                     chord_text = chord.getChordText()
                     chord_middle = (char_left + char_right) // 2 # Average of left and right
-                    chord_width = self.app.chords_font_metrics.width(chord_text) #* 1.1 # To fix a cropping issue
+                    chord_width = self.app.chords_font_metrics.width(chord_text)
                     chord_left = chord_middle - (chord_width/2.0)
                     chord_right = chord_middle + (chord_width/2.0)
                 else:
@@ -587,6 +601,7 @@ class Song:
         
         chords_height = self.app.chords_font_metrics.height()
         line_height = (lyrics_height + chords_height) * 0.9 # So that there is less spacing between the chords and the text
+        #line_height = lyrics_height + chords_height - self.app.lyrics_font_metrics.leading() - self.app.chords_font_metrics.leading() # So that there is less spacing between the chords and the text
         
         return chords_height, lyrics_height, line_height
         
@@ -606,19 +621,11 @@ class Song:
         for the specified line.
         """
 
-        lyrics_height = self.app.lyrics_font_metrics.height()
-        
         if self.getLineHasChords(linenum):
-            chords_height = self.app.chords_font_metrics.height()
-            #line_height = (lyrics_height + chords_height)
-            line_height = (lyrics_height + chords_height) * 0.9 # So that there is less spacing between the chords and the text
-            #line_height = lyrics_height + chords_height - self.app.lyrics_font_metrics.leading() - self.app.chords_font_metrics.leading() # So that there is less spacing between the chords and the text
+            return self.getHeightsWithChords()
         else:
-            chords_height = 0
-            line_height = lyrics_height
-        
-        return chords_height, lyrics_height, line_height
-    
+            return self.getHeightsWithoutChords()
+
     
     def songCharToLineChar(self, song_char_num):
         """
@@ -861,8 +868,8 @@ class CustomTextEdit(QtGui.QTextEdit):
             
             cursor = self.textCursor()
             for chord in song.iterateAllChords():
-                linenum, line_char_num = song.songCharToLineChar(chord.character_num)
-                chords_height, lyrics_height, line_height = song.getLineHeights(linenum)
+                # Obviously this line has chords:
+                chords_height, lyrics_height, line_height = song.getHeightsWithChords()
                 
                 cursor.setPosition(chord.character_num)
                 left_rect = self.cursorRect(cursor)
@@ -871,9 +878,14 @@ class CustomTextEdit(QtGui.QTextEdit):
                 
                 chord_text = chord.getChordText()
                 
-                chord_left = left_rect.left() - 20.0 # FIXME half the width of the chord text
-                chord_right = right_rect.right() + 20.0 # FIXME half the width of the chord text
+                #chord_left = left_rect.left() - 20.0 # FIXME half the width of the chord text
+                #chord_right = right_rect.right() + 20.0 # FIXME half the width of the chord text
+
                 
+                chord_middle = (left_rect.left() + right_rect.right()) // 2 # Average of left and right
+                chord_width = self.app.chords_font_metrics.width(chord_text)
+                chord_left = chord_middle - (chord_width/2.0)
+                chord_right = chord_middle + (chord_width/2.0)
                 
                 chord_top = left_rect.bottom() - line_height
                 chord_bottom = chord_top + chords_height
