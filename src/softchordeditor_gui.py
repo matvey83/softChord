@@ -526,7 +526,6 @@ class Song:
     def iterateCharDrawPositions(self):
         
         te = self.app.editor
-        text_layout = self.doc.documentLayout()
         
         cursor = te.textCursor()
         
@@ -875,7 +874,17 @@ class CustomTextEdit(QtGui.QTextEdit):
         
         self.lyric_editor_mode = False
         
-    
+    """
+    def resizeEvent(self, event):
+        
+        QtGui.QTextEdit.resizeEvent(self, event)
+
+        cr = self.contentsRect()
+        print 'cr: left, top:', cr.left(), cr.top()
+
+        #lineNumberArea->setGeometry(QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
+    """
+
     def paintEvent(self, event):
         """
         Called when the widget needs to draw the current song.
@@ -2254,8 +2263,9 @@ class App:
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
+        chars = song.iterateCharDrawPositions()
         
-        for char in song.iterateCharDrawPositions():
+        for char in chars:
             if not exporting:
                 if self.hover_char_num == char.song_char_num:
                     # Mouse is currently hovering over this letter:
@@ -2270,6 +2280,8 @@ class App:
                     if char.has_chord:
                         painter.fillRect(char.chord_left, char.chord_top, char.chord_right-char.chord_left, char.chord_bottom-char.chord_top, selection_brush)
             
+
+        for char in chars:
             if char.has_chord:
                 #chord_text = char.chord.getChordText()
                 chord_text = char.chord_text
@@ -2279,7 +2291,7 @@ class App:
                 # FIXME fix this bug:
                 #chord_text = chord_text.replace('♭', 'b')
                 painter.drawText(char.chord_left, char.chord_top, char.chord_right-char.chord_left, char.chord_bottom-char.chord_top, QtCore.Qt.AlignHCenter, chord_text)
-
+        
         
         painter.setFont(self.lyrics_font)
         painter.setPen(self.lyrics_color)
@@ -2287,11 +2299,23 @@ class App:
         # Draw the lyrics document:
         doc = self.editor.document()
 
+        
+        x = self.editor.horizontalScrollBar().value()
+        y = self.editor.verticalScrollBar().value()
+        
+        painter.translate(-x, -y)
+
+        #vrect = self.editor.viewport().rect()
+        #x = vrect.left()
+        #y = vrect.top()
+        #print 'vrect left, top:', x, y
+        
         # Even though we are drawing at 0,0, the text will be drawn with an offset:
         x = -self.left_margin
         y = -self.top_margin
         doc.drawContents( painter, QtCore.QRectF(x, y, 10000.0, 10000.0) )
 
+        painter.translate(x, y)
 
     
 
