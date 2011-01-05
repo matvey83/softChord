@@ -522,88 +522,15 @@ class Song:
 
 
 
-    def iterateCharDrawPositions(self):
+
+    def iterateChordDrawPositions(self):
         
-        te = self.app.editor
-        
-        cursor = te.textCursor()
-        
-        # Make a dict of chords:
-        char_num_chord_dict = {}
         for chord in self._chords:
-            char_num_chord_dict[chord.character_num] = chord
-        
-        
-        all_chars = []
-        
-        linenum = -1
-        line_start_char = 0
-        for line_text in self.iterateLineTexts():
-            linenum += 1
+            song_char_num = chord.character_num
+            char_rect, chord_rect = self.app.getCharRects(chord.character_num)
             
-            line_end_char = line_start_char + len(line_text)
+            yield chord, char_rect, chord_rect
             
-            line_has_chords = False
-            for chord_num in char_num_chord_dict.keys():
-                if chord_num >= line_start_char and chord_num <= line_end_char:
-                    line_has_chords = True
-                    break
-            
-            if line_has_chords:
-                chords_height, lyrics_height, line_height = self.getHeightsWithChords()
-            else:
-                chords_height, lyrics_height, line_height = self.getHeightsWithoutChords()
-            
-            
-            # Optimization: Set position of the cursor only once per character
-            cursor.setPosition(line_start_char, QtGui.QTextCursor.KeepAnchor)
-            left_rect = te.cursorRect(cursor)
-            for line_char_num, char_text in enumerate(line_text):
-                song_char_num = line_start_char + line_char_num
-                
-                # Find the bounding rect for this character:
-                #left_rect = te.cursorRect(cursor)
-                cursor.setPosition(song_char_num+1, QtGui.QTextCursor.KeepAnchor)
-                right_rect = te.cursorRect(cursor)
-                
-                char_left = left_rect.left()
-                char_right = right_rect.right()
-                
-                chord_top = left_rect.bottom() - line_height
-                chord_bottom = chord_top + chords_height
-
-                char_top = left_rect.top()
-                char_bottom = left_rect.bottom()
-                
-                
-                # Find the bounding rect for this chord (if any):
-                chord = char_num_chord_dict.get(song_char_num)
-                if chord:
-                    chord_text = chord.getChordText()
-                    chord_middle = (char_left + char_right) // 2 # Average of left and right
-                    chord_width = self.app.chords_font_metrics.width(chord_text)
-                    chord_left = chord_middle - (chord_width/2.0)
-                    chord_right = chord_middle + (chord_width/2.0)
-                else:
-                    chord_left = chord_right = None
-                
-                char = SongChar(char_text, song_char_num, chord, char_left, char_right, chord_left, chord_right)
-                if char.has_chord:
-                    char.chord_text = chord_text
-                
-                char.chord_bottom = chord_bottom
-                char.chord_top = chord_top
-                char.char_bottom = char_bottom
-                char.char_top = char_top
-                
-                all_chars.append(char)
-                
-                # Optimization:
-                left_rect = right_rect
-
-            line_start_char += len(line_text) + 1 # Add the eof-of-line character
-        
-        return all_chars
 
 
 
@@ -780,7 +707,7 @@ class Song:
         self.updateSharpsOrFlats()
         
         self.changed()
-        self.app.editor.repaint()
+        self.app.viewport().update()
     
 
     def changed(self):
@@ -897,9 +824,9 @@ class CustomTextEdit(QtGui.QTextEdit):
                     # Obviously this line has chords:
                     chords_height, lyrics_height, line_height = song.getHeightsWithChords()
                     
-                    cursor.setPosition(chord.character_num, QtGui.QTextCursor.KeepAnchor)
+                    cursor.setPosition(chord.character_num) #, QtGui.QTextCursor.KeepAnchor)
                     left_rect = self.cursorRect(cursor)
-                    cursor.setPosition(chord.character_num+1, QtGui.QTextCursor.KeepAnchor)
+                    cursor.setPosition(chord.character_num+1) #, QtGui.QTextCursor.KeepAnchor)
                     right_rect = self.cursorRect(cursor)
                     
                     chord_text = chord.getChordText()
@@ -946,7 +873,7 @@ class CustomTextEdit(QtGui.QTextEdit):
         else:
             # Clear the hovering highlighting:
             self.hover_char_num = None
-            self.repaint()
+            self.viewport().update()
     
     
     def optionKeyToggled(self, pressed):
@@ -961,7 +888,7 @@ class CustomTextEdit(QtGui.QTextEdit):
             self.app.current_song.deleteChord(self.original_chord)
             self.original_chord = None
 
-        self.repaint()
+        self.viewport().update()
     
     
     def mouseMoveEvent(self, event):
@@ -1012,8 +939,7 @@ class CustomTextEdit(QtGui.QTextEdit):
             if not self.dragging_chord:
                 self.app.hover_char_num = None
         
-        #self.app.editor.viewport().update()        
-        self.app.editor.viewport().repaint()        
+        self.app.editor.viewport().update()        
 
 
 
@@ -1030,6 +956,7 @@ class CustomTextEdit(QtGui.QTextEdit):
             localx = event.pos().x()
             localy = event.pos().y()
             letter_tuple = self.app.determineClickedLetter(localx, localy, False)
+
             if letter_tuple:
                 # A valid letter/chord was clicked, select it:
                 (is_chord, song_char_num) = letter_tuple
@@ -1060,7 +987,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                 self.app.selected_char_num = None
                 self.dragging_chord = None
             
-            self.app.editor.viewport().repaint()
+            self.app.editor.viewport().update()
     
 
     def mouseReleaseEvent(self, event):
@@ -1078,7 +1005,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                         self.app.current_song.deleteChord(other_chord)
                         break
                 self.app.current_song.changed()
-                self.app.editor.viewport().repaint()
+                self.app.editor.viewport().update()
             
             self.dragging_chord_orig_position = -1
             self.dragging_chord = None
@@ -1105,9 +1032,36 @@ class CustomTextEdit(QtGui.QTextEdit):
                 # Invalid chord/letter was double clicked. Clear current selection:
                 self.app.selected_char_num = None
 
-            self.app.editor.repaint()
+            self.app.viewport().update()
 
     
+    def keyPressEvent(self, event):
+        
+        if self.lyric_editor_mode:
+            QtGui.QTextEdit.keyPressEvent(self, event)
+            return
+        
+        key = event.key()
+        if key == Qt.Key_Alt:
+            self.optionKeyToggled(True)
+        
+        if key == Qt.Key_Delete or key == Qt.Key_Backspace:
+            self.app.deleteSelectedChord()
+        else:
+            if not self.app.processKeyPressed(key):
+                pass
+                #self._orig_keyPressEvent(event)
+        
+    
+    def keyReleaseEvent(self, event):
+        if self.lyric_editor_mode:
+            QtGui.QTextEdit.keyReleaseEvent(self, event)
+            return
+        
+        key = event.key()
+        if key == Qt.Key_Alt:
+            self.optionKeyToggled(False)
+        
 
     
 
@@ -1427,7 +1381,7 @@ class App:
         self.ui.chords_editor_label.hide()
         self.editor.lyric_editor_mode = True
         
-        self.editor.viewport().repaint()
+        self.editor.viewport().update()
     
 
     def chordEditorSelected(self):
@@ -1441,7 +1395,7 @@ class App:
         self.ui.chords_editor_label.show()
         self.editor.lyric_editor_mode = False
         
-        self.editor.viewport().repaint()
+        self.editor.viewport().update()
     
     
 
@@ -1514,7 +1468,7 @@ class App:
                     break
             
             self.current_song.sendToDatabase()
-            self.editor.repaint()
+            self.editor.viewport().update()
     
     def processKeyPressed(self, key):
         """
@@ -1566,17 +1520,17 @@ class App:
         
         self.current_song.changed()
         
-        self.editor.repaint()
+        self.editor.viewport().update()
         return True
         
     
     def undo(self):
         self.updateUndoRedo()
-        self.editor.repaint()
+        self.viewport().update()
     
     def redo(self):
         self.updateUndoRedo()
-        self.editor.repaint()
+        self.viewport().update()
     
     def updateUndoRedo(self):
         if self.current_song == None:
@@ -1753,7 +1707,7 @@ class App:
         
         self.disableUndo()
         
-        self.editor.repaint()
+        #self.update()
 
 
     def _transposeCurrentSong(self, steps):
@@ -1765,7 +1719,7 @@ class App:
         try:
             self.current_song.transpose(steps)
             self.current_song.changed()
-            self.editor.repaint()
+            self.viewport().update()
         finally:
             self.restoreCursor()
     
@@ -1842,7 +1796,7 @@ class App:
         
         self.current_song.changed()
         
-        self.editor.repaint()
+        #self.viewport().update()
         
         self.ignore_song_text_changed = False
     
@@ -1851,7 +1805,7 @@ class App:
 
         self.zoom_factor = int(new_text[:-1]) / 100.0
         if self.current_song:
-            self.editor.repaint()
+            self.viewport().update()
         
 
     
@@ -1871,7 +1825,7 @@ class App:
             self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
             if self.current_song:
                 self.current_song.setDocMargins()
-            self.editor.repaint()
+            self.viewport().update()
 
     def changeLyricsFont(self):
         """
@@ -1884,7 +1838,7 @@ class App:
             self.editor.setFont(self.lyrics_font)
             if self.current_song:
                 self.current_song.setDocMargins()
-            self.editor.repaint()
+            self.viewport().update()
         
     
     def printSelectedSongs(self):
@@ -2161,7 +2115,7 @@ class App:
 
             # Do not run this code if the value of the menu is first initialized
             self.current_song.changed()
-            self.editor.repaint()
+            self.viewport().update()
 
     
     def createNewSong(self):
@@ -2225,8 +2179,52 @@ class App:
             self.restoreCursor()
     
     
+    def getCharRects(self, song_char_num):
+        te = self.editor
+        cursor = te.textCursor()
+        
+        has_chord = False
+        for chord in self.current_song._chords:
+            if chord.character_num == song_char_num:
+                has_chord = True
+                break
+        
+        if has_chord:
+            chords_height, lyrics_height, line_height = self.current_song.getHeightsWithChords()
+        else:
+            chords_height, lyrics_height, line_height = self.current_song.getHeightsWithoutChords()
+        
+        # Find the bounding rect for this character:
+        cursor.setPosition(song_char_num)
+        left_rect = te.cursorRect(cursor)
+        cursor.setPosition(song_char_num+1)
+        right_rect = te.cursorRect(cursor)
+        
+        char_left = left_rect.left()
+        char_right = right_rect.right()
+        
+
+        char_top = left_rect.top()
+        char_bottom = left_rect.bottom()
+        
+        char_width = right_rect.right() - left_rect.left()
+        char_height = left_rect.bottom() - left_rect.top()
+        char_rect = QtCore.QRectF(left_rect.left(), left_rect.top(), char_width, char_height)
+        
+            
+        if has_chord:
+            chord_top = left_rect.bottom() - line_height
+            chord_text = chord.getChordText()
+            chord_middle = (char_left + char_right) // 2 # Average of left and right
+            chord_width = self.chords_font_metrics.width(chord_text)
+            chord_left = chord_middle - (chord_width/2.0)
+            chord_rect = QtCore.QRectF(chord_left, chord_top, chord_width, chords_height)
+        else:
+            chord_rect = None
+        
+        return char_rect, chord_rect
     
-    
+
     def _drawSongToPainter(self, song, painter, exporting=False):
         """
         """
@@ -2234,34 +2232,36 @@ class App:
         selection_brush = QtGui.QPalette().highlight()
         hover_brush = QtGui.QColor("light grey")
         
-        chars = song.iterateCharDrawPositions()
-        
-        for char in chars:
-            if not exporting:
-                if self.hover_char_num == char.song_char_num:
-                    # Mouse is currently hovering over this letter:
-                    # Draw a hover rectangle:
-                    painter.fillRect(char.char_left, char.char_top, char.char_right-char.char_left, char.char_bottom-char.char_top, hover_brush)
-                    if char.has_chord:
-                        painter.fillRect(char.chord_left, char.chord_top, char.chord_right-char.chord_left, char.chord_bottom-char.chord_top, hover_brush)
+        if not exporting:
+            if self.hover_char_num != None:
+                char_rect, chord_rect = self.getCharRects(self.hover_char_num)
                 
-                if self.selected_char_num == char.song_char_num:
-                    # Draw a selection rectangle:
-                    painter.fillRect(char.char_left, char.char_top, char.char_right-char.char_left, char.char_bottom-char.char_top, selection_brush)
-                    if char.has_chord:
-                        painter.fillRect(char.chord_left, char.chord_top, char.chord_right-char.chord_left, char.chord_bottom-char.chord_top, selection_brush)
+                # Mouse is currently hovering over this letter:
+                # Draw a hover rectangle:
+                painter.fillRect(char_rect, hover_brush)
+                if chord_rect:
+                    painter.fillRect(chord_rect, hover_brush)
+                
+            if self.selected_char_num != None:
+                char_rect, chord_rect = self.getCharRects(self.selected_char_num)
+                
+                # Draw a selection rectangle:
+                painter.fillRect(char_rect, selection_brush)
+                if chord_rect:
+                    painter.fillRect(chord_rect, selection_brush)
+        
+        #for chord, char_rect, chord_rect in self.current_song.iterateChordDrawPositions():
+        for chord in song._chords:
+            song_char_num = chord.character_num
+            char_rect, chord_rect = self.getCharRects(chord.character_num)
             
+            chord_text = chord.getChordText()
+            painter.setFont(self.chords_font)
+            painter.setPen(self.chords_color)
 
-        for char in chars:
-            if char.has_chord:
-                #chord_text = char.chord.getChordText()
-                chord_text = char.chord_text
-                painter.setFont(self.chords_font)
-                painter.setPen(self.chords_color)
-
-                # FIXME fix this bug:
-                #chord_text = chord_text.replace('♭', 'b')
-                painter.drawText(char.chord_left, char.chord_top, char.chord_right-char.chord_left, char.chord_bottom-char.chord_top, QtCore.Qt.AlignHCenter, chord_text)
+            # FIXME fix this bug:
+            #chord_text = chord_text.replace('♭', 'b')
+            painter.drawText(chord_rect, QtCore.Qt.AlignHCenter, chord_text)
         
         
         painter.setFont(self.lyrics_font)
@@ -2357,24 +2357,33 @@ class App:
         #y = float(y) / self.zoom_factor
         
         
-        for char in self.current_song.iterateCharDrawPositions():
-            if y < char.chord_top or y > char.char_bottom:
-                continue # Not this line
+
+        #for chord, char_rect, chord_rect in self.current_song.iterateChordDrawPositions():
+
+        for chord in self.current_song._chords:
+            song_char_num = chord.character_num
+            char_rect, chord_rect = self.getCharRects(chord.character_num)
             
-            if y < char.chord_bottom and not dragging:
-                # Mouse is over the chord height:
-                if char.has_chord and x > char.chord_left and x < char.chord_right:
-                    is_chord = True
-                    return (is_chord, char.song_char_num)
-            else:
-                # Mouse is over the lyrics height OR we are dragging
-                if x > char.char_left and x < char.char_right:
-                    is_chord = False
-                    return (is_chord, char.song_char_num)
+            if y > chord_rect.top() and y < chord_rect.bottom():
+                if y < chord_rect.bottom() and not dragging:
+                    # Mouse is over the chord height:
+                    if chord_rect and x > chord_rect.left() and x < chord_rect.right():
+                        is_chord = True
+                        return (is_chord, chord.character_num)
+                else:
+                    # Mouse is over the lyrics height OR we are dragging
+                    if x > chord_rect.left() and x < chord_rect.right():
+                        is_chord = False
+                        return (is_chord, chord.character_num)
         
-        # Location is NOT on an existing chord or lyric
+        # Not over a chord, check the letter:
+        #print 'position:', x, y
+        #print '  cursor position:', 
+        x -= 5.0
+        pos = self.editor.cursorForPosition( QtCore.QPoint(x,y) ).position()
+        return (False, pos)
         
-        return None
+        #return None
 
 
 
@@ -2406,7 +2415,7 @@ class App:
             
             self.current_song.changed()
             
-            self.editor.repaint()
+            self.viewport().update()
                 
 
 
