@@ -418,7 +418,7 @@ class Song:
         
         self.updateSharpsOrFlats()
     
-    
+
 
     def setDocMargins(self):
         
@@ -868,15 +868,15 @@ class CustomTextEdit(QtGui.QTextEdit):
         
         # So that hover mouse move events are generated:
         self.setMouseTracking(True)
-        
+
         self.lyric_editor_mode = False
         
-
+    
     def paintEvent(self, event):
         """
         Called when the widget needs to draw the current song.
         """
-        
+
         if self.lyric_editor_mode:
             
             # Paint the lyrics text, selection rect, and cursor:
@@ -918,7 +918,6 @@ class CustomTextEdit(QtGui.QTextEdit):
             
                 
         else:
-            
             painter = QtGui.QPainter()
             painter.begin(self.viewport())
             
@@ -1012,7 +1011,9 @@ class CustomTextEdit(QtGui.QTextEdit):
             # The mouse is NOT over a letter
             if not self.dragging_chord:
                 self.app.hover_char_num = None
-        self.app.editor.repaint()
+        
+        #self.app.editor.viewport().update()        
+        self.app.editor.viewport().repaint()        
 
 
 
@@ -1059,7 +1060,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                 self.app.selected_char_num = None
                 self.dragging_chord = None
             
-            self.app.editor.repaint()
+            self.app.editor.viewport().repaint()
     
 
     def mouseReleaseEvent(self, event):
@@ -1077,8 +1078,8 @@ class CustomTextEdit(QtGui.QTextEdit):
                         self.app.current_song.deleteChord(other_chord)
                         break
                 self.app.current_song.changed()
-                self.app.editor.repaint()
-
+                self.app.editor.viewport().repaint()
+            
             self.dragging_chord_orig_position = -1
             self.dragging_chord = None
     
@@ -1412,7 +1413,7 @@ class App:
         self.chordEditorSelected()
 
         self.updateStates()
-    	
+        
 
 
     def lyricEditorSelected(self):
