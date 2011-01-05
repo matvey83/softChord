@@ -424,38 +424,37 @@ class Song:
     def setDocMargins(self):
         
         # Required to avoid circular calls:
-        self.app.ignore_song_text_changed = True
+        self.app.ignore_song_text_changed = True        
         
-
-        # Set the margin for the first line (the top of the document):
-        
-        # WARNING: Setting the margin will mess up PDF export and printing
-        if False:
-            tf = self.doc.rootFrame()
-            tff = tf.frameFormat()
-            tff.setMargin(22.0)
-            tf.setFrameFormat(tff)
-            
-
         # Determine which chars have chords:
         chords_by_char = {}
         for chord in self._chords:
             chords_by_char[chord.character_num] = True
         
         
+        chords_height, lyrics_height, line_height = self.getHeightsWithChords()
+        with_chords_top_margin = line_height - lyrics_height
+        
+        
+        # Set the margin for the first line (the top of the document):
+        # NOTE: We are always setting the top margin for the first line with the assumption that
+        # the first line always has chords on it. This assumption is often valid, and also
+        # lets us avoid some issues.
+        root_frame = self.doc.rootFrame()
+        frame_format = root_frame.frameFormat()
+        frame_format.setTopMargin(with_chords_top_margin)
+        root_frame.setFrameFormat(frame_format)
+        
+        
         block = self.doc.begin()
         
         with_chords_format = block.blockFormat()
-        chords_height, lyrics_height, line_height = self.getHeightsWithChords()
-        with_chords_format.setTopMargin(line_height - lyrics_height)
-        with_chords_format.setLeftMargin(20)
-        #with_chords_format.setBottomMargin(20)
+        with_chords_format.setTopMargin(with_chords_top_margin)
+        with_chords_format.setLeftMargin(10)
         
         without_chords_format = block.blockFormat()
-        chords_height, lyrics_height, line_height = self.getHeightsWithoutChords()
-        without_chords_format.setTopMargin(line_height - lyrics_height)
-        without_chords_format.setLeftMargin(20)
-        #without_chords_format.setBottomMargin(20)
+        without_chords_format.setTopMargin(0.0)
+        without_chords_format.setLeftMargin(10)
         
         
         linenum = -1
