@@ -58,7 +58,6 @@ global_notes_list = [
 ]
 
 
-#print 'executable:', sys.executable
 #print 'dir executable:', dir(sys.executable)
 if not os.path.basename(sys.executable).lower().startswith("python"):
     exec_dir = os.path.dirname(sys.executable)
@@ -625,10 +624,6 @@ class Song:
         
         line_height = (lyrics_height + cfm.ascent()) - lfm.leading() - cfm.leading()
         
-        #print 'chords_height:', chords_height
-        #print 'lyrics_height:', lyrics_height
-        #print 'line_height:', line_height
-        
         return chords_height, lyrics_height, line_height
         
 
@@ -862,6 +857,7 @@ class CustomTextEdit(QtGui.QTextEdit):
         QtGui.QWidget.__init__(self, app.ui)
         self.app = app
         
+        
         #self.setViewportMargins(self.app.left_margin, self.app.top_margin, 5, 5)
 
         self.dragging_chord_orig_position = -1
@@ -873,22 +869,11 @@ class CustomTextEdit(QtGui.QTextEdit):
         
         self.lyric_editor_mode = False
         
-    """
-    def resizeEvent(self, event):
-        
-        QtGui.QTextEdit.resizeEvent(self, event)
-
-        cr = self.contentsRect()
-        print 'cr: left, top:', cr.left(), cr.top()
-
-        #lineNumberArea->setGeometry(QRect(cr.left(), cr.top(), lineNumberAreaWidth(), cr.height()));
-    """
 
     def paintEvent(self, event):
         """
         Called when the widget needs to draw the current song.
         """
-        
         
         if self.lyric_editor_mode:
             
@@ -1046,7 +1031,7 @@ class CustomTextEdit(QtGui.QTextEdit):
         if self.lyric_editor_mode:
             QtGui.QTextEdit.mousePressEvent(self, event)
             return
-
+        
         if event.button() == Qt.LeftButton:
             localx = event.pos().x()
             localy = event.pos().y()
@@ -1080,7 +1065,8 @@ class CustomTextEdit(QtGui.QTextEdit):
             else:
                 self.app.selected_char_num = None
                 self.dragging_chord = None
-
+            
+            print 'repainting'
             self.app.editor.repaint()
     
 
@@ -1282,8 +1268,7 @@ class App:
     
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
-        
-        
+
         #self.curs = sqlite3.connect(db_file)
         self.curs = None
         self.current_song = None
@@ -1324,7 +1309,6 @@ class App:
         self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
             self.songsSelectionChangedCallback )
         
-
         self.previous_song_text = None # Song text before last user's edit operation
 
         self.editor = CustomTextEdit(self)
@@ -1420,6 +1404,7 @@ class App:
         
         default_db_file1 = os.path.join( exec_dir, "zvuki_neba.songbook" )
         default_db_file2 = os.path.join( exec_dir, "solo_and_group_songs.songbook")
+        
         if os.path.isfile(default_db_file1):
             self.setCurrentSongbook(default_db_file1)
         elif os.path.isfile(default_db_file2):
@@ -1429,14 +1414,13 @@ class App:
         
         self.songs_model.updateFromDatabase()
         
-        
         self.ui.lyric_editor_button.clicked.connect( self.lyricEditorSelected )
         self.ui.chord_editor_button.clicked.connect( self.chordEditorSelected )
         
         self.chordEditorSelected()
 
         self.updateStates()
-    
+    	
 
 
     def lyricEditorSelected(self):
@@ -1749,14 +1733,15 @@ class App:
             self.ui.song_key_menu.setCurrentIndex( 0 )
             self.ui.song_num_ef.setText("")
             
-            doc = QtGui.QTextDocument()
-            self.editor.setDocument(doc)
+            # Need to save a reference to the doc to prevent a crash on Windows:
+            self.empty_doc = QtGui.QTextDocument()
+            self.editor.setDocument(self.empty_doc)
             self.editor.verticalScrollBar().setValue(0)
         
         else:
             self.current_song = song
             self.populateSongKeyMenu()
-        
+            
             if not self.ignore_song_text_changed:
                 song_text = self.current_song.getAllText()
                 self.ignore_song_text_changed = False
@@ -1976,7 +1961,6 @@ class App:
             
             if self.pdf_options.alternate_margins and page_num != 1:
                 left_margin, right_margin = right_margin, left_margin
-            #print 'left, right margins:', left_margin, right_margin
             
             width = printer.width() #- 300
             height = printer.height() #- 300
@@ -2000,7 +1984,6 @@ class App:
                 song_height = height - top_margin - bottom_margin
                 song_top = top_margin
                 song_left = left_margin
-                print 'song_left, top:', song_left, song_top
                 paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
                 self.drawSongToRect(song, painter, paint_rect, exporting=True)
             num_printed += 1
@@ -2239,16 +2222,16 @@ class App:
         self.setWaitCursor()
         try:
             selected_song_ids = self.getSelectedSongIds()
+            
+            # Will set the current song to None:
+            self.ui.songs_view.selectionModel().clearSelection()
+            #self.setCurrentSong(None)
+            
             for song_id in selected_song_ids:
                 self._deleteSong(song_id)
-            self.current_song = None
             
             # Update the song table from database:
             self.songs_model.updateFromDatabase()
-            
-            # Clear the selection:
-            self.ui.songs_view.selectionModel().clearSelection()
-            self.setCurrentSong(None)
         finally:
             self.restoreCursor()
     
@@ -2304,11 +2287,6 @@ class App:
         
         painter.translate(-x, -y)
 
-        #vrect = self.editor.viewport().rect()
-        #x = vrect.left()
-        #y = vrect.top()
-        #print 'vrect left, top:', x, y
-        
         # Even though we are drawing at 0,0, the text will be drawn with an offset:
         x = -self.left_margin
         y = -self.top_margin
