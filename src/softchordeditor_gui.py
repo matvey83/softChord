@@ -523,17 +523,6 @@ class Song:
 
 
 
-    def iterateChordDrawPositions(self):
-        
-        for chord in self._chords:
-            song_char_num = chord.character_num
-            char_rect, chord_rect = self.app.getCharRects(chord.character_num)
-            
-            yield chord, char_rect, chord_rect
-            
-
-
-
     def getLineHasChords(self, linenum):
 
         chords_present = False
@@ -848,11 +837,6 @@ class CustomTextEdit(QtGui.QTextEdit):
             painter = QtGui.QPainter()
             painter.begin(self.viewport())
             
-            # Draw into the whole widget:
-            rect = self.rect()
-            #bgbrush = QtGui.QBrush(QtGui.QColor("white"))
-            #painter.fillRect(rect, bgbrush)
-            
             if self.app.current_song:
                 width = 100000 # Unlimited
                 height = 100000 # Unlimited
@@ -1050,7 +1034,6 @@ class CustomTextEdit(QtGui.QTextEdit):
         else:
             if not self.app.processKeyPressed(key):
                 pass
-                #self._orig_keyPressEvent(event)
         
     
     def keyReleaseEvent(self, event):
@@ -1335,12 +1318,6 @@ class App:
         self.chords_color = QtGui.QColor("DARK BLUE")
         self.editor.setFont(self.lyrics_font)
         
-        self._orig_keyPressEvent = self.ui.keyPressEvent
-        self.ui.keyPressEvent = self.keyPressEvent
-        
-        self._orig_keyReleaseEvent = self.ui.keyReleaseEvent
-        self.ui.keyReleaseEvent = self.keyReleaseEvent
-
         self._orig_closeEvent = self.ui.closeEvent
         self.ui.closeEvent = self.closeEvent
 
@@ -1428,28 +1405,6 @@ class App:
         
     
     
-    def keyPressEvent(self, event):
-        """
-        Will get called when a key is pressed
-        """
-        key = event.key()
-        if key == Qt.Key_Alt:
-            self.editor.optionKeyToggled(True)
-             
-        if key == Qt.Key_Delete or key == Qt.Key_Backspace:
-            self.deleteSelectedChord()
-        else:
-            if not self.processKeyPressed(key):
-                self._orig_keyPressEvent(event)
-    
-    def keyReleaseEvent(self, event):
-        key = event.key()
-        if key == Qt.Key_Alt:
-            self.editor.optionKeyToggled(False)
-        
-        self._orig_keyReleaseEvent(event)
-
-
     def closeEvent(self, event):
         if self.current_song:
             # Update the current song in the database:
@@ -1468,6 +1423,7 @@ class App:
                     break
             
             self.current_song.sendToDatabase()
+            self.current_song.setDocMargins()
             self.editor.viewport().update()
     
     def processKeyPressed(self, key):
@@ -1516,8 +1472,8 @@ class App:
                 chord.chord_type_id = 0
                 chord.marker = ""
                 chord.in_parentheses = False
-            #chord.updateChordString()
         
+        self.current_song.setDocMargins()
         self.current_song.changed()
         
         self.editor.viewport().update()
@@ -2179,15 +2135,18 @@ class App:
             self.restoreCursor()
     
     
-    def getCharRects(self, song_char_num):
+    def getCharRects(self, song_char_num, chord=None):
         te = self.editor
         cursor = te.textCursor()
         
-        has_chord = False
-        for chord in self.current_song._chords:
-            if chord.character_num == song_char_num:
-                has_chord = True
-                break
+        if chord != None:
+            has_chord = True
+        else:
+            has_chord = False
+            for chord in self.current_song._chords:
+                if chord.character_num == song_char_num:
+                    has_chord = True
+                    break
         
         if has_chord:
             chords_height, lyrics_height, line_height = self.current_song.getHeightsWithChords()
@@ -2250,18 +2209,20 @@ class App:
                 if chord_rect:
                     painter.fillRect(chord_rect, selection_brush)
         
-        #for chord, char_rect, chord_rect in self.current_song.iterateChordDrawPositions():
+
         for chord in song._chords:
-            song_char_num = chord.character_num
-            char_rect, chord_rect = self.getCharRects(chord.character_num)
+            char_rect, chord_rect = self.getCharRects(chord.character_num, chord)
             
             chord_text = chord.getChordText()
             painter.setFont(self.chords_font)
             painter.setPen(self.chords_color)
-
+            
             # FIXME fix this bug:
             #chord_text = chord_text.replace('♭', 'b')
-            painter.drawText(chord_rect, QtCore.Qt.AlignHCenter, chord_text)
+            if chord_rect:
+                painter.drawText(chord_rect, QtCore.Qt.AlignHCenter, chord_text)
+            else:
+                print 'no chord rect!'
         
         
         painter.setFont(self.lyrics_font)
@@ -2356,13 +2317,9 @@ class App:
         #x = float(x) / self.zoom_factor
         #y = float(y) / self.zoom_factor
         
-        
-
-        #for chord, char_rect, chord_rect in self.current_song.iterateChordDrawPositions():
-
         for chord in self.current_song._chords:
             song_char_num = chord.character_num
-            char_rect, chord_rect = self.getCharRects(chord.character_num)
+            char_rect, chord_rect = self.getCharRects(chord.character_num, chord)
             
             if y > chord_rect.top() and y < chord_rect.bottom():
                 if y < chord_rect.bottom() and not dragging:
