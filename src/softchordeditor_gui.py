@@ -784,7 +784,7 @@ class Song:
     
 
     def changed(self):
-        self.setDocMargins()
+        #self.setDocMargins()
         self.app.enableUndo()
     
     def sendToDatabase(self):
@@ -1421,15 +1421,13 @@ class App:
         self.ui.lyric_editor_button.setDown(True)
         self.ui.chord_editor_button.setDown(False)
         
-        if self.current_song:
-            self.current_song.setDocMargins()
-        
         self.editor.viewport().setCursor( QtCore.Qt.IBeamCursor)
 
         self.ui.lyrics_editor_label.show()
         self.ui.chords_editor_label.hide()
         self.editor.lyric_editor_mode = True
-        self.editor.repaint()
+        
+        self.editor.viewport().repaint()
     
 
     def chordEditorSelected(self):
@@ -1443,9 +1441,7 @@ class App:
         self.ui.chords_editor_label.show()
         self.editor.lyric_editor_mode = False
         
-        if self.current_song:
-            self.current_song.setDocMargins()
-        self.editor.repaint()
+        self.editor.viewport().repaint()
     
     
 
