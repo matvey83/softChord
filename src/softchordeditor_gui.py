@@ -2735,8 +2735,11 @@ def main():
     """
 
     qapp = QtGui.QApplication(sys.argv)
+    print 'applicationDirPath():', qapp.applicationDirPath()
+    print 'applicationFilePath():', qapp.applicationFilePath()
+    print 'arguments:', map(unicode, qapp.arguments())
+    print 'libraryPaths():', map(unicode, qapp.libraryPaths())
     qapp.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
-
 
     app = App()
     app.ui.show()
