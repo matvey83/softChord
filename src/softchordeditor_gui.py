@@ -23,6 +23,7 @@ import sys, os
 import sqlite3
 import codecs
 import copy
+import shutil
 
 
 
@@ -1199,7 +1200,6 @@ class App:
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
 
-        #self.curs = sqlite3.connect(db_file)
         self.curs = None
         self.current_song = None
         
@@ -1265,6 +1265,7 @@ class App:
         self.ui.actionNewSongbook.triggered.connect(self.newSongbook)
         self.ui.actionOpenSongbook.triggered.connect(self.openSongbook)
         self.ui.actionCloseSongbook.triggered.connect(self.closeSongbook)
+        self.ui.actionSaveSongbook.triggered.connect(self.saveSongbook)
         
         self.c( self.ui.actionPrint, "triggered()", self.printSelectedSongs )
         self.c( self.ui.actionQuit, "triggered()", self.ui.close )
@@ -1612,6 +1613,7 @@ class App:
         self.ui.actionNewSong.setEnabled(songbook_open)
         
         self.ui.actionCloseSongbook.setEnabled(songbook_open)
+        self.ui.actionSaveSongbook.setEnabled(songbook_open)
         
         self.updateUndoRedo()
             
@@ -2688,10 +2690,12 @@ class App:
         # Send the current song to database:
         self.setCurrentSong(None)
         
+        self.current_songbook_filename = filename
+        
         if filename == None:
             self.curs = None
         else:
-            #self.info('Database: %s; exists: %s' % (db_file, os.path.isfile(filename)))
+            #self.info('Database: %s; exists: %s' % (songbook_file, os.path.isfile(filename)))
             self.curs = sqlite3.connect(filename)
         
         self.songs_model.updateFromDatabase()
@@ -2699,38 +2703,67 @@ class App:
         
         
     def newSongbook(self):
-        db_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+        songbook_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save songbook as:",
                     QtCore.QDir.home().path(), # initial dir
                     "Songbook format (*.songbook)",
         )
-        if db_file:
+        if songbook_file:
             # Overwrite a previous songbook (if any):
-            if os.path.isfile(db_file):
-                os.remove(db_file)
+            if os.path.isfile(songbook_file):
+                os.remove(songbook_file)
 
             # Open an empty satabase:
-            self.curs = sqlite3.connect(unicode(db_file))
+            self.curs = sqlite3.connect(unicode(songbook_file))
 
             self.curs.execute("CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)")
             self.curs.execute("CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, key_note_id INTEGER, key_is_major INTEGER)")
-            self.setCurrentSongbook( unicode(db_file) )
+            self.setCurrentSongbook( unicode(songbook_file) )
         
     
     def openSongbook(self):
-        db_file = QtGui.QFileDialog.getOpenFileName(self.ui,
+        songbook_file = QtGui.QFileDialog.getOpenFileName(self.ui,
                 "Select a songbook to open",
                 QtCore.QDir.home().path(), # initial dir
                 "Songbook format (*.songbook)",
         )
-        if db_file:
-            self.setCurrentSongbook( unicode(db_file) )
+        if songbook_file:
+            self.setCurrentSongbook( unicode(songbook_file) )
     
     def closeSongbook(self):
         if self.current_song:
             # Send the current song to the database:
             self.setCurrentSong(None)
         self.setCurrentSongbook(None)
+    
+    def saveSongbook(self):
+        
+        if self.current_song:
+            # Send the current song to the database:
+            self.setCurrentSong(None)
+        
+        if self.current_songbook_filename == None:
+            suggested_path = os.path.join( unicode(QtCore.QDir.home().path()), "My Songbook.songbook" )
+        else:
+            suggested_path = self.current_songbook_filename
+        
+        while True:
+            new_songbook_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+                        "Save songbook as:",
+                        suggested_path,
+                        "Songbook foramt (*.songbook)",
+            )
+            new_songbook_file = unicode(new_songbook_file)
+            if os.path.abspath(new_songbook_file) == os.path.abspath(self.current_songbook_filename):
+                self.warning("Please select a new location for the new songbook")
+            else:
+                break
+        
+        shutil.copyfile(self.current_songbook_filename, new_songbook_file)
+
+        self.setCurrentSongbook(new_songbook_file)
+        
+        # FIXME re-open the current song
 
 
 
