@@ -857,7 +857,7 @@ class CustomTextEdit(QtGui.QTextEdit):
             QtGui.QTextEdit.leaveEvent(self, event)
         else:
             # Clear the hovering highlighting:
-            self.hover_char_num = None
+            self.app.hover_char_num = None
             self.viewport().update()
     
     

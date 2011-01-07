@@ -187,45 +187,7 @@
          </layout>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_6">
-          <item>
-           <widget class="QToolButton" name="chord_editor_button">
-            <property name="text">
-             <string>Viewer / Chord Editor</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QToolButton" name="lyric_editor_button">
-            <property name="text">
-             <string>Lyric Editor</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <spacer name="horizontalSpacer_5">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-         </layout>
-        </item>
-        <item>
          <layout class="QHBoxLayout" name="horizontalLayout_3">
-          <item>
-           <widget class="QLabel" name="label_8">
-            <property name="text">
-             <string>Zoom:</string>
-            </property>
-           </widget>
-          </item>
           <item>
            <widget class="QComboBox" name="zoom_combo_box"/>
           </item>
@@ -245,27 +207,38 @@
          </layout>
         </item>
         <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_6">
+          <item>
+           <widget class="QToolButton" name="chord_editor_button">
+            <property name="text">
+             <string>Chord Editor Mode</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="lyric_editor_button">
+            <property name="text">
+             <string>Lyric Editor Mode</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer_5">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
          <layout class="QVBoxLayout" name="lyric_editor_layout">
-          <item>
-           <widget class="QLabel" name="lyrics_editor_label">
-            <property name="text">
-             <string>Lyric Editor - Paste and modify song lyrics here.</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="chords_editor_label">
-            <property name="text">
-             <string>Chord Editor - Double-click on a lyric letter to add or modify a chord; drag a chord to move it; select and press &quot;Delete&quot; to delete.</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
           <item>
            <widget class="QScrollArea" name="chord_scroll_area">
             <property name="minimumSize">
@@ -289,13 +262,33 @@
                <x>0</x>
                <y>0</y>
                <width>426</width>
-               <height>559</height>
+               <height>555</height>
               </rect>
              </property>
             </widget>
            </widget>
           </item>
          </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="chords_editor_label">
+          <property name="text">
+           <string>Chord Editor - Double-click on a lyric letter to add or modify a chord; drag a chord to move it; select and press &quot;Delete&quot; to delete; select and press a key to add simple chords.</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="lyrics_editor_label">
+          <property name="text">
+           <string>Lyric Editor - Paste and modify song lyrics (text) here.</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
         </item>
        </layout>
       </widget>
@@ -317,8 +310,9 @@
      <string>Songs</string>
     </property>
     <addaction name="actionNewSong"/>
-    <addaction name="actionImportText"/>
     <addaction name="actionDeleteSongs"/>
+    <addaction name="separator"/>
+    <addaction name="actionImportText"/>
     <addaction name="actionExportPdf"/>
     <addaction name="actionExportText"/>
    </widget>
@@ -329,7 +323,10 @@
     <addaction name="actionNewSongbook"/>
     <addaction name="actionOpenSongbook"/>
     <addaction name="actionCloseSongbook"/>
+    <addaction name="actionSaveSongbook"/>
+    <addaction name="separator"/>
     <addaction name="actionPrint"/>
+    <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
    <widget class="QMenu" name="menuSettings">
@@ -356,10 +353,13 @@
    <property name="text">
     <string>New song</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
   </action>
   <action name="actionDeleteSongs">
    <property name="text">
-    <string>Delete selected songs</string>
+    <string>Delete selected song(s)</string>
    </property>
   </action>
   <action name="actionExportPdf">
@@ -407,10 +407,16 @@
    <property name="text">
     <string>Close Songbook</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+W</string>
+   </property>
   </action>
   <action name="actionOpenSongbook">
    <property name="text">
     <string>Open Songbook...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
    </property>
   </action>
   <action name="actionNewSongbook">
@@ -432,6 +438,11 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+Z</string>
+   </property>
+  </action>
+  <action name="actionSaveSongbook">
+   <property name="text">
+    <string>Save Songbook As...</string>
    </property>
   </action>
  </widget>
