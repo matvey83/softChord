@@ -111,19 +111,41 @@ paper_sizes_list = [
 
 
 
-"""
-class AddCommand( QtGui.QUndoCommand ):
-    def __init__(self, item, position):
+class AddChordCommand( QtGui.QUndoCommand ):
+    def __init__(self, item, chord):
         self.parent = 0
+        self.chord = chord
     
     def undo(self):
-        
+        item.deleteChord(self.chord)
     
     def redo(self):
+        item.addChord(self.chord)
 
 
-"""
+class DeleteChordCommand( QtGui.QUndoCommand ):
+    def __init__(self, item, chord):
+        self.parent = 0
+        self.chord = chord
+    
+    def undo(self):
+        item.addChord(self.chord)
+    
+    def redo(self):
+        item.deleteChord(self.chord)
 
+
+class ReplaceChordCommand( QtGui.QUndoCommand ):
+    def __init__(self, item, prev_chord, new_chord):
+        self.parent = 0
+        self.prev_chord = prev_chord
+        self.new_chord = new_chord
+    
+    def undo(self):
+        item.replaceChord(self.new_chord, self.prev_chord)
+    
+    def redo(self):
+        item.replaceChord(self.prev_chord, self.new_chord)
 
 
 
@@ -491,15 +513,15 @@ class Song:
     def addChord(self, chord):
         self._chords.append(chord)
         self.updateSharpsOrFlats()
-        
     
     def deleteChord(self, chord):
         self._chords.remove(chord)
         self.updateSharpsOrFlats()
     
-
-    def moveChord(self, chord, new_song_char_num):
-        chord.character_num = new_song_char_num
+    def replaceChord(self, prev_chord, new_chord):
+        self._chords.remove(prev_chord)
+        self._chords.append(new_chord)
+        self.updateSharpsOrFlats()
     
     def getAllText(self):
         
@@ -910,9 +932,11 @@ class CustomTextEdit(QtGui.QTextEdit):
                     # The dragged chord was moved to a new position
                     
                     #prev_chord_linenum, prev_line_char_num = song.songCharToLineChar(self.dragging_chord.character_num)
-                    
-                    song.moveChord(self.dragging_chord, song_char_num)
-                    
+                    new_chord = copy.copy(self.dragging_chord)
+                    new_chord.character_num = song_char_num
+                    song.replaceChord(self.dragging_chord, new_chord)
+                    self.dragging_chord = new_chord
+
                     # Update the margin of the document in case the chord was moved to a new line:
                     song.setDocMargins()
                     
@@ -1017,7 +1041,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                 # Invalid chord/letter was double clicked. Clear current selection:
                 self.app.selected_char_num = None
 
-            self.app.viewport().update()
+            self.viewport().update()
 
     
     def keyPressEvent(self, event):
@@ -2361,30 +2385,31 @@ class App:
         """
         
         add_new = True
-        chord = None
+        orig_chord = None
         for iter_chord in self.current_song.iterateAllChords():
             if iter_chord.character_num == song_char_num:
                 add_new = False
-                chord = iter_chord
+                orig_chord = iter_chord
                 break
         
         if add_new:
-            chord = SongChord(self.current_song, song_char_num, 0, 0, -1, "", False)
+            new_chord = SongChord(self.current_song, song_char_num, 0, 0, -1, "", False)
+        else:
+            new_chord = copy.copy(orig_chord)
         
-        ok = ChordDialog(self).display(chord)
+        ok = ChordDialog(self).display(new_chord)
         if ok:
             # Ok pressed
             if add_new:
-                self.current_song.addChord(chord)
+                self.current_song.addChord(new_chord)
+            else:
+                self.current_song.replaceChord(orig_chord, new_chord)
             
             self.current_song.changed()
             
-            self.viewport().update()
+            self.editor.viewport().update()
                 
 
-
-
-    
 
 
     def importFromText(self, text_file=None):
