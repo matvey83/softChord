@@ -2071,7 +2071,7 @@ class App:
 
             # Do not run this code if the value of the menu is first initialized
             self.current_song.changed()
-            self.viewport().update()
+            self.editor.viewport().update()
 
     
     def createNewSong(self):
@@ -2337,13 +2337,18 @@ class App:
         #print 'position:', x, y
         #print '  cursor position:', 
         x -= 5.0
-        pos = self.editor.cursorForPosition( QtCore.QPoint(x,y) ).position()
+        cursor = self.editor.cursorForPosition( QtCore.QPoint(x,y) )
+        if cursor.atBlockEnd():
+            # Entire line is "selected"
+            if cursor.atBlockStart():
+                return None
+            else:
+                # Select the last character in this line:
+                cursor.setPosition(cursor.position()-1)
+        
+        pos = cursor.position()
         return (False, pos)
         
-        #return None
-
-
-
 
 
     
