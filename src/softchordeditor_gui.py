@@ -112,40 +112,43 @@ paper_sizes_list = [
 
 
 class AddChordCommand( QtGui.QUndoCommand ):
-    def __init__(self, item, chord):
-        self.parent = 0
+    def __init__(self, song, chord):
+        QtGui.QUndoCommand.__init__(self)
+        self.song = song
         self.chord = chord
     
     def undo(self):
-        item.deleteChord(self.chord)
+        self.song._deleteChord(self.chord)
     
     def redo(self):
-        item.addChord(self.chord)
+        self.song._addChord(self.chord)
 
 
 class DeleteChordCommand( QtGui.QUndoCommand ):
-    def __init__(self, item, chord):
-        self.parent = 0
+    def __init__(self, song, chord):
+        QtGui.QUndoCommand.__init__(self)
+        self.song = song
         self.chord = chord
     
     def undo(self):
-        item.addChord(self.chord)
-    
+        self.song._addChord(self.chord)
+
     def redo(self):
-        item.deleteChord(self.chord)
+        self.song._deleteChord(self.chord)
 
 
 class ReplaceChordCommand( QtGui.QUndoCommand ):
-    def __init__(self, item, prev_chord, new_chord):
-        self.parent = 0
+    def __init__(self, song, prev_chord, new_chord):
+        QtGui.QUndoCommand.__init__(self)
+        self.song = song
         self.prev_chord = prev_chord
         self.new_chord = new_chord
     
     def undo(self):
-        item.replaceChord(self.new_chord, self.prev_chord)
+        self.song._replaceChord(self.new_chord, self.prev_chord)
     
     def redo(self):
-        item.replaceChord(self.prev_chord, self.new_chord)
+        self.song._replaceChord(self.prev_chord, self.new_chord)
 
 
 
@@ -511,18 +514,51 @@ class Song:
 
     
     def addChord(self, chord):
+        self.app.undo_stack.push( AddChordCommand(self, chord) )
+    
+    def _addChord(self, chord):
         self._chords.append(chord)
         self.updateSharpsOrFlats()
+        
+        # This is important for undo/redo to move the selection:
+        self.app.selected_char_num = chord.character_num
+        
+        # Update the margin of the document in case the chord was moved to a new line:
+        self.setDocMargins()
+        
+        self.app.editor.viewport().update()
     
+
     def deleteChord(self, chord):
+        self.app.undo_stack.push( DeleteChordCommand(self, chord) )
+    
+    def _deleteChord(self, chord):
         self._chords.remove(chord)
         self.updateSharpsOrFlats()
+        
+        # Update the margin of the document in case the chord was moved to a new line:
+        self.setDocMargins()
+        
+        self.app.editor.viewport().update()
     
     def replaceChord(self, prev_chord, new_chord):
+        command = ReplaceChordCommand(self, prev_chord, new_chord)
+        self.app.undo_stack.push(command)
+    
+    def _replaceChord(self, prev_chord, new_chord):
         self._chords.remove(prev_chord)
         self._chords.append(new_chord)
         self.updateSharpsOrFlats()
+        
+        # This is important for undo/redo to move the selection:
+        self.app.selected_char_num = new_chord.character_num
+        
+        # Update the margin of the document in case the chord was moved to a new line:
+        self.setDocMargins()
+
+        self.app.editor.viewport().update()
     
+
     def getAllText(self):
         
         song_text = unicode(self.doc.toPlainText())
@@ -723,8 +759,7 @@ class Song:
     
 
     def changed(self):
-        #self.setDocMargins()
-        self.app.enableUndo()
+        pass
     
     def sendToDatabase(self):
         """
@@ -882,6 +917,19 @@ class CustomTextEdit(QtGui.QTextEdit):
             self.app.hover_char_num = None
             self.viewport().update()
     
+    def undo(self):
+        print 'undo'
+        if self.lyric_editor_mode:
+            QtGui.QTextEdit.undo(self)
+        else:
+            self.app.undo_stack.undo()
+    
+    def redo(self):
+        print 'redo'
+        if self.lyric_editor_mode:
+            QtGui.QTextEdit.redo(self)
+        else:
+            self.app.undo_stack.redo()
     
     def optionKeyToggled(self, pressed):
         if self.dragging_chord == None:
@@ -937,8 +985,6 @@ class CustomTextEdit(QtGui.QTextEdit):
                     song.replaceChord(self.dragging_chord, new_chord)
                     self.dragging_chord = new_chord
 
-                    # Update the margin of the document in case the chord was moved to a new line:
-                    song.setDocMargins()
                     
                     # Show hover feedback on the new letter:
                     self.app.hover_char_num = song_char_num
@@ -1056,10 +1102,14 @@ class CustomTextEdit(QtGui.QTextEdit):
         
         if key == Qt.Key_Delete or key == Qt.Key_Backspace:
             self.app.deleteSelectedChord()
+            return
         else:
-            if not self.app.processKeyPressed(key):
-                pass
+            if self.app.processKeyPressed(key):
+                return
         
+        # Let the main window handle this event (required for undo/redo shortcuts):
+        self.app.ui.keyPressEvent(event)
+    
     
     def keyReleaseEvent(self, event):
         if self.lyric_editor_mode:
@@ -1230,10 +1280,9 @@ class App:
         self.pdf_options = PdfOptions()
         
         self.undo_stack = QtGui.QUndoStack()
-        self.undo_stack.canUndoChanged.connect(self.ui.actionUndo.setEnabled)
-        self.undo_stack.canRedoChanged.connect(self.ui.actionRedo.setEnabled)
+        self.undo_stack.canUndoChanged.connect(self.updateUndoRedo)
+        self.undo_stack.canRedoChanged.connect(self.updateUndoRedo)
         
-
         # Make a list of all chord types:
         self.chord_type_names = []
         self.chord_type_prints = []
@@ -1266,6 +1315,7 @@ class App:
         self.previous_song_text = None # Song text before last user's edit operation
 
         self.editor = CustomTextEdit(self)
+        self.editor.undoAvailable.connect( self.updateUndoRedo )
         
         self.ui.lyric_editor_layout.addWidget(self.editor)
         self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
@@ -1382,10 +1432,11 @@ class App:
         self.ui.lyrics_editor_label.show()
         self.ui.chords_editor_label.hide()
         self.editor.lyric_editor_mode = True
+        self.editor.setUndoRedoEnabled(True)
         
         self.editor.viewport().update()
     
-
+    
     def chordEditorSelected(self):
         
         self.editor.viewport().setCursor( QtGui.QCursor(QtCore.Qt.ArrowCursor) )
@@ -1396,8 +1447,10 @@ class App:
         self.ui.lyrics_editor_label.hide()
         self.ui.chords_editor_label.show()
         self.editor.lyric_editor_mode = False
+        self.editor.setUndoRedoEnabled(False)
         
         self.editor.viewport().update()
+        self.disableUndo()
     
     
 
@@ -1447,9 +1500,8 @@ class App:
                     self.current_song.deleteChord(chord)
                     break
             
-            self.current_song.sendToDatabase()
-            self.current_song.setDocMargins()
-            self.editor.viewport().update()
+            #self.current_song.setDocMargins()
+            #self.editor.viewport().update()
     
     def processKeyPressed(self, key):
         """
@@ -1473,57 +1525,64 @@ class App:
         
         # Check whether we are editing an existing chord or adding a new one:
         add_new = True
-        chord = None
+        prev_chord = None
         for iter_chord in self.current_song.iterateAllChords():
             if iter_chord.character_num == self.selected_char_num:
                 add_new = False
-                chord = iter_chord
+                prev_chord = iter_chord
                 break
         
         if add_new:
             chord_type_id = 0 # Major
-            chord = SongChord(self.current_song, self.selected_char_num, note_id, chord_type_id, -1, "", False)
-            self.current_song.addChord(chord)
+            new_chord = SongChord(self.current_song, self.selected_char_num, note_id, chord_type_id, -1, "", False)
+            self.current_song.addChord(new_chord)
         else:
-            if chord.note_id == note_id:
+            new_chord = copy.copy(prev_chord)
+            if new_chord.note_id == note_id:
                 # Key of the current chord note was pressed, reverse Major/minor:
-                if chord.chord_type_id == 0:
-                    chord.chord_type_id = 1
+                if new_chord.chord_type_id == 0:
+                    new_chord.chord_type_id = 1
                 else:
-                    chord.chord_type_id = 0
+                    new_chord.chord_type_id = 0
             else:
                 # A different note, change to <note> major:
-                chord.note_id = note_id
-                chord.chord_type_id = 0
-                chord.marker = ""
-                chord.in_parentheses = False
+                new_chord.note_id = note_id
+                new_chord.chord_type_id = 0
+                new_chord.marker = ""
+                new_chord.in_parentheses = False
+            self.current_song.replaceChord(prev_chord, new_chord)
         
-        self.current_song.setDocMargins()
-        self.current_song.changed()
-        
-        self.editor.viewport().update()
         return True
         
     
     def undo(self):
-        self.updateUndoRedo()
+        self.undo_stack.undo()
+        #self.updateUndoRedo()
         self.viewport().update()
     
     def redo(self):
-        self.updateUndoRedo()
+        self.undo_stack.redo()
+        #self.updateUndoRedo()
         self.viewport().update()
     
     def updateUndoRedo(self):
-        if self.current_song == None:
-            self.undo_possible = False
-            self.redo_possible = False
-        self.ui.actionUndo.setEnabled(self.undo_possible)
-        self.ui.actionRedo.setEnabled(self.redo_possible)
+        undo_possible = False
+        redo_possible = False
+        if self.current_song:
+            if self.editor.lyric_editor_mode:
+                undo_possible = False
+                redo_possible = False
+            else:
+                undo_possible = self.undo_stack.canUndo()
+                redo_possible = self.undo_stack.canRedo()
+        
+        #print 'setting undo/redo possible', undo_possible, redo_possible
+        self.ui.actionUndo.setEnabled(undo_possible)
+        self.ui.actionRedo.setEnabled(redo_possible)
     
-    def enableUndo(self):
-        pass
-    
+
     def disableUndo(self):
+        #print 'clear undo stack'
         self.undo_stack.clear()
     
     
