@@ -2747,23 +2747,32 @@ class App:
         else:
             suggested_path = self.current_songbook_filename
         
+        new_songbook_file = None
         while True:
             new_songbook_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                         "Save songbook as:",
                         suggested_path,
                         "Songbook foramt (*.songbook)",
             )
+            if not new_songbook_file:
+                break
             new_songbook_file = unicode(new_songbook_file)
             if os.path.abspath(new_songbook_file) == os.path.abspath(self.current_songbook_filename):
                 self.warning("Please select a new location for the new songbook")
             else:
                 break
         
-        shutil.copyfile(self.current_songbook_filename, new_songbook_file)
+        if new_songbook_file:
+            # User did not cancel
 
-        self.setCurrentSongbook(new_songbook_file)
+            try:
+                shutil.copyfile(self.current_songbook_filename, new_songbook_file)
+            except Exception, err:
+                self.error("Could save the songbook to a new location.\n\nException: %s" % err)
+
+            self.setCurrentSongbook(new_songbook_file)
         
-        # FIXME re-open the current song
+            # FIXME re-open the current song
 
 
 
