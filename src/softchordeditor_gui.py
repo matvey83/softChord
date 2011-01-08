@@ -1031,6 +1031,8 @@ class CustomTextEdit(QtGui.QTextEdit):
                     else:
                         self.dragging_chord_orig_position = song_char_num
                         
+                        self.app.undo_stack.beginMacro("chord dragged")
+
                         # If option is held, copy the chord:
                         key_modifiers = event.modifiers() 
                         if bool(key_modifiers & Qt.AltModifier):
@@ -1064,6 +1066,7 @@ class CustomTextEdit(QtGui.QTextEdit):
             
             self.dragging_chord_orig_position = -1
             self.dragging_chord = None
+            self.app.undo_stack.endMacro()
     
 
     def mouseDoubleClickEvent(self, event):
