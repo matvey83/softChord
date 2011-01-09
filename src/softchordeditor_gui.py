@@ -558,6 +558,18 @@ class Song:
 
         self.app.editor.viewport().update()
     
+    
+    def copyChord(self, chord, new_song_char_num):
+        """
+        Copy the specified chord to a new position.
+        Wrapper for the addChord() method.
+        """
+        
+        new_chord = copy.copy(chord)
+        new_chord.character_num = new_song_char_num
+        self.addChord(new_chord)
+        return new_chord
+    
 
     def getAllText(self):
         
@@ -755,7 +767,7 @@ class Song:
         self.updateSharpsOrFlats()
         
         self.changed()
-        self.app.viewport().update()
+        self.app.editor.viewport().update()
     
 
     def changed(self):
@@ -797,16 +809,6 @@ class Song:
         self.app.disableUndo()
     
 
-    def copyChord(self, chord, new_song_char_num):
-        """
-        Copy the specified chord to a new position.
-        """
-        
-        new_chord = copy.copy(chord)
-        new_chord.character_num = new_song_char_num
-        self.addChord(new_chord)
-        return new_chord
-       
             
     def updateSharpsOrFlats(self):
         """
@@ -1763,7 +1765,7 @@ class App:
         try:
             self.current_song.transpose(steps)
             self.current_song.changed()
-            self.viewport().update()
+            self.editor.viewport().update()
         finally:
             self.restoreCursor()
     
