@@ -1681,7 +1681,10 @@ class App:
         self.ui.actionExportText.setEnabled( num_selected == 1 )
         
         self.ui.actionPrint.setEnabled( num_selected > 0 )
-
+        
+        # FIXME instead link it to either the lyric editror select-all, or the songs table
+        self.ui.actionSelectAll.setEnabled(False)
+        
         # Whether there is an open songbook:
         songbook_open = (self.curs != None)
         self.ui.actionImportText.setEnabled(songbook_open)
@@ -2022,29 +2025,58 @@ class App:
                         "PDF format (*.pdf)",
             )
         
-        if pdf_file: 
-            num_exported = 0
-            self.setWaitCursor()
-            try:
-                printer = QtGui.QPrinter()
-                page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
-                printer.setPaperSize( page_size, QtGui.QPrinter.Inch)
-                printer.setFullPage(True) # considers whole page instead of only printable area.
-                printer.setOrientation(QtGui.QPrinter.Portrait)
-                printer.setOutputFileName(pdf_file)
-                printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+        if not pdf_file: 
+            # User cancelled
+            return
+        
+
+        num_exported = 0 # Number of PDFs that were successfully generated
+
+        song_ids = self.getSelectedSongIds()
+
+        progress = QtGui.QProgressDialog("Export to multiple PDFs...", "Abort", 0, len(song_ids), self.ui)
+        
+        progress.setWindowModality(Qt.WindowModal)
+        
+        try:
+            printer = QtGui.QPrinter()
+            page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
+            printer.setPaperSize( page_size, QtGui.QPrinter.Inch)
+            printer.setFullPage(True) # considers whole page instead of only printable area.
+            printer.setOrientation(QtGui.QPrinter.Portrait)
+            printer.setOutputFileName(pdf_file)
+            printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+            
+            painter = QtGui.QPainter()
+            if not painter.begin(printer):
+                raise IOError("Failed to open the output file for writing")
+            
+            for i, song_id in enumerate(song_ids):
+                progress.setValue(i)
+                if progress.wasCanceled():
+                    break
                 
-                num_exported = self.printAllSongsToPrinter(printer)
-            except Exception, err:
-                self.restoreCursor()
-                self.error("Error generating PDF:\n%s" % str(err))
-                raise
-            else:
-                #if num_exported == 1:
-                #    num_str = "1 song"
-                #else:
-                #    num_str = "%i songs" % num_exported
-                self.restoreCursor()
+                #print 'exporting song_id:', song_id
+                
+                if i != 0:
+                    if not printer.newPage():
+                        raise IOError("Failed to flush page to disk, disk full?")
+                
+                song = Song(self, song_id)
+                
+                self.printSong(song, printer, painter)
+                
+                num_exported += 1
+            
+            painter.end()
+            
+        except Exception, err:
+            self.restoreCursor()
+            self.error("Error generating PDF:\n%s" % str(err))
+            raise
+        
+        # Close the progress dialog:
+        progress.setValue(len(song_ids))
     
     
     
@@ -2069,17 +2101,26 @@ class App:
             # User cancelled
             return
         
+        num_exported = 0 # Number of PDFs that were successfully generated
 
-        self.setWaitCursor()
-        
-        num_exported = 0
-        
-        for song_id in self.getSelectedSongIds():
+        song_ids = self.getSelectedSongIds()
+
+        progress = QtGui.QProgressDialog("Export to multiple PDFs...", "Abort", 0, len(song_ids), self.ui)
+
+        progress.setWindowModality(Qt.WindowModal)
+
+        for i, song_id in enumerate(song_ids):
+            progress.setValue(i)
+            
+            if progress.wasCanceled():
+                break
+            
+            #print 'exporting song_id:', song_id
+
             song = Song(self, song_id)
             
             pdf_file = os.path.join( unicode(dir), unicode(song.title) + ".pdf" )
             
-            #print 'exporting song_id:', song_id
             
             try:
                 printer = QtGui.QPrinter()
@@ -2105,14 +2146,8 @@ class App:
             else:
                 num_exported += 1
             
+        progress.setValue(i+1)
         
-        #if num_exported == 1:
-        #    num_str = "1 song"
-        #else:
-        #    num_str = "%i songs" % num_exported
-    
-        self.restoreCursor()
-
     
     
     def exportToText(self, text_file=None):
@@ -2242,8 +2277,8 @@ class App:
             # Do not run this code if the value of the menu is first initialized
             self.current_song.changed()
             self.editor.viewport().update()
-
     
+
     def createNewSong(self):
         """
         Add a new song to the database and the songs table, and select it.
@@ -2401,20 +2436,20 @@ class App:
         # Draw the lyrics document:
         doc = self.editor.document()
 
-        
+
         x = self.editor.horizontalScrollBar().value()
         y = self.editor.verticalScrollBar().value()
-        
+
         painter.translate(-x, -y)
 
         # Even though we are drawing at 0,0, the text will be drawn with an offset:
         x = -self.left_margin
         y = -self.top_margin
         doc.drawContents( painter, QtCore.QRectF(x, y, 10000.0, 10000.0) )
-
-        painter.translate(x, y)
-
-    
+        
+        # Must go to 0,0 for the next song to draw right (PDF export):
+        painter.translate(0.0, 0.0)
+         
 
 
     def drawSongToRect(self, song, output_painter, rect, exporting=False):
