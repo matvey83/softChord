@@ -778,7 +778,8 @@ class Song:
             for song_char_num in chords_in_database:
                 self.app.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
             
-            self.app.curs.execute('UPDATE songs SET number=%i, title="%s", text="%s", key_note_id=%i, key_is_major=%i WHERE id=%i' % 
+            self.app.curs.execute("UPDATE songs SET number = ?, title = ?, text = ?, key_note_id = ?, key_is_major = ?  WHERE id = ?",
+            #self.app.curs.execute('UPDATE songs SET number=%i, title="%s", text="%s", key_note_id=%i, key_is_major=%i WHERE id=%i' % 
                 (self.number, self.title, self.getAllText(), self.key_note_id, self.key_is_major, self.id))
             self.app.curs.commit()
         finally:
