@@ -1498,10 +1498,37 @@ class App:
     
     def processKeyPressed(self, key):
         """
+        Returns True if the key press was processed
         """
         
         if self.selected_char_num == None:
             return False
+        
+        if key in [ Qt.Key_Left, Qt.Key_Right ]:
+            prev_chord = None
+            for iter_chord in self.current_song.iterateAllChords():
+                if iter_chord.character_num == self.selected_char_num:
+                    prev_chord = iter_chord
+                    break
+            if prev_chord:
+                new_chord = copy.copy(prev_chord)
+                if key == Qt.Key_Left:
+                    new_chord.character_num -= 1
+                elif key == Qt.Key_Right:
+                    new_chord.character_num += 1
+                else:
+                    raise ValueError("Invalid key pressed")
+                try:
+                    if self.previous_song_text[new_chord.character_num] == '\n':
+                        # On a line break
+                        return False
+                except IndexError:
+                    # Moved too far to the left or right
+                    return False
+                
+                self.current_song.replaceChord(prev_chord, new_chord)
+                return True
+                
         
         key_note_dict = {
             Qt.Key_C : 0,
@@ -2538,10 +2565,20 @@ class App:
                         is_chord = False
                         return (is_chord, chord.character_num)
         
+        
         # Not over a chord, check the letter:
         #print 'position:', x, y
         #print '  cursor position:', 
         x -= 5.0
+        
+        
+        if self.editor.dragging_chord:
+            # Make sure drag obove (not over) a letter would be cought:
+            chord = self.editor.dragging_chord
+            char_rect, chord_rect = self.getCharRects(chord.character_num, chord)
+            if y > chord_rect.top() and y < char_rect.top():
+                y = char_rect.top() + 1
+        
         cursor = self.editor.cursorForPosition( QtCore.QPoint(x,y) )
         if cursor.atBlockEnd():
             # Entire line is "selected"
@@ -2550,7 +2587,7 @@ class App:
             else:
                 # Select the last character in this line:
                 cursor.setPosition(cursor.position()-1)
-        
+
         pos = cursor.position()
         return (False, pos)
         
