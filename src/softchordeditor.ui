@@ -261,8 +261,8 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>426</width>
-               <height>555</height>
+               <width>471</width>
+               <height>557</height>
               </rect>
              </property>
             </widget>
@@ -313,7 +313,8 @@
     <addaction name="actionDeleteSongs"/>
     <addaction name="separator"/>
     <addaction name="actionImportText"/>
-    <addaction name="actionExportPdf"/>
+    <addaction name="actionExportSinglePdf"/>
+    <addaction name="actionExportMultiplePdfs"/>
     <addaction name="actionExportText"/>
    </widget>
    <widget class="QMenu" name="menuFile">
@@ -362,14 +363,14 @@
     <string>Delete selected song(s)</string>
    </property>
   </action>
-  <action name="actionExportPdf">
+  <action name="actionExportSinglePdf">
    <property name="text">
-    <string>Export selected songs to PDF...</string>
+    <string>Export to PDF...</string>
    </property>
   </action>
   <action name="actionExportText">
    <property name="text">
-    <string>Export selected song to TEXT...</string>
+    <string>Export to TEXT...</string>
    </property>
   </action>
   <action name="actionPrint">
@@ -443,6 +444,11 @@
   <action name="actionSaveSongbook">
    <property name="text">
     <string>Save Songbook As...</string>
+   </property>
+  </action>
+  <action name="actionExportMultiplePdfs">
+   <property name="text">
+    <string>Export to multiple PDFs...</string>
    </property>
   </action>
  </widget>

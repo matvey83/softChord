@@ -457,7 +457,7 @@ class Song:
             chords_by_char[chord.character_num] = True
         
         
-        chords_height, lyrics_height, line_height = self.getHeightsWithChords()
+        chords_height, lyrics_height, line_height = self.app.getHeightsWithChords()
         with_chords_top_margin = line_height - lyrics_height
         
         
@@ -605,28 +605,6 @@ class Song:
 
         return chords_present
     
-
-    def getHeightsWithChords(self):
-        
-        cfm = self.app.chords_font_metrics
-        lfm = self.app.lyrics_font_metrics
-
-        lyrics_height = lfm.height()
-        chords_height = cfm.height()
-        
-        line_height = (lyrics_height + cfm.ascent()) - lfm.leading() - cfm.leading()
-        
-        return chords_height, lyrics_height, line_height
-        
-
-    def getHeightsWithoutChords(self):
-
-        lyrics_height = self.app.lyrics_font_metrics.height()
-        chords_height = 0.0
-        line_height = lyrics_height
-        
-        return chords_height, lyrics_height, line_height
-    
     
     def getLineHeights(self, linenum):
         """
@@ -635,9 +613,9 @@ class Song:
         """
 
         if self.getLineHasChords(linenum):
-            return self.getHeightsWithChords()
+            return self.app.getHeightsWithChords()
         else:
-            return self.getHeightsWithoutChords()
+            return self.app.getHeightsWithoutChords()
 
     
     def songCharToLineChar(self, song_char_num):
@@ -871,7 +849,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                 cursor = self.textCursor()
                 for chord in song.iterateAllChords():
                     # Obviously this line has chords:
-                    chords_height, lyrics_height, line_height = song.getHeightsWithChords()
+                    chords_height, lyrics_height, line_height = self.app.getHeightsWithChords()
                     
                     cursor.setPosition(chord.character_num) #, QtGui.QTextCursor.KeepAnchor)
                     left_rect = self.cursorRect(cursor)
@@ -1359,7 +1337,8 @@ class App:
         self.c( self.ui.actionQuit, "triggered()", self.ui.close )
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
         self.c( self.ui.actionDeleteSongs, "triggered()", self.deleteSelectedSongs )
-        self.c( self.ui.actionExportPdf, "triggered()", self.exportToPdf )
+        self.c( self.ui.actionExportSinglePdf, "triggered()", self.exportToSinglePdf )
+        self.c( self.ui.actionExportMultiplePdfs, "triggered()", self.exportToMultiplePdfs )
         self.c( self.ui.actionExportText, "triggered()", self.exportToText )
         self.c( self.ui.actionImportText, "triggered()", self.importFromText )
         self.c( self.ui.actionLyricsFont, "triggered()", self.changeLyricsFont )
@@ -1696,7 +1675,8 @@ class App:
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )        
         
-        self.ui.actionExportPdf.setEnabled( num_selected > 0 )
+        self.ui.actionExportSinglePdf.setEnabled( num_selected > 0 )
+        self.ui.actionExportMultiplePdfs.setEnabled( num_selected > 0 )
         
         self.ui.actionExportText.setEnabled( num_selected == 1 )
         
@@ -1863,6 +1843,28 @@ class App:
             self.viewport().update()
         
 
+
+    def getHeightsWithChords(self):
+        
+        cfm = self.chords_font_metrics
+        lfm = self.lyrics_font_metrics
+
+        lyrics_height = lfm.height()
+        chords_height = cfm.height()
+        
+        line_height = (lyrics_height + cfm.ascent()) - lfm.leading() - cfm.leading()
+        
+        return chords_height, lyrics_height, line_height
+        
+
+    def getHeightsWithoutChords(self):
+
+        lyrics_height = self.lyrics_font_metrics.height()
+        chords_height = 0.0
+        line_height = lyrics_height
+        
+        return chords_height, lyrics_height, line_height
+    
     
     def transposeUp(self):
         self._transposeCurrentSong(1)
@@ -1905,7 +1907,6 @@ class App:
             self.error("No songs are selected")
             return
         
-        
         printer = QtGui.QPrinter()
         printer.setFullPage(True)
         printer.setPageSize(QtGui.QPrinter.Letter)
@@ -1918,32 +1919,18 @@ class App:
             ok = PdfDialog(self).display(self.pdf_options)
             if not ok:
                 return
-            num_printed = self._paintToPrinter(printer)
+            num_printed = self.printAllSongsToPrinter(printer)
 
 
     
-    def _paintToPrinter(self, printer):
+    def printAllSongsToPrinter(self, printer):
         """
         Paint current songs to the specified QPriner instance.
         """
         
-        #print 'from page:', printer.fromPage()
-        #print 'page order:', printer.pageOrder()
-        #print 'print range:', printer.printRange()
-
-        
         painter = QtGui.QPainter()
         if not painter.begin(printer):
             raise IOError("Failed to open the output file for writing")
-        
-        # Figure out what the margins should be:
-        # Convert to points (from inches):
-        left_margin = self.pdf_options.left_margin * 72
-        right_margin = self.pdf_options.right_margin * 72
-        top_margin = self.pdf_options.top_margin * 72
-        bottom_margin = self.pdf_options.bottom_margin * 72
-        
-        orig_document = self.editor.document()
         
         num_printed = 0
         page_num = 0
@@ -1956,44 +1943,60 @@ class App:
             
             song = Song(self, song_id)
             
+            self.printSong(song, printer, painter)
             
-            if self.pdf_options.alternate_margins and page_num != 1:
-                left_margin, right_margin = right_margin, left_margin
-            
-            width = printer.width() #- 300
-            height = printer.height() #- 300
-            
-            self.editor.setDocument(song.doc)
-            
-            if self.pdf_options.print_4_per_page:
-                width  = width // 2
-                height = height // 2
-                for (x, y) in ( (0,0), (0,1), (1,0), (1,1) ):
-                    song_width = width - left_margin - right_margin
-                    song_height = height - top_margin - bottom_margin
-                    
-                    song_top = top_margin + y*height
-                    song_left = left_margin + x*width
-                    
-                    paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
-                    self.drawSongToRect(song, painter, paint_rect, exporting=True)
-            else:
-                song_width = width - left_margin - right_margin
-                song_height = height - top_margin - bottom_margin
-                song_top = top_margin
-                song_left = left_margin
-                paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
-                self.drawSongToRect(song, painter, paint_rect, exporting=True)
             num_printed += 1
-        
-        self.editor.setDocument(orig_document)
-        
+            
         painter.end()
         print "Done drawing"
         return num_printed
+    
+    
+    
+    
+    def printSong(self, song, printer, painter):
+        
+        # Figure out what the margins should be:
+        # Convert to points (from inches):
+        left_margin = self.pdf_options.left_margin * 72
+        right_margin = self.pdf_options.right_margin * 72
+        top_margin = self.pdf_options.top_margin * 72
+        bottom_margin = self.pdf_options.bottom_margin * 72
+        
+        orig_document = self.editor.document()
+        
+        if self.pdf_options.alternate_margins and page_num != 1:
+            left_margin, right_margin = right_margin, left_margin
+        
+        width = printer.width() #- 300
+        height = printer.height() #- 300
+        
+        self.editor.setDocument(song.doc)
+        
+        if self.pdf_options.print_4_per_page:
+            width  = width // 2
+            height = height // 2
+            for (x, y) in ( (0,0), (0,1), (1,0), (1,1) ):
+                song_width = width - left_margin - right_margin
+                song_height = height - top_margin - bottom_margin
+                
+                song_top = top_margin + y*height
+                song_left = left_margin + x*width
+                
+                paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
+                self.drawSongToRect(song, painter, paint_rect, exporting=True)
+        else:
+            song_width = width - left_margin - right_margin
+            song_height = height - top_margin - bottom_margin
+            song_top = top_margin
+            song_left = left_margin
+            paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
+            self.drawSongToRect(song, painter, paint_rect, exporting=True)
+        
+        self.editor.setDocument(orig_document)
+    
 
-
-    def exportToPdf(self, pdf_file=None):
+    def exportToSinglePdf(self, pdf_file=None):
         """
         Exports the selected songs to a PDF file.
         """
@@ -2031,18 +2034,85 @@ class App:
                 printer.setOutputFileName(pdf_file)
                 printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
                 
-                num_exported = self._paintToPrinter(printer)
+                num_exported = self.printAllSongsToPrinter(printer)
             except Exception, err:
                 self.restoreCursor()
                 self.error("Error generating PDF:\n%s" % str(err))
                 raise
             else:
-                if num_exported == 1:
-                    num_str = "1 song"
-                else:
-                    num_str = "%i songs" % num_exported
+                #if num_exported == 1:
+                #    num_str = "1 song"
+                #else:
+                #    num_str = "%i songs" % num_exported
                 self.restoreCursor()
     
+    
+    
+    def exportToMultiplePdfs(self):
+        """
+        Exports the selected songs, each to its own PDF file.
+        """
+        
+        ok = PdfDialog(self).display(self.pdf_options)
+        if not ok:
+            return
+        
+        suggested_dir = unicode(QtCore.QDir.home().path())
+        dir = QtGui.QFileDialog.getExistingDirectory(self.ui,
+                    "Save PDF file in directory:",
+                    suggested_dir,
+        )
+        
+            
+        
+        if not dir:
+            # User cancelled
+            return
+        
+
+        self.setWaitCursor()
+        
+        num_exported = 0
+        
+        for song_id in self.getSelectedSongIds():
+            song = Song(self, song_id)
+            
+            pdf_file = os.path.join( unicode(dir), unicode(song.title) + ".pdf" )
+            
+            #print 'exporting song_id:', song_id
+            
+            try:
+                printer = QtGui.QPrinter()
+                page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
+                printer.setPaperSize( page_size, QtGui.QPrinter.Inch)
+                printer.setFullPage(True) # considers whole page instead of only printable area.
+                printer.setOrientation(QtGui.QPrinter.Portrait)
+                printer.setOutputFileName(pdf_file)
+                printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+                
+                painter = QtGui.QPainter()
+                if not painter.begin(printer):
+                    raise IOError("Failed to open the output file for writing")
+                
+                self.printSong(song, printer, painter)
+                
+                painter.end()
+            
+            except Exception, err:
+                self.restoreCursor()
+                self.error("Error generating PDF:\n%s" % str(err))
+                raise
+            else:
+                num_exported += 1
+            
+        
+        #if num_exported == 1:
+        #    num_str = "1 song"
+        #else:
+        #    num_str = "%i songs" % num_exported
+    
+        self.restoreCursor()
+
     
     
     def exportToText(self, text_file=None):
@@ -2249,9 +2319,9 @@ class App:
                     break
         
         if has_chord:
-            chords_height, lyrics_height, line_height = self.current_song.getHeightsWithChords()
+            chords_height, lyrics_height, line_height = self.getHeightsWithChords()
         else:
-            chords_height, lyrics_height, line_height = self.current_song.getHeightsWithoutChords()
+            chords_height, lyrics_height, line_height = self.getHeightsWithoutChords()
         
         # Find the bounding rect for this character:
         cursor.setPosition(song_char_num)
