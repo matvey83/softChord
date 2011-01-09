@@ -1212,6 +1212,8 @@ class PdfOptions:
         self.bottom_margin = 0.5
         self.alternate_margins = False
         self.print_4_per_page = False
+        self.page_width = 8.5
+        self.page_height = 11.0
 
 
 
@@ -1229,6 +1231,8 @@ class PdfDialog:
         self.ui.right_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
         self.ui.top_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
         self.ui.bottom_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
+        self.ui.page_width_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
+        self.ui.page_height_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
     
     
     
@@ -1243,6 +1247,9 @@ class PdfDialog:
         self.ui.top_margin_ef.setText( str(pdf_options.top_margin) )
         self.ui.bottom_margin_ef.setText( str(pdf_options.bottom_margin) )
         
+        self.ui.page_width_ef.setText( str(pdf_options.page_width) )
+        self.ui.page_height_ef.setText( str(pdf_options.page_height) )
+        
         self.ui.alternate_margins_box.setChecked(pdf_options.alternate_margins)
         self.ui.print_4_per_page_box.setChecked(pdf_options.print_4_per_page)
         
@@ -1255,6 +1262,8 @@ class PdfDialog:
             pdf_options.right_margin = float(self.ui.right_margin_ef.text())
             pdf_options.top_margin = float(self.ui.top_margin_ef.text())
             pdf_options.bottom_margin = float(self.ui.bottom_margin_ef.text())
+            pdf_options.page_width = float(self.ui.page_width_ef.text())
+            pdf_options.page_height = float(self.ui.page_height_ef.text())
             pdf_options.alternate_margins = self.ui.alternate_margins_box.isChecked()
             pdf_options.print_4_per_page = self.ui.print_4_per_page_box.isChecked()
             return True
@@ -2015,8 +2024,9 @@ class App:
             self.setWaitCursor()
             try:
                 printer = QtGui.QPrinter()
+                page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
+                printer.setPaperSize( page_size, QtGui.QPrinter.Inch)
                 printer.setFullPage(True) # considers whole page instead of only printable area.
-                printer.setPageSize(QtGui.QPrinter.Letter)
                 printer.setOrientation(QtGui.QPrinter.Portrait)
                 printer.setOutputFileName(pdf_file)
                 printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
