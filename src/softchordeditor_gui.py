@@ -176,6 +176,13 @@ def transpose_note(note_id, steps):
     return note_id
 
 
+class SongsTableRow:
+    def __init__(self, id, number, title):
+        self.id = id
+        self.number = number
+        self.title = title
+
+
 class SongsTableModel(QtCore.QAbstractTableModel):
     """
     Class for storing table information.
@@ -191,13 +198,16 @@ class SongsTableModel(QtCore.QAbstractTableModel):
         """
         Updates the table model from the latest data in the database.
         """
-        self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
+        self.layoutAboutToBeChanged.emit()
+        
         self._data = []
         if self.app.curs:
             # A songbook is currently open
             for row in self.app.curs.execute("SELECT id, number, title FROM songs"):
-                self._data.append(row)
-        self.emit(QtCore.SIGNAL("layoutChanged()")) # Forces the view to redraw
+                rowobj = SongsTableRow( row[0], row[1], row[2] )
+                self._data.append(rowobj)
+        
+        self.layoutChanged.emit() # Forces the view to redraw
     
     def rowCount(self, parent=QtCore.QModelIndex()):
         """ Returns number of rows """
@@ -214,14 +224,20 @@ class SongsTableModel(QtCore.QAbstractTableModel):
         """
         
         if role == Qt.DisplayRole:
-            row_data = self._data[index.row()]
-            row_data = row_data[1:] # Remove the ID column
-            value = row_data[index.column()]
-            if value == -1: # Invalid song number
-                value = ""
-            return QtCore.QVariant(value)
+            rowobj = self._data[index.row()]
+            col = index.column()
+            if col == 0:
+                if rowobj.number == -1: # Invalid song number
+                    return QtCore.QVariant("")
+                else:
+                    return QtCore.QVariant(rowobj.number)
+
+            elif col == 1:
+                return QtCore.QVariant(rowobj.title)
+            
         return QtCore.QVariant()
     
+
     def headerData(self, section, orientation, role):
         """
         Returns the string that should be displayed in the specified header
@@ -234,15 +250,24 @@ class SongsTableModel(QtCore.QAbstractTableModel):
                 return QtCore.QVariant(section+1)
         return QtCore.QVariant()        
     
+    def getRow(self, row):
+        return self._data[row]
+    
+    def setRow(self, rownum, rowobj):
+        self._data[rownum] = rowobj
+        
+        self.dataChanged.emit( self.index(rownum, 0), self.index(rownum, self.columnCount()-1) )
+    
+    
     def getRowSongID(self, row):
         """
         Returns the database ID of the selected song (by row number).
         """
-        return self._data[row][0]
+        return self._data[row].id
 
     def getSongsRow(self, song):
         for i, row in enumerate(self._data):
-            if row[0] == song.id:
+            if row.id == song.id:
                 return i
         raise ValueError("No such song in the model")
         
@@ -2235,15 +2260,13 @@ class App:
                 self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
                 self.curs.commit()
                 
-                selected_row_num = self.songs_model.getSongsRow(self.current_song)
+                row_num = self.songs_model.getSongsRow(self.current_song)
+                rowobj = self.songs_model.getRow(row_num)
                 
-                # Update the song table from database:
-                self.songs_model.updateFromDatabase()
+                rowobj.title = new_title
                 
-                # Re-select this song:
-                source_index = self.songs_model.index(selected_row_num, 0)
-                proxy_index = self.songs_proxy_model.mapFromSource(source_index)
-                self.ui.songs_view.selectRow(proxy_index.row())
+                self.songs_model.setRow(row_num, rowobj)
+
             finally:
                 self.restoreCursor()
         
