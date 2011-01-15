@@ -1095,7 +1095,7 @@ class CustomTextEdit(QtGui.QTextEdit):
         Called when mouse is DOUBLE-CLICKED in the song chords widget.
         """
         if self.lyric_editor_mode:
-            QtGui.QTextEdit.mouseDoubleClickedEvent(self, event)
+            QtGui.QTextEdit.mouseDoubleClickEvent(self, event)
             return
         
         if event.button() == Qt.LeftButton:
