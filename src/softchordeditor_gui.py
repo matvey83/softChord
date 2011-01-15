@@ -1983,7 +1983,7 @@ class App:
             self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
             if self.current_song:
                 self.current_song.setDocMargins()
-            self.viewport().update()
+            self.editor.viewport().update()
 
     def changeLyricsFont(self):
         """
@@ -1996,7 +1996,7 @@ class App:
             self.editor.setFont(self.lyrics_font)
             if self.current_song:
                 self.current_song.setDocMargins()
-            self.viewport().update()
+            self.editor.viewport().update()
         
     
     def printSelectedSongs(self):
