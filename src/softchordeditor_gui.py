@@ -277,14 +277,29 @@ class SongsProxyModel(QtGui.QSortFilterProxyModel):
     Proxy model that allows showing/hiding rows in the residues table.
     """
 
-    def __init__(self, parent):
-        self.parent = parent
-        QtGui.QSortFilterProxyModel.__init__(self, parent)
+    def __init__(self, app):
+        self.app = app
+        QtGui.QSortFilterProxyModel.__init__(self, app.ui)
 
     def filterAcceptsRow(self, sourceRow, sourceParent):
         model = self.sourceModel()
         
-        return True
+        filter_string = self.app.filter_string
+        
+        if not filter_string:
+            return True
+        
+        rowobj = model.getRow(sourceRow)
+        
+        if QtCore.QString(rowobj.title).contains(filter_string, Qt.CaseInsensitive):
+            return True
+        
+        if rowobj.number != -1:
+            if QtCore.QString(str(rowobj.number)).contains(filter_string, Qt.CaseInsensitive):
+                return True
+        
+        return False
+
     
     def lessThan(self, left, right):
         leftData = self.sourceModel().data(left)
@@ -1317,8 +1332,11 @@ class App:
             self.note_text_id_dict[text] = note_id
             self.note_text_id_dict[alt_text] = note_id
         
+        # Allows the user to show only songs that match this text:
+        self.filter_string = ""
+        
         self.songs_model = SongsTableModel(self)
-        self.songs_proxy_model = SongsProxyModel(self.ui)
+        self.songs_proxy_model = SongsProxyModel(self)
         self.songs_proxy_model.setSourceModel(self.songs_model)
         
         self.ui.songs_view.setModel(self.songs_proxy_model)
@@ -1330,6 +1348,8 @@ class App:
         self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
             self.songsSelectionChangedCallback )
         
+        self.ui.song_filter_ef.textEdited.connect( self.songFilterEdited )
+
         self.previous_song_text = None # Song text before last user's edit operation
 
         self.editor = CustomTextEdit(self)
@@ -1338,16 +1358,16 @@ class App:
         self.ui.lyric_editor_layout.addWidget(self.editor)
         self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
         self.ui.chord_scroll_area.hide()
-
+        
         self.editor.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
-        self.c( self.editor, "textChanged()", self.lyricsTextChanged )
+        self.editor.textChanged.connect( self.lyricsTextChanged )
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSongs )
         
-        self.c( self.ui.song_title_ef, "textEdited(QString)", self.currentSongTitleEdited )
+        self.ui.song_title_ef.textEdited.connect( self.currentSongTitleEdited )
         self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
         self.ui.song_num_ef.setValidator( QtGui.QIntValidator(0, 1000000000, self.ui) )
         self.ignore_song_key_changed = False
@@ -1359,7 +1379,7 @@ class App:
         self.ui.actionCloseSongbook.triggered.connect(self.closeSongbook)
         self.ui.actionSaveSongbook.triggered.connect(self.saveSongbook)
         
-        self.c( self.ui.actionPrint, "triggered()", self.printSelectedSongs )
+        self.ui.actionPrint.triggered.connect( self.printSelectedSongs )
         self.c( self.ui.actionQuit, "triggered()", self.ui.close )
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
         self.c( self.ui.actionDeleteSongs, "triggered()", self.deleteSelectedSongs )
@@ -1439,6 +1459,12 @@ class App:
 
         self.updateStates()
         
+    
+
+    def songFilterEdited(self, new_text):
+        self.filter_string = new_text
+        #self.songs_proxy_model.layoutChanged.emit() # Forces the view to redraw
+        self.songs_model.layoutChanged.emit() # Forces the view to redraw
 
 
     def lyricEditorSelected(self):
