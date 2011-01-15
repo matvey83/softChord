@@ -1462,11 +1462,30 @@ class App:
     
 
     def songFilterEdited(self, new_text):
+        
+        selection_model = self.ui.songs_view.selectionModel()
+        
+        # Save the selection:
+        selected_source_rows = []
+        for index in selection_model.selectedRows():
+            index = self.songs_proxy_model.mapToSource(index)
+            selected_source_rows.append(index.row())
+        
+        self.ui.songs_view.selectionModel().clear()
+        
         self.filter_string = new_text
         #self.songs_proxy_model.layoutChanged.emit() # Forces the view to redraw
         self.songs_model.layoutChanged.emit() # Forces the view to redraw
+        
 
-
+        # FIXME re-select the subset of selected rows that is still visible
+        for row in selected_source_rows:
+            source_index = self.songs_model.index(row, 0)
+            proxy_index = self.songs_proxy_model.mapFromSource(source_index)
+            selection_model.select(proxy_index, QtGui.QItemSelectionModel.Select | QtGui.QItemSelectionModel.Rows)
+            #self.ui.songs_view.selectRow(proxy_index.row())
+    
+    
     def lyricEditorSelected(self):
         
         self.ui.lyric_editor_button.setDown(True)
