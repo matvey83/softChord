@@ -61,7 +61,7 @@ class SoftChordEditorTest(unittest.TestCase):
         if os.path.isfile(out_pdf_file):
             os.remove(out_pdf_file)
         
-        app.exportToPdf(out_pdf_file)
+        app.exportToSinglePdf(out_pdf_file)
         
         self.assert_( os.path.isfile(out_pdf_file) )
         
