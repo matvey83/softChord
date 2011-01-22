@@ -2296,9 +2296,7 @@ class App:
         if text_file:
             self.setWaitCursor()
             try:
-                fh = codecs.open( unicode(text_file).encode('utf-8'), 'w', encoding='utf_8_sig') #encoding='utf-8')
-                
-                #fh = open( unicode(text_file).encode('utf-8'), 'w' )
+                fh = codecs.open( unicode(text_file), 'w', encoding='utf_8_sig')
                 
                 for song_index, song_id in enumerate(self.getSelectedSongIds()):
                     # NOTE for now there will always be only one song exported.
