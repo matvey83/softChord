@@ -25,9 +25,23 @@
         <item>
          <widget class="QLabel" name="label_3">
           <property name="text">
-           <string>Songs in the opened songbook (select to view or edit):</string>
+           <string>Songs in the current songbook:</string>
           </property>
          </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_7">
+          <item>
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>Filter:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="song_filter_ef"/>
+          </item>
+         </layout>
         </item>
         <item>
          <widget class="QTableView" name="songs_view">
