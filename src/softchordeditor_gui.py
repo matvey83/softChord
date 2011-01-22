@@ -24,7 +24,7 @@ import sqlite3
 import codecs
 import copy
 import shutil
-
+import platform
 
 
 chord_types_list = [
@@ -939,14 +939,14 @@ class CustomTextEdit(QtGui.QTextEdit):
             self.viewport().update()
     
     def undo(self):
-        print 'undo'
+        #print 'undo'
         if self.lyric_editor_mode:
             QtGui.QTextEdit.undo(self)
         else:
             self.app.undo_stack.undo()
     
     def redo(self):
-        print 'redo'
+        #print 'redo'
         if self.lyric_editor_mode:
             QtGui.QTextEdit.redo(self)
         else:
@@ -1306,6 +1306,8 @@ class App:
     
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
+        
+        self.on_windows = platform.system() == "Windows"
 
         self.curs = None
         self.current_song = None
@@ -1430,6 +1432,7 @@ class App:
 
         self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
         self.chords_color = QtGui.QColor("DARK BLUE")
+        self.white_color = QtGui.QColor("WHITE")
         self.editor.setFont(self.lyrics_font)
         
         self._orig_closeEvent = self.ui.closeEvent
@@ -1702,14 +1705,40 @@ class App:
         """
         Called when the song selection changes.
         """
-        
         # Commit any changes in the current song:
         self.curs.commit()
         
         self.selected_char_num = None # Remove the selection
         self.hover_char_num = None # Remove the hover highlighting
-        self.updateCurrentSongFromDatabase()
+        #self.updateCurrentSongFromDatabase()  FIXME REMOVE
         
+        num_selected = len(selected.indexes())# - len(deselected.indexes())
+
+        one_song_selected = False
+        num_cols = self.songs_model.columnCount()
+        if self.current_song == None:
+            if len(selected.indexes()) == num_cols:
+                # Exactly one song was just selected (previously none were selected)
+                one_song_selected = True
+        else:
+            if len(deselected.indexes()) == len(selected.indexes()):
+                # Ones seong was de-selected and one song was selected:
+                one_song_selected = True
+        
+        self.setWaitCursor()
+        if one_song_selected:
+            index = selected.indexes()[0]
+            index = self.songs_proxy_model.mapToSource(index)
+            song_id = self.songs_model.getRowSongID(index.row())
+            song = Song(self, song_id)
+            self.setCurrentSong(song)
+        else:
+            self.setCurrentSong(None)
+        
+        self.updateStates()
+        self.restoreCursor()
+        
+
         # Sroll the chords table to the top (and left):
         #self.ui.chord_scroll_area.horizontalScrollBar().setValue(0)
         #self.ui.chord_scroll_area.verticalScrollBar().setValue(0)
@@ -1734,7 +1763,8 @@ class App:
         """
         Re-reads the current song from the database.
         """
-        
+        #### OBSOLETE FIXME REMOVE THIS METHOD        
+
         self.setWaitCursor()
         selected_song_ids = self.getSelectedSongIds()
         
@@ -1744,7 +1774,6 @@ class App:
             self.setCurrentSong(song)
         else:
             self.setCurrentSong(None)
-        
         self.updateStates()
         self.restoreCursor()
         
@@ -1802,9 +1831,17 @@ class App:
         Reads all song info from the database.
         """
         
+        if self.current_song == None and song == None:
+            return
+        
+        prev_song = None
         if self.current_song != None:
             # Update the current song in the database
             self.current_song.sendToDatabase()
+            prev_song = self.current_song
+            prev_doc = self.editor.document()
+            prev_song.doc = prev_doc.clone()
+            self.editor.document().clear()
         
         if song == None:
             self.current_song = None
@@ -1837,13 +1874,13 @@ class App:
             else:
                 self.ui.song_num_ef.setText( str(self.current_song.number) )
             
-            #song.doc.setDefaultFont(self.lyrics_font)
+            song.doc.setDefaultFont(self.lyrics_font)
+            
             self.editor.setDocument(song.doc)
             self.editor.verticalScrollBar().setValue(0)
         
         self.disableUndo()
         
-        #self.update()
 
 
     def _transposeCurrentSong(self, steps):
@@ -2049,7 +2086,7 @@ class App:
             num_printed += 1
             
         painter.end()
-        print "Done drawing"
+        #print "Done drawing"
         return num_printed
     
     
@@ -2385,12 +2422,12 @@ class App:
         
         row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
         if row[0] == None:
-            id = 0
+            song_id = 0
         else:
-            id = row[0] + 1
+            song_id = row[0] + 1
         
         out = self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
-                        'VALUES (%i, %i, "%s", "%s")' % (id, song_number, song_text, song_title))
+                        'VALUES (%i, %i, "%s", "%s")' % (song_id, song_number, song_text, song_title))
         self.curs.commit()
         
         # Update the song table from database:
@@ -2400,10 +2437,12 @@ class App:
         source_index = self.songs_model.index(self.songs_model.rowCount() - 1, 0)
         proxy_index = self.songs_proxy_model.mapFromSource(source_index)
         self.ui.songs_view.selectRow(proxy_index.row())
-        self.updateCurrentSongFromDatabase()
-        
+
+        song = Song(self, song_id)
+        self.setCurrentSong(song)        
+
+        ####self.updateCurrentSongFromDatabase() # FIXME REMOVE
         self.lyricEditorSelected()
-    
     
     def _deleteSong(self, song_id):
         
@@ -2489,7 +2528,13 @@ class App:
         """
         """
         
-        selection_brush = QtGui.QPalette().highlight()
+        # On Windows, don't use the default dark blue, as it will not work correctly
+        # With default chord and text colors (blue and black):
+        if self.on_windows:
+            selection_brush = QtGui.QColor("light blue")
+        else:
+            selection_brush = QtGui.QPalette().highlight()
+        
         hover_brush = QtGui.QColor("light grey")
         
         if not exporting:
@@ -2516,6 +2561,11 @@ class App:
             
             chord_text = chord.getChordText()
             painter.setFont(self.chords_font)
+            
+            # On Windows, selected text is drawn in white:
+            #if chord.character_num == self.selected_char_num and self.on_windows:
+            #    painter.setPen(self.white_color)
+            #else:
             painter.setPen(self.chords_color)
             
             # FIXME fix this bug:
