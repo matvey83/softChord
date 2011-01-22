@@ -1834,14 +1834,15 @@ class App:
         if self.current_song == None and song == None:
             return
         
-        prev_song = None
         if self.current_song != None:
             # Update the current song in the database
             self.current_song.sendToDatabase()
-            prev_song = self.current_song
+
+            # Clear the document of the QTextEdit before setting it to a new document.
+            # This is needed to prevent a crash on Windows:
             prev_doc = self.editor.document()
-            prev_song.doc = prev_doc.clone()
-            self.editor.document().clear()
+            self.current_song.doc = prev_doc.clone()
+            prev_doc.clear()
         
         if song == None:
             self.current_song = None
@@ -1849,7 +1850,6 @@ class App:
             self.ui.song_key_menu.setCurrentIndex( 0 )
             self.ui.song_num_ef.setText("")
             
-            # Need to save a reference to the doc to prevent a crash on Windows:
             self.empty_doc = QtGui.QTextDocument()
             self.editor.setDocument(self.empty_doc)
             self.editor.verticalScrollBar().setValue(0)
