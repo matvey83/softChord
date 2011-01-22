@@ -69,10 +69,6 @@ script_ui_file = os.path.join(exec_dir, "softchordeditor.ui" )
 chord_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_chord_dialog.ui")
 pdf_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_pdf_dialog.ui")
 
-#print 'script_ui_file:', script_ui_file
-#print 'exists:', os.path.isfile(script_ui_file)
-
-
 
 
 
@@ -939,14 +935,12 @@ class CustomTextEdit(QtGui.QTextEdit):
             self.viewport().update()
     
     def undo(self):
-        #print 'undo'
         if self.lyric_editor_mode:
             QtGui.QTextEdit.undo(self)
         else:
             self.app.undo_stack.undo()
     
     def redo(self):
-        #print 'redo'
         if self.lyric_editor_mode:
             QtGui.QTextEdit.redo(self)
         else:
@@ -1587,7 +1581,8 @@ class App:
             if prev_chord:
                 new_chord = copy.copy(prev_chord)
                 if key == Qt.Key_Left:
-                    new_chord.character_num -= 1
+                    if new_chord.character_num > 0:
+                        new_chord.character_num -= 1
                 elif key == Qt.Key_Right:
                     new_chord.character_num += 1
                 else:
@@ -1670,13 +1665,11 @@ class App:
                 undo_possible = self.undo_stack.canUndo()
                 redo_possible = self.undo_stack.canRedo()
         
-        #print 'setting undo/redo possible', undo_possible, redo_possible
         self.ui.actionUndo.setEnabled(undo_possible)
         self.ui.actionRedo.setEnabled(redo_possible)
     
 
     def disableUndo(self):
-        #print 'clear undo stack'
         self.undo_stack.clear()
     
     
@@ -2074,7 +2067,6 @@ class App:
         page_num = 0
         for song_id in self.getSelectedSongIds():
             page_num += 1
-            #print 'exporting song_id:', song_id
             if page_num != 1:
                 if not printer.newPage():
                     raise IOError("Failed to flush page to disk, disk full?")
@@ -2086,7 +2078,6 @@ class App:
             num_printed += 1
             
         painter.end()
-        #print "Done drawing"
         return num_printed
     
     
@@ -2191,8 +2182,6 @@ class App:
                 if progress.wasCanceled():
                     break
                 
-                #print 'exporting song_id:', song_id
-                
                 if i != 0:
                     if not printer.newPage():
                         raise IOError("Failed to flush page to disk, disk full?")
@@ -2250,8 +2239,6 @@ class App:
             if progress.wasCanceled():
                 break
             
-            #print 'exporting song_id:', song_id
-
             song = Song(self, song_id)
             
             pdf_file = os.path.join( unicode(dir), unicode(song.title) + ".pdf" )
@@ -2686,8 +2673,6 @@ class App:
         
         
         # Not over a chord, check the letter:
-        #print 'position:', x, y
-        #print '  cursor position:', 
         x -= 5.0
         
         
@@ -2901,7 +2886,6 @@ class App:
                     # Add spaces to the end of <line> if necessary:
                     for line_char_num in prev_chords.keys():
                         if line_char_num >= len(line):
-                            #print 'Extending line from %i to %i' % (len(line), line_char_num+1)
                             line += ' ' * (line_char_num - len(line) + 1)
                     song_lines.append( (line, prev_chords) )
                 else:
