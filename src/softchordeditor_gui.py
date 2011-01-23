@@ -43,6 +43,17 @@ chord_types_list = [
   (12, u"Diminished 7th", u"°7"),
 ]
 
+alternative_type_names = {
+   "sus" : "sus4",
+   "s4" : "sus4",
+   "maj7" : "M7",
+   "2" : "9",
+   "(7)" : "7",
+   "dim" : "°",
+   "dim7" : "°7",
+}
+
+
 global_notes_list = [
   (0, u"C", u"C"),
   (1, u"C♯", u"D♭"),
@@ -58,6 +69,9 @@ global_notes_list = [
   (11, u"B", u"B"), 
 ]
 
+
+# File extensions that can be used for the ChordPro file format:
+chordpro_extensions = [".pro", ".chopro", ".chordpro", ".cpm"]
 
 #print 'dir executable:', dir(sys.executable)
 if not os.path.basename(sys.executable).lower().startswith("python"):
@@ -801,21 +815,24 @@ class Song:
             for chord in self.iterateAllChords():
                 # Update existing chords
                 if chord.character_num in chords_in_database:
-                    self.app.curs.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
-                        % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
+                    #self.app.curs.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
+                    #    % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
+                    self.app.curs.execute("UPDATE song_chord_link SET note_id=?, chord_type_id=?, bass_note_id=?, marker=?, in_parentheses=? WHERE song_id=? AND character_num=?", 
+                        (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
                     chords_in_database.remove(chord.character_num)
             
                 else:
                     # Add new chords
-                    self.app.curs.execute('INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                            'VALUES (%i, %i, %i, %i, %i, "%s", %i)' % (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
+                    #self.app.curs.execute('INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+                    #        'VALUES (%i, %i, %i, %i, %i, "%s", %i)' % (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
+                    self.app.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)", (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
 
             # Remove old chords
             for song_char_num in chords_in_database:
                 self.app.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
             
             self.app.curs.execute("UPDATE songs SET number = ?, title = ?, text = ?, key_note_id = ?, key_is_major = ?  WHERE id = ?",
-            #self.app.curs.execute('UPDATE songs SET number=%i, title="%s", text="%s", key_note_id=%i, key_is_major=%i WHERE id=%i' % 
                 (self.number, self.title, self.getAllText(), self.key_note_id, self.key_is_major, self.id))
             self.app.curs.commit()
         finally:
@@ -1319,6 +1336,13 @@ class App:
             self.chord_type_names.append(name)
             self.chord_type_prints.append(print_text)
         
+        # Key: chord type text, value: chord type ID
+        self.chord_type_texts_dict = {}
+        for id, print_text in enumerate(self.chord_type_prints):
+            self.chord_type_texts_dict[print_text] = id
+            for alternative_name, official_name in alternative_type_names.iteritems():
+                if print_text == official_name:
+                    self.chord_type_texts_dict[alternative_name] = id
         
         # Make a list of all notes and keys:
         self.notes_list = []
@@ -1383,6 +1407,7 @@ class App:
         self.c( self.ui.actionExportMultiplePdfs, "triggered()", self.exportToMultiplePdfs )
         self.c( self.ui.actionExportText, "triggered()", self.exportToText )
         self.c( self.ui.actionImportText, "triggered()", self.importFromText )
+        self.ui.actionImportChordPro.triggered.connect( self.importFromChordPro )
         self.c( self.ui.actionLyricsFont, "triggered()", self.changeLyricsFont )
         self.c( self.ui.actionChordsFont, "triggered()", self.changeChordFont )
 
@@ -2324,7 +2349,8 @@ class App:
             self.current_song.title = unicode(new_title).strip() # Remove any EOL characters, etc.
             self.setWaitCursor()
             try:
-                self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+                #self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
+                self.curs.execute('UPDATE songs SET title=? WHERE id=?', (new_title, self.current_song.id))
                 self.curs.commit()
                 
                 row_num = self.songs_model.getSongsRow(self.current_song)
@@ -2411,8 +2437,10 @@ class App:
         else:
             song_id = row[0] + 1
         
-        out = self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
-                        'VALUES (%i, %i, "%s", "%s")' % (song_id, song_number, song_text, song_title))
+        #out = self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
+        #                'VALUES (%i, %i, "%s", "%s")' % (song_id, song_number, song_text, song_title))
+        out = self.curs.execute("INSERT INTO songs (id, number, text, title) VALUES (?, ?, ?, ?)",
+            (song_id, song_number, song_text, song_title) )
         self.curs.commit()
         
         # Update the song table from database:
@@ -2730,6 +2758,32 @@ class App:
 
 
 
+    def importFromChordPro(self, filename=None):
+        """
+        Lets the user select a ChordPro file to import.
+        """
+        if not filename:
+            filter_string = "ChordPro format (%s)" % ' '.join( ['*'+ext for ext in chordpro_extensions] )
+            chordpro_files = QtGui.QFileDialog.getOpenFileNames(self.ui,
+                    "Select a ChordPro file to import",
+                    QtCore.QDir.home().path(), # initial dir
+                    filter_string,
+            )
+        else:
+            chordpro_files = [filename]
+        
+        if chordpro_files:
+            self.setWaitCursor()
+            try:
+                for filename in chordpro_files:
+                    # "rU" makes sure that the line endings are handled properly:
+                    file_text = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig').read()
+                    
+                    self.importSongFromChordProText(file_text)
+            finally:
+                self.restoreCursor()
+    
+
     def importFromText(self, text_file=None):
         """
         Lets the user select a text file to import.
@@ -2780,23 +2834,6 @@ class App:
         input_text should contain all lines, decoded, in Unicode.
         """
         
-        alternative_type_names = {
-           "sus" : "sus4",
-           "s4" : "sus4",
-           "maj7" : "M7",
-           "2" : "9",
-           "(7)" : "7",
-           "dim" : "°",
-           "dim7" : "°7",
-        }
-
-        # Key: chord type text, value: chord type ID
-        self.chord_type_texts_dict = {}
-        for id, print_text in enumerate(self.chord_type_prints):
-            self.chord_type_texts_dict[print_text] = id
-            for alternative_name, official_name in alternative_type_names.iteritems():
-                if print_text == official_name:
-                    self.chord_type_texts_dict[alternative_name] = id
         
         song_text = input_text.split('\n')
         # Remove the 2 last empty lines:
@@ -2905,7 +2942,12 @@ class App:
             
             line_start_char_num += len(lyrics) + 1 # 1 for the EOL character
         
-        
+
+        self._importSongFromLyricsAndChords(song_title, song_num, global_song_text, global_song_chords)
+    
+
+
+    def _importSongFromLyricsAndChords(self, song_title, song_num, global_song_text, global_song_chords):
         
         row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
         if row[0] == None:
@@ -2913,11 +2955,10 @@ class App:
         else:
             song_id = row[0]+1
         
-        # Replace all double quotes with single quotes:
-        global_song_text = global_song_text.replace('"', "'")
+        song_title = unicode(song_title)
 
-        self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
-            'VALUES (%i, %i, "%s", "%s")' % (song_id, song_num, global_song_text, song_title))
+        self.curs.execute("INSERT INTO songs (id, number, text, title) VALUES (?, ?, ?, ?)",
+            (song_id, song_num, global_song_text, song_title) )
         
         # Get the next available ID:
         row = self.curs.execute("SELECT MAX(id) from song_chord_link").fetchone()
@@ -2935,7 +2976,8 @@ class App:
             in_parentheses = int(in_parentheses)
             
             self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                        'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
+            
             chord_id += 1 # Increment the ID for the next chord.
         self.curs.commit()
         
@@ -2944,8 +2986,101 @@ class App:
         
         # FIXME #index = self.songs_proxy_model.mapToSource(index)
         self.ui.songs_view.selectRow( self.songs_model.rowCount()-1 )
+    
+    
+    def importSongFromChordProText(self, song_text):
+        
+        song_title = ""
+        #filename = sys.argv[1].decode('utf-8')
+        
+        #fh = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig')
+        #fh = open(filename) #.encode('utf-8'), 'rU', encoding='utf_8_sig')
+
+        #song_text = codecs.open( unicode(filename), 'rU', encoding='utf_8_sig').readlines()
+        
+        tmp_warnings = []
+        song_lines = []
+        
+        for line in song_text.split('\n'):
+            line = line.rstrip() # Remove the EOL character(s)
+            
+            if line.startswith('#'):
+                # Comment
+                continue
+            
+            if line.startswith('{') and line.endswith('}'):
+                custom_string = line[1:-1]
+                if custom_string.startswith('title:'):
+                    song_title = custom_string[6:]
+                elif custom_string.startswith('t:'):
+                    song_title = custom_string[2:]
+                else:
+                    tmp_warnings.append( 'WARNING: line ignored: "%s"' % line )
+                continue
+            
+            line_lyrics = ""
+            line_chords = []
+            curr_chord = None
+            curr_adjusted_char_num = 0
+
+            for line_char_num, char in enumerate(line):
+                if char == '[':
+                    curr_chord = ""
+                    continue
+
+                if curr_chord != None:
+                    if char == ']':
+                        line_chords.append( (curr_adjusted_char_num, curr_chord) )
+                        curr_chord = None
+                    else:
+                        curr_chord += char
+                    continue
+
+                line_lyrics += char
+                curr_adjusted_char_num += 1
+            
+            
+            chords_dict = {}
+            for char_num, chord_text in line_chords:
+                try:
+                    converted_chord = self.convertChordFromString(chord_text)
+                except ValueError, err:
+                    tmp_warnings.append( 'WARNING: %s CHORD "%s"' % (str(err), word.encode('utf-8')) )
+                else:
+                    chords_dict[char_num] = converted_chord
+            
+            song_lines.append( (line_lyrics, chords_dict) )
 
 
+        for warning_str in tmp_warnings:
+            print '  ', warning_str
+        
+        
+        # Combine all lines together:
+        global_song_text = ""
+        global_song_chords = {} # key: position in the global_song_text
+        line_start_char_num = 0
+        for lyrics, chords_dict in song_lines:
+            global_song_text += lyrics + '\n'
+            for line_char_num, chord in chords_dict.iteritems():
+                song_char_num = line_char_num + line_start_char_num
+                global_song_chords[song_char_num] = chord
+            
+            line_start_char_num += len(lyrics) + 1 # 1 for the EOL character
+        
+        
+        # Attempt to derive the song number from the title:
+        song_num = -1
+        try:
+            song_num = int(song_title)
+        except:
+            pass
+        
+        self._importSongFromLyricsAndChords(song_title, song_num, global_song_text, global_song_chords)
+
+
+            
+    
     def convertChordFromString(self, chord_str):
         """
         Convert the specified chord string to a note_id, chord_type_id, and a bass_note_id.
@@ -3124,21 +3259,30 @@ def main():
     """
 
     qapp = QtGui.QApplication(sys.argv)
-    print 'applicationDirPath():', qapp.applicationDirPath()
-    print 'applicationFilePath():', qapp.applicationFilePath()
-    print 'arguments:', map(unicode, qapp.arguments())
-    print 'libraryPaths():', map(unicode, qapp.libraryPaths())
+    #print 'applicationDirPath():', qapp.applicationDirPath()
+    #print 'applicationFilePath():', qapp.applicationFilePath()
+    #print 'arguments:', map(unicode, qapp.arguments())
+    #print 'libraryPaths():', map(unicode, qapp.libraryPaths())
     qapp.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
 
     app = App()
     app.ui.show()
     app.ui.raise_()
-    if len(sys.argv) > 1:
-        if sys.argv[1].endswith(".songbook"):
-            app.setCurrentSongbook(sys.argv[1])
+    
+    input_files = [ filename.decode('utf-8') for filename in sys.argv[1:] ]
+    
+    if input_files:
+        if input_files[0].endswith(".songbook"):
+            app.setCurrentSongbook(input_files[0])
         else:
-            for filename in sys.argv[1:]:
-               app.importFromText(filename)
+            for filename in input_files:
+                ext = os.path.splitext(filename)[1]
+                if ext == '.txt':
+                    app.importFromText(filename)
+                elif ext in chordpro_extensions:
+                    app.importFromChordPro(filename)
+                else:
+                    print 'WARNING: invalid file type:', filename
     
     qapp.restoreOverrideCursor()
     
@@ -3150,3 +3294,6 @@ if __name__ == "__main__":
 
 
 #EOF
+
+
+

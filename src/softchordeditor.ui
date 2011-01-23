@@ -275,7 +275,7 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>471</width>
+               <width>504</width>
                <height>557</height>
               </rect>
              </property>
@@ -327,6 +327,7 @@
     <addaction name="actionDeleteSongs"/>
     <addaction name="separator"/>
     <addaction name="actionImportText"/>
+    <addaction name="actionImportChordPro"/>
     <addaction name="actionExportSinglePdf"/>
     <addaction name="actionExportMultiplePdfs"/>
     <addaction name="actionExportText"/>
@@ -481,6 +482,11 @@
    </property>
    <property name="shortcutContext">
     <enum>Qt::WidgetShortcut</enum>
+   </property>
+  </action>
+  <action name="actionImportChordPro">
+   <property name="text">
+    <string>Import from ChordPro...</string>
    </property>
   </action>
  </widget>
