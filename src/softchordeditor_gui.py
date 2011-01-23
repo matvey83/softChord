@@ -798,6 +798,11 @@ class Song:
         curr_char_num = 0
         converted_text = unicode()
         
+        if self.title:
+            converted_text += "{title:%s}\n" % self.title
+        if self.number:
+            converted_text += "{subtitle:%i}\n" % self.number
+        
         chord_texts_by_char_nums = {}
         for chord in self.iterateAllChords():
             chord_song_char_num = chord.character_num
@@ -3067,13 +3072,9 @@ class App:
     def importSongFromChordProText(self, song_text):
         
         song_title = ""
-        #filename = sys.argv[1].decode('utf-8')
+        song_num = -1 # NULL
         
-        #fh = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig')
-        #fh = open(filename) #.encode('utf-8'), 'rU', encoding='utf_8_sig')
 
-        #song_text = codecs.open( unicode(filename), 'rU', encoding='utf_8_sig').readlines()
-        
         tmp_warnings = []
         song_lines = []
         
@@ -3088,10 +3089,21 @@ class App:
                 custom_string = line[1:-1]
                 if custom_string.startswith('title:'):
                     song_title = custom_string[6:]
+                    continue
                 elif custom_string.startswith('t:'):
                     song_title = custom_string[2:]
-                else:
-                    tmp_warnings.append( 'WARNING: line ignored: "%s"' % line )
+                    continue
+                if custom_string.startswith('subtitle:'):
+                    # If the subtitle is a number, treat it as a song number:
+                    tmp_song_number = custom_string[9:]
+                    try:
+                        song_num = int(tmp_song_number)
+                    except:
+                        pass
+                    else:
+                        continue
+                
+                tmp_warnings.append( 'WARNING: line ignored: "%s"' % line )
                 continue
             
             line_lyrics = ""
@@ -3146,11 +3158,12 @@ class App:
         
         
         # Attempt to derive the song number from the title:
-        song_num = -1
-        try:
-            song_num = int(song_title)
-        except:
-            pass
+        # (if it wasn't already set from the subtitle)
+        if song_num == -1:
+            try:
+                song_num = int(song_title)
+            except:
+                pass
         
         self._importSongFromLyricsAndChords(song_title, song_num, global_song_text, global_song_chords)
 
