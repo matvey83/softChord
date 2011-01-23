@@ -785,6 +785,34 @@ class Song:
         return song_text
         
     
+    
+    def getAsChordProText(self):
+        """
+        Return a ChordPro text string for this song.
+        """
+        
+        self.updateSharpsOrFlats()
+        
+        all_text = self.getAllText()
+        
+        curr_char_num = 0
+        converted_text = unicode()
+        
+        chord_texts_by_char_nums = {}
+        for chord in self.iterateAllChords():
+            chord_song_char_num = chord.character_num
+            chord_text = chord.getChordText()
+            chord_texts_by_char_nums[chord_song_char_num] = chord_text
+        
+
+        for curr_char_num, char in enumerate(all_text):
+            if curr_char_num in chord_texts_by_char_nums:
+                converted_text += "[%s]" % chord_texts_by_char_nums[curr_char_num]
+            converted_text += char
+        
+        return converted_text
+        
+    
     def transpose(self, steps):
         for chord in self.iterateAllChords():
             chord.transpose(steps)
@@ -1406,11 +1434,13 @@ class App:
         self.c( self.ui.actionExportSinglePdf, "triggered()", self.exportToSinglePdf )
         self.c( self.ui.actionExportMultiplePdfs, "triggered()", self.exportToMultiplePdfs )
         self.c( self.ui.actionExportText, "triggered()", self.exportToText )
-        self.c( self.ui.actionImportText, "triggered()", self.importFromText )
+        
+        self.ui.actionExportChordPro.triggered.connect( self.exportToChordPro )
+        self.ui.actionImportText.triggered.connect( self.importFromText )
         self.ui.actionImportChordPro.triggered.connect( self.importFromChordPro )
-        self.c( self.ui.actionLyricsFont, "triggered()", self.changeLyricsFont )
-        self.c( self.ui.actionChordsFont, "triggered()", self.changeChordFont )
-
+        self.ui.actionLyricsFont.triggered.connect( self.changeLyricsFont )
+        self.ui.actionChordsFont.triggered.connect( self.changeChordFont )
+        
         self.ui.actionUndo.triggered.connect(self.undo_stack.undo)
         self.ui.actionRedo.triggered.connect(self.undo_stack.redo)
         
@@ -2339,6 +2369,52 @@ class App:
                 fh.close()
             finally:
                 self.restoreCursor()
+   
+   
+    
+    def exportToChordPro(self, filename=None):
+        """
+        Exports the selected song (one) to a ChordPro format.
+        """
+        
+        self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchordeditor_test.py
+        if not self.getSelectedSongIds():
+            self.error("No songs are selected")
+            return
+        elif len(self.getSelectedSongIds()) > 1:
+            self.error("More than one song is selected.")
+            return
+        
+        if not filename:
+            suggested_path = os.path.join( unicode(QtCore.QDir.home().path()), unicode(self.current_song.title) + ".chordpro" )
+            
+            filename = QtGui.QFileDialog.getSaveFileName(self.ui,
+                    "Save text file as:",
+                    suggested_path,
+                    "ChordPro format (*.chordpro)",
+            )
+        if filename:
+            self.setWaitCursor()
+            try:
+                fh = codecs.open( unicode(filename), 'w', encoding='utf_8_sig')
+                
+                for song_index, song_id in enumerate(self.getSelectedSongIds()):
+                    # NOTE for now there will always be only one song exported.
+                    song = Song(self, song_id)
+                    
+                    # Encode the unicode string as UTF-8 before writing to file:
+                    song_text = song.getAsChordProText()
+                    
+                    # Fix the line endings that that they work on all OSes, including Windows NotePad:
+                    song_text = song_text.replace('\n', '\r\n')
+                    
+                    #song_text = song.getAsText().encode('utf_8_sig')
+                    fh.write(song_text)
+                
+                fh.close()
+            finally:
+                self.restoreCursor()
+
 
     
     def currentSongTitleEdited(self, new_title):

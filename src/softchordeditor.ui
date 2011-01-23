@@ -331,6 +331,7 @@
     <addaction name="actionExportSinglePdf"/>
     <addaction name="actionExportMultiplePdfs"/>
     <addaction name="actionExportText"/>
+    <addaction name="actionExportChordPro"/>
    </widget>
    <widget class="QMenu" name="menuFile">
     <property name="title">
@@ -487,6 +488,11 @@
   <action name="actionImportChordPro">
    <property name="text">
     <string>Import from ChordPro...</string>
+   </property>
+  </action>
+  <action name="actionExportChordPro">
+   <property name="text">
+    <string>Export to ChordPro...</string>
    </property>
   </action>
  </widget>
