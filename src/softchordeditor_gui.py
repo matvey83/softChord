@@ -2220,8 +2220,7 @@ class App:
 
         song_ids = self.getSelectedSongIds()
 
-        progress = QtGui.QProgressDialog("Export to multiple PDFs...", "Abort", 0, len(song_ids), self.ui)
-        
+        progress = QtGui.QProgressDialog("Exporting to PDF...", "Abort", 0, len(song_ids), self.ui)
         progress.setWindowModality(Qt.WindowModal)
         
         try:
@@ -2289,8 +2288,7 @@ class App:
 
         song_ids = self.getSelectedSongIds()
 
-        progress = QtGui.QProgressDialog("Export to multiple PDFs...", "Abort", 0, len(song_ids), self.ui)
-
+        progress = QtGui.QProgressDialog("Exporting to PDFs...", "Abort", 0, len(song_ids), self.ui)
         progress.setWindowModality(Qt.WindowModal)
 
         for i, song_id in enumerate(song_ids):
@@ -3263,6 +3261,11 @@ class App:
         else:
             #self.info('Database: %s; exists: %s' % (songbook_file, os.path.isfile(filename)))
             self.curs = sqlite3.connect(filename)
+        
+
+        songbook_name = os.path.splitext(os.path.basename(filename))[0]
+        
+        self.ui.setWindowTitle("softChord Editor - %s" % songbook_name)
         
         self.songs_model.updateFromDatabase()
         self.updateStates()
