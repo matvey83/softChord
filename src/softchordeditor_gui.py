@@ -3258,14 +3258,12 @@ class App:
         
         if filename == None:
             self.curs = None
+            self.ui.setWindowTitle("softChord Editor")
         else:
             #self.info('Database: %s; exists: %s' % (songbook_file, os.path.isfile(filename)))
             self.curs = sqlite3.connect(filename)
-        
-
-        songbook_name = os.path.splitext(os.path.basename(filename))[0]
-        
-        self.ui.setWindowTitle("softChord Editor - %s" % songbook_name)
+            songbook_name = os.path.splitext(os.path.basename(filename))[0]
+            self.ui.setWindowTitle("softChord Editor - %s" % songbook_name)
         
         self.songs_model.updateFromDatabase()
         self.updateStates()
