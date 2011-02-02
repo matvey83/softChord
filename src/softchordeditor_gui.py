@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 
-The main source file for softChord Editor
+The main source file for softChord (softChord Editor)
 
 Writen by: Matvey Adzhigirey
 Development started in 10 December 2010
@@ -280,7 +280,16 @@ class SongsTableModel(QtCore.QAbstractTableModel):
             if row.id == song.id:
                 return i
         raise ValueError("No such song in the model")
-        
+    
+    def getTitleAndNumFromId(self, id):
+        for rowobj in self._data:
+            if rowobj.id == id:
+                return rowobj.title, rowobj.number
+        raise ValueError("No such Song ID in table")
+    
+    def getAllSongIds(self):
+        return [ song.id for song in self._data ]
+
 
 class SongsProxyModel(QtGui.QSortFilterProxyModel):
     """ 
@@ -1275,6 +1284,7 @@ class PdfOptions:
         self.bottom_margin = 0.5
         self.alternate_margins = False
         self.print_4_per_page = False
+        self.generate_table_of_contents = False
         self.page_width = 8.5
         self.page_height = 11.0
 
@@ -1315,6 +1325,7 @@ class PdfDialog:
         
         self.ui.alternate_margins_box.setChecked(pdf_options.alternate_margins)
         self.ui.print_4_per_page_box.setChecked(pdf_options.print_4_per_page)
+        self.ui.generate_table_of_contents_box.setChecked(pdf_options.generate_table_of_contents)
         
         self.ui.show()
         self.ui.raise_()
@@ -1329,6 +1340,7 @@ class PdfDialog:
             pdf_options.page_height = float(self.ui.page_height_ef.text())
             pdf_options.alternate_margins = self.ui.alternate_margins_box.isChecked()
             pdf_options.print_4_per_page = self.ui.print_4_per_page_box.isChecked()
+            pdf_options.generate_table_of_contents = self.ui.generate_table_of_contents_box.isChecked()
             return True
         else:
             # Cancel pressed
@@ -1835,15 +1847,15 @@ class App:
         """
         Enable / disable buttons and other widgets as needed.
         """
-
-        selected_song_ids = self.getSelectedSongIds()
+        
+        # FIXME there is a faster way of doing this:
+        num_selected = len( self.getSelectedSongIds() )
         
         if self.current_song == None:
             self.ui.song_title_ef.setText("")
             self.ui.song_num_ef.setText("")
             self.ui.song_key_menu.setCurrentIndex(0) # None
         
-        num_selected = len(selected_song_ids)        
         
         self.editor.setEnabled( self.current_song != None )
         self.ui.song_title_ef.setEnabled( self.current_song != None )
@@ -1855,12 +1867,14 @@ class App:
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )        
         
-        self.ui.actionExportSinglePdf.setEnabled( num_selected > 0 )
-        self.ui.actionExportMultiplePdfs.setEnabled( num_selected > 0 )
+        songs_present = self.songs_model.rowCount() > 0
+        
+        self.ui.actionExportSinglePdf.setEnabled( songs_present )
+        self.ui.actionExportMultiplePdfs.setEnabled( songs_present )
         
         self.ui.actionExportText.setEnabled( num_selected == 1 )
         
-        self.ui.actionPrint.setEnabled( num_selected > 0 )
+        self.ui.actionPrint.setEnabled( songs_present )
         
         # FIXME instead link it to either the lyric editror select-all, or the songs table
         self.ui.actionSelectAll.setEnabled(False)
@@ -2094,8 +2108,8 @@ class App:
         Bring up a print dialog box.
         """
         
-        if not self.getSelectedSongIds():
-            self.error("No songs are selected")
+        if not self.songs_model.rowCount():
+            self.error("There are no songs to print")
             return
         
         printer = QtGui.QPrinter()
@@ -2110,40 +2124,120 @@ class App:
             ok = PdfDialog(self).display(self.pdf_options)
             if not ok:
                 return
-            num_printed = self.printAllSongsToPrinter(printer)
-
-
+            
+            song_ids = self.getSelectedSongIds()
+            if not song_ids:
+                # No selection, print the whole song book
+                song_ids = self.songs_model.getAllSongIds()
+            
+            num_printed = self.printSongsToPrinter(song_ids, printer, "Printing...")
+            # In case of an IOError, num_printed will be 0.
     
-    def printAllSongsToPrinter(self, printer):
+    
+    def printSongsToPrinter(self, song_ids, printer, progress_message):
         """
-        Paint current songs to the specified QPriner instance.
+        Paint the given songs to the specified QPriner instance.
+        
+        Will display an error dialog on error.
         """
         
-        painter = QtGui.QPainter()
-        if not painter.begin(printer):
-            raise IOError("Failed to open the output file for writing")
+        progress = QtGui.QProgressDialog(progress_message, "Abort", 0, len(song_ids), self.ui)
+        progress.setWindowModality(Qt.WindowModal)
         
-        num_printed = 0
-        page_num = 0
-        for song_id in self.getSelectedSongIds():
-            page_num += 1
-            if page_num != 1:
+        try:
+            painter = QtGui.QPainter()
+            if not painter.begin(printer):
+                raise IOError("Failed to open the output file for writing")
+            
+            num_printed = 0
+            page_num = 0
+            
+            num_table_of_contents_pages = 0
+            if self.pdf_options.generate_table_of_contents:
+                
+                lyrics_height = self.lyrics_font_metrics.height()
+                printable_height = self.getPrintableHeight(printer)
+                
+                max_songs_per_page = int( printable_height // lyrics_height )
+                
+                #print 'max_songs_per_page:', max_songs_per_page
+                
+                # FIXME use smaller font size for table of contents
+                # FIXME Do not leave less than ~10 song titles per page.
+                
+                all_lines = []
+                for song_id in song_ids:
+                    title, num = self.songs_model.getTitleAndNumFromId(song_id)
+                    all_lines.append( (title, num) )
+                
+                # Sort by song name:
+                # FIXME remove the leading "The", "A", etc:
+                all_lines.sort()
+                
+                #print 'all table of contents lines:', all_lines
+                
+                # Split the table of contents into pages:
+                table_of_contents_pages = []
+                curr_page = []
+                for curr_line in all_lines:
+                    curr_page.append( curr_line )
+                    if len(curr_page) == max_songs_per_page:
+                        table_of_contents_pages.append( curr_page )
+                        curr_page = []
+                if curr_page:
+                    table_of_contents_pages.append( curr_page )
+                
+                #print 'num table of contents pages:', len(table_of_contents_pages)
+
+                for lines in table_of_contents_pages:
+                    page_num += 1
+                    if page_num != 1:
+                        if not printer.newPage():
+                            raise IOError("Failed to flush page to disk, disk full?")
+                    self.printTableOfConentsPage(lines, printer, painter, page_num)
+                
+                num_table_of_contents_pages = len(table_of_contents_pages)
+                
+            if num_table_of_contents_pages % 2:
+                # Odd number of table of contents pages. Inseart a blank line:
+                page_num += 1
                 if not printer.newPage():
                     raise IOError("Failed to flush page to disk, disk full?")
             
-            song = Song(self, song_id)
             
-            self.printSong(song, printer, painter)
-            
-            num_printed += 1
-            
-        painter.end()
+            for song_id in song_ids:
+                if progress.wasCanceled():
+                    break
+                
+                page_num += 1
+                if page_num != 1:
+                    if not printer.newPage():
+                        raise IOError("Failed to flush page to disk, disk full?")
+                
+                song = Song(self, song_id)
+                
+                self.printSong(song, printer, painter, page_num)
+                
+                num_printed += 1
+                progress.setValue(num_printed)
+                
+            painter.end()
+        
+        except IOError, err:
+            self.error(err)
+            return 0
+        
+        except Exception, err:
+            raise
+        
+        progress.setValue(len(song_ids))
+        
         return num_printed
     
     
     
     
-    def printSong(self, song, printer, painter):
+    def printSong(self, song, printer, painter, page_num):
         
         # Figure out what the margins should be:
         # Convert to points (from inches):
@@ -2152,9 +2246,10 @@ class App:
         top_margin = self.pdf_options.top_margin * 72
         bottom_margin = self.pdf_options.bottom_margin * 72
         
-        orig_document = self.editor.document()
+        orig_document = self.editor.document().clone()
         
-        if self.pdf_options.alternate_margins and page_num != 1:
+        if self.pdf_options.alternate_margins and not page_num % 2:
+            # If alternating margins and this is an even page:
             left_margin, right_margin = right_margin, left_margin
         
         width = printer.width() #- 300
@@ -2184,23 +2279,74 @@ class App:
         
         self.editor.setDocument(orig_document)
     
-
+    # FIXME FIXME Re-factor out the common code from these two methods!
+    
+    def printTableOfConentsPage(self, lines, printer, painter, page_num):
+        
+        # Figure out what the margins should be:
+        # Convert to points (from inches):
+        left_margin = self.pdf_options.left_margin * 72
+        right_margin = self.pdf_options.right_margin * 72
+        top_margin = self.pdf_options.top_margin * 72
+        bottom_margin = self.pdf_options.bottom_margin * 72
+        
+        if self.pdf_options.alternate_margins and not page_num % 2:
+            # If alternating margins and this is an even page:
+            left_margin, right_margin = right_margin, left_margin
+        
+        width = printer.width() #- 300
+        height = printer.height() #- 300
+        
+        
+        if self.pdf_options.print_4_per_page:
+            width  = width // 2
+            height = height // 2
+            for (x, y) in ( (0,0), (0,1), (1,0), (1,1) ):
+                song_width = width - left_margin - right_margin
+                song_height = height - top_margin - bottom_margin
+                
+                song_top = top_margin + y*height
+                song_left = left_margin + x*width
+                
+                paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
+                self.drawTableOfContentsPageToRect(lines, painter, paint_rect)
+        else:
+            song_width = width - left_margin - right_margin
+            song_height = height - top_margin - bottom_margin
+            song_top = top_margin
+            song_left = left_margin
+            paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
+            self.drawTableOfContentsPageToRect(lines, painter, paint_rect)
+    
+    
+    # FIXME combine this code with the margin code aboce:
+    
+    def getPrintableHeight(self, printer):
+            
+        top_margin = self.pdf_options.top_margin * 72
+        bottom_margin = self.pdf_options.bottom_margin * 72
+        
+        height = printer.height() #- 300
+        
+        return height - top_margin - bottom_margin
+    
+    
     def exportToSinglePdf(self, pdf_file=None):
         """
         Exports the selected songs to a PDF file.
         """
         
-        #self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchordeditor_test.py
-        #if not self.getSelectedSongIds():
-        #    self.error("No songs are selected")
-        #    return
+        song_ids = self.getSelectedSongIds()
+        if not song_ids:
+            # No selection, export all songs:
+            song_ids = self.songs_model.getAllSongIds()
         
         if not pdf_file:
             ok = PdfDialog(self).display(self.pdf_options)
             if not ok:
                 return
             
-            if len(self.getSelectedSongIds()) == 1:
+            if len(song_ids) == 1:
                 suggested_path = os.path.join( unicode(QtCore.QDir.home().path()), unicode(self.current_song.title) + ".pdf" )
             else:
                 suggested_path = QtCore.QDir.home().path()
@@ -2211,18 +2357,11 @@ class App:
                         "PDF format (*.pdf)",
             )
         
-        if not pdf_file: 
-            # User cancelled
-            return
+            if not pdf_file: 
+                # User cancelled
+                return
         
-
-        num_exported = 0 # Number of PDFs that were successfully generated
-
-        song_ids = self.getSelectedSongIds()
-
-        progress = QtGui.QProgressDialog("Exporting to PDF...", "Abort", 0, len(song_ids), self.ui)
-        progress.setWindowModality(Qt.WindowModal)
-        
+        self.setWaitCursor()
         try:
             printer = QtGui.QPrinter()
             page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
@@ -2232,35 +2371,16 @@ class App:
             printer.setOutputFileName(pdf_file)
             printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
             
-            painter = QtGui.QPainter()
-            if not painter.begin(printer):
-                raise IOError("Failed to open the output file for writing")
-            
-            for i, song_id in enumerate(song_ids):
-                progress.setValue(i)
-                if progress.wasCanceled():
-                    break
-                
-                if i != 0:
-                    if not printer.newPage():
-                        raise IOError("Failed to flush page to disk, disk full?")
-                
-                song = Song(self, song_id)
-                
-                self.printSong(song, printer, painter)
-                
-                num_exported += 1
-            
-            painter.end()
-            
+            num_printed = self.printSongsToPrinter(song_ids, printer, "Exporting to PDF...")
+            # On IOError, num_printed will be 0.
+
         except Exception, err:
             self.restoreCursor()
             self.error("Error generating PDF:\n%s" % str(err))
             raise
-        
-        # Close the progress dialog:
-        progress.setValue(len(song_ids))
-    
+        else:
+            self.restoreCursor()
+
     
     
     def exportToMultiplePdfs(self):
@@ -2268,6 +2388,12 @@ class App:
         Exports the selected songs, each to its own PDF file.
         """
         
+        song_ids = self.getSelectedSongIds()
+        if len(song_ids) == 0:
+            # No song is selected, export all.
+            song_ids = self.songs_model.getAllSongIds()
+        
+
         ok = PdfDialog(self).display(self.pdf_options)
         if not ok:
             return
@@ -2277,17 +2403,10 @@ class App:
                     "Save PDF file in directory:",
                     suggested_dir,
         )
-        
-            
-        
         if not dir:
             # User cancelled
             return
         
-        num_exported = 0 # Number of PDFs that were successfully generated
-
-        song_ids = self.getSelectedSongIds()
-
         progress = QtGui.QProgressDialog("Exporting to PDFs...", "Abort", 0, len(song_ids), self.ui)
         progress.setWindowModality(Qt.WindowModal)
 
@@ -2315,7 +2434,8 @@ class App:
                 if not painter.begin(printer):
                     raise IOError("Failed to open the output file for writing")
                 
-                self.printSong(song, printer, painter)
+                # Always print the song as if to the first page, when exporting to multiple PDFs:
+                self.printSong(song, printer, painter, 1)
                 
                 painter.end()
             
@@ -2323,8 +2443,6 @@ class App:
                 self.restoreCursor()
                 self.error("Error generating PDF:\n%s" % str(err))
                 raise
-            else:
-                num_exported += 1
             
         progress.setValue(i+1)
         
@@ -2736,6 +2854,37 @@ class App:
         
         # Go to the original reference frame:
         output_painter.translate(-rect.left(), -rect.top())
+        
+    
+    # FIXME FIXME factor-out the common code between these two methods!
+    
+    def drawTableOfContentsPageToRect(self, lines, painter, rect):
+        """
+        Draws the given table of contents page to the specified rect.
+        """
+        
+        # Go to songs's reference frame:
+        painter.translate(rect.left(), rect.top())
+        
+        max_width = rect.width()
+        max_height = rect.height()
+        
+        lyrics_height = self.lyrics_font_metrics.height()
+        
+
+        curr_height = 0.0
+        for song_name, song_num in lines:
+            #print 'drawing:', song_name, song_num
+            
+            line_str = song_name + " - - " + str(song_num)
+            
+            curr_height += lyrics_height
+            
+            painter.drawText(0, curr_height, line_str)
+        
+        
+        # Go to the original reference frame:
+        painter.translate(-rect.left(), -rect.top())
         
         
     
@@ -3258,12 +3407,12 @@ class App:
         
         if filename == None:
             self.curs = None
-            self.ui.setWindowTitle("softChord Editor")
+            self.ui.setWindowTitle("softChord")
         else:
             #self.info('Database: %s; exists: %s' % (songbook_file, os.path.isfile(filename)))
             self.curs = sqlite3.connect(filename)
             songbook_name = os.path.splitext(os.path.basename(filename))[0]
-            self.ui.setWindowTitle("softChord Editor - %s" % songbook_name)
+            self.ui.setWindowTitle("softChord - %s" % songbook_name)
         
         self.songs_model.updateFromDatabase()
         self.updateStates()
