@@ -79,9 +79,9 @@ if not os.path.basename(sys.executable).lower().startswith("python"):
 else:
     exec_dir = "."
 
-script_ui_file = os.path.join(exec_dir, "softchordeditor.ui" )
-chord_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_chord_dialog.ui")
-pdf_dialog_ui_file = os.path.join(exec_dir, "softchordeditor_pdf_dialog.ui")
+script_ui_file = os.path.join(exec_dir, "softchord_main_window.ui" )
+chord_dialog_ui_file = os.path.join(exec_dir, "softchord_chord_dialog.ui")
+pdf_dialog_ui_file = os.path.join(exec_dir, "softchord_pdf_dialog.ui")
 
 
 
@@ -2453,7 +2453,7 @@ class App:
         Exports the selected song (one) to a TEXT file.
         """
         
-        self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchordeditor_test.py
+        self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchord_test.py
         if not self.getSelectedSongIds():
             self.error("No songs are selected")
             return
@@ -2498,7 +2498,7 @@ class App:
         Exports the selected song (one) to a ChordPro format.
         """
         
-        self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchordeditor_test.py
+        self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchord_test.py
         if not self.getSelectedSongIds():
             self.error("No songs are selected")
             return

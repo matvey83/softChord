@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>417</width>
-    <height>272</height>
+    <width>423</width>
+    <height>296</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -214,6 +214,13 @@
     <widget class="QCheckBox" name="print_4_per_page_box">
      <property name="text">
       <string>Print 4 copies of same song per page</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="generate_table_of_contents_box">
+     <property name="text">
+      <string>Generate table of contents page(s)</string>
      </property>
     </widget>
    </item>
