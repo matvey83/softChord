@@ -1,6 +1,6 @@
 # -*- mode: python -*-
 a = Analysis([os.path.join(HOMEPATH,'support/_mountzlib.py'), os.path.join(HOMEPATH,'support/useUnicode.py'), 'src/softchord_main.py'],
-             pathex=['/Users/adzhigir/softchord'])
+             pathex=['/Users/adzhigir/mac/softchord'])
 pyz = PYZ(a.pure)
 exe = EXE(pyz,
           a.scripts,
@@ -19,10 +19,10 @@ coll = COLLECT( exe,
                a.datas,
                strip=False,
                upx=True,
-               name=os.path.join('dist', 'softchordr'))
+               name=os.path.join('dist', 'softchord'))
 
 import sys
 if sys.platform.startswith("darwin"):
-    app = BUNDLE(exe, appname='softchord.py', version=1)
-    #app = BUNDLE(exe, appname='softChord', version=1)
+    #app = BUNDLE(exe, appname='softchord.py', version=1)
+    app = BUNDLE(exe, appname='softChord', version=1)
                

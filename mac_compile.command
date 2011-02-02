@@ -1,9 +1,9 @@
-python ~/PyInstaller/Build.py softchordeditor.spec --noconfirm
+python ~/PyInstaller/Build.py softchord.spec --noconfirm
 
-cp Info.plist Macsoftchordeditor.app/Contents/
+cp Info.plist Macsoftchord.app/Contents/
 
-cp -rv dist/softchordeditor/* Macsoftchordeditor.app/Contents/MacOS/
+cp -rv dist/softchord/* Macsoftchord.app/Contents/MacOS/
 
-cp -rv /Library/Frameworks/QtGui.framework/Versions/4/Resources/qt_menu.nib Macsoftchordeditor.app/Contents/Resources/
+cp -rv /Library/Frameworks/QtGui.framework/Versions/4/Resources/qt_menu.nib Macsoftchord.app/Contents/Resources/
 
-cp modified_Info.plist Macsoftchordeditor.app/Contents/Info.plist
+cp modified_Info.plist Macsoftchord.app/Contents/Info.plist
