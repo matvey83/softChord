@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 
-The main source file for softChord (softChord Editor)
+The main source file for softChord (previously softChord Editor)
 
 Writen by: Matvey Adzhigirey
 Development started in 10 December 2010
@@ -857,16 +857,12 @@ class Song:
             for chord in self.iterateAllChords():
                 # Update existing chords
                 if chord.character_num in chords_in_database:
-                    #self.app.curs.execute('UPDATE song_chord_link SET note_id=%i, chord_type_id=%i, bass_note_id=%i, marker="%s", in_parentheses=%i WHERE song_id=%i AND character_num=%i' 
-                    #    % (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
                     self.app.curs.execute("UPDATE song_chord_link SET note_id=?, chord_type_id=?, bass_note_id=?, marker=?, in_parentheses=? WHERE song_id=? AND character_num=?", 
                         (chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses, chord.song_id, chord.character_num))
                     chords_in_database.remove(chord.character_num)
             
                 else:
                     # Add new chords
-                    #self.app.curs.execute('INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                    #        'VALUES (%i, %i, %i, %i, %i, "%s", %i)' % (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
                     self.app.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
                             "VALUES (?, ?, ?, ?, ?, ?, ?)", (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
 
@@ -1266,7 +1262,7 @@ class ChordDialog:
             chord.chord_type_id = self.ui.chord_type_menu.currentIndex()
             # 0 (first item) will become -1 (invalid):
             chord.bass_note_id = self.ui.bass_menu.currentIndex() - 1
-            chord.marker = self.ui.marker_ef.text()
+            chord.marker = unicode(self.ui.marker_ef.text()) # NOTE Must convert QString to Python string
             chord.in_parentheses = self.ui.in_parentheses_box.isChecked()
             
             return True
@@ -1309,7 +1305,7 @@ class PdfDialog:
     
     
     
-    def display(self, pdf_options):
+    def display(self, pdf_options, single_pdf_export):
         """
         Display a dialog that alters the PdfOptions if OK is pressed.
         Returns False if user pressed Cancel.
@@ -1326,6 +1322,11 @@ class PdfDialog:
         self.ui.alternate_margins_box.setChecked(pdf_options.alternate_margins)
         self.ui.print_4_per_page_box.setChecked(pdf_options.print_4_per_page)
         self.ui.generate_table_of_contents_box.setChecked(pdf_options.generate_table_of_contents)
+        
+        # Allow table of contents only when generating one PDF for multiple songs:
+        if not single_pdf_export:
+            self.ui.generate_table_of_contents_box.setChecked(False)
+            self.ui.generate_table_of_contents_box.setVisible(False)
         
         self.ui.show()
         self.ui.raise_()
@@ -1483,7 +1484,7 @@ class App:
 
 
         # Font that will be used if no good fonts are found:
-        self.chords_font = QtGui.QFont("Times New Roman", 14, QtGui.QFont.Bold)
+        self.chords_font = QtGui.QFont("Times New Roman", 12, QtGui.QFont.Bold)
         
         # Search for a font that can display sharp and flat characters correctly:
         #for name in [
@@ -2121,7 +2122,7 @@ class App:
         
         print_dialog = QtGui.QPrintDialog(printer, self.ui)
         if print_dialog.exec_() == QtGui.QDialog.Accepted:
-            ok = PdfDialog(self).display(self.pdf_options)
+            ok = PdfDialog(self).display(self.pdf_options, single_pdf_export=True)
             if not ok:
                 return
             
@@ -2165,21 +2166,20 @@ class App:
                 # FIXME use smaller font size for table of contents
                 # FIXME Do not leave less than ~10 song titles per page.
                 
-                all_lines = []
+
+                table_of_contents_lines = []
                 for song_id in song_ids:
                     title, num = self.songs_model.getTitleAndNumFromId(song_id)
-                    all_lines.append( (title, num) )
+                    table_of_contents_lines.append( (title, num) )
                 
                 # Sort by song name:
                 # FIXME remove the leading "The", "A", etc:
-                all_lines.sort()
-                
-                #print 'all table of contents lines:', all_lines
+                table_of_contents_lines.sort()
                 
                 # Split the table of contents into pages:
                 table_of_contents_pages = []
                 curr_page = []
-                for curr_line in all_lines:
+                for curr_line in table_of_contents_lines:
                     curr_page.append( curr_line )
                     if len(curr_page) == max_songs_per_page:
                         table_of_contents_pages.append( curr_page )
@@ -2188,7 +2188,8 @@ class App:
                     table_of_contents_pages.append( curr_page )
                 
                 #print 'num table of contents pages:', len(table_of_contents_pages)
-
+                
+                painter.setFont(self.lyrics_font)
                 for lines in table_of_contents_pages:
                     page_num += 1
                     if page_num != 1:
@@ -2281,7 +2282,12 @@ class App:
     
     # FIXME FIXME Re-factor out the common code from these two methods!
     
+
     def printTableOfConentsPage(self, lines, printer, painter, page_num):
+        """
+        Print the given table of contents pages to the given printer/painter.
+        page_num is used to determine whether to use alternate margins.
+        """
         
         # Figure out what the margins should be:
         # Convert to points (from inches):
@@ -2342,7 +2348,7 @@ class App:
             song_ids = self.songs_model.getAllSongIds()
         
         if not pdf_file:
-            ok = PdfDialog(self).display(self.pdf_options)
+            ok = PdfDialog(self).display(self.pdf_options, single_pdf_export=True)
             if not ok:
                 return
             
@@ -2394,7 +2400,7 @@ class App:
             song_ids = self.songs_model.getAllSongIds()
         
 
-        ok = PdfDialog(self).display(self.pdf_options)
+        ok = PdfDialog(self).display(self.pdf_options, single_pdf_export=False)
         if not ok:
             return
         
@@ -2748,6 +2754,7 @@ class App:
         hover_brush = QtGui.QColor("light grey")
         
         if not exporting:
+            
             if self.hover_char_num != None:
                 char_rect, chord_rect = self.getCharRects(self.hover_char_num)
                 
@@ -2764,8 +2771,25 @@ class App:
                 painter.fillRect(char_rect, selection_brush)
                 if chord_rect:
                     painter.fillRect(chord_rect, selection_brush)
+            
+        else:
+            # Draw the song's number:
+            # FIXME printing of the song number should be optional
+            # FIXME Do NOT draw above the 0.0 y-coordinate. Shift the song down instead.
+            painter.setFont(self.lyrics_font)
+            
+            lyrics_height = self.lyrics_font_metrics.height()
+            
+            # Figure out what the chords height will be for the first line
+            # FIXME This assumes that the first line always has chords
+            chords_height, lyrics_height, line_height = self.getHeightsWithChords()
+            
+            width = 100000.0
+            x = self.left_margin
+            # FIXME it's printed too far to the left
+            painter.drawText(x, -chords_height, width, lyrics_height, Qt.AlignLeft, str(song.number) )
         
-
+        
         for chord in song._chords:
             char_rect, chord_rect = self.getCharRects(chord.character_num, chord)
             
@@ -2792,7 +2816,6 @@ class App:
         # Draw the lyrics document:
         doc = self.editor.document()
 
-
         x = self.editor.horizontalScrollBar().value()
         y = self.editor.verticalScrollBar().value()
 
@@ -2813,15 +2836,16 @@ class App:
         Draws the current song text to the specified rect.
 
         exporting - whether we are drawing to a PDF/Print instead of the screen.
+        
+        When "exporting", the selection/inert cursor are not drawn, and the song number
+        IS drawn.
         """
-        
-        
         
         # FIXME will not account for chord text:
         te = self.editor
         tf = song.doc.rootFrame()
         layout_bounding_rect = song.doc.documentLayout().frameBoundingRect(tf)
-
+        
         pic_right = layout_bounding_rect.right()
         pic_bottom = layout_bounding_rect.bottom()
         
@@ -2861,6 +2885,7 @@ class App:
     def drawTableOfContentsPageToRect(self, lines, painter, rect):
         """
         Draws the given table of contents page to the specified rect.
+        <lines> is a list of (song_name, song_num) tuples for this page.
         """
         
         # Go to songs's reference frame:
@@ -2870,18 +2895,28 @@ class App:
         max_height = rect.height()
         
         lyrics_height = self.lyrics_font_metrics.height()
+        dot_char_width = self.lyrics_font_metrics.width(".")
         
-
         curr_height = 0.0
         for song_name, song_num in lines:
-            #print 'drawing:', song_name, song_num
             
-            line_str = song_name + " - - " + str(song_num)
+            name_bounds_rect = painter.drawText(0, curr_height, max_width, lyrics_height, Qt.AlignLeft, song_name)
+            num_bounds_rect = painter.drawText(0, curr_height, max_width, lyrics_height, Qt.AlignRight, str(song_num))
+            
+            dots_left = name_bounds_rect.right()
+            dots_right = num_bounds_rect.left()
+            dots_width = dots_right - dots_left
+
+            num_dots = int( dots_width // dot_char_width )
+            
+            dots_str = '.' * (num_dots-2)
+            dots_str = ' ' + dots_str + ' '
+            
+            # FIXME display dots a bit higher
+            painter.drawText(dots_left, curr_height, dots_width, lyrics_height, Qt.AlignLeft, dots_str)
             
             curr_height += lyrics_height
-            
-            painter.drawText(0, curr_height, line_str)
-        
+
         
         # Go to the original reference frame:
         painter.translate(-rect.left(), -rect.top())
@@ -3020,7 +3055,7 @@ class App:
             text_files = QtGui.QFileDialog.getOpenFileNames(self.ui,
                     "Select a text file to import",
                     QtCore.QDir.home().path(), # initial dir
-                    "Text format (*.txt)",
+                    "Text format (*.txt *.text)", ###### *.textClipping)", # *.textClipping is used on MacOSX
             )
         else:
             text_files = [text_file]
@@ -3031,7 +3066,7 @@ class App:
                 for filename in text_files:
                     # Convert QString to a Python string:
                     filename = unicode(filename)
-
+                    
                     song_title = os.path.splitext(os.path.basename(filename))[0]
                     """
                     try:
@@ -3049,9 +3084,12 @@ class App:
                     
                     # "rU" makes sure that the line endings are handled properly:
                     
+                    print 'reading:', filename
                     text = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig').read()
-                    
+                    #text = codecs.open( unicode(filename), 'rU', encoding='utf_8_sig').read()
+                    print 'text:', text
                     self.importSongFromText(text, song_title)
+                    print 'imported'
             finally:
                 self.restoreCursor()
     
