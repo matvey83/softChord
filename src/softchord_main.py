@@ -812,13 +812,17 @@ class Song:
         if self.number:
             converted_text += "{subtitle:%i}\n" % self.number
         
+        # Make a dict of chord strings (keyed by chord position in the song text:
         chord_texts_by_char_nums = {}
         for chord in self.iterateAllChords():
             chord_song_char_num = chord.character_num
             chord_text = chord.getChordText()
+            
+            # Replace "♯" with "#" and "♭" with "b":
+            chord_text = chord_text.replace("♯", "#").replace("♭", "b")
+
             chord_texts_by_char_nums[chord_song_char_num] = chord_text
         
-
         for curr_char_num, char in enumerate(all_text):
             if curr_char_num in chord_texts_by_char_nums:
                 converted_text += "[%s]" % chord_texts_by_char_nums[curr_char_num]
