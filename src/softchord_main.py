@@ -1482,13 +1482,15 @@ class App:
         # The letter/chord that is currently hover (mouse hoveing over it):
         self.hover_char_num = None
         
-        self.lyrics_font = QtGui.QFont("Times New Roman", 18)
+        #self.lyrics_font = QtGui.QFont("Times New Roman", 18)
+        self.lyrics_font = QtGui.QFont("Times New Roman", 14)
         self.lyrics_color = QtGui.QColor("BLACK")
         self.lyrics_font_metrics = QtGui.QFontMetricsF(self.lyrics_font)
 
 
         # Font that will be used if no good fonts are found:
-        self.chords_font = QtGui.QFont("Times New Roman", 12, QtGui.QFont.Bold)
+        #self.chords_font = QtGui.QFont("Times New Roman", 12, QtGui.QFont.Bold)
+        self.chords_font = QtGui.QFont("Times New Roman", 9, QtGui.QFont.Bold)
         
         # Search for a font that can display sharp and flat characters correctly:
         #for name in [
@@ -2148,6 +2150,8 @@ class App:
         
         progress = QtGui.QProgressDialog(progress_message, "Abort", 0, len(song_ids), self.ui)
         progress.setWindowModality(Qt.WindowModal)
+        # Open the progress dialog right away:
+        progress.setMinimumDuration(0)
         
         try:
             painter = QtGui.QPainter()
@@ -2229,7 +2233,7 @@ class App:
             painter.end()
         
         except IOError, err:
-            self.error(err)
+            self.error(str(err))
             return 0
         
         except Exception, err:
@@ -2337,6 +2341,8 @@ class App:
         bottom_margin = self.pdf_options.bottom_margin * 72
         
         height = printer.height() #- 300
+        if self.pdf_options.print_4_per_page:
+            height = height / 2.0
         
         return height - top_margin - bottom_margin
     
@@ -2374,7 +2380,10 @@ class App:
         self.setWaitCursor()
         try:
             printer = QtGui.QPrinter()
-            page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
+            if self.pdf_options.print_4_per_page:
+                page_size = QtCore.QSizeF( self.pdf_options.page_width * 2.0, self.pdf_options.page_height * 2.0 )
+            else:
+                page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
             printer.setPaperSize( page_size, QtGui.QPrinter.Inch)
             printer.setFullPage(True) # considers whole page instead of only printable area.
             printer.setOrientation(QtGui.QPrinter.Portrait)
@@ -2433,7 +2442,10 @@ class App:
             
             try:
                 printer = QtGui.QPrinter()
-                page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
+                if self.pdf_options.print_4_per_page:
+                    page_size = QtCore.QSizeF( self.pdf_options.page_width * 2.0, self.pdf_options.page_height * 2.0 )
+                else:
+                    page_size = QtCore.QSizeF( self.pdf_options.page_width, self.pdf_options.page_height )
                 printer.setPaperSize( page_size, QtGui.QPrinter.Inch)
                 printer.setFullPage(True) # considers whole page instead of only printable area.
                 printer.setOrientation(QtGui.QPrinter.Portrait)
