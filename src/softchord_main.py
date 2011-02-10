@@ -1490,7 +1490,7 @@ class App:
 
         # Font that will be used if no good fonts are found:
         #self.chords_font = QtGui.QFont("Times New Roman", 12, QtGui.QFont.Bold)
-        self.chords_font = QtGui.QFont("Times New Roman", 9, QtGui.QFont.Bold)
+        self.chords_font = QtGui.QFont("Times New Roman", 11, QtGui.QFont.Bold)
         
         # Search for a font that can display sharp and flat characters correctly:
         #for name in [
@@ -1624,11 +1624,15 @@ class App:
     
     
     def closeEvent(self, event):
+        self.sendCurrentSongToDatabase()
+        self._orig_closeEvent(event)
+    
+    def sendCurrentSongToDatabase(self):
         if self.current_song:
             # Update the current song in the database:
             self.current_song.sendToDatabase()
-        self._orig_closeEvent(event)
-    
+
+
     def deleteSelectedChord(self):
         """
         Deletes the currently selected chord from the song.
@@ -1908,9 +1912,11 @@ class App:
         if self.current_song == None and song == None:
             return
         
+        self.sendCurrentSongToDatabase()
+        
         if self.current_song != None:
             # Update the current song in the database
-            self.current_song.sendToDatabase()
+            #self.current_song.sendToDatabase()
 
             # Clear the document of the QTextEdit before setting it to a new document.
             # This is needed to prevent a crash on Windows:
@@ -2114,6 +2120,8 @@ class App:
         """
         Bring up a print dialog box.
         """
+        
+        self.sendCurrentSongToDatabase()
         
         if not self.songs_model.rowCount():
             self.error("There are no songs to print")
@@ -2352,6 +2360,8 @@ class App:
         Exports the selected songs to a PDF file.
         """
         
+        self.sendCurrentSongToDatabase()
+        
         song_ids = self.getSelectedSongIds()
         if not song_ids:
             # No selection, export all songs:
@@ -2406,6 +2416,8 @@ class App:
         """
         Exports the selected songs, each to its own PDF file.
         """
+        
+        self.sendCurrentSongToDatabase()
         
         song_ids = self.getSelectedSongIds()
         if len(song_ids) == 0:
@@ -2475,6 +2487,8 @@ class App:
         Exports the selected song (one) to a TEXT file.
         """
         
+        self.sendCurrentSongToDatabase()
+        
         self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchord_test.py
         if not self.getSelectedSongIds():
             self.error("No songs are selected")
@@ -2519,6 +2533,8 @@ class App:
         """
         Exports the selected song (one) to a ChordPro format.
         """
+        
+        self.sendCurrentSongToDatabase()
         
         self.setWaitCursor() # For some reason, without this line, the selection is not updated yet when running softchord_test.py
         if not self.getSelectedSongIds():
@@ -2565,7 +2581,8 @@ class App:
         Called when the user modifies the selected song's title.
         """
         if self.current_song:
-            self.current_song.title = unicode(new_title).strip() # Remove any EOL characters, etc.
+            new_title = unicode(new_title).strip() # Remove any EOL characters, etc.
+            self.current_song.title = new_title
             self.setWaitCursor()
             try:
                 #self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
@@ -2790,21 +2807,23 @@ class App:
             
         else:
             # Draw the song's number:
-            # FIXME printing of the song number should be optional
-            # FIXME Do NOT draw above the 0.0 y-coordinate. Shift the song down instead.
-            painter.setFont(self.lyrics_font)
+            if song.number != -1:
+                # FIXME printing of the song number should be optional
+                # FIXME Do NOT draw above the 0.0 y-coordinate. Shift the song down instead.
+                painter.setFont(self.lyrics_font)
+                
+                lyrics_height = self.lyrics_font_metrics.height()
+                
+                # Figure out what the chords height will be for the first line
+                # FIXME This assumes that the first line always has chords
+                chords_height, lyrics_height, line_height = self.getHeightsWithChords()
+                
+                width = 100000.0
+                x = self.left_margin
+                # FIXME it's printed too far to the left
+                painter.drawText(x, -chords_height, width, lyrics_height, Qt.AlignLeft, str(song.number) )
             
-            lyrics_height = self.lyrics_font_metrics.height()
             
-            # Figure out what the chords height will be for the first line
-            # FIXME This assumes that the first line always has chords
-            chords_height, lyrics_height, line_height = self.getHeightsWithChords()
-            
-            width = 100000.0
-            x = self.left_margin
-            # FIXME it's printed too far to the left
-            painter.drawText(x, -chords_height, width, lyrics_height, Qt.AlignLeft, str(song.number) )
-        
         
         for chord in song._chords:
             char_rect, chord_rect = self.getCharRects(chord.character_num, chord)
@@ -2819,7 +2838,7 @@ class App:
             painter.setPen(self.chords_color)
             
             # FIXME fix this bug:
-            #chord_text = chord_text.replace('♭', 'b')
+            #chord_text = chord_text.replace("♯", "#").replace("♭", "b")
             if chord_rect:
                 painter.drawText(chord_rect, QtCore.Qt.AlignHCenter, chord_text)
             else:
@@ -2841,6 +2860,9 @@ class App:
         x = -self.left_margin
         y = -self.top_margin
         doc.drawContents( painter, QtCore.QRectF(x, y, 10000.0, 10000.0) )
+        
+        #text_str = doc.toPlainText()
+        #painter.drawText(x, y, text_str)
         
         # Must go to 0,0 for the next song to draw right (PDF export):
         painter.translate(0.0, 0.0)
@@ -2888,6 +2910,7 @@ class App:
         output_painter.scale(scale_ratio, scale_ratio)
         
         self._drawSongToPainter(song, output_painter, exporting)
+        #output_painter.drawText(100, 100, "TEST")
         
         # Redo the effect of scaling:
         output_painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
@@ -2916,20 +2939,27 @@ class App:
         curr_height = 0.0
         for song_name, song_num in lines:
             
+            # FIXME Keep removing the last word of the song title until it fits into a line:
+            #while len(song_name) + len(str(song_num)) + 3 > max_width:
+            #    last_word_len = len(song_name.split()[-1])
+            #    print 'removing:', last_word_len
+            #    song_name = song_name[:last_word_len-1]
+            
             name_bounds_rect = painter.drawText(0, curr_height, max_width, lyrics_height, Qt.AlignLeft, song_name)
             num_bounds_rect = painter.drawText(0, curr_height, max_width, lyrics_height, Qt.AlignRight, str(song_num))
             
             dots_left = name_bounds_rect.right()
             dots_right = num_bounds_rect.left()
             dots_width = dots_right - dots_left
-
+            
             num_dots = int( dots_width // dot_char_width )
             
-            dots_str = '.' * (num_dots-2)
-            dots_str = ' ' + dots_str + ' '
-            
-            # FIXME display dots a bit higher
-            painter.drawText(dots_left, curr_height, dots_width, lyrics_height, Qt.AlignLeft, dots_str)
+            if num_dots >= 3:
+                dots_str = '.' * (num_dots-2)
+                dots_str = ' ' + dots_str + ' '
+                
+                # FIXME display dots a bit higher
+                painter.drawText(dots_left, curr_height, dots_width, lyrics_height, Qt.AlignLeft, dots_str)
             
             curr_height += lyrics_height
 
