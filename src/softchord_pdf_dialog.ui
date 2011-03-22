@@ -6,14 +6,28 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>423</width>
-    <height>296</height>
+    <width>500</width>
+    <height>341</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Pdf Export Settings</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QCheckBox" name="print_song_num_box">
+     <property name="text">
+      <string>Print song number</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="print_song_title_box">
+     <property name="text">
+      <string>Print song title</string>
+     </property>
+    </widget>
+   </item>
    <item>
     <layout class="QGridLayout" name="gridLayout">
      <item row="0" column="0">

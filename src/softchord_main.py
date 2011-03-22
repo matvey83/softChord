@@ -526,7 +526,7 @@ class Song:
         # lets us avoid some issues.
         root_frame = self.doc.rootFrame()
         frame_format = root_frame.frameFormat()
-        frame_format.setTopMargin(with_chords_top_margin + 10)
+        frame_format.setTopMargin(with_chords_top_margin + self.app.doc_editor_offset)
         root_frame.setFrameFormat(frame_format)
         
         
@@ -534,11 +534,11 @@ class Song:
         
         with_chords_format = block.blockFormat()
         with_chords_format.setTopMargin(with_chords_top_margin)
-        with_chords_format.setLeftMargin(10)
+        with_chords_format.setLeftMargin(self.app.doc_editor_offset)
         
         without_chords_format = block.blockFormat()
         without_chords_format.setTopMargin(0.0)
-        without_chords_format.setLeftMargin(10)
+        without_chords_format.setLeftMargin(self.app.doc_editor_offset)
         
         
         linenum = -1
@@ -566,7 +566,7 @@ class Song:
                 break
             
             block = block.next()
-
+            
             line_start_char += len(line_text) + 1 # Add the eof-of-line character
         
         self.app.ignore_song_text_changed = False
@@ -939,7 +939,10 @@ class CustomTextEdit(QtGui.QTextEdit):
                 
                 painter.setFont(self.app.chords_font)
                 painter.setPen(self.app.chords_color)
-
+                
+                # For some reason required for proper alignment:
+                painter.translate(1.0, 1.0)
+                
                 song = self.app.current_song
                 
                 cursor = self.textCursor()
@@ -1285,6 +1288,8 @@ class PdfOptions:
         self.alternate_margins = False
         self.print_4_per_page = False
         self.generate_table_of_contents = False
+        self.print_song_num = True
+        self.print_song_title = False
         self.page_width = 8.5
         self.page_height = 11.0
 
@@ -1326,7 +1331,9 @@ class PdfDialog:
         self.ui.alternate_margins_box.setChecked(pdf_options.alternate_margins)
         self.ui.print_4_per_page_box.setChecked(pdf_options.print_4_per_page)
         self.ui.generate_table_of_contents_box.setChecked(pdf_options.generate_table_of_contents)
-        
+        self.ui.print_song_num_box.setChecked(pdf_options.print_song_num)
+        self.ui.print_song_title_box.setChecked(pdf_options.print_song_title)
+
         # Allow table of contents only when generating one PDF for multiple songs:
         if not single_pdf_export:
             self.ui.generate_table_of_contents_box.setChecked(False)
@@ -1346,6 +1353,9 @@ class PdfDialog:
             pdf_options.alternate_margins = self.ui.alternate_margins_box.isChecked()
             pdf_options.print_4_per_page = self.ui.print_4_per_page_box.isChecked()
             pdf_options.generate_table_of_contents = self.ui.generate_table_of_contents_box.isChecked()
+            pdf_options.print_song_num = self.ui.print_song_num_box.isChecked()
+            pdf_options.print_song_title = self.ui.print_song_title_box.isChecked()
+
             return True
         else:
             # Cancel pressed
@@ -1361,9 +1371,8 @@ class App:
     def c(self, widget, signal_str, slot):
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
         
-        self.left_margin = 21
-        self.top_margin = 10
-
+        self.doc_editor_offset = 10.0
+    
     
     def __init__(self):
         self.ui = uic.loadUi(script_ui_file)
@@ -1482,15 +1491,15 @@ class App:
         # The letter/chord that is currently hover (mouse hoveing over it):
         self.hover_char_num = None
         
-        #self.lyrics_font = QtGui.QFont("Times New Roman", 18)
-        self.lyrics_font = QtGui.QFont("Times New Roman", 14)
+        # NOTE: For printing of small song books, font sizes of 14 / 11 are ideal.
+        
+        self.lyrics_font = QtGui.QFont("Times New Roman", 14) # 14
         self.lyrics_color = QtGui.QColor("BLACK")
         self.lyrics_font_metrics = QtGui.QFontMetricsF(self.lyrics_font)
-
-
+        
+        
         # Font that will be used if no good fonts are found:
-        #self.chords_font = QtGui.QFont("Times New Roman", 12, QtGui.QFont.Bold)
-        self.chords_font = QtGui.QFont("Times New Roman", 11, QtGui.QFont.Bold)
+        self.chords_font = QtGui.QFont("Times New Roman", 11, QtGui.QFont.Bold) # 12
         
         # Search for a font that can display sharp and flat characters correctly:
         #for name in [
@@ -1504,7 +1513,8 @@ class App:
         #        break
 
         self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
-        self.chords_color = QtGui.QColor("DARK BLUE")
+        # BLUE is ideal for songbook printing:
+        self.chords_color = QtGui.QColor("BLUE") # DARK BLUE
         self.white_color = QtGui.QColor("WHITE")
         self.editor.setFont(self.lyrics_font)
         
@@ -2258,10 +2268,10 @@ class App:
         
         # Figure out what the margins should be:
         # Convert to points (from inches):
-        left_margin = self.pdf_options.left_margin * 72
-        right_margin = self.pdf_options.right_margin * 72
-        top_margin = self.pdf_options.top_margin * 72
-        bottom_margin = self.pdf_options.bottom_margin * 72
+        left_margin = self.pdf_options.left_margin * 72.0
+        right_margin = self.pdf_options.right_margin * 72.0
+        top_margin = self.pdf_options.top_margin * 72.0
+        bottom_margin = self.pdf_options.bottom_margin * 72.0
         
         orig_document = self.editor.document().clone()
         
@@ -2307,10 +2317,10 @@ class App:
         
         # Figure out what the margins should be:
         # Convert to points (from inches):
-        left_margin = self.pdf_options.left_margin * 72
-        right_margin = self.pdf_options.right_margin * 72
-        top_margin = self.pdf_options.top_margin * 72
-        bottom_margin = self.pdf_options.bottom_margin * 72
+        left_margin = self.pdf_options.left_margin * 72.0
+        right_margin = self.pdf_options.right_margin * 72.0
+        top_margin = self.pdf_options.top_margin * 72.0
+        bottom_margin = self.pdf_options.bottom_margin * 72.0
         
         if self.pdf_options.alternate_margins and not page_num % 2:
             # If alternating margins and this is an even page:
@@ -2775,19 +2785,60 @@ class App:
 
     def _drawSongToPainter(self, song, painter, exporting=False):
         """
+        Draw the given song to the given painter.
+        Always draws the main text and chords.
+        When not exporting, draws selection rects as well.
+        When exporting, optionally draws song num and/or title.
         """
         
-        # On Windows, don't use the default dark blue, as it will not work correctly
-        # With default chord and text colors (blue and black):
-        if self.on_windows:
-            selection_brush = QtGui.QColor("light blue")
-        else:
-            selection_brush = QtGui.QPalette().highlight()
         
-        hover_brush = QtGui.QColor("light grey")
+        # Height of the header line:
+        lyrics_height = self.lyrics_font_metrics.height()
+        
+        # Draw the header, if exporting (and on):
+        header_list = []
+        if exporting:
+            # Print song number and/or title to the header (first) line:
+            header_list = []
+            if self.pdf_options.print_song_num and song.number != -1:
+                header_list.append( str(song.number) )
+            
+            if self.pdf_options.print_song_title and song.title:
+                header_list.append(song.title)
+            
+            if header_list:
+                # Combine the song number string and/or song title string:
+                header_str = " ".join(header_list)
+                
+                painter.setFont(self.lyrics_font)
+                
+                x = 5.0 # For some reason needed for alignment
+                y = 0.0
+                
+                # FIXME what if the title is too long?
+                header_rect = QtCore.QRect(x, y, 1000.0, lyrics_height)
+                painter.drawText(header_rect, QtCore.Qt.AlignLeft, header_str)
+        
+        
+        if exporting:
+            # Un-do the editor margins when exporting:
+            painter.translate(-self.doc_editor_offset, -self.doc_editor_offset)
+            
+            # Lower the main text if header is drawn:
+            if header_list:
+                painter.translate(0.0, lyrics_height)
+        
         
         if not exporting:
-            
+            # On Windows, don't use the default dark blue, as it will not work correctly
+            # With default chord and text colors (blue and black):
+            if self.on_windows:
+                selection_brush = QtGui.QColor("light blue")
+            else:
+                selection_brush = QtGui.QPalette().highlight()
+            hover_brush = QtGui.QColor("light grey")
+
+            # Draw any selection rects:
             if self.hover_char_num != None:
                 char_rect, chord_rect = self.getCharRects(self.hover_char_num)
                 
@@ -2805,24 +2856,8 @@ class App:
                 if chord_rect:
                     painter.fillRect(chord_rect, selection_brush)
             
-        else:
-            # Draw the song's number:
-            if song.number != -1:
-                # FIXME printing of the song number should be optional
-                # FIXME Do NOT draw above the 0.0 y-coordinate. Shift the song down instead.
-                painter.setFont(self.lyrics_font)
-                
-                lyrics_height = self.lyrics_font_metrics.height()
-                
-                # Figure out what the chords height will be for the first line
-                # FIXME This assumes that the first line always has chords
-                chords_height, lyrics_height, line_height = self.getHeightsWithChords()
-                
-                width = 100000.0
-                x = self.left_margin
-                # FIXME it's printed too far to the left
-                painter.drawText(x, -chords_height, width, lyrics_height, Qt.AlignLeft, str(song.number) )
-            
+        
+
             
         
         for chord in song._chords:
@@ -2840,7 +2875,7 @@ class App:
             # FIXME fix this bug:
             #chord_text = chord_text.replace("♯", "#").replace("♭", "b")
             if chord_rect:
-                painter.drawText(chord_rect, QtCore.Qt.AlignHCenter, chord_text)
+                painter.drawText(chord_rect, QtCore.Qt.AlignLeft, chord_text)
             else:
                 print 'no chord rect!'
         
@@ -2850,21 +2885,17 @@ class App:
         
         # Draw the lyrics document:
         doc = self.editor.document()
-
-        x = self.editor.horizontalScrollBar().value()
-        y = self.editor.verticalScrollBar().value()
-
-        painter.translate(-x, -y)
-
-        # Even though we are drawing at 0,0, the text will be drawn with an offset:
-        x = -self.left_margin
-        y = -self.top_margin
-        doc.drawContents( painter, QtCore.QRectF(x, y, 10000.0, 10000.0) )
+        
+        scroll_x = self.editor.horizontalScrollBar().value()
+        scroll_y = self.editor.verticalScrollBar().value()
+        painter.translate(-scroll_x, -scroll_y)
+        
+        doc.drawContents( painter, QtCore.QRectF(0.0, 0.0, 10000.0, 10000.0) )
         
         #text_str = doc.toPlainText()
         #painter.drawText(x, y, text_str)
         
-        # Must go to 0,0 for the next song to draw right (PDF export):
+        # Must go to 0,0 for the next song to draw right (PDF export): ?????
         painter.translate(0.0, 0.0)
          
 
@@ -2886,7 +2917,7 @@ class App:
         
         pic_right = layout_bounding_rect.right()
         pic_bottom = layout_bounding_rect.bottom()
-        
+        # FIXME this does not account for the header line and the first chords line
         
         # Figure out what the scaling factor should be:
         if not exporting:
@@ -2979,13 +3010,6 @@ class App:
         if not self.current_song:
             return None
         
-        # Place the coordinates into the songs frame of reference:
-        #x -= 20
-        #y -= 10
-        
-        #x -= self.left_margin
-        #y -= self.top_margin
-
         # Scale:
         #x = float(x) / self.zoom_factor
         #y = float(y) / self.zoom_factor
