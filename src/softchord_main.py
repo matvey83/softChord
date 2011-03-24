@@ -213,7 +213,7 @@ class SongsTableModel(QtCore.QAbstractTableModel):
         self._data = []
         if self.app.curs:
             # A songbook is currently open
-            for row in self.app.curs.execute("SELECT id, number, title FROM songs"):
+            for row in self.app.curs.execute("SELECT id, number, title FROM songs ORDER BY id"):
                 rowobj = SongsTableRow( row[0], row[1], row[2] )
                 self._data.append(rowobj)
         
@@ -255,10 +255,14 @@ class SongsTableModel(QtCore.QAbstractTableModel):
         """
         if role == Qt.DisplayRole:
             if orientation == Qt.Horizontal:
-                return QtCore.QVariant(self.header_list[section])
+                return self.header_list[section]
+                #return QtCore.QVariant(self.header_list[section])
             else:
-                return QtCore.QVariant(section+1)
-        return QtCore.QVariant()        
+                rowobj = self._data[section]
+                return rowobj.id
+                #return QtCore.QVariant(section+1)
+
+        return None # QtCore.QVariant()        
     
     def getRow(self, row):
         return self._data[row]
@@ -1445,7 +1449,8 @@ class App:
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSongs )
-        
+        self.ui.set_id_button.clicked.connect(self.giveNewSongId)
+
         self.ui.song_title_ef.textEdited.connect( self.currentSongTitleEdited )
         self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
         self.ui.song_num_ef.setValidator( QtGui.QIntValidator(0, 1000000000, self.ui) )
@@ -1499,7 +1504,7 @@ class App:
         
         
         # Font that will be used if no good fonts are found:
-        self.chords_font = QtGui.QFont("Times New Roman", 11, QtGui.QFont.Bold) # 12
+        self.chords_font = QtGui.QFont("Times New Roman", 10, QtGui.QFont.Bold) # 12
         
         # Search for a font that can display sharp and flat characters correctly:
         #for name in [
@@ -1886,7 +1891,8 @@ class App:
         self.ui.transpose_down_button.setEnabled( self.current_song != None )
         
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
-        self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )        
+        self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )
+        self.ui.set_id_button.setEnabled(num_selected == 1)
         
         songs_present = self.songs_model.rowCount() > 0
         
@@ -2732,6 +2738,33 @@ class App:
             self.songs_model.updateFromDatabase()
         finally:
             self.restoreCursor()
+    
+
+    def giveNewSongId(self):
+        """
+        Give the selected song a new song ID in the database.
+        """
+        
+        curr_id = self.current_song.id
+        next_id = None
+        
+        all_song_ids = self.songs_model.getAllSongIds()
+        
+        new_id, ok = QtGui.QInputDialog.getInteger(self.ui, "softChord", "Enter a new ID for this song:", curr_id, 1)
+        if not ok or new_id == curr_id:
+            # User cancelled or selected same ID
+            return 
+        
+        if new_id in all_song_ids:
+            self.error("The ID %i is already used in this songbook" % new_id)
+            return
+        
+        self.curs.execute('UPDATE songs SET id=? WHERE id=?', (new_id, curr_id))
+        self.curs.execute("UPDATE song_chord_link SET song_id=? WHERE song_id=?", (new_id, curr_id))
+        self.curs.commit()
+        
+        # Update the song table from database:
+        self.songs_model.updateFromDatabase()
     
     
     def getCharRects(self, song_char_num, chord=None):

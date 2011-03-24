@@ -57,7 +57,7 @@
          </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0">
+         <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0">
           <item>
            <widget class="QPushButton" name="new_song_button">
             <property name="text">
@@ -69,6 +69,13 @@
            <widget class="QPushButton" name="delete_song_button">
             <property name="text">
              <string>Delete selected</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="set_id_button">
+            <property name="text">
+             <string>Set ID...</string>
             </property>
            </widget>
           </item>
