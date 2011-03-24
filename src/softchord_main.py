@@ -2969,8 +2969,16 @@ class App:
         #text_str = doc.toPlainText()
         #painter.drawText(x, y, text_str)
         
+        
+        # Revert translations:
+        if exporting:
+            # Un-do the editor margins when exporting:
+            painter.translate(self.doc_editor_offset, self.doc_editor_offset)
+            if header_list:
+                painter.translate(0.0, -lyrics_height)
+        
         # Must go to 0,0 for the next song to draw right (PDF export): ?????
-        painter.translate(0.0, 0.0)
+        #painter.translate(0.0, 0.0)
          
 
 
