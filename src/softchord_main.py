@@ -944,9 +944,6 @@ class CustomTextEdit(QtGui.QTextEdit):
                 painter.setFont(self.app.chords_font)
                 painter.setPen(self.app.chords_color)
                 
-                # For some reason required for proper alignment:
-                painter.translate(1.0, 1.0)
-                
                 song = self.app.current_song
                 
                 cursor = self.textCursor()
@@ -962,15 +959,15 @@ class CustomTextEdit(QtGui.QTextEdit):
                     chord_text = chord.getChordText()
                     
                     chord_middle = (left_rect.left() + right_rect.right()) // 2 # Average of left and right
-                    chord_width = self.app.chords_font_metrics.width(chord_text)
+                    #chord_width = self.app.chords_font_metrics.width(chord_text)
+                    chord_width = self.app.getChordWidth(chord_text)
                     chord_left = chord_middle - (chord_width/2.0)
-                    chord_right = chord_middle + (chord_width/2.0)
-                    
                     chord_top = left_rect.bottom() - line_height
-                    chord_bottom = chord_top + chords_height
                     
-                    painter.drawText(chord_left, chord_top, chord_right-chord_left, chord_bottom-chord_top, QtCore.Qt.AlignHCenter, chord_text)
+                    chord_rect = QtCore.QRectF(chord_left, chord_top, chord_width, chords_height)
                     
+                    self.app.drawChord(painter, chord_rect, chord_text)
+
                 painter.end()
             
                 
@@ -1504,8 +1501,14 @@ class App:
         
         
         # Font that will be used if no good fonts are found:
-        self.chords_font = QtGui.QFont("Times New Roman", 10, QtGui.QFont.Bold) # 12
+        self.chords_font = QtGui.QFont("Times New Roman", 9, QtGui.QFont.Bold) # 12
+        self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
         
+        # NOTE: This may work only on a Mac:
+        self.symbols_font = QtGui.QFont("Arial Unicode MS", 9, QtGui.QFont.Bold) # 12
+        self.symbols_font_metrics = QtGui.QFontMetricsF(self.symbols_font)
+        
+
         # Search for a font that can display sharp and flat characters correctly:
         #for name in [
         #    'MS Reference Sans Serif'
@@ -1517,7 +1520,6 @@ class App:
         #        self.chords_font = font
         #        break
 
-        self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
         # BLUE is ideal for songbook printing:
         self.chords_color = QtGui.QColor("BLUE") # DARK BLUE
         self.white_color = QtGui.QColor("WHITE")
@@ -2114,6 +2116,10 @@ class App:
         if ok:
             self.chords_font = new_font
             self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
+            
+            self.symbols_font.setPointSize( self.chords_font.pointSize() )
+            self.symbols_font_metrics = QtGui.QFontMetricsF(self.symbols_font)
+            
             if self.current_song:
                 self.current_song.setDocMargins()
             self.editor.viewport().update()
@@ -2808,12 +2814,47 @@ class App:
             chord_text = chord.getChordText()
             chord_middle = (char_left + char_right) // 2 # Average of left and right
             chord_width = self.chords_font_metrics.width(chord_text)
+            chord_width = self.getChordWidth(chord_text)
             chord_left = chord_middle - (chord_width/2.0)
             chord_rect = QtCore.QRectF(chord_left, chord_top, chord_width, chords_height)
         else:
             chord_rect = None
         
         return char_rect, chord_rect
+    
+
+    def getChordWidth(self, chord_text):
+        
+        width = 0.0
+        for letter in chord_text:
+            if letter in ["♯", "♭"]:
+                width += self.symbols_font_metrics.width(letter)
+            else:
+                width += self.chords_font_metrics.width(letter)
+        return width
+    
+
+    def drawChord(self, painter, chord_rect, chord_text):
+        """
+        Draw the given chord to the given rect of the painter.
+        Draws the special symbols in the <symbol> font, which ensures that
+        the spacing is correct.
+        """
+        orig_top = chord_rect.top()
+        raised_top = chord_rect.top() - ( chord_rect.height() / 3.0 )
+        for letter in chord_text:
+            if letter in ["♯", "♭"]:
+                # NOTE: This may work only on a Mac:
+                chord_rect.setTop(raised_top)
+                painter.setFont(self.symbols_font)
+            else:
+                chord_rect.setTop(orig_top)
+                painter.setFont(self.chords_font)
+            bound_rect = painter.drawText(chord_rect, QtCore.Qt.AlignLeft, letter)
+            chord_rect.setLeft(bound_rect.right())
+        
+        # FIXME restore chord_rect and font?
+
     
 
     def _drawSongToPainter(self, song, painter, exporting=False):
@@ -2905,13 +2946,13 @@ class App:
             #else:
             painter.setPen(self.chords_color)
             
-            # FIXME fix this bug:
-            #chord_text = chord_text.replace("♯", "#").replace("♭", "b")
+            
             if chord_rect:
-                painter.drawText(chord_rect, QtCore.Qt.AlignLeft, chord_text)
+                self.drawChord(painter, chord_rect, chord_text)
             else:
                 print 'no chord rect!'
         
+
         
         painter.setFont(self.lyrics_font)
         painter.setPen(self.lyrics_color)
