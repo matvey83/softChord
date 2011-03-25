@@ -179,16 +179,16 @@
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_5">
           <item>
-           <widget class="QPushButton" name="transpose_up_button">
+           <widget class="QPushButton" name="transpose_down_button">
             <property name="text">
-             <string>Transpose Up</string>
+             <string>Transpose Down</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="transpose_down_button">
+           <widget class="QPushButton" name="transpose_up_button">
             <property name="text">
-             <string>Transpose Down</string>
+             <string>Transpose Up</string>
             </property>
            </widget>
           </item>
@@ -282,7 +282,7 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>504</width>
+               <width>444</width>
                <height>557</height>
               </rect>
              </property>
