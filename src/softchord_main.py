@@ -1365,7 +1365,7 @@ class PdfDialog:
             
 
 
-class App:
+class App( QtGui.QApplication ):
     """
     The main application class.
     """
@@ -1375,7 +1375,9 @@ class App:
         self.doc_editor_offset = 10.0
     
     
-    def __init__(self):
+    def __init__(self, args):
+        QtGui.QApplication.__init__(self, args) 
+        
         self.ui = uic.loadUi(script_ui_file)
         
         self.on_windows = platform.system() == "Windows"
@@ -1552,7 +1554,20 @@ class App:
 
         self.updateStates()
         
+        self.ui.show()
+        self.ui.raise_()
+        
     
+    def event(self, event):
+        if event.type() == QtCore.QEvent.FileOpen:
+            # Cast as QFileOpenEvent!
+            self.openSongbook
+            filename = unicode( event.file() )
+            if filename.endswith(".songbook"):
+                self.setCurrentSongbook(filename)
+            return True
+        return QtGui.QApplication.event(self, event)
+
 
     def songFilterEdited(self, new_text):
         
@@ -1644,6 +1659,7 @@ class App:
         self.sendCurrentSongToDatabase()
         self._orig_closeEvent(event)
     
+
     def sendCurrentSongToDatabase(self):
         if self.current_song:
             # Update the current song in the database:
@@ -2844,7 +2860,7 @@ class App:
         raised_top = chord_rect.top() - ( chord_rect.height() / 3.0 )
         for letter in chord_text:
             if letter in ["♯", "♭"]:
-                # NOTE: This may work only on a Mac:
+                # FIXME: On Windows, the flat is drawn a little off
                 chord_rect.setTop(raised_top)
                 painter.setFont(self.symbols_font)
             else:
@@ -3682,21 +3698,20 @@ class App:
 
 
 
+
+
 def main():
     """
     The main event loop. This function is also run by the Windows executable.
     """
-
-    qapp = QtGui.QApplication(sys.argv)
-    #print 'applicationDirPath():', qapp.applicationDirPath()
-    #print 'applicationFilePath():', qapp.applicationFilePath()
-    #print 'arguments:', map(unicode, qapp.arguments())
-    #print 'libraryPaths():', map(unicode, qapp.libraryPaths())
-    qapp.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
-
-    app = App()
-    app.ui.show()
-    app.ui.raise_()
+    
+    app = App(sys.argv)
+    #print 'applicationDirPath():', app.applicationDirPath()
+    #print 'applicationFilePath():', app.applicationFilePath()
+    #print 'arguments:', map(unicode, app.arguments())
+    #print 'libraryPaths():', map(unicode, app.libraryPaths())
+    app.setOverrideCursor(QtGui.QCursor(QtCore.Qt.WaitCursor))
+    
     
     input_files = [ filename.decode('utf-8') for filename in sys.argv[1:] ]
     
@@ -3713,9 +3728,9 @@ def main():
                 else:
                     print 'WARNING: invalid file type:', filename
     
-    qapp.restoreOverrideCursor()
+    app.restoreOverrideCursor()
     
-    sys.exit(qapp.exec_())
+    sys.exit(app.exec_())
 
 
 if __name__ == "__main__":
