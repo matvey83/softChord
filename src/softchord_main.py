@@ -3061,18 +3061,23 @@ class App( QtGui.QApplication ):
         
         max_width = rect.width()
         max_height = rect.height()
+        max_name_width = max_width - self.lyrics_font_metrics.width("1000...")
         
         lyrics_height = self.lyrics_font_metrics.height()
         dot_char_width = self.lyrics_font_metrics.width(".")
         
         curr_height = 0.0
         for song_name, song_num in lines:
-            
-            # FIXME Keep removing the last word of the song title until it fits into a line:
-            #while len(song_name) + len(str(song_num)) + 3 > max_width:
-            #    last_word_len = len(song_name.split()[-1])
-            #    print 'removing:', last_word_len
-            #    song_name = song_name[:last_word_len-1]
+            # Keep removing the last word of the song title until it fits into a line:
+            while self.lyrics_font_metrics.width(song_name) > max_name_width:
+                # Remove the last word:
+                s = song_name.split()
+                if len(s) == 1:
+                    # Only left with one word
+                    break
+                # If there IS something to remove
+                remove_chars = len(s[-1])+1
+                song_name = song_name[:-remove_chars]
             
             name_bounds_rect = painter.drawText(0, curr_height, max_width, lyrics_height, Qt.AlignLeft, song_name)
             num_bounds_rect = painter.drawText(0, curr_height, max_width, lyrics_height, Qt.AlignRight, str(song_num))
