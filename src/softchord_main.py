@@ -2859,6 +2859,10 @@ class App( QtGui.QApplication ):
         
         r = chord_rect.right()
         
+        normal_height = self.chords_font_metrics.height()
+        normal_baseline = chord_rect.bottom() - (0.2 * normal_height) # FIXME hack
+        
+
         chord_left = chord_rect.left()
         
         chord_width = chord_rect.width()
@@ -2869,20 +2873,28 @@ class App( QtGui.QApplication ):
         curr_left = chord_rect.left()
         orig_top = chord_rect.top()
         raised_top = chord_rect.top() - ( chord_rect.height() / 3.0 )
+        raised_baseline = normal_baseline - (chord_rect.height() / 3.0)
+
         for letter in chord_text:
-            letter_rect = QtCore.QRect(letter_left, chord_rect.top(), 1000.0, 1000.0)
+            #letter_rect = QtCore.QRect(letter_left, chord_rect.top(), 1000.0, 1000.0)
             if letter in ["♯", "♭"]:
                 # FIXME: On Windows, the flat is drawn a little off
-                letter_rect.setTop(raised_top)
+                #letter_rect.setTop(raised_top)
                 painter.setFont(self.symbols_font)
                 let_width = self.symbols_font_metrics.width(letter)
+                baseline = raised_baseline
             else:
-                letter_rect.setTop(orig_top)
+                #letter_rect.setTop(orig_top)
                 painter.setFont(self.chords_font)
                 let_width = self.chords_font_metrics.width(letter)
+                baseline = normal_baseline
             
-            bound_rect = painter.drawText(letter_rect, QtCore.Qt.AlignLeft, letter)
+            #bound_rect = painter.drawText(letter_rect, QtCore.Qt.AlignLeft, letter)
             
+            pos = QtCore.QPointF(letter_left, baseline)
+            painter.drawText(pos, letter)
+            
+            #letter_left = bound_rect.right()
             letter_left += let_width
             
         # FIXME restore chord_rect and font?
