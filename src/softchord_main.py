@@ -2856,19 +2856,35 @@ class App( QtGui.QApplication ):
         Draws the special symbols in the <symbol> font, which ensures that
         the spacing is correct.
         """
+        
+        r = chord_rect.right()
+        
+        chord_left = chord_rect.left()
+        
+        chord_width = chord_rect.width()
+        chord_center = (chord_rect.right() - chord_rect.left()) / 2.0
+        
+        letter_left = chord_rect.left()
+        
+        curr_left = chord_rect.left()
         orig_top = chord_rect.top()
         raised_top = chord_rect.top() - ( chord_rect.height() / 3.0 )
         for letter in chord_text:
+            letter_rect = QtCore.QRect(letter_left, chord_rect.top(), 1000.0, 1000.0)
             if letter in ["♯", "♭"]:
                 # FIXME: On Windows, the flat is drawn a little off
-                chord_rect.setTop(raised_top)
+                letter_rect.setTop(raised_top)
                 painter.setFont(self.symbols_font)
+                let_width = self.symbols_font_metrics.width(letter)
             else:
-                chord_rect.setTop(orig_top)
+                letter_rect.setTop(orig_top)
                 painter.setFont(self.chords_font)
-            bound_rect = painter.drawText(chord_rect, QtCore.Qt.AlignLeft, letter)
-            chord_rect.setLeft(bound_rect.right())
-        
+                let_width = self.chords_font_metrics.width(letter)
+            
+            bound_rect = painter.drawText(letter_rect, QtCore.Qt.AlignLeft, letter)
+            
+            letter_left += let_width
+            
         # FIXME restore chord_rect and font?
 
     
@@ -3061,7 +3077,7 @@ class App( QtGui.QApplication ):
         
         max_width = rect.width()
         max_height = rect.height()
-        max_name_width = max_width - self.lyrics_font_metrics.width("1000...")
+        max_name_width = max_width - self.lyrics_font_metrics.width(".999")
         
         lyrics_height = self.lyrics_font_metrics.height()
         dot_char_width = self.lyrics_font_metrics.width(".")
