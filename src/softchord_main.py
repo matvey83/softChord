@@ -27,6 +27,11 @@ import shutil
 import platform
 
 
+LYRICS_SIZE = 20 # 14
+CHORDS_SIZE = 12 # 9
+CHORDS_COLOR = "BLACK" # "BLUE"
+
+
 chord_types_list = [
   (0, u"Major", u""),
   (1, u"Minor", u"m"),
@@ -599,6 +604,9 @@ class Song:
         self._chords.remove(chord)
         self.updateSharpsOrFlats()
         
+        # FIXME If the chord is last in line, delete white space on the line, if any was added
+        # just to align this chord. Happens often when importing songs from Text.
+
         # Update the margin of the document in case the chord was moved to a new line:
         self.setDocMargins()
         
@@ -1478,14 +1486,18 @@ class App( QtGui.QApplication ):
         
         self.ui.actionUndo.triggered.connect(self.undo_stack.undo)
         self.ui.actionRedo.triggered.connect(self.undo_stack.redo)
+        self.ui.actionCopySongText.triggered.connect(self.copySongText)
+        self.ui.actionPasteAsNewSong.triggered.connect(self.pasteAsNewSong)
         
+        self.clipboard = self.clipboard()
+        self.clipboard.dataChanged.connect( self.clipboardChanged )
         
         zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
         self.ui.zoom_combo_box.addItems(zoom_items)
-        self.c( self.ui.zoom_combo_box, "currentIndexChanged(QString)", self.comboTextSizeChanged)
-        self.ui.zoom_combo_box.setCurrentIndex(3) # 80%
+        self.c( self.ui.zoom_combo_box, "currentIndexChanged(QString)", self.zoomLevelChanged)
+        #self.ui.zoom_combo_box.setCurrentIndex(3) # 80%
         self.ui.zoom_combo_box.setCurrentIndex(2) # 100%
-        self.ui.zoom_combo_box.setVisible(False)
+        #self.ui.zoom_combo_box.setVisible(False)
         
         self.ignore_song_text_changed = False
         
@@ -1497,17 +1509,17 @@ class App( QtGui.QApplication ):
         
         # NOTE: For printing of small song books, font sizes of 14 / 11 are ideal.
         
-        self.lyrics_font = QtGui.QFont("Times New Roman", 14) # 14
+        self.lyrics_font = QtGui.QFont("Times New Roman", LYRICS_SIZE)
         self.lyrics_color = QtGui.QColor("BLACK")
         self.lyrics_font_metrics = QtGui.QFontMetricsF(self.lyrics_font)
         
         
         # Font that will be used if no good fonts are found:
-        self.chords_font = QtGui.QFont("Times New Roman", 9, QtGui.QFont.Bold) # 12
+        self.chords_font = QtGui.QFont("Times New Roman", CHORDS_SIZE, QtGui.QFont.Bold) 
         self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
         
         # NOTE: This may work only on a Mac:
-        self.symbols_font = QtGui.QFont("Arial Unicode MS", 9, QtGui.QFont.Bold) # 12
+        self.symbols_font = QtGui.QFont("Arial Unicode MS", CHORDS_SIZE, QtGui.QFont.Bold)
         self.symbols_font_metrics = QtGui.QFontMetricsF(self.symbols_font)
         
 
@@ -1523,7 +1535,7 @@ class App( QtGui.QApplication ):
         #        break
 
         # BLUE is ideal for songbook printing:
-        self.chords_color = QtGui.QColor("BLUE") # DARK BLUE
+        self.chords_color = QtGui.QColor(CHORDS_COLOR)
         self.white_color = QtGui.QColor("WHITE")
         self.editor.setFont(self.lyrics_font)
         
@@ -1918,7 +1930,8 @@ class App( QtGui.QApplication ):
         self.ui.actionExportMultiplePdfs.setEnabled( songs_present )
         
         self.ui.actionExportText.setEnabled( num_selected == 1 )
-        
+        self.ui.actionCopySongText.setEnabled( num_selected == 1 )
+         
         self.ui.actionPrint.setEnabled( songs_present )
         
         # FIXME instead link it to either the lyric editror select-all, or the songs table
@@ -2088,11 +2101,11 @@ class App( QtGui.QApplication ):
         self.ignore_song_text_changed = False
     
 
-    def comboTextSizeChanged(self, new_text):
+    def zoomLevelChanged(self, new_text):
 
         self.zoom_factor = int(new_text[:-1]) / 100.0
         if self.current_song:
-            self.viewport().update()
+            self.editor.viewport().update()
         
 
 
@@ -2519,7 +2532,27 @@ class App( QtGui.QApplication ):
         progress.setValue(i+1)
         
     
+    def copySongText(self):
+        """
+        Copy the selected song's text to the clipboard.
+        The chords are included (as separate lines above the lyrics)
+        """
+        
+        self.setWaitCursor()
+        
+        # self.sendCurrentSongToDatabase()
+        
+        song_text = self.current_song.getAsText()
+        
+        # Fix the line endings that that they work on all OSes, including Windows NotePad:
+        song_text = song_text.replace('\n', '\r\n')
+        # FIXME is that needed?
+        
+        self.clipboard.setText(song_text)
+        
+        self.restoreCursor()
     
+
     def exportToText(self, text_file=None):
         """
         Exports the selected song (one) to a TEXT file.
@@ -3047,8 +3080,8 @@ class App( QtGui.QApplication ):
         
         # Figure out what the scaling factor should be:
         if not exporting:
-            #scale_ratio = self.zoom_factor
-            scale_ratio = 1.0 
+            scale_ratio = self.zoom_factor
+            #scale_ratio = 1.0 
         else:
             # Exporting, make sure the song fits into the specified <rect>:
             width_ratio = pic_right / rect.width()
@@ -3142,8 +3175,8 @@ class App( QtGui.QApplication ):
             return None
         
         # Scale:
-        #x = float(x) / self.zoom_factor
-        #y = float(y) / self.zoom_factor
+        x = float(x) / self.zoom_factor
+        y = float(y) / self.zoom_factor
         
         for chord in self.current_song._chords:
             song_char_num = chord.character_num
@@ -3247,7 +3280,28 @@ class App( QtGui.QApplication ):
             finally:
                 self.restoreCursor()
     
+    
+    def clipboardChanged(self):
+        """
+        Enable/disable the "Paset As New Song" menu item.
+        """
+        
+        text = self.clipboard.text()
+        self.ui.actionPasteAsNewSong.setEnabled(not text.isEmpty())
+    
+    
+    def pasteAsNewSong(self):
+        """
+        Paste text from clipboard as a new song.
+        """
 
+        self.setWaitCursor()
+        text = unicode(self.clipboard.text())
+        song_title = "Pasted from clipboard"
+        self.importSongFromText(text, song_title)
+        self.restoreCursor()
+    
+    
     def importFromText(self, text_file=None):
         """
         Lets the user select a text file to import.

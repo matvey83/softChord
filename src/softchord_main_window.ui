@@ -361,6 +361,8 @@
     <addaction name="actionUndo"/>
     <addaction name="actionRedo"/>
     <addaction name="actionSelectAll"/>
+    <addaction name="actionCopySongText"/>
+    <addaction name="actionPasteAsNewSong"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
@@ -499,6 +501,16 @@
   <action name="actionSetID">
    <property name="text">
     <string>Set Database ID...</string>
+   </property>
+  </action>
+  <action name="actionCopySongText">
+   <property name="text">
+    <string>Copy Song Text</string>
+   </property>
+  </action>
+  <action name="actionPasteAsNewSong">
+   <property name="text">
+    <string>Paste As New Song</string>
    </property>
   </action>
  </widget>
