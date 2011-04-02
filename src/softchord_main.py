@@ -1448,7 +1448,6 @@ class App( QtGui.QApplication ):
         self.c( self.ui.transpose_down_button, "clicked()", self.transposeDown )
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSongs )
-        self.ui.set_id_button.clicked.connect(self.giveNewSongId)
 
         self.ui.song_title_ef.textEdited.connect( self.currentSongTitleEdited )
         self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
@@ -1466,6 +1465,7 @@ class App( QtGui.QApplication ):
         self.c( self.ui.actionQuit, "triggered()", self.ui.close )
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
         self.c( self.ui.actionDeleteSongs, "triggered()", self.deleteSelectedSongs )
+        self.ui.actionSetID.triggered.connect( self.setSongDatabaseId )
         self.c( self.ui.actionExportSinglePdf, "triggered()", self.exportToSinglePdf )
         self.c( self.ui.actionExportMultiplePdfs, "triggered()", self.exportToMultiplePdfs )
         self.c( self.ui.actionExportText, "triggered()", self.exportToText )
@@ -1910,7 +1910,7 @@ class App( QtGui.QApplication ):
         
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )
-        self.ui.set_id_button.setEnabled(num_selected == 1)
+        self.ui.actionSetID.setEnabled(num_selected == 1)
         
         songs_present = self.songs_model.rowCount() > 0
         
@@ -2762,7 +2762,7 @@ class App( QtGui.QApplication ):
             self.restoreCursor()
     
 
-    def giveNewSongId(self):
+    def setSongDatabaseId(self):
         """
         Give the selected song a new song ID in the database.
         """
