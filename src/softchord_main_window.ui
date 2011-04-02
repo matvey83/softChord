@@ -275,7 +275,7 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>444</width>
+               <width>504</width>
                <height>557</height>
               </rect>
              </property>
@@ -321,18 +321,14 @@
    </property>
    <widget class="QMenu" name="menuSong">
     <property name="title">
-     <string>Songs</string>
+     <string>Song</string>
     </property>
-    <addaction name="actionNewSong"/>
-    <addaction name="actionDeleteSongs"/>
     <addaction name="actionSetID"/>
+    <addaction name="actionDeleteSong"/>
     <addaction name="separator"/>
-    <addaction name="actionImportText"/>
-    <addaction name="actionImportChordPro"/>
-    <addaction name="actionExportSinglePdf"/>
-    <addaction name="actionExportMultiplePdfs"/>
     <addaction name="actionExportText"/>
     <addaction name="actionExportChordPro"/>
+    <addaction name="actionExportClipboard"/>
    </widget>
    <widget class="QMenu" name="menuFile">
     <property name="title">
@@ -343,9 +339,17 @@
     <addaction name="actionCloseSongbook"/>
     <addaction name="actionSaveSongbook"/>
     <addaction name="separator"/>
+    <addaction name="actionImportClipboard"/>
+    <addaction name="actionImportChordPro"/>
+    <addaction name="actionImportText"/>
+    <addaction name="separator"/>
     <addaction name="actionPrint"/>
     <addaction name="separator"/>
+    <addaction name="actionExportSinglePdf"/>
+    <addaction name="actionExportMultiplePdfs"/>
+    <addaction name="separator"/>
     <addaction name="actionQuit"/>
+    <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="menuSettings">
     <property name="title">
@@ -360,9 +364,13 @@
     </property>
     <addaction name="actionUndo"/>
     <addaction name="actionRedo"/>
-    <addaction name="actionSelectAll"/>
+    <addaction name="separator"/>
     <addaction name="actionCopySongText"/>
     <addaction name="actionPasteAsNewSong"/>
+    <addaction name="actionSelectAll"/>
+    <addaction name="separator"/>
+    <addaction name="actionNewSong"/>
+    <addaction name="actionDeleteSongs"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
@@ -378,14 +386,9 @@
     <string>Ctrl+N</string>
    </property>
   </action>
-  <action name="actionDeleteSongs">
+  <action name="actionDeleteSong">
    <property name="text">
-    <string>Delete selected song(s)</string>
-   </property>
-  </action>
-  <action name="actionExportSinglePdf">
-   <property name="text">
-    <string>Export to PDF...</string>
+    <string>Delete</string>
    </property>
   </action>
   <action name="actionExportText">
@@ -511,6 +514,31 @@
   <action name="actionPasteAsNewSong">
    <property name="text">
     <string>Paste As New Song</string>
+   </property>
+  </action>
+  <action name="actionDeleteSongs">
+   <property name="text">
+    <string>Delete selected songs</string>
+   </property>
+  </action>
+  <action name="actionExportSongPDF">
+   <property name="text">
+    <string>Export to PDF...</string>
+   </property>
+  </action>
+  <action name="actionExportSinglePdf">
+   <property name="text">
+    <string>Export to PDF...</string>
+   </property>
+  </action>
+  <action name="actionImportClipboard">
+   <property name="text">
+    <string>Import from Clipboard...</string>
+   </property>
+  </action>
+  <action name="actionExportClipboard">
+   <property name="text">
+    <string>Export to Clipboard</string>
    </property>
   </action>
  </widget>

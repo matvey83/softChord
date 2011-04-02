@@ -1472,7 +1472,10 @@ class App( QtGui.QApplication ):
         self.ui.actionPrint.triggered.connect( self.printSelectedSongs )
         self.c( self.ui.actionQuit, "triggered()", self.ui.close )
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
-        self.c( self.ui.actionDeleteSongs, "triggered()", self.deleteSelectedSongs )
+        
+        self.ui.actionDeleteSongs.triggered.connect( self.deleteSelectedSongs )
+        self.ui.actionDeleteSong.triggered.connect( self.deleteSelectedSongs )
+
         self.ui.actionSetID.triggered.connect( self.setSongDatabaseId )
         self.c( self.ui.actionExportSinglePdf, "triggered()", self.exportToSinglePdf )
         self.c( self.ui.actionExportMultiplePdfs, "triggered()", self.exportToMultiplePdfs )
@@ -1487,7 +1490,11 @@ class App( QtGui.QApplication ):
         self.ui.actionUndo.triggered.connect(self.undo_stack.undo)
         self.ui.actionRedo.triggered.connect(self.undo_stack.redo)
         self.ui.actionCopySongText.triggered.connect(self.copySongText)
+        self.ui.actionExportClipboard.triggered.connect(self.copySongText)
+
         self.ui.actionPasteAsNewSong.triggered.connect(self.pasteAsNewSong)
+        self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
+
         
         self.clipboard = self.clipboard()
         self.clipboard.dataChanged.connect( self.clipboardChanged )
@@ -1922,15 +1929,19 @@ class App( QtGui.QApplication ):
         
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )
+        self.ui.actionDeleteSong.setEnabled( num_selected == 1 )
         self.ui.actionSetID.setEnabled(num_selected == 1)
         
         songs_present = self.songs_model.rowCount() > 0
         
         self.ui.actionExportSinglePdf.setEnabled( songs_present )
-        self.ui.actionExportMultiplePdfs.setEnabled( songs_present )
+        self.ui.actionExportMultiplePdfs.setEnabled( songs_present and num_selected != 1 )
         
+        self.ui.menuSong.setEnabled( num_selected == 1 ) # not working?
         self.ui.actionExportText.setEnabled( num_selected == 1 )
+        self.ui.actionExportChordPro.setEnabled( num_selected == 1 )
         self.ui.actionCopySongText.setEnabled( num_selected == 1 )
+        self.ui.actionExportClipboard.setEnabled( num_selected == 1 )
          
         self.ui.actionPrint.setEnabled( songs_present )
         
@@ -3288,6 +3299,7 @@ class App( QtGui.QApplication ):
         
         text = self.clipboard.text()
         self.ui.actionPasteAsNewSong.setEnabled(not text.isEmpty())
+        self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
     
     
     def pasteAsNewSong(self):
