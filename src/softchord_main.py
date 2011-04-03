@@ -1529,17 +1529,31 @@ class App( QtGui.QApplication ):
         
         self.ui.actionZoomIn.triggered.connect(self.zoomIn)
         self.ui.actionZoomOut.triggered.connect(self.zoomOut)
+        self.ui.zoom_in_button.clicked.connect(self.zoomIn)
+        self.ui.zoom_out_button.clicked.connect(self.zoomOut)
+        
+        
+        self.zoom_levels = [1.0]
+        zoom1 = 1.0
+        zoom2 = 1.0
+        for i in range(10):
+            zoom1 *= 1.1
+            zoom2 /= 1.1
+            self.zoom_levels += [zoom1, zoom2]
+        self.zoom_levels.sort()
 
+        self.ui.zoom_slider.setRange(0, len(self.zoom_levels)-1)
+        self.ui.zoom_slider.sliderMoved.connect( self.updateZoomWidgets )
+        
+        # Set zoom to 100%:
+        self.zoom_factor = 1.0
+        pos = self.zoom_levels.index(1.0)
+        self.ui.zoom_slider.setSliderPosition(pos)
+        
         
         self.clipboard = self.clipboard()
         self.clipboard.dataChanged.connect( self.clipboardChanged )
         
-        zoom_items = ["150%", "125%", "100%", "80%", "75%", "50%"]
-        self.ui.zoom_combo_box.addItems(zoom_items)
-        self.c( self.ui.zoom_combo_box, "currentIndexChanged(QString)", self.zoomLevelChanged)
-        #self.ui.zoom_combo_box.setCurrentIndex(3) # 80%
-        self.ui.zoom_combo_box.setCurrentIndex(2) # 100%
-        #self.ui.zoom_combo_box.setVisible(False)
         
         self.ignore_song_text_changed = False
         
@@ -1588,8 +1602,6 @@ class App( QtGui.QApplication ):
         self._orig_closeEvent = self.ui.closeEvent
         self.ui.closeEvent = self.closeEvent
 
-        #the scale font at first is 1, no change
-        self.zoom_factor = 1.0
         
         self.populateSongKeyMenu()
         
@@ -2151,25 +2163,35 @@ class App( QtGui.QApplication ):
         self.ignore_song_text_changed = False
     
 
-    def zoomLevelChanged(self, new_text):
-
-        self.zoom_factor = int(new_text[:-1]) / 100.0
-        if self.current_song:
-            self.updateEditorFonts()
-            self.editor.update() # FIXME needed?
-            #if not self.editor.lyric_editor_mode:
-            #    self.editor.viewport().update()
-        
     
     def zoomIn(self):
-        self.zoom_factor *= 1.1
-        self.updateEditorFonts()
+        pos = self.ui.zoom_slider.sliderPosition()
+        self.ui.zoom_slider.setSliderPosition(pos+1)
+        self.updateZoomWidgets()
     
     def zoomOut(self):
-        self.zoom_factor /= 1.1
-        self.updateEditorFonts()
+        pos = self.ui.zoom_slider.sliderPosition()
+        self.ui.zoom_slider.setSliderPosition(pos-1)
+        self.updateZoomWidgets()
     
-
+    def updateZoomWidgets(self):
+        
+        pos = self.ui.zoom_slider.sliderPosition()
+        self.zoom_factor = self.zoom_levels[pos]
+        percent = int(self.zoom_factor * 100.0)
+        percent_str = str(percent) + "%"
+        self.ui.zoom_label.setText("Zoom: %s" % percent_str)
+        self.updateEditorFonts()
+        
+        enable_zoom_in = (pos != len(self.zoom_levels)-1)
+        enable_zoom_out = (pos != 0)
+        
+        self.ui.zoom_in_button.setEnabled(enable_zoom_in)
+        self.ui.zoom_out_button.setEnabled(enable_zoom_out) 
+        self.ui.actionZoomIn.setEnabled(enable_zoom_in)
+        self.ui.actionZoomOut.setEnabled(enable_zoom_out)
+        
+    
     def getHeightsWithChords(self):
         
         cfm = self.chords_font_metrics
