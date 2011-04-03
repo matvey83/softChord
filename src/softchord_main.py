@@ -2993,8 +2993,9 @@ class App( QtGui.QApplication ):
         
         curr_left = chord_rect.left()
         orig_top = chord_rect.top()
-        raised_top = chord_rect.top() - ( chord_rect.height() / 3.0 )
-        raised_baseline = normal_baseline - (chord_rect.height() / 3.0)
+        raise_distance = chord_rect.height() / 5.0 # Distance to raise the flat/sharp signs by
+        raised_top = chord_rect.top() - raise_distance
+        raised_baseline = normal_baseline - raise_distance
 
         for letter in chord_text:
             #letter_rect = QtCore.QRect(letter_left, chord_rect.top(), 1000.0, 1000.0)
