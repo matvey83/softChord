@@ -1529,6 +1529,7 @@ class App( QtGui.QApplication ):
         
         self.ui.actionZoomIn.triggered.connect(self.zoomIn)
         self.ui.actionZoomOut.triggered.connect(self.zoomOut)
+        self.ui.actionZoomActual.triggered.connect(self.zoomActual)
         self.ui.zoom_in_button.clicked.connect(self.zoomIn)
         self.ui.zoom_out_button.clicked.connect(self.zoomOut)
         
@@ -1548,6 +1549,7 @@ class App( QtGui.QApplication ):
         # Set zoom to 100%:
         self.zoom_factor = 1.0
         pos = self.zoom_levels.index(1.0)
+        self.ui.zoom_slider.setTickPosition(pos)
         self.ui.zoom_slider.setSliderPosition(pos)
         
         
@@ -2174,6 +2176,15 @@ class App( QtGui.QApplication ):
         self.ui.zoom_slider.setSliderPosition(pos-1)
         self.updateZoomWidgets()
     
+    def zoomActual(self):
+        """
+        Set zoom level to 100%
+        """
+        pos = self.zoom_levels.index(1.0)
+        self.ui.zoom_slider.setSliderPosition(pos)
+        self.updateZoomWidgets()
+        
+
     def updateZoomWidgets(self):
         
         pos = self.ui.zoom_slider.sliderPosition()

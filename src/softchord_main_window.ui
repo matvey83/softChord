@@ -385,6 +385,7 @@
     <addaction name="separator"/>
     <addaction name="actionZoomIn"/>
     <addaction name="actionZoomOut"/>
+    <addaction name="actionZoomActual"/>
    </widget>
    <widget class="QMenu" name="menuEdit">
     <property name="title">
@@ -583,6 +584,11 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+-</string>
+   </property>
+  </action>
+  <action name="actionZoomActual">
+   <property name="text">
+    <string>Actual zoom</string>
    </property>
   </action>
  </widget>
