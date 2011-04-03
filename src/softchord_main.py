@@ -167,6 +167,22 @@ class ReplaceChordCommand( QtGui.QUndoCommand ):
 
 
 
+"""
+class SvgTextObject(QObject, public QTextObjectInterface
+     {
+              Q_OBJECT
+                   Q_INTERFACES(QTextObjectInterface)
+
+                    public:
+                         QSizeF intrinsicSize(QTextDocument *doc, int posInDocument,
+                                                   const QTextFormat &format);
+                              void drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc,
+                                                   int posInDocument, const QTextFormat &format);
+                               };
+
+"""
+
+
 
 
 def tr(text):
@@ -941,6 +957,7 @@ class CustomTextEdit(QtGui.QTextEdit):
 
         if self.lyric_editor_mode:
             
+            
             # Paint the lyrics text, selection rect, and cursor:
             QtGui.QTextEdit.paintEvent(self, event)
             
@@ -948,6 +965,14 @@ class CustomTextEdit(QtGui.QTextEdit):
             if self.app.current_song:
                 painter = QtGui.QPainter()
                 painter.begin(self.viewport())
+                
+                #scale_ratio = self.app.zoom_factor
+                #scale_ratio = 1.0
+                #painter.scale(scale_ratio, scale_ratio)
+                
+                #QTextDocument::drawContents ( QPainter * p, const QRectF & rect = QRectF() )
+                #rect = QtCore.QRectF(0.0, 0.0, 1000.0, 1000.0)
+                #self.document().drawContents(painter) #, rect)
                 
                 painter.setFont(self.app.chords_font)
                 painter.setPen(self.app.chords_color)
@@ -975,7 +1000,10 @@ class CustomTextEdit(QtGui.QTextEdit):
                     chord_rect = QtCore.QRectF(chord_left, chord_top, chord_width, chords_height)
                     
                     self.app.drawChord(painter, chord_rect, chord_text)
-
+                
+                
+                #painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
+                
                 painter.end()
             
                 
@@ -1003,6 +1031,10 @@ class CustomTextEdit(QtGui.QTextEdit):
         else:
             # Clear the hovering highlighting:
             self.app.hover_char_num = None
+            self.viewport().update()
+    
+    def update(self):
+        if not self.lyric_editor_mode:
             self.viewport().update()
     
     def undo(self):
@@ -1494,6 +1526,9 @@ class App( QtGui.QApplication ):
 
         self.ui.actionPasteAsNewSong.triggered.connect(self.pasteAsNewSong)
         self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
+        
+        self.ui.actionZoomIn.triggered.connect(self.zoomIn)
+        self.ui.actionZoomOut.triggered.connect(self.zoomOut)
 
         
         self.clipboard = self.clipboard()
@@ -1517,11 +1552,13 @@ class App( QtGui.QApplication ):
         # NOTE: For printing of small song books, font sizes of 14 / 11 are ideal.
         
         self.lyrics_font = QtGui.QFont("Times New Roman", LYRICS_SIZE)
+        self.lyrics_font_size = float(LYRICS_SIZE)
         self.lyrics_color = QtGui.QColor("BLACK")
         self.lyrics_font_metrics = QtGui.QFontMetricsF(self.lyrics_font)
         
         
         # Font that will be used if no good fonts are found:
+        self.chords_font_size = float(CHORDS_SIZE)
         self.chords_font = QtGui.QFont("Times New Roman", CHORDS_SIZE, QtGui.QFont.Bold) 
         self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
         
@@ -1529,6 +1566,8 @@ class App( QtGui.QApplication ):
         self.symbols_font = QtGui.QFont("Arial Unicode MS", CHORDS_SIZE, QtGui.QFont.Bold)
         self.symbols_font_metrics = QtGui.QFontMetricsF(self.symbols_font)
         
+        # FIXME self.updateEditorFonts() ??
+
 
         # Search for a font that can display sharp and flat characters correctly:
         #for name in [
@@ -2116,9 +2155,20 @@ class App( QtGui.QApplication ):
 
         self.zoom_factor = int(new_text[:-1]) / 100.0
         if self.current_song:
-            self.editor.viewport().update()
+            self.updateEditorFonts()
+            self.editor.update() # FIXME needed?
+            #if not self.editor.lyric_editor_mode:
+            #    self.editor.viewport().update()
         
-
+    
+    def zoomIn(self):
+        self.zoom_factor *= 1.1
+        self.updateEditorFonts()
+    
+    def zoomOut(self):
+        self.zoom_factor /= 1.1
+        self.updateEditorFonts()
+    
 
     def getHeightsWithChords(self):
         
@@ -2152,32 +2202,59 @@ class App( QtGui.QApplication ):
         """
         Brings up a dialog to let the user modify the chords font.
         """
-        new_font, ok = QtGui.QFontDialog.getFont(self.chords_font, self.ui)
+        
+        # Make a copy:
+        new_font = QtGui.QFont(self.chords_font)
+        
+        new_font, ok = QtGui.QFontDialog.getFont(new_font, self.ui)
         if ok:
+            self.chords_font_size = new_font.pointSizeF()
             self.chords_font = new_font
-            self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
-            
-            self.symbols_font.setPointSize( self.chords_font.pointSize() )
-            self.symbols_font_metrics = QtGui.QFontMetricsF(self.symbols_font)
-            
-            if self.current_song:
-                self.current_song.setDocMargins()
-            self.editor.viewport().update()
+            self.updateEditorFonts()
 
+        
+    
     def changeLyricsFont(self):
         """
         Brings up a dialog to let the user modify the lyrics font.
         """
-        new_font, ok = QtGui.QFontDialog.getFont(self.lyrics_font, self.ui)
+
+        # Make a copy:
+        new_font = QtGui.QFont(self.lyrics_font)
+
+        new_font, ok = QtGui.QFontDialog.getFont(new_font, self.ui)
         if ok:
+            self.lyrics_font_size = new_font.pointSizeF()
             self.lyrics_font = new_font
-            self.lyrics_font_metrics = QtGui.QFontMetricsF(self.lyrics_font)
-            self.editor.setFont(self.lyrics_font)
-            if self.current_song:
-                self.current_song.setDocMargins()
-            self.editor.viewport().update()
-        
+            self.updateEditorFonts()
     
+    
+    def updateEditorFonts(self):
+        """
+        Update the font metrics, because either the font(s) has changed, or the zoom
+        level was changed.
+        """
+        
+        # Update the lyrics font:
+        self.lyrics_font.setPointSizeF( self.lyrics_font_size * self.zoom_factor )
+        self.lyrics_font_metrics = QtGui.QFontMetricsF(self.lyrics_font)
+        self.editor.setFont(self.lyrics_font)
+        if self.current_song:
+            self.current_song.setDocMargins()
+        self.editor.viewport().update()
+        
+        # Update the chords fonts:
+        self.chords_font.setPointSizeF( self.chords_font_size * self.zoom_factor )
+        self.chords_font_metrics = QtGui.QFontMetricsF(self.chords_font)
+        
+        self.symbols_font.setPointSizeF( self.chords_font_size * self.zoom_factor )
+        self.symbols_font_metrics = QtGui.QFontMetricsF(self.symbols_font)
+        
+        if self.current_song:
+            self.current_song.setDocMargins()
+        self.editor.viewport().update()
+    
+
     def printSelectedSongs(self):
         """
         Bring up a print dialog box.
@@ -3091,10 +3168,14 @@ class App( QtGui.QApplication ):
         
         # Figure out what the scaling factor should be:
         if not exporting:
-            scale_ratio = self.zoom_factor
-            #scale_ratio = 1.0 
+            # Painting to screen, zoom factor is already applied to font size
+            scale_ratio = 1.0 
         else:
             # Exporting, make sure the song fits into the specified <rect>:
+            # Adjust according to the view zoom factor:
+            pic_right /= self.zoom_factor
+            pic_bottom /= self.zoom_factor
+            
             width_ratio = pic_right / rect.width()
             height_ratio = pic_bottom / rect.height()
             scale_ratio = max(width_ratio, height_ratio)
@@ -3103,8 +3184,10 @@ class App( QtGui.QApplication ):
                 scale_ratio = 1.0 / scale_ratio
             else:
                 # Do not make songs any bigger
-                scale_ratio = 1.0
-        
+                scale_ratio = 1.0 # / self.zoom_factor # Adjust by the view zoom factor
+            
+            # When exporting to PDF, undo the zoom scaling:
+            scale_ratio /= self.zoom_factor
         
         # Go to songs's reference frame:
         output_painter.translate(rect.left(), rect.top())
@@ -3186,8 +3269,8 @@ class App( QtGui.QApplication ):
             return None
         
         # Scale:
-        x = float(x) / self.zoom_factor
-        y = float(y) / self.zoom_factor
+        #x = float(x) / self.zoom_factor
+        #y = float(y) / self.zoom_factor
         
         for chord in self.current_song._chords:
             song_char_num = chord.character_num
