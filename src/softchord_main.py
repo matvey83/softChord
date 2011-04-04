@@ -29,7 +29,8 @@ import platform
 
 LYRICS_SIZE = 20 # 14
 CHORDS_SIZE = 12 # 9
-CHORDS_COLOR = "BLACK" # "BLUE"
+CHORDS_COLOR = "BLACK"
+CHORDS_COLOR = "BLUE"
 
 
 chord_types_list = [
@@ -1471,6 +1472,7 @@ class App( QtGui.QApplication ):
             self.songsSelectionChangedCallback )
         
         self.ui.song_filter_ef.textEdited.connect( self.songFilterEdited )
+        self.ui.clear_filter_button.clicked.connect( self.clearFilterClicked )
 
         self.previous_song_text = None # Song text before last user's edit operation
 
@@ -1633,12 +1635,13 @@ class App( QtGui.QApplication ):
     def event(self, event):
         if event.type() == QtCore.QEvent.FileOpen:
             # Cast as QFileOpenEvent!
-            self.openSongbook
+            #self.openSongbook
             filename = unicode( event.file() )
             if filename.endswith(".songbook"):
                 self.setCurrentSongbook(filename)
             return True
         return QtGui.QApplication.event(self, event)
+
 
 
     def songFilterEdited(self, new_text):
@@ -1653,7 +1656,10 @@ class App( QtGui.QApplication ):
         
         self.ui.songs_view.selectionModel().clear()
         
+        self.songs_model.layoutAboutToBeChanged.emit()
+
         self.filter_string = new_text
+        
         #self.songs_proxy_model.layoutChanged.emit() # Forces the view to redraw
         self.songs_model.layoutChanged.emit() # Forces the view to redraw
         
@@ -1665,7 +1671,12 @@ class App( QtGui.QApplication ):
             selection_model.select(proxy_index, QtGui.QItemSelectionModel.Select | QtGui.QItemSelectionModel.Rows)
             #self.ui.songs_view.selectRow(proxy_index.row())
     
+
+    def clearFilterClicked(self):
+        self.ui.song_filter_ef.setText("")
+        self.songFilterEdited("")
     
+
     def lyricEditorSelected(self):
         
         self.ui.lyric_editor_button.setDown(True)
