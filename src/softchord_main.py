@@ -1554,6 +1554,7 @@ class App( QtGui.QApplication ):
         self.ui.zoom_slider.setTickPosition(pos)
         self.ui.zoom_slider.setSliderPosition(pos)
         
+
         
         self.clipboard = self.clipboard()
         self.clipboard.dataChanged.connect( self.clipboardChanged )
@@ -1625,6 +1626,8 @@ class App( QtGui.QApplication ):
         self.ui.chord_editor_button.clicked.connect( self.chordEditorSelected )
         
         self.chordEditorSelected()
+        
+        self.updateZoomWidgets()
 
         self.updateStates()
         
@@ -2207,11 +2210,13 @@ class App( QtGui.QApplication ):
         
         enable_zoom_in = (pos != len(self.zoom_levels)-1)
         enable_zoom_out = (pos != 0)
+        enable_zoom_actual = (self.zoom_levels[pos] != 1.0)
         
         self.ui.zoom_in_button.setEnabled(enable_zoom_in)
         self.ui.zoom_out_button.setEnabled(enable_zoom_out) 
         self.ui.actionZoomIn.setEnabled(enable_zoom_in)
         self.ui.actionZoomOut.setEnabled(enable_zoom_out)
+        self.ui.actionZoomActual.setEnabled(enable_zoom_actual)
         
     
     def getHeightsWithChords(self):
