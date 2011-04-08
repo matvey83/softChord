@@ -1774,21 +1774,30 @@ class App( QtGui.QApplication ):
         if self.selected_char_num == None:
             return False
         
-        if key in [ Qt.Key_Left, Qt.Key_Right ]:
+        if key in [ Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down ]:
+            # Move or transpose the selected chord
             prev_chord = None
             for iter_chord in self.current_song.iterateAllChords():
                 if iter_chord.character_num == self.selected_char_num:
                     prev_chord = iter_chord
                     break
+
             if prev_chord:
+                # A chord is selected
                 new_chord = copy.copy(prev_chord)
                 if key == Qt.Key_Left:
                     if new_chord.character_num > 0:
                         new_chord.character_num -= 1
                 elif key == Qt.Key_Right:
                     new_chord.character_num += 1
+                elif key == Qt.Key_Up:
+                    new_chord.transpose(1)
+                elif key == Qt.Key_Down:
+                    new_chord.transpose(-1)
                 else:
                     raise ValueError("Invalid key pressed")
+                
+                # Make sure that the new chord is not off the line:
                 try:
                     if self.previous_song_text[new_chord.character_num] == '\n':
                         # On a line break
