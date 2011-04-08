@@ -32,6 +32,7 @@ CHORDS_SIZE = 12 # 9
 CHORDS_COLOR = "BLACK"
 CHORDS_COLOR = "BLUE"
 
+PREFER_SHARPS, PREFER_FLATS, PREFER_NEITHER = range(3)
 
 chord_types_list = [
   (0, u"Major", u""),
@@ -457,7 +458,7 @@ class Song:
         self._chords = []
         self.number = -1
         self.title = ""
-        self.prefer_sharps = True
+        self.prefer = PREFER_NEITHER
         self.key_note_id = -1
         self.key_is_major = 0
 
@@ -592,12 +593,20 @@ class Song:
         """
         
         note_text, note_alt_text = self.app.notes_list[note_id]
-
-        if self.prefer_sharps:
+        
+        if self.prefer == PREFER_SHARPS:
             return note_text
-        else:
+        elif self.prefer == PREFER_FLATS:
             return note_alt_text
+        else:
+            if note_id in [1, 6]:
+                # C#, F#
+                return note_text
+            else:
+                # Bb, Eb, Ab
+                return note_alt_text
     
+
     def addChord(self, chord):
         self.app.undo_stack.push( AddChordCommand(self, chord) )
     
@@ -927,7 +936,13 @@ class Song:
             elif chord.note_id in [3, 10]: # Eb or Bb
                 num_prefer_flat += 1
         
-        self.prefer_sharps = (num_prefer_sharp >= num_prefer_flat)
+        if num_prefer_sharp > num_prefer_flat:
+            self.prefer = PREFER_SHARPS
+        elif num_prefer_sharp < num_prefer_flat:
+            self.prefer = PREFER_FLATS
+        else:
+            self.prefer = PREFER_NEITHER
+
     
 
 
