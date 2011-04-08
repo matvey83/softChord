@@ -6,7 +6,7 @@ from __future__ import unicode_literals
 import unittest
 import os, sys
 
-import softchord_main
+import softchord
 
 from PyQt4 import QtCore, QtGui
 
@@ -19,7 +19,7 @@ class SoftChordEditorTest(unittest.TestCase):
         """
         
         qapp = QtGui.QApplication(sys.argv)
-        app = softchord_main.App()
+        app = softchord.App()
         
         
         prev_rows = app.songs_model.rowCount()
