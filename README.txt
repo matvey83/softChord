@@ -11,7 +11,7 @@ How to run the program:
 
 NOTE: Make sure all of the above are for the same architecture (32-bit vs 64-bit).
 
-5) CD into the "src" directory and run: "python softchord_main.py"
+5) CD into the "src" directory and run: "python softchord.py"
 
 
 
@@ -38,7 +38,10 @@ How to compile on Mac OS X:
 
 1) Install PyInstaller
 
-NOTE WRITTEN YET
+2) CD into the "softchord" directory.
+
+3) Run "python mac_combile.py"
+
 
 
 

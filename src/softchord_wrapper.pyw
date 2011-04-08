@@ -4,7 +4,7 @@ It's only purpose is the run the actual script.
 """
 
 if __name__ == '__main__':
-    import softchord_main
+    import softchord
 
-    softchord_main.main()
+    softchord.main()
 
