@@ -397,18 +397,6 @@ class SongChord:
             self.bass_note_id = transpose_note(self.bass_note_id, steps)
     
 
-    def _getNoteString(self, note_id):
-        """
-        Returns the specified note as a string, using sharps vs flats
-        as appropriate.
-        """
-        
-        note_text, note_alt_text = self.app.notes_list[note_id]
-
-        if self.song.prefer_sharps:
-            return note_text
-        else:
-            return note_alt_text
         
 
     def getChordText(self):
@@ -416,7 +404,7 @@ class SongChord:
         Returns string of the chord.
         For example, "Fm" or "Bbsus4"
         """
-        note_text = self._getNoteString(self.note_id)
+        note_text = self.song._getNoteString(self.note_id)
         
         chord_type_text = self.app.chord_type_prints[self.chord_type_id]
         
@@ -430,7 +418,7 @@ class SongChord:
         
         # Add the bass note (if any):
         if self.bass_note_id != -1: # Not NULL
-            bass_note_text = self._getNoteString(self.bass_note_id)
+            bass_note_text = self.song._getNoteString(self.bass_note_id)
             chord_str += "/%s" % bass_note_text
         
         # Add parentheses (if any):
@@ -597,6 +585,18 @@ class Song:
         
         self.app.ignore_song_text_changed = False
 
+    def _getNoteString(self, note_id):
+        """
+        Returns the specified note as a string, using sharps vs flats
+        as appropriate.
+        """
+        
+        note_text, note_alt_text = self.app.notes_list[note_id]
+
+        if self.prefer_sharps:
+            return note_text
+        else:
+            return note_alt_text
     
     def addChord(self, chord):
         self.app.undo_stack.push( AddChordCommand(self, chord) )
@@ -1258,13 +1258,9 @@ class ChordDialog:
         self.ui = uic.loadUi(chord_dialog_ui_file)
         
         notes_list = []
-
-        for (note_text, note_alt_text) in self.app.notes_list:
-            if note_text == note_alt_text:
-                combined_text = note_text
-            else:
-                combined_text = "%s/%s" % (note_text, note_alt_text)
-            notes_list.append(combined_text)
+        for note_id in range(12):
+            note_str = self.app.current_song._getNoteString(note_id)
+            notes_list.append(note_str)
         self.ui.note_menu.addItems(notes_list)
         self.ui.note_menu.setMaxVisibleItems(12) # Show all notes
 
