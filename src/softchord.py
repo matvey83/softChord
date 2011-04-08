@@ -168,6 +168,78 @@ class ReplaceChordCommand( QtGui.QUndoCommand ):
         self.song._replaceChord(self.prev_chord, self.new_chord)
 
 
+class DeleteSongsCommand( QtGui.QUndoCommand ):
+    def __init__(self, app, song_ids):
+        QtGui.QUndoCommand.__init__(self)
+        
+        self.app = app
+        self.songs = []
+        for song_id in song_ids:
+            # Load the song from the database:
+            song = Song(app, song_id)
+            self.songs.append(song)
+    
+    def undo(self):
+        """
+        Re-add the deleted song to the database.
+        """
+
+        self.app.setWaitCursor()
+        try:
+            # Get the next available song_chord_link ID:
+            row = self.app.curs.execute("SELECT MAX(id) from song_chord_link").fetchone()
+            if row[0] == None:
+                chord_id = 0
+            else:
+                chord_id = row[0]+1
+            
+            for song in self.songs:
+                song_text = song.getAllText()
+                self.app.curs.execute("INSERT INTO songs (id, number, text, title) VALUES (?, ?, ?, ?)",
+                    (song.id, song.number, song_text, song.title) )
+                    
+                # Re-add all the chords:
+                for chord in song.iterateAllChords():
+                    self.app.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
+                                "VALUES (?, ?, ?, ?, ?, ?, ?)", (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
+                    chord_id += 1 # Increment the ID for the next chord.
+            
+            
+            # Commit database changes:
+            self.app.curs.commit()
+            
+            # Update the song table from database:
+            self.app.songs_model.updateFromDatabase()
+            
+            #print 'undo done'
+        finally:
+            self.app.restoreCursor()
+            
+
+    def redo(self):
+        """
+        Delete the song form the database again
+        """
+        
+        self.app.setWaitCursor()
+        try:
+            for song in self.songs:
+                # Delete this song:
+                self.app.curs.execute("DELETE FROM songs WHERE id=%i" % song.id)
+                
+                # Delete all associated chords:   
+                self.app.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song.id)
+            
+            # Commit database changes:
+            self.app.curs.commit()
+            
+            # Update the song table from database:
+            self.app.songs_model.updateFromDatabase()
+            
+            #print 'redo done'
+        finally:
+            self.app.restoreCursor()
+
 
 """
 class SvgTextObject(QObject, public QTextObjectInterface
@@ -918,7 +990,9 @@ class Song:
         finally:
             self.app.restoreCursor()
         
-        self.app.disableUndo()
+        print 'sendToDatabase'
+        #self.app.clearUndoStack()
+        # self.app.updateUndoRedo()
     
 
             
@@ -1719,8 +1793,8 @@ class App( QtGui.QApplication ):
         self.editor.setUndoRedoEnabled(False)
         
         self.editor.viewport().update()
-        self.disableUndo()
-    
+        print 'chordEditorSelected()'
+        self.updateUndoRedo()
     
 
     def __del__(self):
@@ -1868,30 +1942,31 @@ class App( QtGui.QApplication ):
     
     def undo(self):
         self.undo_stack.undo()
-        #self.updateUndoRedo()
         self.viewport().update()
     
     def redo(self):
         self.undo_stack.redo()
-        #self.updateUndoRedo()
         self.viewport().update()
     
     def updateUndoRedo(self):
         undo_possible = False
         redo_possible = False
-        if self.current_song:
-            if self.editor.lyric_editor_mode:
-                undo_possible = False
-                redo_possible = False
-            else:
-                undo_possible = self.undo_stack.canUndo()
-                redo_possible = self.undo_stack.canRedo()
+        if self.current_song and self.editor.lyric_editor_mode:
+            # Currently editing the lyrics:
+            # FIXME what if the lyrics editor can undo?
+            undo_possible = False
+            redo_possible = False
+        
+        # In chord editor, or the songbook table:
+        undo_possible = self.undo_stack.canUndo()
+        redo_possible = self.undo_stack.canRedo()
         
         self.ui.actionUndo.setEnabled(undo_possible)
         self.ui.actionRedo.setEnabled(redo_possible)
     
 
-    def disableUndo(self):
+    def clearUndoStack(self):
+        print 'clearUndoStack called'
         self.undo_stack.clear()
     
     
@@ -2104,7 +2179,9 @@ class App( QtGui.QApplication ):
             self.editor.setDocument(song.doc)
             self.editor.verticalScrollBar().setValue(0)
         
-        self.disableUndo()
+        print 'setCurrentSong'
+        #self.clearUndoStack()
+        # self.app.updateUndoRedo()
         
 
 
@@ -2901,8 +2978,6 @@ class App( QtGui.QApplication ):
         else:
             song_id = row[0] + 1
         
-        #out = self.curs.execute("INSERT INTO songs (id, number, text, title) " + \
-        #                'VALUES (%i, %i, "%s", "%s")' % (song_id, song_number, song_text, song_title))
         out = self.curs.execute("INSERT INTO songs (id, number, text, title) VALUES (?, ?, ?, ?)",
             (song_id, song_number, song_text, song_title) )
         self.curs.commit()
@@ -2921,37 +2996,22 @@ class App( QtGui.QApplication ):
         ####self.updateCurrentSongFromDatabase() # FIXME REMOVE
         self.lyricEditorSelected()
     
-    def _deleteSong(self, song_id):
-        
-        # Delete this song:
-        self.curs.execute("DELETE FROM songs WHERE id=%i" % song_id)
-        
-        # Delete all associated chords:   
-        self.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
-        self.curs.commit()
-
-
     def deleteSelectedSongs(self):
         """
         Deletes the selected song(s).
         """
-        self.setWaitCursor()
-        try:
-            selected_song_ids = self.getSelectedSongIds()
+        selected_song_ids = self.getSelectedSongIds()
+        
+        # Will set the current song to None:
+        self.ui.songs_view.selectionModel().clearSelection()
+        #self.setCurrentSong(None)
+        
+        self.undo_stack.push( DeleteSongsCommand(self, selected_song_ids) )
             
-            # Will set the current song to None:
-            self.ui.songs_view.selectionModel().clearSelection()
-            #self.setCurrentSong(None)
-            
-            for song_id in selected_song_ids:
-                self._deleteSong(song_id)
-            
-            # Update the song table from database:
-            self.songs_model.updateFromDatabase()
-        finally:
-            self.restoreCursor()
+        #self.updateStates()
+        self.updateUndoRedo()
     
-
+    
     def setSongDatabaseId(self):
         """
         Give the selected song a new song ID in the database.
@@ -3860,6 +3920,9 @@ class App( QtGui.QApplication ):
         self.ui.songs_view.selectionModel().clearSelection()
         # Send the current song to database:
         self.setCurrentSong(None)
+        
+        # Nothing to undo; new database
+        self.clearUndoStack()
         
         self.current_songbook_filename = filename
         
