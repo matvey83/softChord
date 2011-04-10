@@ -1,10 +1,16 @@
 # Django settings for softchord/web project.
 
+import os
+
+PROJECT_DIR = os.path.dirname(__file__)
+DB_FILE = os.path.join( PROJECT_DIR, "songs.sqlite" )
+SOFTCHORD_APP_DIR = os.path.join( PROJECT_DIR, "softchord" )
+
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
 ADMINS = (
-    # ('Your Name', 'your_email@example.com'),
+    ('Matvey Adzhigirey', 'matveygirey@gmail.com'),
 )
 
 MANAGERS = ADMINS
@@ -12,7 +18,7 @@ MANAGERS = ADMINS
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3', # Add 'postgresql_psycopg2', 'postgresql', 'mysql', 'sqlite3' or 'oracle'.
-        'NAME': '/Users/adzhigir/src/softchord/web/songs.sqlite',                      # Or path to database file if using sqlite3.
+        'NAME': DB_FILE,                      # Or path to database file if using sqlite3.
         'USER': '',                      # Not used with sqlite3.
         'PASSWORD': '',                  # Not used with sqlite3.
         'HOST': '',                      # Set to empty string for localhost. Not used with sqlite3.
@@ -106,7 +112,7 @@ TEMPLATE_DIRS = (
     # Put strings here, like "/home/html/django_templates" or "C:/www/django/templates".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
-    '/Users/adzhigir/src/softchord/web/softchord/',
+    SOFTCHORD_APP_DIR,
 )
 
 INSTALLED_APPS = (
