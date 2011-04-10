@@ -990,7 +990,7 @@ class Song:
         finally:
             self.app.restoreCursor()
         
-        print 'sendToDatabase'
+        #print 'sendToDatabase'
         #self.app.clearUndoStack()
         # self.app.updateUndoRedo()
     
@@ -1793,7 +1793,7 @@ class App( QtGui.QApplication ):
         self.editor.setUndoRedoEnabled(False)
         
         self.editor.viewport().update()
-        print 'chordEditorSelected()'
+        #print 'chordEditorSelected()'
         self.updateUndoRedo()
     
 
@@ -1966,7 +1966,7 @@ class App( QtGui.QApplication ):
     
 
     def clearUndoStack(self):
-        print 'clearUndoStack called'
+        #print 'clearUndoStack called'
         self.undo_stack.clear()
     
     
@@ -2179,7 +2179,7 @@ class App( QtGui.QApplication ):
             self.editor.setDocument(song.doc)
             self.editor.verticalScrollBar().setValue(0)
         
-        print 'setCurrentSong'
+        #print 'setCurrentSong'
         #self.clearUndoStack()
         # self.app.updateUndoRedo()
         
@@ -3567,9 +3567,9 @@ class App( QtGui.QApplication ):
                     print 'reading:', filename
                     text = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig').read()
                     #text = codecs.open( unicode(filename), 'rU', encoding='utf_8_sig').read()
-                    print 'text:', text
+                    #print 'text:', text
                     self.importSongFromText(text, song_title)
-                    print 'imported'
+                    #print 'imported'
             finally:
                 self.restoreCursor()
     
