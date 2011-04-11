@@ -1315,8 +1315,9 @@ class CustomTextEdit(QtGui.QTextEdit):
             self.app.deleteSelectedChord()
             return
         else:
-            if self.app.processKeyPressed(key):
-                return
+            if event.modifiers() == Qt.NoModifier:
+                if self.app.processKeyPressed(key):
+                    return
         
         # Let the main window handle this event (required for undo/redo shortcuts):
         self.app.ui.keyPressEvent(event)
@@ -1608,6 +1609,9 @@ class App( QtGui.QApplication ):
         
         self.ui.actionUndo.triggered.connect(self.undo_stack.undo)
         self.ui.actionRedo.triggered.connect(self.undo_stack.redo)
+        self.ui.actionCut.triggered.connect(self.cutSelected)
+        self.ui.actionCopy.triggered.connect(self.copySelected)
+        self.ui.actionPaste.triggered.connect(self.pasteSelected)
         self.ui.actionCopySongText.triggered.connect(self.copySongText)
         self.ui.actionExportClipboard.triggered.connect(self.copySongText)
 
@@ -1835,22 +1839,31 @@ class App( QtGui.QApplication ):
         if self.current_song:
             # Update the current song in the database:
             self.current_song.sendToDatabase()
+    
 
-
-    def deleteSelectedChord(self):
+    def getSelectedChord(self):
         """
-        Deletes the currently selected chord from the song.
+        Return the selected chord, or None, if no selection or the selected
+        character has no chord assigned to it.
         """
         
         if self.selected_char_num != None and self.current_song:
             for chord in self.current_song.iterateAllChords():
                 if chord.character_num == self.selected_char_num:
-                    self.current_song.deleteChord(chord)
-                    break
-            
-            #self.current_song.setDocMargins()
-            #self.editor.viewport().update()
+                    return chord
+        return None
+
     
+    def deleteSelectedChord(self):
+        """
+        Deletes the currently selected chord from the song.
+        """
+        
+        chord = self.getSelectedChord()
+        if chord:
+            self.current_song.deleteChord(chord)
+    
+
     def processKeyPressed(self, key):
         """
         Returns True if the key press was processed
@@ -2764,7 +2777,65 @@ class App( QtGui.QApplication ):
                 raise
             
         progress.setValue(i+1)
+    
+    
+    def cutSelected(self):
+        """
+        Cut the selected chord (if any) into the clipboard.
+        """
+        chord = self.getSelectedChord()
+        if chord:
+            chord_text = chord.getChordText()
+            self.clipboard.setText(chord_text)
+            self.current_song.deleteChord(chord)
+    
+    def copySelected(self):
+        """
+        Copy the selected chord (if any) into the clipboard.
+        """
+        chord = self.getSelectedChord()
+        if chord:
+            chord_text = chord.getChordText()
+            self.clipboard.setText(chord_text)
+    
+    
+    def pasteSelected(self):
+        """
+        Paste the chord of the clipboard (if any) onto the selected character (if any)
+        """
         
+        if self.selected_char_num == None or not self.current_song:
+            return
+        
+        text = unicode(self.clipboard.text())
+        print 'CLIPBOARD:', text
+        
+        try:
+            converted_chord = self.convertChordFromString(text)
+        except ValueError, err:
+            print "not a chord"
+            return 
+        print 'converted:', converted_chord
+        
+        (marker, note_id, type_id, bass_id, in_parentheses) = converted_chord
+        new_chord = SongChord(self.current_song, self.selected_char_num, note_id, type_id, bass_id, marker, in_parentheses)
+        
+
+        prev_chord = None
+        for chord in self.current_song.iterateAllChords():
+            if chord.character_num == self.selected_char_num:
+                prev_chord = chord
+                break
+        
+        if prev_chord:
+            # Replacing exising chord
+            self.current_song.replaceChord(prev_chord, new_chord)
+            print 'chord replaced'
+        else:
+            # Adding a new chord
+            self.current_song.addChord(new_chord)
+            print 'chord added'
+
     
     def copySongText(self):
         """
@@ -3512,6 +3583,9 @@ class App( QtGui.QApplication ):
         
         text = self.clipboard.text()
         self.ui.actionPasteAsNewSong.setEnabled(not text.isEmpty())
+
+        # FIXME depends on whether in chords or lyrics editor, and whether clipboard contains a chord text
+        self.ui.actionPaste.setEnabled(not text.isEmpty())
         self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
     
     
@@ -3548,28 +3622,12 @@ class App( QtGui.QApplication ):
                     filename = unicode(filename)
                     
                     song_title = os.path.splitext(os.path.basename(filename))[0]
-                    """
-                    try:
-                        song_title = song_title.decode('utf-8')
-                    except UnicodeDecodeError:
-                        try:
-                           # Try Cyrillic 1251:
-                           song_title = song_title.decode('cp1251')
-                        except UnicodeDecodeError:
-                           song_title = ""
-                           print "WARNING File name could not be decoded"
-                    """
-                    
-                    #filename = filename.decode('utf-8')
                     
                     # "rU" makes sure that the line endings are handled properly:
                     
                     print 'reading:', filename
                     text = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig').read()
-                    #text = codecs.open( unicode(filename), 'rU', encoding='utf_8_sig').read()
-                    #print 'text:', text
                     self.importSongFromText(text, song_title)
-                    #print 'imported'
             finally:
                 self.restoreCursor()
     
