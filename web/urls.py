@@ -16,6 +16,7 @@ urlpatterns = patterns('',
     #url(r'^admin/', include(admin.site.urls)),
 
     (r'^songs/(?P<song_id>[^/]+)/$', 'web.softchord.views.view_song'),
+    (r'^songs/$', 'web.softchord.views.view_all'),
     #(r'^songs/(?P<song_id>[^/]+)/edit/$', 'web.softchord.views.edit_song'),
 
 
