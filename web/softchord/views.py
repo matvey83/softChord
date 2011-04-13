@@ -258,3 +258,36 @@ def view_song(request, song_id):
 #    return render_to_response("add_song.html", {} #"song_name":song_name, "song_text":song_text})
 
 
+
+
+
+def view_all(request):
+    """
+    Display the table of contents page
+    """
+    
+    song_list = []
+
+    q = Songs.objects.all().order_by("id")
+    for song in q:
+        id = song.id
+        num = song.number
+        title = song.title
+        song_list.append( (id, num, title) )
+
+    
+    # URLS for the Previous & Next buttons:
+    #prev_url = "../%i" % prev_id
+    #next_url = "../%i" % next_id
+    
+    return render_to_response("table_of_contents.html", {"song_list":song_list})
+
+
+
+
+
+
+
+
+
+

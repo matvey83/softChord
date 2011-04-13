@@ -3,7 +3,7 @@
 import os
 
 PROJECT_DIR = os.path.dirname(__file__)
-DB_FILE = os.path.join( PROJECT_DIR, "songs.sqlite" )
+DB_FILE = os.path.join( PROJECT_DIR, "songs.songbook" )
 SOFTCHORD_APP_DIR = os.path.join( PROJECT_DIR, "softchord" )
 
 DEBUG = True
