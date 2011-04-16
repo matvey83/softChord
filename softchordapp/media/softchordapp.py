@@ -44,7 +44,7 @@ class SoftChordApp:
         This functon handles the onKeyPress event, and will add the item in the text box to the list when the user presses the enter key.  In the future, this method will also handle the auto complete feature.
         """
         if keyCode == KeyboardListener.KEY_ENTER and sender == self.todoTextBox:
-            id = self.remote.addTask(sender.getText(), self)
+            id = self.remote.addSong(sender.getText(), self)
             sender.setText("")
 
             if id<0:
@@ -53,13 +53,13 @@ class SoftChordApp:
 
     def onClick(self, sender):
         # FIXME send ID instead of title
-        id = self.remote.deleteTask(sender.getValue(sender.getSelectedIndex()), self)
+        id = self.remote.deleteSong(sender.getValue(sender.getSelectedIndex()), self)
         if id<0:
             self.status.setText("Server Error or Invalid Response")
 
     def onRemoteResponse(self, response, request_info):
         self.status.setText("response received")
-        if request_info.method == 'getTasks' or request_info.method == 'addTask' or request_info.method == 'deleteTask':
+        if request_info.method == 'getAllSongs' or request_info.method == 'addSong' or request_info.method == 'deleteSong':
             self.status.setText(self.status.getText() + "HERE!")
             self.todoList.clear()
             for task in response:
@@ -74,7 +74,7 @@ class SoftChordApp:
 
 class DataService(JSONProxy):
     def __init__(self):
-        JSONProxy.__init__(self, "/services/", ["getTasks", "addTask", "deleteTask"])
+        JSONProxy.__init__(self, "/services/", ["getAllSongs", "addSong", "deleteSong"])
 
 if __name__ == "__main__":
     app = SoftChordApp()

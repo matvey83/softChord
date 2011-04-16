@@ -7,7 +7,7 @@ from django.shortcuts import render_to_response
 service = JSONRPCService()
 
 @jsonremote(service)
-def getTasks(request):
+def getAllSongs(request):
     #song_list = []
     #for song in Song.objects.all():
     #    song_list.append( ("TEMP", song.id) ]
@@ -18,16 +18,16 @@ def getTasks(request):
 
     
 @jsonremote(service)
-def addTask(request, idFromJson):
+def addSong(request, idFromJson):
     s = Song()
     s.title = idFromJson
     s.save()
-    return getTasks(request)
+    return getAllSongs(request)
 
 @jsonremote(service)
-def deleteTask(request, idFromJson):
+def deleteSong(request, idFromJson):
     s = Song.objects.get(id=idFromJson)
     s.delete()
-    return getTasks(request)
+    return getAllSongs(request)
 
 
