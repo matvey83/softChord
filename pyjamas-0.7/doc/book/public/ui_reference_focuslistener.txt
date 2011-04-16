@@ -1,8 +1,0 @@
-= Class FocusListener =
-
-# FocusListenerCollection
-
-== Methods defined: ==
-
- * fireFocusEvent(self, listeners, sender, event)
-

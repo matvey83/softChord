@@ -1,8 +1,0 @@
-= Class HasHorizontalAlignment =
-
-== Data and other attributes defined: ==
-
- * ALIGN_CENTER = 'center'
- * ALIGN_LEFT = 'left'
- * ALIGN_RIGHT = 'right'
-

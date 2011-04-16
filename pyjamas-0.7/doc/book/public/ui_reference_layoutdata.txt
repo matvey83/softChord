@@ -1,6 +1,0 @@
-= Class LayoutData =
-
-== Methods defined: ==
-
- * __init__(self, direction)
-

@@ -1,7 +1,0 @@
-= Class DockPanelTmpRow =
-
-== Data and other attributes defined: ==
-
- * center = 0
- * tr = None
-

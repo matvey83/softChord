@@ -1,8 +1,0 @@
-= Class MouseListener =
-
-# MouseListenerCollection
-
-== Methods defined: ==
-
- * fireMouseEvent(self, listeners, sender, event)
-

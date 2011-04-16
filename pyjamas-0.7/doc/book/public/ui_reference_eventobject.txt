@@ -1,8 +1,0 @@
-= Class EventObject =
-
-== Methods defined: ==
-
- * __init__(self, source)
-
- * getSource(self)
-
