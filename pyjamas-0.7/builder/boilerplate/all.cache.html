@@ -1,0 +1,99 @@
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <!--<script type="text/javascript" src="com.iskitz.ajile.js"></script>-->
+<script>
+var $wnd = parent;
+var $doc = $wnd.document;
+var $moduleName = "%(app_name)s";
+var $pyjs = new Object();
+$pyjs.modules = {};
+$pyjs.modules_hash = {};
+$pyjs.options = new Object();
+$pyjs.options.set_all = function (v) {
+    $pyjs.options.arg_ignore = v;
+    $pyjs.options.arg_count = v;
+    $pyjs.options.arg_is_instance = v;
+    $pyjs.options.arg_instance_type = v;
+    $pyjs.options.arg_kwarg_dup = v;
+    $pyjs.options.arg_kwarg_unexpected_keyword = v;
+    $pyjs.options.arg_kwarg_multiple_values = v;
+}
+$pyjs.options.set_all(true);
+$pyjs.trackstack = [];
+$pyjs.track = {module:'__main__', lineno: 1};
+$pyjs.trackstack.push($pyjs.track);
+</script>
+%(app_headers)s
+</head>
+<body onload="if (parent && parent.__pygwt_webModeFrameOnLoad) parent.__pygwt_webModeFrameOnLoad(window, '%(app_name)s');">
+<font face='arial' size='-1'>This script is part of module</font> <code>%(app_name)s</code>
+
+%(app_body)s
+
+<script><!--
+
+/* early app libs */
+
+%(early_app_libs)s
+
+
+/*
+ * prepare app system vars
+ */
+sys.overrides = %(overrides)s;
+sys.platform = '%(platform)s';
+sys.appname = '%(app_name)s';
+sys.loadpath = './';
+
+/* app libs */
+%(app_libs)s
+
+var wait_count = 0;
+
+var onExecutionError = function (exception, name) {
+    var extra = sys.trackstackstr();
+    if (extra == '') {
+        if (exception.name.indexOf('HaltException', 0) < 0) { 
+            extra = "\n.  Rebuild with pyjsbuild -d for more information.";
+        }
+    } else {
+        extra = "\n" + extra;
+    }
+    alert( "In application " + name + " - " + 
+          exception.name + ': '  + exception.message + extra);
+};
+
+function %(app_name)s_imported() {
+    %(app_name)s.__name__ = '__main__';
+    try {
+        $pyjs.modules['%(app_name)s'] = %(app_name)s('__main__');
+    } catch (exception) {
+        sys.save_exception_stack();
+        onExecutionError(exception, '%(app_name)s');
+    }
+}
+
+function prepare_app() {
+    var app_modnames = %(app_modnames)s;
+    pyjslib.preload_app_modules(sys.loadpath,
+                                app_modnames, %(app_name)s_imported,
+                                %(dynamic)s,
+                                '%(app_name)s');
+}
+
+function pygwtOnLoad(onLoadError, name) {
+    if (onLoadError != null)
+        try {
+            prepare_app();
+        } catch (exception) {
+            onLoadError(exception, name);
+        }
+    else {
+        prepare_app();
+    }
+}
+
+--></script>
+</body>
+</html>

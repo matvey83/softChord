@@ -1,0 +1,14 @@
+
+
+
+3) 
+    cd media
+    ./build.sh
+
+
+4) Run the server:
+
+    python manage.py runserver
+
+5) Test it out:
+    * In your browser, goto: http://127.0.0.1:8000/site_media/output/softchordapp.html

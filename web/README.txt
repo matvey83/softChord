@@ -3,6 +3,8 @@
 1) Install Django on Mac OS X:
     http://www.hoboes.com/Mimsy/hacks/installing-django-mac-os/
 
+2) Install Pyjamas on Mac OS X:
+   http://pyjs.org/
 
 2) Test the installation by doing:
     python

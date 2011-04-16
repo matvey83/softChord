@@ -1,0 +1,21 @@
+#!/opt/local/Library/Frameworks/Python.framework/Versions/2.7/Resources/Python.app/Contents/MacOS/Python
+
+pyjsversion = r'0.7~+pre2'
+pyjspth = r'/Users/adzhigir/src/softchord/pyjamas-0.7'
+
+import os
+import sys
+sys.path[0:0] = [r'/Users/adzhigir/src/softchord/pyjamas-0.7/pyjs/src']
+sys.path.append(os.path.join(pyjspth, 'pgen'))
+import pyjs
+pyjs.pyjspth = pyjspth
+pyjs.path += [os.path.join(pyjspth, 'library'),
+os.path.join(pyjspth, 'addons'),
+]
+
+import pyjs.browser
+if __name__ == '__main__':
+    if "--version" in sys.argv:
+        print "Version:", pyjsversion
+        sys.exit(0)
+    pyjs.browser.build_script()

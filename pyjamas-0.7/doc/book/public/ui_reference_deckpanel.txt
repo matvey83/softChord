@@ -1,0 +1,222 @@
+= Class DeckPanel (derived from ComplexPanel) =
+
+A panel that displays all of its child widgets in a 'deck',
+where only one can be visible at a time. It is used by TabPanel.
+
+Once a widget has been added to a DeckPanel, its visibility, width,
+and height attributes will be manipulated. When the widget is
+removed from the DeckPanel, it will be visible, and its width and
+height attributes will be cleared.
+
+Method resolution order:
+ * DeckPanel
+ * ComplexPanel
+ * Panel
+ * Widget
+ * UIObject
+
+== Methods defined: ==
+
+ * __init__(self)
+
+ * add(self, widget)
+
+ * checkIndex(self, index)
+
+ * getVisibleWidget(self)
+
+ * getWidget(self, index)
+
+ * getWidgetCount(self)
+
+ * getWidgetIndex(self, child)
+
+ * insert(self, widget, beforeIndex)
+
+ * remove(self, widget)
+
+ * showWidget(self, index)
+
+
+
+== Methods inherited from ComplexPanel: ==
+
+ * getChildren(self)
+
+
+
+== Methods inherited from Panel: ==
+
+ * __iter__(self)
+
+ * adopt(self, widget, container=None)
+
+ * clear(self)
+{{-method
+# TODO: fix iterator remove()
+}}
+
+ * disown(self, widget)
+
+ * doAttachChildren(self)
+
+ * doDetachChildren(self)
+
+
+
+== Methods inherited from Widget: ==
+
+ * getID(self)
+{{-method
+Get the id attribute of the associated DOM element.
+}}
+
+ * getLayoutData(self)
+
+ * getParent(self)
+{{-method
+Widgets are kept in a hierarchy, and widgets that have been added to a panel
+will have a parent widget that contains them.  This retrieves the containing
+widget for this widget.
+}}
+
+ * isAttached(self)
+{{-method
+Return whether or not this widget has been attached to the document.
+}}
+
+ * onAttach(self)
+{{-method
+Called when this widget has an element, and that element is on the document's
+DOM tree, and we have a parent widget.
+}}
+
+ * onBrowserEvent(self, event)
+
+ * onDetach(self)
+{{-method
+Called when this widget is being removed from the DOM tree of the document.
+}}
+
+ * onLoad(self, sender)
+
+ * removeFromParent(self)
+{{-method
+Remove ourself from our parent.  The parent widget will call setParent(None) on
+us automatically
+}}
+
+ * setID(self, id)
+{{-method
+Set the id attribute of the associated DOM element.
+}}
+
+ * setLayoutData(self, layoutData)
+
+ * setParent(self, parent)
+{{-method
+Update the parent attribute.  If the parent is currently attached to the DOM this
+assumes we are being attached also and calls onAttach().
+}}
+
+
+
+== Methods inherited from UIObject: ==
+
+ * addStyleName(self, style)
+{{-method
+Append a style to the element associated with this UIObject.  This is
+a CSS class name.  It will be added after any already-assigned CSS class for
+the element.
+}}
+
+ * getAbsoluteLeft(self)
+
+ * getAbsoluteTop(self)
+
+ * getElement(self)
+{{-method
+Get the DOM element associated with the UIObject, if any
+}}
+
+ * getOffsetHeight(self)
+
+ * getOffsetWidth(self)
+
+ * getStyleName(self)
+
+ * getTitle(self)
+
+ * isVisible(self, element=None)
+{{-method
+Determine whether this element is currently visible, by checking the CSS
+property 'display'
+}}
+
+ * removeStyleName(self, style)
+{{-method
+Remove a style from the element associated with this UIObject.  This is
+a CSS class name.
+}}
+
+ * setElement(self, element)
+{{-method
+Set the DOM element associated with the UIObject.
+}}
+
+ * setHeight(self, height)
+{{-method
+Set the height of the element associated with this UIObject.  The
+value should be given as a CSS value, such as 100px, 30%, or 50pi
+}}
+
+ * setPixelSize(self, width, height)
+{{-method
+Set the width and height of the element associated with this UIObject
+in pixels.  Width and height should be numbers.
+}}
+
+ * setSize(self, width, height)
+{{-method
+Set the width and height of the element associated with this UIObject.  The
+values should be given as a CSS value, such as 100px, 30%, or 50pi
+}}
+
+ * setStyleName(self, element, style=None, add=True)
+{{-method
+When called with a single argument, this replaces all the CSS classes
+associated with this UIObject's element with the given parameter.  Otherwise,
+this is assumed to be a worker function for addStyleName and removeStyleName.
+}}
+
+ * setTitle(self, title)
+
+ * setVisible(self, element, visible=None)
+{{-method
+Set whether this element is visible or not.  If a single parameter is
+given, the self.element is used.  This modifies the CSS property 'display',
+which means that an invisible element not only is not drawn, but doesn't
+occupy any space on the page.
+}}
+
+ * setWidth(self, width)
+{{-method
+Set the width of the element associated with this UIObject.  The
+value should be given as a CSS value, such as 100px, 30%, or 50pi
+}}
+
+ * setzIndex(self, index)
+
+ * sinkEvents(self, eventBitsToAdd)
+{{-method
+Request that the given events be delivered to the event handler for this
+element.  The event bits passed are added (using inclusive OR) to the events
+already "sunk" for the element associated with the UIObject.  The event bits
+are a combination of values from class L{Event}.
+}}
+
+ * unsinkEvents(self, eventBitsToRemove)
+{{-method
+Reverse the operation of sinkEvents.  See L{UIObject.sinkEvents}.
+}}
+

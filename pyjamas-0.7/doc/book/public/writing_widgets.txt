@@ -1,0 +1,596 @@
+= Writing a Widget for Pyjamas =
+
+An important part of a widget toolkit is being able to write custom
+widgets.  In many widget sets, developers are confronted immediately with
+a quite complex set of unusual-looking functions - paint, draw,
+refresh and other manipulations.  The reason for this complexity is
+because the fundamental underlying design of Desktop widget set frameworks
+is invariably too simplistic.  Changes in width or height of a single
+widget can have a knock-on effect that dramatically alters the layout
+of the entire application.  Rather than attempting to solve this really
+quite difficult problem, Desktop widgets simply avoid it entirely, and
+impose on the developer to sort out the mess for themselves, and are
+given stern warnings about how hard-coding widths and heights could mess
+things up.
+
+The only technology that has tackled the issue of complex layouts,
+with any degree of success, is Web Browsers.  Web browsers simply
+<i>have</i> to tackle layouts properly, due to the overwhelming
+user-driven diversity and the sheer numbers of people that use Web
+browsers.  Consequently, Pyjamas and Pyjamas-Desktop, both being
+based on web technology, benefit from the underlying layout issues
+having been made a lot easier.
+
+Both Pyjamas and Pyjamas-Desktop manipulate the DOM model -
+an HTML page - as if it was an XML document.  Better than that:
+unlike with manipulating an HTML page in traditional web browser
+development, it's not necessary to get involved with Javascript -
+unless desired.  Pyjamas provides a module which makes the job of
+controlling the underlying DOM model that much easier, and this
+chapter shows step-by-step how to go about creating a custom widget,
+through DOM model manipulation and DOM event interaction.
+
+Missing from the HTML specification, but present in Adobe Flash,
+are widgets such as sliders and dials.  Many Desktop widget sets have
+control widgets, so it makes a lot of sense to create one.  So this
+chapter starts with a simple Vertical scroller which receives
+"mouse click" to change the position, goes on later to add
+"drag" and then adds keyboard interaction, almost as an afterthought
+(just like most badly-designed applications do.  hoorary!)
+
+= Vertical Slider =
+
+Start off by importing the DOM model and, because the slider will
+receive mouse (and later keyboard) events, it is based on FocusWidget.
+FocusWidget has the means to add keyboard and event listeners, set
+a "tab order" index, and to set and clear focus.  Create a file
+called Controls.py, starting off with the following lines:
+{{
+from pyjamas import DOM
+from pyjamas.ui.FocusWidget import FocusWidget
+}}
+The class will be derived from FocusWidget.  Width and height parameters
+will not be added to the constructor, because Pyjamas Widgets are based on
+HTML principles: DOM models.  So, a developer can add a CSS "Class", with
+setStyleName(), and thus set the width and/or height set as desired in the
+CSS stylesheet.  Alternatively, the functions setWidth() and setHeight()
+can be used.  It <i>is</i> however necessary to pass in the slider's
+minimum, maximum and default values.
+{{-info
+This is an important point to emphasise: widgets should not impose "look"
+onto users - that should, ideally, be defined through CSS. A Widget Class
+API should be about "function" rather than "form".  So, the constructor
+for the widget has minimum, maximum and default values, not width, height
+or colour.
+}}
+Add the following lines to the newly-created Controls.py:
+{{
+class VerticalDemoSlider(FocusWidget):
+
+    def __init__(self, min_value, max_value, start_value=None):
+
+        element = DOM.createDiv()
+        FocusWidget.__init__(self, element)
+
+        self.min_value = min_value
+        self.max_value = max_value
+        if start_value is None:
+            start_value = min_value
+        self.value = start_value
+        self.valuechange_listeners = []
+}}
+Here also is the first actual bit of underlying HTML / DOM model
+showing through: the widget is based on a "div" tag, hence we
+call DOM.createDiv() and set that as the FocusWidget's element.
+Immediately, therefore, it is clear that the Pyjamas Widgets
+are effectively "guardian" classes that look after and
+manipulate bits of the underlying DOM model, making the whole
+process of creating and maintaining an application just that
+little bit easier to understand.
+
+Next, it is necessary to make the slider "handle" and to make it
+possible for the handle to move freely.  In other words, it is
+necessary to be able to set the coordinates, exactly, of the
+slider "handle".  There is a Pyjamas ui widget which has exactly
+this functionality, already: AbsolutePanel. 
+Take a look at <tt>pyjamas/ui.py</tt> and search for "class AbsolutePanel".
+Examining what AbsolutePanel.__init__() does, it can be seen that
+by setting its "div" container tag to be position "relative",
+child elements can be positioned accurately within it.  Also,
+a second hard-coded "div" will be added, to represent the actual slider
+handle:
+{{
+        DOM.setStyleAttribute(element, "position", "relative")
+        DOM.setStyleAttribute(element, "overflow", "hidden") 
+
+        self.handle = DOM.createDiv()
+        DOM.appendChild(element, self.handle)
+}}
+Note that the second "handle" div is appended to the container
+"div" as a child element.  As this is just a demonstration, we're
+going to hand-code the slider handle with some attributes, making
+it 10 pixels high, with a border of 1 pixel, fixing it to be the
+same width as the Widget, and making it a grey colour.
+{{-info
+A much better way to do this would be to set a CSS stylesheet where
+users could over-ride all these settings.  the "handle" element
+would have a CSS style added to it, using setStyleName.
+}}
+Note also that DOM.setAttribute() is not used to set the border,
+width and height.  W3C HTML specifications need to be consulted,
+here: observe that "border" is a CSS attribute reserved for DOM
+components such as "table".  So, if DOM.setAttribute("border", "1px")
+is called on a "div" tag, it silently fails to do anything, in the
+browser.  If the Javascript Console is examined, there <i>might</i>
+be a warning - but it is likely swamped by all the other CSS errors...
+{{-info
+If the same thing is tried under Pyjamas-Desktop, a much more useful
+run-time error will occur, as the attributes and the CSS style attributes
+of an element are directly accessed as static variables, in entirely
+different data structures.  So, if the variable being accessed don't exist,
+Python can do nothing but complain.
+}}
+The upshot is: pay attention to the underlying DOM model, and remember
+to simultaneously develop an application using <i>both</i> Pyjamas <i>and</i>
+Pyjamas-Desktop, to save a great deal of time.  If a border on a "div" tag is
+required, it must be set as a CSS Style attribute with
+<tt>DOM.setStyleAttribute</tt>, <i>not</i> as an attribute
+(with <tt>DOM.setAttribute</tt>):
+{{
+    DOM.setStyleAttribute(self.handle, "border", "1px")
+    DOM.setStyleAttribute(self.handle, "width", "100%")
+    DOM.setStyleAttribute(self.handle, "height", "10px")
+    DOM.setStyleAttribute(self.handle, "backgroundColor", "#808080")
+}}
+These lines make the slider "handle" have a border of 1 pixel; set the
+handle width to always be the same as its container; set its height to
+10 pixels, and set its colour to a nice boring shade of grey.
+
+== Testing ==
+
+With these basic beginnings, it's enough to test the application, to see if
+it's working.  If all that was wanted was a little grey box in a widget, the
+task would be complete.  However, it's good practice to confirm what's
+already working, before proceeding.  In the same directory that the
+Controls.py module has been saved, create an HTML Loader file,
+ControlDemo.html, with the following contents:
+{{
+<html>
+    <head>
+        <meta name="pygwt:module" content="ControlDemo">
+        <title>Hello</title>
+    </head>
+    <body bgcolor="white">
+        <script language="javascript" src="bootstrap.js"></script>
+    </body>
+</html>
+}}
+Next, create a file, ControlDemo.py, again in the same directory,
+with the following contents:
+{{
+""" testing our demo slider
+"""
+from pyjamas.ui.RootPanel import RootPanel
+from Controls import VerticalDemoSlider
+
+class ControlDemo:
+    def onModuleLoad(self):
+        b = VerticalDemoSlider(0, 100)
+        RootPanel().add(b)
+        b.setWidth("20px")
+        b.setHeight("100px")
+
+if __name__ == '__main__':
+    app = ControlDemo()
+    app.onModuleLoad()
+}}
+Note that the Demo slider has been imported from Controls.py, which is
+why it was necessary to place ControlDemo.py in the same directory.
+Also, note that the width and height are set, hard-coded, to 20 by 100
+pixels.  b.setStyleName("demoslider") could have been used, instead,
+but that would require the creation of a CSS stylesheet along with
+referencing it in ControlDemo.html.
+
+One thing that's great about Pyjamas: these few lines are enough code to
+do exactly what is desired, with clear and consise purpose: create a slider,
+add it to the root panel, set its width to 20 pixels and the height to 100.
+It really couldn't get any easier.  Compile the example with the following
+command:
+{{
+    python ../../bin/pyjsbuild ControlDemo.py
+}}
+Open output/ControlDemo.html in a web browser, and it should
+result in a delightful 20x10 grey box being displayed, which is
+very exciting.  Next on the list is to make it move, and for that,
+a "click listener" is needed.
+
+== Making it move ==
+
+To receive a click event, FocusWidget.addClickListener() is to be used.
+The widget itself will receive the mouse click event.  Open <tt>pyjamas/ui.py</tt>
+and search for the function in FocusWidget called onBrowserEvent().  For
+convenience, the relevant portion is shown here:
+{{
+    def onBrowserEvent(self, event):
+        type = DOM.eventGetType(event)
+        if type == "click": 
+            for listener in self.clickListeners:
+                if hasattr(listener, "onClick"): listener.onClick(self, event)
+                else: listener(self, event)
+}}
+Examining this function, it can clearly be seen that, in order to
+receive "click" events, a function called onClick() must be added
+to the VerticalDemoSlider class.  As we want to know <i>where</i>
+the mouse was clicked, it is necessary to add two arguments to the
+onClick() function, in order to receive the mouse event object as
+the second.  Add these additional lines to the ControlDemo class:
+{{
+        def onClick(self, sender, event):
+
+            # work out the relative position of cursor
+            mouse_y = DOM.eventGetClientY(event) - \
+                       DOM.getAbsoluteTop(sender.getElement())
+            self.moveSlider(mouse_y)
+
+        def moveSlider(self, mouse_y):
+
+            relative_y = mouse_y - DOM.getAbsoluteTop(self.getElement())
+            widget_height = self.getOffsetHeight()
+
+            # limit the position to be in the widget!
+            if relative_y < 0:
+                relative_y = 0
+            height_range = widget_height - 10 # handle height is hard-coded
+            if relative_y >= height_range:
+                relative_y = height_range
+
+            # move the handle
+            DOM.setStyleAttribute(self.handle, "top", "%dpx" % relative_y)
+            DOM.setStyleAttribute(self.handle, "position", "absolute")
+}}
+As can be seen, the mouse event y position is retrieved from the incoming
+event, with <tt>DOM.eventGetClientY</tt>; the absolute location of the
+container is subtracted, and the resultant relative value is
+passed to <tt>moveSlider()</tt>.  In moveSlider, the "offset height" of the
+widget is the total height of the widget, giving the travel range.
+With a little math, the new position of the "handle" can be calculated,
+in pixels. Again, learning from how AbsolutePanel sets the coordinates
+of its child widgets, copying some lines of code from the function
+AbsolutePanel.setWidgetPosition allows the location of the slider handle
+to be set.
+
+Save the changes to ControlDemo.py, re-build and refresh the browser.
+Click on the slider, and... nothing should happen.  A very important
+line was missed out!  Go back to VerticalDemoSlider.__init__ and add this,
+at the end of the function, and try again:
+{{
+        self.addClickListener(self)
+}}
+The significance of this line can be seen from how FocusPanel's
+onBrowserEvent function works: unless the instance of the slider
+class is listening to click events, the onClick function will not
+be called.  Once added, and the application is recompiled, then
+amazing things happen!  the slider widget works!  A single-click
+moves the slider handle to where mouse is clicked.  Notice how the
+slider centre moves to where the mouse pointer actually points to:
+this is entirely a fluke, and is probably due to browser bugs in
+the CSS style implementation.
+
+Notice also that the value of the "slider" - the control - hasn't
+actually been made use of, but there's enough maths to calculate
+the value that it should be set to.  Add these extra lines on to
+the end of moveSlider():
+{{
+        val_diff = self.max_value - self.min_value
+        new_value = ((val_diff * relative_y) / height_range) + self.min_value
+        self.setValue(new_value)
+}}
+Then, also add a setValue() function, which not only records the
+new value but also notifies any listeners.  Copying the style of
+Label and other widgets' addClickListener() and removeClickListener()
+functions, add the functions addControlValueListener() and
+removeControlValueListener() to match:
+{{
+    def setValue(self, new_value):
+
+        old_value = self.value
+        self.value = new_value
+        for listener in self.valuechange_listeners:
+            listener.onControlValueChanged(self, old_value, new_value)
+
+    def addControlValueListener(self, listener):
+        self.valuechange_listeners.append(listener)
+
+    def removeControlValueListener(self, listener):
+        self.valuechange_listeners.remove(listener)
+
+}}
+Notice how, right at the beginning, in the constructor, an empty list
+was added: <tt>self.valuechange_listeners</tt> was initialised, and that
+list can now be used, as shown above, by storing listeners that will
+receive notification of when the value of the slider changes.  Also,
+notice how we're defining the interface, here - the interaction with
+other widgets - by expecting classes to have a function called
+<tt>onControlValueChanged()</tt> that will take as parameters
+the sender, the old value and the new value of the slider control.
+The reason for this is that a listener will find it useful to know
+not only which widget changed, and also the new value, but also it
+may be useful to a listener to know by <i>how much</i> a value changed.
+
+Save the file, as the next step is to check that this code works.
+In the "test code", ControlDemo.py, add these extra lines to
+ControlDemo.onModuleLoad() and also add the additional function
+onControlValueChanged:
+{{
+        b.addControlValueListener(self)
+        self.label = Label("Not set yet")
+        RootPanel().add(self.label)
+
+    def onControlValueChanged(self, slider, old_value, new_value):
+        self.label.setText("Value: %d" % int(new_value))
+}}
+Note how the ControlDemo class is set as a listener for change notification:
+this is why an <tt>onControlValueChanged</tt> function was added.  In it,
+the label's text will be changed.
+{{-info
+(Also, remember to add an import of Label to the top of the
+file - the line "from pyjamas.ui import Label" will suffice).
+}}
+
+Save the changes to ControlDemo.py, recompile the application with
+build.py, and refresh the browser window (or reopen output/ControlDemo.html).
+There should be a very boring Text Label 200 pixels underneath a grey box,
+with the words "Not set yet" displayed.  Clicking anywhere between the box
+and the words should not only move the slider, but also changes the text to
+say "Value: 83", or something to that effect.  Amazing.
+
+Congratulations, a slider has been created, in 70 lines of python
+code, and a demonstration of its use in 20.  It can be clicked on it.
+Try to resist the urge to press the up and down arrows and to click
+and hold the mouse: it won't work.
+
+== What's been covered ==
+
+In this section, the following issues have been covered:
+ * How to create a widget that can react to user-input, by deriving from FocusWidget
+ * How to use manipulation of the DOM model to change screen-content, by adding HTML Elements to it
+ * How to use the DOM module to change attributes and CSS Style attributes
+ * The importance of checking the W3C HTML Specifications when it comes to distinguishing the difference between HTML Element attributes and HTML Element CSS attributes
+ * How a Pyjamas ui widget is effectively a "guardian" of HTML elements - parts of the DOM model.
+ * How a widget could be made to react to user-input and other events, by using the features provided by an onBrowserEvent function of a base class (in this example, FocusWidget).
+ * The importance of looking at the existing pyjamas.ui source code to work out what is going on, and the importance of identifying, copying and adapting sections of existing code.
+
+This latter advice is perhaps just general good advice for programming.
+In the Pyjamas case, given that the pyjamas.ui module is really quite
+small, it's a lot easier advice to follow than if confronted with tens of
+thousands of lines of code.
+
+Also, it's worth reiterating at this point that at no time, anywhere in
+the code, was there any mention of a "repaint" function, a "redraw",
+"refresh" or other function that otherwise interferes with the simple,
+simple job of doing exactly what is wanted: putting stuff on-screen.
+Although many people bitch like hell about how "difficult" web browsers
+are, the bitching is invariably down to the requirement to get involved
+with Javascript.  Web browser technology <i>actually</i> does a stunningly
+good job, and is clearly a better basis for a Desktop widget framework
+than most Desktop widget frameworks!  And, given that the programming
+is being done in Python, one of the key reasons for all the complaining
+goes away.
+
+{{-info
+The reason why "repaint" isn't needed is because whenever a part of the DOM
+model is changed, the underlying browser technology gets an automatic
+notification to take care of redrawing the screen.  It does have to be said
+that in certain circumstances, certain browsers (in particular IE6 and IE7)
+don't actually get it right every time - and even Firefox can be made to screw
+up, if pushed particularly hard in the right places.  However, with care and
+attention, and a little studying of HTML and CSS behaviour, the automatic
+redrawing will be perfect every time.
+}}
+
+= Improvements to the Slider: Event Handling and Capture =
+
+The simple slider receives a basic "click" to move the slider.
+Of much more interest is to be able to drag and move the
+slider, as this is the kind of behaviour that is more intuitive
+to users.  As there already is demo slider to work from, that will be
+used as a base class.  The primary focus of this section will therefore
+to add mouse event handling - up, down, and move.
+
+Add the following lines to Controls.py:
+{{
+class VerticalDemoSlider2(VerticalDemoSlider):
+
+    def __init__(self, min_value, max_value, start_value=None):
+
+        VerticalDemoSlider.__init__(self, min_value, max_value, start_value)
+        self.mouseListeners = []
+        self.addMouseListener(self)
+        self.sinkEvents(Event.MOUSEEVENTS)
+        self.dragging = False
+
+    def addMouseListener(self, listener):
+        self.mouseListeners.append(listener)
+
+    def removeMouseListener(self, listener):
+        self.mouseListeners.remove(listener)
+}}
+Here, VerticalDemoSlider2 is derived from VerticalDemoSlider.
+The class adds itself as a "mouse listener" - and indicates to the
+DOM model that notifications about all Mouse Events must be received.
+{{-info
+Examine <tt>pyjamas/ui/FocusWidget.py</tt>.  Note how FocusWidget sinks the
+events ONCLICK, FOCUSEVENTS and KEYEVENTS.  This is why VerticalDemoSlider,
+which derives from FocusWidgets, was capable of receiving mouse click events
+(through FocusWidget's onBrowserEvent function).
+}}
+By asking VerticalDemoSlider2 to receive MOUSEEVENTS, when the mouse
+moves into the widget, a "mouse enter" event is received; also,
+all move, down and up events are also received for as long as the
+mouse is over the element and, when the mouse moves out, a mouse
+"leave" event is received.  All of these events will result in
+onBrowserEvent being called, which is the next key function needed:
+{{
+    def onBrowserEvent(self, event):
+        type = DOM.eventGetType(event)
+        if type == "mousedown" or type == "mouseup" or \
+           type == "mousemove" or type == "mouseover" or type == "mouseout":
+            MouseListener().fireMouseEvent(self.mouseListeners, self, event)
+        else:
+            VerticalDemoSlider.onBrowserEvent(self, event)
+}}
+Here, as can be seen, it's very straightforward: mouse events are
+passed to a convenience function (<tt>fireMouseEvent</tt>) which will call
+the appropriate handler functions on each of the listeners.  These
+lines of code were copied verbatim from other <tt>pyjamas/ui</tt>
+widgets that deal with mouse events: <tt>Label</tt> for example.
+Also, note how, if the type of the event is <i>not</i> found to be
+a mouse event, VerticalSliderDemo (the base class) is asked to
+handle the event.  In this way, mouse click, focus and keyboard events
+will still be dealt with.  Without this explicit call through to
+the base class function (which is actually in FocusWidget, as
+VerticalSliderDemo doesn't have its own onBrowserEvent function),
+it would be extra and unnecessary work to handle these events.
+
+Look at "class MouseListener" in <tt>pyjamas/ui/MouseListener.py</tt>.
+Examining fireMouseEvent, it can be seen that there are five possible
+functions that could be called (on every one of the listeners,
+in turn): onMouseDown, onMouseUp, onMouseMove, onMouseLeave and
+onMouseEnter.  Therefore, it is necessary to add each of these four
+functions - even if all of them are not used.
+
+onMouseEnter and onMouseLeave, are going to be left blank.  However,
+if it was desirable to make the slider visually "respond" to the
+mouse hovering over the slider, it is these two functions that would
+take care of that - perhaps by adding and removing a CSS stlye,
+using <tt>addStyleName()</tt>.
+{{
+    def onMouseEnter(self, sender):
+        #self.addStyleName("sliderhighlighted")
+        pass
+    def onMouseLeave(self, sender):
+        #self.removeStyleName("sliderhighlighted")
+        pass
+}}
+The core of the work is done in the remaining three functions.
+Firstly, onMouseMove, which takes care of translating the mouse
+pointer's absolute y position into actual movement of the slider:
+{{
+    def onMouseMove(self, sender, x, y):
+        if not self.dragging:
+            return
+        self.moveSlider(y)
+}}
+Notice how slider movement is only allowed when "dragging" is set.
+If this wasn't done, then the slider would immediately start to
+jump and move when the mouse cursor was placed over the widget,
+as mouse "move" events occur <i>immediately</i> that the mouse
+enters the DOM model Element that the widget is responsible for.
+Clearly this is undesirable: the expected behaviour is for the
+slider to move only when a mouse button is held down:
+{{
+    def onMouseDown(self, sender, x, y):
+        self.dragging = True
+        DOM.setCapture(self.getElement())
+        self.moveSlider(y)
+}}
+So, when a mouse down event occurs, the "dragging" flag is set
+to True.  An indication is made, using <tt>DOM.setCapture</tt>
+that all future events will be sent to this widget; the slider
+is also moved.  The reason for moving the slider is because it
+is a separate event from "mouse move", and people will get rather
+annoyed if the the "mouse button" is clicked and the slider stays
+where it is.  The reason for capturing mouse events from now on
+is because users are quite likely to move the mouse <i>out</i> of
+the widget whilst the button is still held down, and will expect
+the slider to still move.  Only when the user lets go of the mouse
+button will it be expected that the slider will stop moving about:
+{{
+    def onMouseUp(self, sender, x, y):
+        self.dragging = False
+        DOM.releaseCapture(self.getElement())
+}}
+As can be seen, all that is necessary is to simply indicate,
+by setting dragging to False, that the slider should no longer
+move about when "mouse move" events occur, and for event capturing to
+be cancelled.
+
+This is all that is required to turn the "click-only" slider into
+a dragging-capable one.  The majority of the user-interface hard
+work was done in the previous section - all that's being done here
+is that VerticalDemoSlider's moveSlider() function is called at the
+appropriate times.
+
+Save the changes to Controls.py, then either copy the ControlDemo.py
+and associated HTML file, to ControlDemo2, or simply change the
+existing ControlDemo.py to use VerticalDemoSlider2 instead of
+VerticalDemoSlider.  Recompile the code with this command:
+{{
+    python ../../bin/pyjsbuild ControlDemo.py
+}}
+Open <tt>output/ControlDemo.html</tt> with a web browser,
+click-and-hold the mouse anywhere on the slider and then move the
+mouse up or down, within its 200 pixel range.  The value will
+change and be displayed in the Label, below the slider.
+{{-info
+Observe, occasionally, that mouse-drag results in selecting text!
+This Is Bad.  It's to do with event handling, and there's a way to
+stop it.
+}}
+Mouse events have a default behaviour, in browsers, and a "mouse down"
+and "drag" results in text selection.  To terminate this behaviour,
+it is necessary to get at the event "early" - before it gets handed
+on to the browser's underlying sub-system.  Take a look at
+<tt>pyjamas/ui/DialogBox.py</tt> and look for
+the function <tt>onEventPreview</tt>.
+Copy those lines, and add them to VerticalDemoSlider2:
+{{
+    def onEventPreview(self, event):
+        # preventDefault on mousedown events, outside of the
+        # control, to stop text-selection on dragging
+        type = DOM.eventGetType(event)
+        if type == 'mousedown':
+            target = DOM.eventGetTarget(event)
+            event_targets_control = target and \
+                                    DOM.isOrHasChild(self.getElement(), target)
+            if event_targets_control:
+                DOM.eventPreventDefault(event)
+        return VerticalDemoSlider.onEventPreview(self, event)
+}}
+Also, add this line to VerticalDemoSlider2's constructor:
+{{
+        DOM.addEventPreview(self)
+}}
+It can be seen that, when a "mouse down" event occurs, the "default"
+behaviour - in this case, text selection - is prevented, through the
+use of <tt>DOM.eventPreventDefault</tt>.  However, previewing of events
+consumes CPU resources, especially given how many mouse move events
+there can be.  So, sending every single browser event through a widget
+should only be done if it is absolutely necessary.
+
+== What's been covered ==
+
+This section added a more user-friendly behaviour to the slider: dragging.
+Quite specific sections of code were cut-and-paste lifted near-verbatim
+from <tt>pyjamas/ui/DialogBox.py</tt> and <tt>pyjamas/ui/PopupPanel.py</tt>
+to provide this behaviour, and the following issues were covered:
+ * Calling <tt>DOM.sinkEvents()</tt> to register event types, with the DOM subsystem, that the widget should be notified of.
+ * Adding an <tt>onBrowserEvent()</tt> function to receive and handle mouse events, and the importance of passing on any other events to the base class.
+ * How <tt>fireMouseEvent()</tt> provides some standard behaviour that makes mouse event handling easier to write.
+ * How to implement dragging, by noting when the mouse is down, and only reacting to mouse move events when the mouse is down.
+ * The importance of calling <tt>DOM.setCapture()</tt> to ensure that all events go to the widget whilst the mouse is down.
+ * The importance of calling <tt>DOM.releaseCapture()</tt> on mouse-up, to give control back to the browser!
+ * How and why an <tt>onEventPreview()</tt> should be used.
+
+In dealing with the issues, from the user requirements of providing
+mouse "drag" capability, there's something near-fatalistic about
+the way the code emerged.  The code almost wrote itself, according
+to the requirements; the rules of the underlying DOM model; the
+existing Pyjamas API and the way in which sections of code were
+borrowed near-verbatim from other widgets.
+
+= TODO =
+
+Keyboard Events and Keyboard Focus
+
+

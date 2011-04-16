@@ -1,0 +1,32 @@
+= Class Event =
+
+This class contains flags and integer values used by the event system.
+
+It is not meant to be subclassed or instantiated.
+
+== Data and other attributes defined: ==
+
+ * BUTTON_LEFT = 1
+ * BUTTON_MIDDLE = 4
+ * BUTTON_RIGHT = 2
+ * FOCUSEVENTS = 6144
+ * KEYEVENTS = 896
+ * MOUSEEVENTS = 124
+ * ONBLUR = 4096
+ * ONCHANGE = 1024
+ * ONCLICK = 1
+ * ONDBLCLICK = 2
+ * ONERROR = 65536
+ * ONFOCUS = 2048
+ * ONKEYDOWN = 128
+ * ONKEYPRESS = 256
+ * ONKEYUP = 512
+ * ONLOAD = 32768
+ * ONLOSECAPTURE = 8192
+ * ONMOUSEDOWN = 4
+ * ONMOUSEMOVE = 64
+ * ONMOUSEOUT = 32
+ * ONMOUSEOVER = 16
+ * ONMOUSEUP = 8
+ * ONSCROLL = 16384
+

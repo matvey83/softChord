@@ -1,0 +1,829 @@
+                    Changes made to Pyjamas since 0.6
+                    ---------------------------------
+
+ * Added string zfill function, thanks to A. Motolla.
+
+ * Added datetime module, thanks to A. Motolla.
+
+ * Added issubclass, thanks to Daniel Gerber
+
+ * Off-by-one bug in datetime on months, fixed by Russell Yanofsky
+
+ * Fix for menu highlighting by Pavel Mironchyk
+
+ * Add initial port of python logging module
+   Supports logging.StreamHandler (to log to console with print statement) and
+   logging.handlers.HTTPHandler (to log to remote webserver)
+
+ * Updated JSONRPC to conform JSON-RPC 1.0/1.1/2.0 and to return
+   JSON-RPC 2.0 error dicts ini onRemeoteError (other errors are 
+   mapped to JSON-RPC 2.0 format)
+
+ * Enhanced dict initialization: dict(a=1, b=2)
+
+ * Added setFocus function to TextBoxBase to override FocusMixin.setFocus
+   because FocusMixin assumes that you called Focus.createFocusable to
+   create the input box.
+
+ * Added str.isalpha and str.isupper, thanks to Marcus Brinkmann
+
+ * Modified bootstrap.py: place absolute path in pyjsbuild.bat file to
+   reference python.exe direct (thanks to Rich Newpol) closes #324
+
+ * Added FlowPanel demo from jordanwii showing how you have to use
+   a span element to Label to get round a CSS IE hack issue
+
+ * added DOM.eventStopPropagation which sets cancelBubble in IE/MSHTML
+   and calls stopPropagation everywhere else
+
+ * Added builtin sum() function
+
+ * Added builtin zip() function
+
+ * Added builtin reduce() function
+
+ * Added builtin iter() function
+
+ * Added types set and frozenset
+
+ * Added builtin reversed() function
+
+ * Added fromkeys method to dict
+
+ * Added builtin sorted() function
+
+ * Optimized 'for x in y' loops
+
+ * Output is packable with http://dean.edwards.name/packer/
+
+ * JavaScriptLint checks
+
+ * Python 2.6 TranslationError deprecation message fix
+
+ * Added support for relative imports
+
+ * Added insertItem to Tree, TreeItem and RootTreeItem and demo in
+   KitchenSink Trees.py (thanks to Carl Roach)
+
+ * Added arguments for instance initialization in jsObjectToPyObject
+
+ * Implemented NotImplementedType and NotImplemented
+
+ * Implemented an int type and a long type
+
+ * Add support for xrange and propper range (range was in fact an xrange)
+
+ * Add support for multiple compare (0 < n < 4)
+
+ * Add DoubleClickListener mixin
+
+ * Add PUT and DELETE into XMLHttpRequest (thanks to Nick <thretwon@gmail.com>)
+
+ * Added for in tuple
+
+ * Added support for locals()
+
+ * Added support for slice delete
+
+ * Added support of slice assignment
+
+ * Added support for IfExp (inline if expression)
+
+ * Added support for generator expressions
+
+ * Added support for any statement in class definition
+
+ * Added support backquote
+
+ * Added support for class definition anywhere
+
+ * Re-enabled and fixed up pyv8run.py, which now successfully runs
+   LibTest when translated to javascript (and passes 99.95%)
+
+ * added support for Subscript Assignment in class definitions:
+   class SubAssignBase(object):
+       names['SubAssign'] = 'SubAssign'
+
+ * Added support for generators (yield statement)
+
+ * Added an substantial portion of re module
+
+ * added isReadOnly and getReadOnly functions to FocusMixin, such that
+   FocusPanel and FocusWidget both get that functionality (thanks to
+   guenter walser)
+
+ * Added --operator-funcs to enable non-number operation such as [1]+[2]
+
+ * Added --inline-code to speedup eq/bool/len (saves expensive function calls)
+
+ * All attributes are accessed as v['attr'] and not as v.attr anymore
+   This circumvents a bug in IE with javascript keywords:
+     (v.super is not allowed, but v['super'] is)
+
+ * Added __cmp__ to dict class
+
+ * Make compile options effective in runtime options
+
+ * Added --keep-lib-files option
+
+ * Added --dynamic option
+
+ * Added dynamic loading of modules
+
+ * Added builtin __import__ (only supports the first parameter)
+
+ * make public subdirectory configurable at build time (thanks to Mathias Waack)
+
+ * Add rfind to string (and tests)
+
+ * Added new "Handler" classes MouseHandler, ClickHandler, KeyboardHandler
+   and FocusHandler, which need only be "mixed in" to a Widget in order
+   to get event handling.
+
+ * fixed floating point precision in sprintf, now '%.2f' works
+
+ * Added basic implemention of new style decorators and 2.6 style property()
+
+ * Added first port of GChart - http://code.google.com/p/gchart.
+   java2py.py converted, then manual update.  Passes syntax check
+   but that's about it...
+
+ * Added property()
+
+ * Added staticmethod()
+
+ * Added __pyjamas__.setCompilerOptions()
+
+ * Added descriptors (enables old style decorators)
+
+ * Added del cls.attr
+
+ * More checks in list methods
+
+ * Javascript keywords are possible/allowed as attibutes/modules
+
+ * All builtins can be overridden
+
+ * Added support for *args/**kwargs for lambda
+
+ * Added support mutable default in functions
+
+ * Added keyword args to list.sort (thanks to Beni Cherniavsky)
+
+ * Fixed toggle example and button handling #236
+
+                    Changes made to Pyjamas since 0.5p1
+                    -----------------------------------
+
+ * Resolved getAbsoluteTop and getAbsoluteLeft in pyjd hulahop, pyjd
+   pywebkitgtk, Safari, Mozilla (including 3.5), webkit but NOT IE6
+   and NOT pyjd MSHTML.
+
+ * Added jsimport example (direct from kees's commit message :)
+
+ * Added __pyjamas__.jsimport(path, mode, location)
+
+ * remove dependency of pywin32 in pyjd MSHTML port.
+
+ * improved event handling of pyjd MSHTML port.
+
+ * Added platform overrides system... to pyjd!  MSHTML, hulahop and pywebkitgtk
+   can now have their own platform-specific overrides.
+
+ * Added debugger() to __pyjamas__
+
+ * Added javascript inclusion via --include-static-js and __pyjamas__.include()
+
+ * Added dict pop and popitem, thanks to Beni Cherniavsky
+
+ * Added build option --bootstrap-file and a bootstrap_progress.js
+
+ * Discarded strings are not getting translated anymore
+
+ * Added --downloads-(yes/no) to buildall.sh and employeeadmin/build.sh
+
+ * Added experimental support for MSHTML as a Pyjamas Desktop engine
+
+ * Added lightout example from Radoslav Kirov
+
+ * Added if and nested for to list comprehension
+
+ * Added base64 module (not encode/decode file)
+
+ * Added binascii module
+
+ * Added struct module (not pack_into/unpack_from)
+
+ * Added basic support for list comprehension (no ifs/multiple for)
+
+ * Added builtin import test, which will fail if the import code
+   gets too smart
+
+ * The -d option now sets:
+    --debug-wrap
+    --source-tracking
+    --line-tracking
+    --store-source
+
+ * Bugfix for soure tracking/debugging
+
+ * BUGFIX: the --no-print-statements option was not honored in browser
+   linker
+
+ * fixed urllib quote TODO: need real implementation of quote
+
+ * removed deprecated pyjs.py from root of pyjs
+
+ * we now do not need to override pyjamas.Window fully anymore, so use
+   base implementation, which now does not import gtk anymore. moved
+   pyjamas/__pyjamas__ to /__pyjamas__ again.
+
+ * Added beginnings of urllib (quote, urlencode) thanks to Ondrej Certik
+
+ * Fixed speed issue #199!  was related to accidental inclusion of gtk.py,
+   which accidentally pulled in browser.py, gobject.py and much more.
+   Thank you to dobee and jukart for identifying the source of the problem.
+
+ * fixed Window listener. Added tests for those
+
+ * moved pyjamas.__pyjamas__ to __pyjamas__, this way the translator
+   now removes any import from __pyjamas__ this module is not existent
+   in javascript, only in python. if there is a requirement to a
+   function in __pyjamas__ in javascript, it does not belong there.
+
+ * added flag handling to overrides for translator, see
+   translator.txt. it is now possible to override a whole
+   module.
+
+ * fixed pyjamas.Window.getClientWidth/Height on IE. removed
+   conditionals from __browser__ implementation in those functions.
+
+ * prevent usage of builtin names in pyjslib, this causes javascript
+   errors at least in javascript lint. int and float are now int_
+   float_ in javascript. for python code nothing should change.
+
+ * re-added the --cache-buster option, which now also works along with
+   --multi-file. both options are now enabled in libtest build.
+
+ * fixed a bug in linker which caused js_libs to be duplicated when
+   called twice in a process. this only affects tests, not console
+   scripts.
+
+ * added --multi-file option to browser linker to generate script tags
+   instead of including the whole code in one file. now it is possible
+   to really work with firebug because of the small files. added this
+   option to build.sh of libtest by default.
+
+ * fixed browser linker which didn't take js_includes into account
+
+ * use python's standard logging module for displaying messages in the
+   linker. The browser linker now takes a -l option for specifying the
+   python log level. e.g -l 0 displays all log messages
+
+ * created a new parent platform called "array_extras" which is used
+   for "sm", "mozilla", "opera" and "safari" in order to use things
+   like Array.indexOf on all browser that suppport the array extras.
+
+ * raise a TranslationError if a reserved word is used for a module
+   name, this would cause unpredictable results in running code, which
+   is very hard to debug.
+
+ * fixed __contains__ on Tuples in mozilla and added TupleTest to LibTest
+
+ * fixed the "!=" operator, it now uses pyjslib.eq
+
+ * Yi Choong contributed a DateField widget, and example - thank you!
+
+ * Local variables (in functions/methods) are now declared at the
+   head of the function/method
+
+ * Compiler option decorators now take the form @compiler.<option>
+
+ * translator is now using unknown properties as module properties
+   Take care of this when mixing JS and Python code :
+     JS("var a = 1")
+     if a == 1:
+         pass
+   "a" is not know to the translator because it was declared in JS.
+   Do this :
+     a = None
+     JS("a = 1")
+   Now a is known to python.
+
+ * #180 - 25% reduction in code output size thanks to Kees moving
+   some of the auto-generated code on a per-function basis into
+   javascript support routines.
+
+ * #152 - added buttonClick and fixed up CustomButton (see Toggle example)
+   at same time.  EVENT.BUTTON_LEFT, BUTTON_MIDDLE, BUTTON_RIGHT had wrong
+   #defines as well: only CustomButton was using them which was why nobody
+   noticed.
+
+ * Allowed all widget constructors to take kwargs which will result
+   in the setXXXX method being called.  Tuples as kwargs will result
+   in *args to the setXXXX method e.g.
+        p = HorizontalPanel(Size=("600px", "200%"),
+                            StyleName="class-name",
+                            Visible=False)
+   is equivalent to:
+        p = HorizontalPanel()
+        p.setSize("600px", "100%")
+        p.setStyleName("class-name")
+        p.setVisible(False)
+   This is a strategically very significant upgrade to Pyjamas Widgets:
+   it dramatically simplifies the creation of applications.
+   Closes #34.
+
+ * Added compile-options --[no-]bound-methods
+
+ * Added augassign for indexed items
+
+ * Whitespace cleanup of addons by stefan schwarzer
+
+ * Extended time module with gmtime/localtime/mktime and partial strftime
+
+ * Tuples no more behave like List. No mutating methods anymore to go
+   inline with the pyhton implementation.
+
+ * huge refactoring, with incompatible changes,  see TODO
+
+ * the translator and the linker are now split
+
+ * python packages are now supported
+
+ * translation (not linking) is done on a per-file basis like in
+   python, no requirement for existing imports anymore
+
+ * overrides are searched for in a namespace package e.g
+   (__mozilla__), this means we can place overrides anywhere in the
+   pyjs.path
+
+ * platforms can inherit from others e.g. spidermonkey inherits from
+   mozilla (multioverride - no need for runner specific special
+   translation like the PyJS hack)
+
+ * public folders are looked up in any directory where a module lives
+   - this means the data_directory option is gone
+
+ * pyjs/builtin/public now holds required bootstrap script files
+
+ * there is a dev directory where all scripts from pyjs are now
+   generated via normal setup.py and buildout
+
+ * in the dev directory a test script tests the translator, browser-
+   and spidermonkey-linker, the spidermonkey linker test actually runs
+   examples/libtest
+
+ * builtins now live in pyjs/builtin, those builtins (e.g. pyjslib)
+   are transparent from python
+
+ * Patch from Stefan Schwarzer to replace != None with is not None
+   and == None with is None, general clean-up.
+
+ * Got SVG 2D Canvas addonsgallery example working under Pyjamas-Desktop
+   (Gecko Engine).  Requires a patch to XulRunner, for drawImage to work:
+   https://bugzilla.mozilla.org/show_bug.cgi?id=502234
+
+ * Added libtest corrections thanks to stefan schwarzer
+
+ * Added PureMVC example EmployeeAdmin
+
+ * Added Gecko/XUL/Hulahop as Pyjamas-Desktop engine; added pyjd.setup
+   and pyjd.run functions (which are dummy in pyjs); added ~/.pyjd/pyjdrc
+   file to configure use of either pywebkitgtk or hulahop
+
+ * int() now raises ValueError
+
+ * Added __getitem__ to Exception
+
+ * Fix for cache-busting in build process with different versions
+   of python (use of md5 module), thanks to Oisin Mulvihill
+
+ * Added support for reaching subscript js objects with python syntax
+
+ * Added 'native' functions doc() and wnd() to reach $doc and $wnd
+
+ * Added platform merge for simple class attribute assignments
+
+ * Moved top-level option and track variable to safe variable $pyjs
+
+ * Repaired pyv8 code
+
+ * Namespace safe module imports
+
+ * Simplified import for pyjs
+
+ * Added isinstance(s, str) and isinstance(s, int) support
+
+ * Monster update to include Pyjamas-Desktop
+
+ * Added imperfect support for local import/from-import
+
+ * Added support for toplevel conditional import/from-import
+
+ * Added name mapping to protect javascript reserved function methods
+   and reserved local variables (e.g. .name/.prototype, this/arguments)
+
+ * Revised name (variable/class/function/...) lookup
+
+ * Extended compile option support for commandline building and
+   compiling and for function / method decorators
+
+ * Added __repr__() and toString() to list/tuple/dict
+
+ * Disable source-tracking on Modload for better trace dumps
+
+ * Use pyjslib.cmp() for <, <=, >, >= to enable type comparing (tuple/list/dict)
+
+ * Performance improvement pyjslib.eq / pyjslib.cmp
+
+ * Added support for iterable single argument in min()/max()
+
+ * Circular imports permitted
+
+ * Extended try-except support
+
+ * Extended raise statement support
+
+ * Added support for assigning instance methods to variables
+
+ * Bugfix/performance enhancement method argument checking
+
+ * Added Window.setOnError() and Window.onError()
+
+ * Changed compiler flag -d behavior (wrap function calls in switch)
+
+ * Added compiler flag --disable-store-source
+
+ * Added compiler flag --disable-source-tracking
+
+ * Modified debug and tracing
+
+ * Added support for 'for' iteration over slice
+
+ * Added support for function call in global variable
+
+ * Enhancement of import and from statement
+
+ * Added missing imports (bernd)
+
+ * use getattr for listener check in Image implementation (bernd)
+
+ * Bugfix for sprintf (in IE6)
+
+ * Added partial implementation for sys.exc_info()
+
+ * Added extended support for try...except...else
+
+ * Added support for attribute checking, with compiler flag
+
+ * Added support for super(type, type)
+
+ * Bugfixes in libraries and example
+
+ * Added compile option to disable argument checking
+
+ * Added argument checking on all functions/methods
+
+ * Added kwarg parsing on all generated functions
+
+ * Added parital implementation of super() function
+
+ * Changed Javascript backend for generating classes
+
+ * Added missing import in library/pyjamas/ui/TreeItem.py
+
+ * Improved the tab panel corners example (thanks to daryl daly)
+
+ * Added gmap example (Thanks to Greg)
+
+ * Added support for  x in [1,2,3]
+
+ * Added bit about css tables to faq
+
+ * Added buildall.py alternative to buildall.sh, thanks to delaney
+
+ * Added missing imports in library (thanks to jukart)
+
+ * Added much better sprintf which has dict support (Yaay!  thank you kees)
+
+ * Added NameError, ValueError and IndexError exceptions (thanks to Kees)
+
+ * Extended string startswith, endswith, added ljust, rjust and center
+   (thanks to Kees).
+
+ * Added "pow", "hex", "oct", "round", "divmod", "all", "any" and "delattr".
+   (thanks to Kees).
+
+ * Added subscript support and more, from the llpamies branch (lkcl), to
+   get pygtk working.
+
+ * Added support for x ** y syntax (thanks to Kees).
+
+ * Fixed getBoundingClientRect off-by-one bug (firefox 3 returns an
+   inaccurate float, not an int)  thanks to khiraly
+
+ * Added ToggleButton, PushButton and CustomButton (thanks to khiraly)
+
+ * Added means to return and call functions from another function call
+   (added by Kees)
+
+ * Added means to derive classes from classes in other modules
+   e.g. from module import parent; class child(parent): pass
+   (thanks to Kees Bos).
+
+ * Added class "Zero args" support (thanks to Kees Bos).
+   TODO: support runtime exceptions when number of function
+   call arguments is wrong, as illustrated in the new LibTest.
+
+ * Added Multiple Inheritance (thanks to Kees Bos)
+
+ * Add support for Google Gears (Database)
+
+ * Completed DisclosurePanel port
+
+
+                    Changes made to Pyjamas since 0.5
+                    ---------------------------------
+
+ * Fixed Autocompletion which just needed non-modal on PopupPanel
+   (thanks to lovelysystems for implementing non-modal dialogs
+    otherwise it wouldn't be possible to fix Autocompletion)
+
+ * Added implementation of metaclass "type" function
+
+ * Made KeyboardListener a singleton module rather than have a class
+   named the same as the module.  Likewise with MouseListener, Event
+   and Focus.
+
+ * Added Right-clickable Context Menus, and added an example in KitchenSink
+   Menus.py to show how to set them up.
+
+ * Added python-spidermonkey as an experimental platform, exactly like
+   pyv8run.py now there is pysmrun.py
+
+ * Top-level global variables, and top-level functions, now
+   correctly scope in a module (thanks to Jose for raising this one)
+
+ * String constants are now returned as instances of String()
+   which results in them having the __iter__ method that has
+   been added to the proto of the javascript base String type.
+
+ * made TypeError inherit from BaseException rather than being a
+   javascript proto from Error().  TypeError can now be raised
+   as an Exception, with a message.
+
+ * made == comparison use __eq__, which conditionally uses __cmp__
+   if it is available: this fixes bugs in comparison of lists in the
+   LibTest.  replaced a large number of numerical "==" comparisons
+   with "is", so that __eq__ doesn't get called (efficiency).
+
+ * added support for calling *args on functions: previously, a call
+   function(*args) would result in the args being thrown away!
+
+ * made Tuple its own class, rather than inheriting from List, in order
+   that it can be distinguished from List.  __cmp__ of a List with a
+   Tuple now correctly fails.
+
+ * rewrote the examples/libtest so that they can be run under standard
+   python (python ./LibTest.py).  this allows for a comparison of pyjs
+   against standard python.
+
+ * add method extend to pyjslib.List
+
+ * add float to builtins
+
+ * add pyjamas.log based on examples/libtest/write.py
+
+ * registered builtin function 'cmp'. was already implemented but not
+   registered in pyjs.py
+
+ * added an --optimize option to which results in removing print
+   statements. this could be further improved. e.g. when assert is
+   implemented
+
+ * fixed Mozilla "Permission Denied" bug in DOM.isOrHasChild
+
+ * pyjslib.Dict now use the hash method to generate keys internally,
+   so it si possible to use objects as keys like in python. For
+   limitations on dicts read examples/libtest/DictTest.py
+
+                    Changes made to Pyjamas since 0.4
+                    ---------------------------------
+
+ * convert app "loading" to require the use of "if __name__ == '__main__'"
+   bringing pyjamas into line with "standard" python.  apps can convert with
+   contrib/pyjamas_0.4-0.5_upgrade/add_name_main.py to add a small codefragment
+   at the end: "app = MyApp(); app.onModuleLoad()"
+
+ * added string iterator (for c in "hello")
+
+ * added stacktrace recording and notification when -d option is given
+   to builder.  expensive but useful.
+
+ * added a helper tool (in contrib) called replacer.py which helps convert
+   apps: "from pyjamas.ui import X,Y" is converted to
+   "from pyjamas.ui.X import X; from pyjamas.ui.Y import Y"
+
+ * split ui.py into separate modules.  cache file sizes are now drastically
+   reduced due to importing only including what is needed.  the reduction
+   is possible with both dynamic and static code-generation, although not
+   as much for static.
+
+ * dynamic module loading is now possible (add -m 1 to build).  each module
+   is placed in its own separate cache file, with platform overrides
+   also getting their own cache file.  cache files are shared between
+   platforms rather than four separate identical compiled modules being
+   created.  none of this optimisation is possible without dynamic loading
+
+ * added "reverse" method of List. Thanks to Soulburner
+
+ * The user.agent value for Mozilla is no longer "moz", instead
+   "mozilla" is returned, to be consistent with platform names.
+
+ * .cache.html files are now generated with their md5 hash in the name
+   like in gwt. This now allows to cache those files on the
+   browser.  add -c or --cache-buster to builder command-line to enable.
+
+ * all none-native functions always return None now, which matches the
+   behaviour of python.
+
+ * implemented "lambda". note that lambdas are only supported without
+   kwargs or varargs
+
+ * "while" and "if" statements now use the new "bool" function to
+   evaluate their expressions. Now it is possible to do things like
+   "if ([])".
+
+ * implemented builtin "bool" function, also the "is" and "is not"
+   operators are now generating "===" and "!==", this is needed to
+   distinct between undefined and null.
+
+ * added CaptionPanel (see showcase)
+
+ * the pyjs compiler now uses the pyjs.path variable using the same
+   semantics as sys.path in python to find python module files to be
+   compiled to javascript. the path can also be set via the
+   environment variable PYJSPATH
+
+ * Changed development setup to generate ./bin/pyjscompile ./bin/pyjsbuild
+
+ * implemented "isdigit" for strings
+
+ * added support for unicode constants, the encoding is now explicitly
+   set in the *.cache.html files to "utf-8". Strings should now be
+   encoded in a safer manner.
+
+ * implemented basic Exceptions in pyjslib and added them to the global
+   namespace.
+
+ * implemented try except statements with an expression. Raising and
+   catching of class based Exceptions is now possible. String based
+   Exceptions also work.
+
+ * implemented the 'isinstance' builtin function, currently only
+   works on normal class instances.
+
+ * implemented the 'raise' statement. it only works with a single expression.
+
+ * changed 'getattr' to accept a default and raise an AttributeError
+   if the attribute cannot be found.
+
+ * implemented 'setattr'
+
+ * added none modal behaviour to DialogBox
+
+ * fixed bug if mouse is moved too fast while dragging a dialog
+
+ * added support for statements at the "global" level in pyjs.py, so
+   that compiling "if __name__ == '__main__': " and other such global
+   code statements will now work.
+
+                    Changes made to Pyjamas since 0.3
+                    ---------------------------------
+
+Enhancements
+
+ * Added library/splitpanel.py and library/vertsplitpanel.py, along with
+  examples/splitpanel.  NOTE: splitpanels should be in ui.
+
+ * Changed ui.TabBar.insertTab() to allow widgets to be passed as well as text.
+
+ * Added examples/tabpanelwidget
+
+ * Added gtk_converter to the "contrib" directory (thanks to Jeremy)
+
+ * Added library/decoratorpanel.py which includes DecoratorPanel,
+   DecoratedTabPanel and DecoratedTabBar.  NOTE: these classes should
+   be in ui.
+
+ * Added examples/slideshow
+
+ * Added support for slicing with negative numbers.
+
+ * Added examples/jsobject
+
+ * Added support for a debugging mode, which can be turned on by include a "-d"
+  command-line option when calling build.py.  With this option turned on, each
+  statement in your Python code is surrounded by a try...except statement that
+  displays an alert if an exception occurs.  The alert message contains the
+  original Python source text, the line number in your Python source file
+  where the error occurred, and the details of the Javscript error which
+  occurred.  This should greatly simplify debugging your Pyjamas code.
+
+ * Issue #75: Added support for "is not None" syntax.
+
+ * Issue #85: Implemented the repr() built-in function.
+
+ * Issue #93: Implemented dict.items().
+
+ * Issue #95: Implemented Window.prompt().
+
+ * Issue #100: Added a setPadding() method to ui.CellPanel.
+
+ * Issue #103: Implemented the enumerate() built-in function.
+
+ * Issue #104: Added the ability to assign to a list of variables, for example:
+  x,y = self.method()
+
+ * Issue #105: Implemented the min() and max() built-in functions.
+
+ * Issue #88: It is now possible to use the getattr() built-in function to
+  obtain a method, and then pass parameters to that method when you call it.
+  There is a new example in the "examples/" directory, called "getattr", which
+  demonstrates how this can be used.
+
+ * Issue #111: Added XOR and bit-shift operators, thanks to legith.
+
+ * Issue #112: Added support for the ord() and chr() built-in functions
+  (thanks, legith!).
+
+ * Issue #113: Implemented support for basic try...except statements.  There is
+  also a new module, examples/libtest/ExceptionTest.py, which tests the use of
+  the try...except statement.
+
+
+Bug Fixes, etc.
+
+ * Added a new implementation of sprintf.
+
+ * Issue #86: Fixed a bug which could cause HTTPRequest to crash.  Thanks to
+  finder83 from code.google.com/p/pyjamas for helping to find this.
+
+ * Added standard images to use for the edges and corners of a dialog box
+
+ * Various changes to ui.py and DOM.py to (partially) support event handling on
+  dialog boxes.
+
+ * Fixed a bug in ui.CellFormatter.getElement() which could cause a crash.
+
+ * Fixed a problem with ui.FormSubmitEvent.setCancelled()
+
+ * Fixed bug in ui.clickDelegatePanel.onBrowserEvent() which caused a crash
+  when processing a keyDown event.
+
+ * Changed ui.ClickDelegatePanel.onBrowserEvent() to check that the key
+  delegate actually has an "onKeyDown" method before attempting to call it.
+
+ * Issue #54: Fixed a probem with browser detection (via the "user-agent"
+  string) under Internet Explorer 7.0.  Apparently Microsoft decided to change
+  the user-agent string in IE 7, breaking the code in Pyjamas which identified
+  the user's browser.
+
+ * Removed code from DOM.init() which was attempting to fix a bug with
+  capturing elements, but didn't work.
+
+ * Fixed a bug in ComplexPanel.insert which was causing Internet Explorer 6 to
+  corrupt its DOM model.
+
+ * Issue #53: Fixed a problem with operator precedence.
+
+ * Issue #91: Added DOM.eventGetCurrentEvent() function to retrieve the current
+  event.
+
+ * Changed FocusWidget.onBrowserEvent() to check that the click listener
+  actually has an "onClick" method before attempting to call it.
+
+ * Issue #82: Changed content-type sent by library/HTTPRequest.asyncPostImpl to
+  "application/x-www-form-urlencoded" rather than "text/plain".  This allows
+  the HTTPRequest object to be used to make AJAX calls using HTTP POST
+  requests.
+
+ * Issue #81: Fixed library/ui.Panel.clear().
+
+ * Added a cascading stylesheet to the examples/mail program
+
+ * Issue #106: Fixed a problem where using a tuple as a dictionary key produced
+  unexpected results
+
+ * Issue #107: It is now possible to include a plus sign at the start of a
+  numeric literal
+
+ * Moved datetime.py from the addons directory into library.
+
+ * Issue #80: Changed many of the examples to use the new "pyjamas" package
+  name.
+
+ * Fixed a problem with using negative slices on lists (thanks, Legith).
+
+

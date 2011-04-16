@@ -1,0 +1,98 @@
+Lead Developer
+
+2006-2007: James Tauber - jtauber@jtauber.com
+2008-2009: Luke Kenneth Casson Leighton <lkcl@lkcl.net>
+
+
+Other Commmitters
+
+Willie Gollino - wgollino@yahoo.com
+Dobes Vandermeer - dobesv@gmail.com
+Bernd Dorn - <bernd.dorn@lovelysystems.com>
+Luis Pamirez
+Erik Westra - ewestra [at] gmail [dot] com
+Jurgen Kartnaller - <kartnaller@lovelysystems.com>
+Daniel Carvalho - <idnael@gmail.com>
+Tobias Weber - <tobi-weber@gmx.de>
+
+Other Contributors
+
+Vicente J. Ruiz Jurado - vjrj@ourproject.org
+Gerard Labadie - gerard.labadie@gmail.com
+Stephan Diehl - stephan.diehl@gmx.net
+John Lehman - j1o1h1n@gmail.com
+G Clinch
+Kees Boss
+Oisin Mulvihill
+Ondrej Certik
+Laszlo Krekacs - khiraly@gmail.com
+Stefan Schwarzer - <sschwarzer@sschwarzer.net>
+Radoslav Kirov
+Beni Kerniavsky
+Henk Punt
+Mathias Waack - <Mathias.Waack@rantzau.de>
+Guenter Walser - <guenter.walser@wanagu.at>
+Martin Blais - <blais@furius.ca>
+Scott Graham
+Nick - <thretwon@gmail.com>
+Hackadelic - http://code.google.com/u/hackadelic/
+Yi Choong - http://code.google.com/u/yitchoong/
+Catalin Patulea - <cronos586@gmail.com>
+JJ Kunce (http://code.google.com/u/jjkunce)
+Alexei Sokolov
+Carl Roach <carl.roach@gmail.com>
+Sujan Shakya
+Klavdij Voncina <voncina.klavdij@siol.net>
+Scott Koranda
+Phil Hands
+jordonwii (http://code.google.com/u/jordonwii)
+Carlos Saraiva
+Rich Newpol
+Marcus Brinkmann <marcus.brinkmann@ruhr-uni-bochum.de>
+Chris Fraschetti (http://code.google.com/u/chris.fraschetti/)
+Pavel Mironchyk <p.mironchyk@gmail.com>
+Cedric Gestes <gestes@aldebaran-robotics.com>
+Bill Winder <wgwinder@gmail.com>
+Niki Spahiev
+flerda (http://code.google.com/u/flerda/)
+Davorin Kunstelj (http://code.google.com/u/davorin.kunstelj/)
+Russell Yanofsky <russell@yanofsky.org>
+fukazawa (http://code.google.com/u/fukazawa/)
+Glenn Washburn <crass@berlios.de>
+Daniel Gerber <daniel.g.gerber@gmail.com>
+A. Motolla (http://code.google.com/u/a.motolla/)
+
+
+
+Erik gets a special mention for the contribution of the "Showcase".
+
+Luis did the porting of gtk to pyjamas: I'm sorry we haven't had time
+to reincorporate it into pyjamas 0.4 or above yet, Luis!  It'll happen
+eventually (nearly there, luis, I promise!)
+
+Bernd's work on the core python compiler has been absolutely invaluable.
+
+G Clinch ported the DisclosurePanel from GWT
+
+Kees Boss originally added multiple inheritance support and has just gone mad
+with the python-esque improvements ever since.
+
+Laszlo Krekacs has been adding little bits of language support, and also
+ported Toggle, Custom and Push buttons from GWT 1.6
+
+Stefan is a recent contributor since Europython and has been adding
+"formal correctness" patches that are more in line with python 2.5 and 2.6
+and python coding standards.
+
+Radoslav created a couple of examples, lightout and processingjs
+
+James - thank you for kick-starting this project.
+
+Henk Punt, for pyjd/windows.py - this saved an enormous dependency
+(pywin32, at 5mb) for the MSHTML port.
+
+Scott Graham for the work in Skulpt on the parser/translator
+
+And of course, a huge amount of thanks goes to Google and the engineers
+there that produced GWT, on which pyjamas is originally based.
+

@@ -1,0 +1,14 @@
+= Class FormSubmitCompleteEvent (derived from EventObject) =
+
+== Methods defined: ==
+
+ * __init__(self, source, results)
+
+ * getResults(self)
+
+
+
+== Methods inherited from EventObject: ==
+
+ * getSource(self)
+

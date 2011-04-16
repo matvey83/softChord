@@ -1,0 +1,753 @@
+= Merging Javascript into Python Pyjamas applications =
+
+Pyjamas is compiler technology: it converts python source code into
+javascript source code.  In a way, pyjs.py - the compiler - is very
+much like gcc, the Gnu C Compiler.  gcc turns perfectly good (or bad)
+c code into a human-unreadable mess, using an intermediate step:
+assembler.  The Pyjamas compiler effectively turns python source
+code into "assembly-like" javascript.  Another way to put this is
+that it is <i>pure coincidence</i> (it's not, really!) that the
+"assembly output" of pyjamas happens to be reasonably-human-readable
+javascript.
+
+There is quite a lot of javascript functionality which needs to be accessible
+by Pyjamas applications, in order for Pyjamas to be useful (especially in
+Web Browsers), and so the design of the Pyjamas compiler has had to include
+a way to understand javascript libraries, and to be able to include javascript
+code fragments into the output, unmodified.  The reasons are simple:
+not only would it be too much to expect developers to rewrite
+perfectly good javascript libraries in python, but also there are built-in
+functions - in both the Javascript language and in Web browsers - that
+simply cannot be rewritten.  A way to interact with javascript is therefore
+essential.
+
+Being able to insert javascript fragments is conceptually identical to the gcc
+method of doing "inline assembler".  In gcc, you do horrible things like this:
+{{
+    int a=10, b;
+    asm ("movl %1, %%eax; 
+        movl %%eax, %0;"
+        :"=r"(b)        /* output */
+        :"r"(a)         /* input */
+        :"%eax"         /* clobbered register */
+        );       
+}}
+And, in Pyjamas, it's not that different:
+{{
+def foo(b): # this is python-land (to be translated to javascript)
+    a = 10; # this is still python-land (to be translated to javascript)
+    JS("""
+        b = a; /* this is javascript-land (and will be outputted, verbatim) */
+               /* including these comments */
+    """)
+}}
+
+So, crucially, this chapter will cover what it is that needs careful attention,
+when wrapping a javascript library in Python code; how Python functions 
+should be called from inside wrapped javascript (and the problems associated
+with doing that); and the importance of double-checking the compiled output
+against the original Python code, to make sure that everything's reasonable.
+
+At this point, it must be said that this is not for the
+faint-hearted: assembly-style programming never is.  Not only is
+it necessary to know <i>two</i> programming languages; not only is
+it necessary to know how the compiler interfaces the two together,
+but also, it's necessary to work at "second hand" with one of the
+languages, when debugging the application!  That having been said,
+it <i>is</i> quite straightforward.
+
+= Simple Rectangle Test Class =
+
+The purpose of this exercise is to show, using as small a useful javascript
+library as possible, how to wrap Javascript with Pyjamas.  Start by saving
+the following javascript code as a file called jsrecttest.js as the
+javascript "library":
+{{
+function rectobj() {
+}
+
+function rect_init(x, y) {
+    this.x = x;
+    this.y = y;
+}
+
+function rect_area() {
+    return this.x * this.y;
+}
+
+function rect_add(rect) {
+    this.x += rect.x;
+    this.y += rect.y;
+}
+
+rectobj.prototype.area = rect_area;
+rectobj.prototype.add = rect_add;
+rectobj.prototype.init = rect_init;
+}}
+
+If javascript is unfamiliar, then <i>right now</i> take a minute
+to look up prototyping, and how javascript objects work.  An object
+instance can be created in javascript, like this:
+{{
+    var obj = new rectobj();
+}}
+It's quite obtuse, but easy to follow: the function
+<tt>rectobj()</tt> is being called, but the qualifier "new" tells
+javascript to actually make an object (using the function rectobj),
+and thus, any occurrences of the word "this" can be used in the
+function - just like "self" in python and "this" in c++ - to refer
+to member variables, functions and objects.  So, the function
+<tt>rect_init()</tt> adds two variables to a <tt>rectobj</tt>;
+<tt>rect_area</tt> can return those two variables, multiplied
+together.
+
+Crucially, however, the last three lines are what makes javascript incredibly
+powerful.  Notice the use of "prototype" - that's telling the javascript
+engine that all future declarations of "new" rectobjs <em>must</em>
+have those three functions added to them.
+
+Exactly the same thing can be done in Python - it's just that it's not
+good sane practice to modify Python classes on-the-fly, as anyone reading
+the Python source code is going to get a real headache, wondering where
+on earth the extra functions are coming from.  However, javascript is a
+pure prototyping language; there <i>are</i> no "classes"; there is only
+prototype.  Given that there isn't any choice in the matter (javascript
+programmers being used to getting headaches), everybody's happy.
+
+{{-info
+It's worth noting that the reason why Python and Javascript work so well
+together is because of the dynamic run-time similarity - this ability to
+create classes in Python, by modifying the object, and adding functions
+at runtime, being so similar to javascript's prototype capabilities.
+By contrast, The PyPy team (PyPy is an E.U-funded compiler project)
+are having a very difficult time with the Java Bytecode back-end,
+because Java, as a language, is simply not equipped with such
+dynamism as Python and Javascript.  Consequently, Java Bytecode -
+and the JVM it runs on - does not react favourably to such maltreatment.
+}}
+
+== Slight Detour, illustrating python-javascript equivalence ==
+
+Whilst it would be unkind to create an <i>exact</i> replica of what's going
+on with <tt>jsrecttest.js</tt>, an "equivalent" program in Python is here,
+for illustrative purposes only:
+{{
+class rectobj:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+    def area(self):
+        return self.x * self.y
+    def add(self, rect):
+        self.x += rect.x
+        self.y += rect.y
+}}
+The reason why this isn't exactly the same is because, in <tt>jsrecttest.js</tt>
+the javascript "class" (not that there is such a concept of classes in 
+javascript) is being created dynamically.  So it's more like this:
+{{
+class rectobj:
+    pass
+def rect_area(self):
+    return self.x * self.y
+def rect_add(self, rect):
+    self.x += rect.x
+    self.y += rect.y
+def rect_init(self, x, y):
+    self.x = x
+    self.y = y
+rectobj.__init__ = rect_init
+rectobj.add = rect_add
+rectobj.area = rect_area
+}}
+Python purists should either be screaming or quaking in their boots at the
+incorrectness of this approach.  The particularly well-informed ones will
+likely scream loudest about the lack of decorators.  All of which is
+irrelevant, because only the most insane or the most confident of Python
+programmers would dare do anything like this.  But - it's here for
+illustrative purposes.
+
+{{-info
+Consider compiling the above examples to javascript, using this command:
+    python pyjs.py horribletest.py
+Compare the resultant output with the original jsrecttest.js, to get
+a feel for how pyjs.py works and also to gain confidence in its
+capabilities.  If the output from pyjs.py looks close to what would
+be written in "pure" javascript, it makes life a lot easier when it
+comes to understanding and writing Python-Javascript hybrids.
+}}
+
+== Wrapping javascript, inline, with JS() ==
+
+Moving swiftly on, create a file, TestRect.py, with the following contents:
+{{
+import jsrecttest.js # YUK!!!
+
+class Rect: 
+    def __init__(self, x, y):
+        JS("""
+           this.rect = new rectobj();
+           this.rect.init(x, y);
+           """)
+
+    def add(self, r):
+        JS("""
+            this.rect.add(r.rect);
+           """)
+    def area(self):
+        JS("""
+            return this.rect.area();
+           """)
+
+    def get_x(self):
+        JS("""
+            return this.rect.x;
+            """)
+
+    def get_y(self):
+        JS("""
+            return this.rect.y;
+            """)
+}}
+Straight away, notice two critical things: firstly, importing
+jsrecttest.js with an extension ".js" is <i>definitely</i> not
+standard python - but then again, the whole concept of compiling
+python into javascript throws spanners in the traditional works,
+anyway.  Secondly: in this strange-looking Python class, whilst
+every function uses "self", the javascript snippets use "this".
+{{-info
+"self" in python is just a convention.  If it feels more comfortable,
+substitute all occurences of the word "self" with the word "this" -
+consistently, in a python class member function - and the feeling of
+panic and unease should subside, only to be replaced by a different form
+of unease at breaking a python convention: the disappearance of the word
+"self" from the python code...
+}}
+
+The inclusion of jsrecttest.js as if it was a python module is
+<i>definitely</i> non-pythonic, but due to the way that pyjamas code
+is generated, and to ensure that there are no surprises, there really
+isn't much choice.  Browsers have a habit of executing code when it is
+loaded - but <i>only</i> when the code is included from the initial
+web page.  If javascript is used, to modify the URL of the browser page,
+to load up a second HTML page, things start to go horribly wrong.
+So, the only way to guarantee that no limitations are imposed is to
+actually include the script <i>wholesale</i> and <i>inline</i>, in the
+Pyjamas compiled output!
+
+Examining the class <tt>Rect</tt>, it can be seen that the initialisation
+appears - somehow - to magically go into javascript-land and create a
+<tt>rectobj()</tt> as a member variable, and that the rectobj instance
+gets initialised with the same x and y parameters that the Python
+<tt>Rect</tt> class gets initialised with!  It's the same story, throughout
+all of the functions, and at this point, it's a very very good idea to
+run the pyjs.py compiler, to find out what's going on.  Run the following
+command (assuming that you saved the files in a subdirectory of examples,
+or are executing the command from the pyjamas/examples/jsobject directory):
+{{
+    python ../../pyjs/pyjs.py TestRect.py
+}}
+
+The output from pyjs.py is printed on-screen, and, an abbreviated version
+is shown, here:
+{{
+function __Rect() {
+}
+function Rect(x, y) {
+    var instance = new __Rect();
+    if(instance.__init__) instance.__init__.apply(instance, arguments);
+    return instance;
+}
+
+function __Rect_initialize() {
+    if(__Rect.__was_initialized__) return;
+    __Rect.__was_initialized__ = true;
+    pyjs_extend(__Rect, pyjslib.Object);
+    __Rect.prototype.__class__.__new__ = Rect;
+    __Rect.prototype.__init__ = function(x, y) {
+
+           this.rect = new rectobj();
+           this.rect.init(x, y);
+           
+    };
+    __Rect.prototype.get_x = function() {
+
+            return this.rect.x;
+            
+    };
+
+    /* ...
+       functions cut, for clarity and brevity, are area, get_y and add.
+       as well as a boat-load of non-intuitive crud.
+       ...
+     */
+}
+__Rect_initialize();
+}}
+To explain the morass of extra code: it's to create some semblance and
+imitation of pythonic classes, in a language which doesn't have classes.
+Note in particular the use of the function pyjs_extend, which emulates
+class inheritance; the technique is prevalent in javascript libraries,
+to "extend" the functionality of an object by copying its methods into
+the child "class".
+
+One thing that deserves particular attention is this line:
+{{
+    __Rect.prototype.__init__ = function(x, y) {
+}}
+This line sets up a "class" initialiser function, called __init__, which
+has two parameters, x and y.  Just like in c++, the concept of "this"
+is implicit in javascript: you always unavoidably get one, and so it
+need not be passed around as a parameter.  Note also that the <i>contents</i>
+of the __init__ function are - literally verbatim - what was placed
+inside the JS(""" """) inlining wrapper.
+
+Regarding the remaining functions, and to illustrate in a clearer manner
+the relationship between Python and its resultant javascript output when
+compiled, change the <tt>get_x()</tt> function, as follows:
+{{
+    def get_x(self):
+        return self.rect.x
+}}
+Re-run pyjs.py and look for the following lines, in the output:
+{{
+    __Rect.prototype.get_x = function() {
+    return this.rect.x;
+    };
+}}
+That's... that's the same, isn't it?  Yes and no: there's more
+white-space in the previous example, and the reason for <i>that</i>
+is because, inside the original JS(""" return this.rect.x; """) block
+there was... a lot of white-space, all of which was substituted, verbatim,
+into the compiled output (go back to the previous code,
+and either remove <i>all</i> white-space, add in javascript-style
+comments, or remove the indentation, and re-run pyjs.py, to help emphasise
+this point).
+
+{{-info
+Note!  Javascript separates statements with semi-colons!
+Python does actually support semi-colons to separate statements,
+but typical well-written python applications don't try to cram
+vast numbers of statements onto one line, so the semi-colons are
+unnecessary.  semi-colons are usually used in python line-cramming
+competitions, such as writing a fully-functional wiki server in
+11 lines of code...
+}}
+
+In other words, what's happened is that the auto-generated code <i>happens</i>
+to be identical to the code that we inlined.  pyjs.py <i>happens</i> to
+"understand" how to turn python "self" into javascript "this", and the
+syntax of javascript <i>happens</i> to be similar to python, in this simple
+example.  So, purely for the purposes of this exercise, unnecessary
+work was done by putting "inline" the very javascript that Pyjamas
+<i>would</i> have generated, if the compiler was trusted to do
+its job.  Try the same thing with the <tt>area()</tt> function:
+{{
+    def area(self):
+        return self.rect.area()
+}}
+Re-run pyjs.py TestRect.py, and, in the output, you will see this:
+{{
+
+    __Rect.prototype.area = function() {
+    return this.rect.area();
+    };
+}}
+Gosh.  again, that's identical to the javascript substituted inline.  how funny.
+
+== Running the example in a Web Browser ==
+
+Whilst it's left to the reader as an experimental exercise to adapt and
+run this code in, for example, Mozilla's spidermonkey javascript interpreter,
+it's quicker to test this code from inside a web browser.  Add the following
+lines to TestRect.py:
+{{
+from pyjamas.ui.RootPanel import RootPanel
+from pyjamas.ui.TextBox import TextBox
+from pyjamas.ui.HTML import HTML
+from pyjamas.ui.Button import Button
+
+class TestRect:
+
+    def onModuleLoad(self):
+
+        self.r = Rect(0.0, 0.0)
+
+        self.xbox = TextBox()
+        self.ybox = TextBox()
+        self.addbutton = Button("Click to add x and y to Rectangle")
+        self.addbutton.addClickListener(self)
+
+        self.xbox.setText("2")
+        self.ybox.setText("5")
+
+        RootPanel().add(HTML("X Value:"))
+        RootPanel().add(self.xbox)
+        RootPanel().add(HTML("Y Value:"))
+        RootPanel().add(self.ybox)
+        RootPanel().add(self.addbutton)
+
+        RootPanel().add(HTML("Current value: %d %d" % ( self.r.get_x(), self.r.get_y())))
+
+    def onClick(self, sender):
+
+        x = int(self.xbox.getText())
+        y = int(self.ybox.getText())
+
+        r = Rect(x, y)
+
+        self.r.add(r)
+
+        RootPanel().add(HTML("New value: %d %d" % ( self.r.get_x(), self.r.get_y())))
+        RootPanel().add(HTML("New Area: %d" % self.r.area()))
+
+if __name__ == '__main__':
+    app = TestRect()
+    app.onModuleLoad()
+}}
+The application isn't designed to be pretty, it's designed to be functional.
+Create a file, public/TestRect.html, with the following contents:
+{{
+<html>
+    <head>
+        <meta name="pygwt:module" content="TestRect">
+        <title>Test Rectangle Javascript Object</title>
+    </head>
+    <body bgcolor="white">
+        <script language="javascript" src="bootstrap.js"></script>
+    </body>
+</html>
+}}
+Compile the application, as follows:
+{{
+    python ../../bin/pyjsbuild TestRect.py
+}}
+Browse to the examples/jsobject/output/ directory (or wherever the application
+is being built) and click on output/TestRect.html
+
+{{-info
+If using Pyjamas 0.3, the sprintf routine is limited to one % modifier
+per specifier string.  So, whilst "New Area: %d" % 20 is acceptable,
+"New value: %d %d" % (5, 4) is not.  Adapt the application as follows:
+    RootPanel().add(HTML("New X value: %d" % self.r.get_x()))
+    RootPanel().add(HTML("New Y value: %d" % self.r.get_y()))
+and likewise for the display of "Current value".  Alternatively, 
+upgrade to a new version of Pyjamas.
+}}
+
+As can be seen, the application sets up the Button to call an
+<tt>onClick</tt> function, which reads the text-input boxes,
+creates a Rect() and adds it to the instance self.r.  self.r,
+another instance of Rect(), accumulates values added; the new x
+and y values are printed out, as is the area of the rectangle.
+
+Remember, also: look at the output - for example TestRect.Mozilla.cache.html -
+and look for both the rectobj and the use of the Rect object, comparing
+it to the original javascript and the original Python code.
+
+== Recap ==
+
+What's been illustrated in this simple example is as follows:
+ * How to import javascript as if it was python <tt>(import jsfile.js)</tt>
+ * How to use the inline-assembly-like function <tt>JS()</tt> to put fragments of javascript directly into the compiler output, unmodified.
+ * How to call javascript functions and access javascript objects as if they were Python - and how simple it is.
+ * The importance of examining the compiler's output, counting blessings that javascript is human-readable and that pyjs.py generates human-readable output
+ * The fundamental similarity between python and javascript - their ability to modify objects at run-time - which makes the languages a much better match (than java, for example).
+
+So, whilst it's necessary to have an understanding of both Javascript
+<i>and</i> Python, as well as how the Pyjamas compiler works, the key to
+successfully wrapping javascript is definitely to keep an eye on the output
+from the compiler, at every step of the way.  One thing not covered, so
+far, however, is how to call Python functions from inside pure javascript.
+Correction: how to make it <i>look</i> like python functions are being called,
+given that the output is entirely javascript, in the end...
+
+= Calling Python from Javascript =
+
+It's a lie!  What's actually needed is to understand how the Pyjamas
+compiler translates python functions, especially those in classes
+and modules, into javascript.  Understanding the translation is
+important, because when no longer relying on pyjs.py to do the job
+automatically, it's clearly necessary to write, inside the <tt>JS()</tt>
+block, exactly the same code that <i>would</i> have been generated.
+
+So it's not like python is <i>actually</i> being called, from javascript -
+it just looks that way.
+
+{{-code
+If the thought of how not in Kansas this all is, take a little time
+for a Zen three-heels-clicking moment until the dizziness passes.
+}}
+
+Once calm and zen-like peace has been achieved, create a file called
+jsdicttest.js, as follows:
+{{
+function dictobj() {
+}
+
+function dict_init(d) {
+    this.d = d;
+}
+
+function dict_get_value(key) {
+    return this.d.__getitem__(key)
+}
+
+dictobj.prototype.get_value = dict_get_value;
+dictobj.prototype.init = dict_init;
+}}
+
+Next, create a file called TestDict.py with the following contents:
+{{
+import jsdicttest.js # YUK!!!
+
+class WrapperDict:
+    def __init__(self):
+        d = {'hello': 'world',
+                     'goodbye': 2}
+        JS("""
+           this.dict = new dictobj();
+           this.dict.init(d);
+           """)
+
+    def python_get_value(self, key):
+        return self.dict.d[key]
+
+    def javascript_get_value(self, key):
+        JS("""
+        return this.dict.get_value(key);
+           """)
+}}
+Notice that the jsdicttest.js file is being imported, verbatim, in that
+all-important and completely non-pythonic fashion; notice also that, in
+the class initialisation, the local variable, d, is being passed in to the
+inline-assembler-like <tt>JS()</tt> function.
+
+Run pyjs.py, as follows, to compile the code to javascript
+{{
+    python ../../pyjs/pyjs.py TestDict.py
+}}
+
+Examine the output. and look for this particular section:
+{{
+    WrapperDict.prototype.__init__ = function() {
+    var d = new pyjslib.Dict([['hello', 'world'], ['goodbye', 2]]);
+
+           this.dict = new dictobj();
+           this.dict.init(d);
+           
+    };
+}}
+Comparing this carefully against the original javascript, notice how the
+dictionary has been declared, and how the input data has been turned into a
+javascript array.  <tt>pyjslib.Dict</tt> is the name of the function that
+is created when the <tt>Dict</tt> class, in the pyjamas library called
+"pyjslib.py", is compiled to javascript.
+
+{{-info
+When you run build.py, the location of the Pyjamas library is automatically
+added to the module import path, for convenience of building Pyjamas Web
+applications.  Take a moment to look at bin/pyjsbuild's source code,
+looking for the word "library".  build.py uses pyjs.py but does quite a
+bit more work - specifically - in preparing a web application - whereas
+pyjs.py is definitely just a straight compiler.
+}}
+
+Understanding how pyjs.py treats builtins such as Dict, List, Tuple and
+String is crucial, if wrapping javascript, as is understanding how modules
+are imported.  Take a look at library/pyjslib.py, looking for the class
+<tt>Dict</tt>.  In particular, it may be illustrative to compare the
+"builtin" pyjamas implementation of Dict to UserDict.py which comes as
+standard as part of the Python 2 distribution.  Note that, apart from
+<tt>getObject()</tt>, which has been added for convenience, the function
+names in pyjslib.py's Dict class, and those in UserDict.py, are identical.
+
+The implementation of Dict, in pyjslib.py, however, can be seen to be using
+standard javascript arrays to "emulate" the expected functionality and
+behaviour that Python programmers would expect a Dict object to have.
+On the basis that it's unreasonable to expect python programmers to have to"get involved" with javascript builtin objects, pyjslib.py takes care of the
+differences, making javascript builtin objects look like Python builtins.
+So, looking further at the output from compiling TestDict.py, the following
+code fragment should come as no surprise:
+{{
+    WrapperDict.prototype.python_get_value = function(key) {
+    return this.dict.d.__getitem__(key);
+    };
+}}
+Accessing the dictionary's items, by key, in the python_get_value() function
+in the original python code, TestDict.py, has been compiled into a call
+to <tt>__getitem__</tt>.  This is <i>exactly</i> what happens in standard
+Python, as can be clearly seen with a simple test, using the UserDict.py
+module that comes with the standard python distribution, so it should come
+as no surprise that Pyjamas is emulating this behaviour, for convenience.
+
+== Illustrating how to "call" Python functions from javascript ==
+
+Take the line which was generated by the compiler, above, in declaring
+the variable d in the WrapperDict constructor, and adapt it to make
+changes to jstestdict.js, as follows:
+{{
+function dict_init(d) {
+    var u = new pyjslib.Dict([['goodbye', 'cruel world']]);
+    this.d = d;
+    d.update(u);
+}
+}}
+What is expected to happen, here, is that the value referenced by the key 
+'goodbye' will overwritten, from its expected value, before - the number '2' -
+with the string 'cruel world'.  However, it was done <i>inside</i> the
+javascript, by manually declaring a built-in Dict object, using the
+auto-generated <tt>pyjslib.Dict()</tt> function.
+
+{{-info
+Take special note of this "trick".  If looking to achieve something in
+a Javascript snippet, first write the code that you want, in Python.
+Then, run the Python code through pyjs.py (or build.py, as appropriate),
+and literally cut-and-paste - and adapt - the resultant output.
+There's no point in making life difficult, when there is an automated
+tool that accurately does the job, already.
+}}
+
+To illustrate this, again, add another function to WrapperDict, which
+gets the length of the dictionary:
+{{
+    def python_dict_length(self):
+        return len(self.dict)
+}}
+Again, <tt>len()</tt> is a built-in, that is implemented in pyjslib.py,
+and so it should come as no surprise to find, when compiling TestDict.py
+by running pyjs.py TestDict.py, that the output contains this:
+{{
+    WrapperDict.prototype.python_dict_length = function() {
+    return pyjslib.len(this.dict);
+    };
+}}
+So, again, it has been illustrated that if it is required to find
+the length of a pyjslib.py-implemented Python Dict object from
+inside Javascript, <tt>pyjslib.len</tt> must be used.  
+Javascript doesn't know anything about python module scopes,
+and so a function is used to "emulate" the python module, and
+all of the functions, classes and global variables of the module
+are added into that function.
+This same trick applies to
+absolutely any python modules that are imported into an application.
+It's just that, for recognised built-in functions such as len,
+map, filter and getattr, pyjs.py automatically recognises those
+and prepends the module name "pyjslib".  Any other functions,
+including not only in the modules that come with Pyjamas
+but also developer-written code, must be imported as would
+normally be done, in Python, and the javascript generated will
+be of the form "<tt>importedmodulename.functionname</tt>" or
+"<tt>importedmodulename.classname</tt>".
+
+== Running TestDict in a Browser ==
+
+To run TestDict in a Web browser, add the following lines to TestDict.py:
+{{
+from pyjamas.ui.RootPanel import RootPanel
+from pyjamas.ui.TextBox import TextBox
+from pyjamas.ui.HTML import HTML
+from pyjamas.ui.Button import Button
+
+class TestDict:
+
+    def onModuleLoad(self):
+
+        self.r = WrapperDict()
+
+        self.kbox = TextBox()
+        self.addbutton = Button("Click to look up key value (hello or goodbye)")
+        self.addbutton.addClickListener(self)
+
+        self.kbox.setText("hello") # default to make life easier
+
+        RootPanel().add(HTML("Key:"))
+        RootPanel().add(self.kbox)
+        RootPanel().add(self.addbutton)
+
+    def display_value(self):
+
+        key = self.kbox.getText()
+
+        RootPanel().add(HTML("Value using python:" ))
+        RootPanel().add(HTML(self.r.python_get_value(key)))
+        RootPanel().add(HTML("Value using javascript:" ))
+        RootPanel().add(HTML(self.r.javascript_get_value(key)))
+
+    def onClick(self, sender):
+
+        self.display_value()
+
+if __name__ == '__main__':
+    app = TestDict()
+    app.onModuleLoad()
+}}
+
+Next, create a file, public/TestDict.html, with the following contents:
+{{
+<html>
+    <head>
+        <meta name="pygwt:module" content="TestDict">
+        <title>Test Dictionary Javascript Object</title>
+    </head>
+    <body bgcolor="white">
+        <script language="javascript" src="bootstrap.js"></script>
+    </body>
+</html>
+}}
+
+After saving the modifications to TestDict.py, and saving public/TestDict.html,
+compile the application to javascript, using build.py:
+{{
+    python ../../bin/pyjsbuild TestDict.py
+}}
+Browse to the examples/jsobject/output/ directory (or wherever the application
+is being built) and click on output/TestDict.html.  The application will,
+when the button is pressed, look up the key "hello" and should output
+"world".  If the value in the input box is changed to "goodbye", then,
+in the first example, the value "2" is outputted - from both the
+python_get_value() and the javascript_get_value() functions.  However,
+if the latter part of the exercise was followed, by calling update() from
+inside jstestdict.js, then the resultant output will instead be "cruel world".
+
+Again, just as with the TestRect.py example, remember to look at
+the compiled output, TestDict.Mozilla.cache.html for example,
+looking for WrapperDict and its use, and looking for dictobj,
+and how that's used.
+
+{{-info
+If an error appears, "WrapperDict is undefined" in the Javascript console of
+the browser, check that the contents of TestDict.py haven't been overwritten:
+"import jstestdict.js", and the declaration of the WrapperDict class, still
+need to be included in TestDict.py!
+}}
+
+== What's been covered ==
+
+This section, on pretending to call Python from inside Javascript,
+covered the following:
+ * How it's a lie that python is being "called" from javascript, and how it's actually the other way round: that the python is being translated so that the inline javascript, in <tt>JS()</tt>, can be made to match up with the compiled python code.
+  * How to "trick"-compile code into inline javascript, by writing the code first in Python, compiling it to javascript and then copying that into the <tt>JS()</tt> block, to save time and effort.
+  * How a class or function in a Python module is turned into a javascript function by the compiler (separating the two with an underscore is the current convention, as of Pyjamas 0.3).
+  * How the builtin classes and functions automatically have the module name "pyjslib." prepended, in the compiled javascript.
+  * Where to look for pyjslib.py (in the libraries/ directory);
+  * How pyjamas implements Python built-ins, by wrapping and mapping to javascript built-in classes and functions;
+  * The importance - once again - of carefully examining the compiled output from pyjs.py and build.py, to assist in the development of javascript wrappers.
+  * Remembering that python doesn't typically use semi-colons (although it's supported) to separate statements but that in javascript, the use of semi-colons is <i>essential</i>.
+
+= Conclusion =
+
+This quite comprehensive chapter emphasises that, whilst it's
+necessary to not only know both Python and Javascript but also to
+know how the pyjs.py compiler turns python into javascript, it's not
+rocket science to integrate javascript into Pyjamas applications.
+The same type of techniques and care that are required, when
+writing inline assembler in a c or c++ program for example, are
+also required, here.
+
+Yet, compared to writing inline assembler in c or c++, the task of integrating
+javascript inline into Pyjamas applications is definitely a <i>lot</i> easier.
+Not least in making the task easier is the fact that javascript
+itself is a high-level language (albeit an obtuse but very well-understood
+one), and asm programming is definitely a black art.
+

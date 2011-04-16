@@ -1,0 +1,11 @@
+= Class HasAlignment =
+
+== Data and other attributes defined: ==
+
+ * ALIGN_BOTTOM = 'bottom'
+ * ALIGN_CENTER = 'center'
+ * ALIGN_LEFT = 'left'
+ * ALIGN_MIDDLE = 'middle'
+ * ALIGN_RIGHT = 'right'
+ * ALIGN_TOP = 'top'
+

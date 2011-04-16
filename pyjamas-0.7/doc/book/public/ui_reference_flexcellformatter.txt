@@ -1,0 +1,54 @@
+= Class FlexCellFormatter (derived from CellFormatter) =
+
+== Methods defined: ==
+
+ * __init__(self, outer)
+
+ * getColSpan(self, row, column)
+
+ * getRowSpan(self, row, column)
+
+ * setColSpan(self, row, column, colSpan)
+
+ * setRowSpan(self, row, column, rowSpan)
+
+
+
+== Methods inherited from CellFormatter: ==
+
+ * addStyleName(self, row, column, styleName)
+
+ * ensureElement(self, row, column)
+
+ * getAttr(self, row, column, attr)
+
+ * getCellElement(self, table, row, col)
+
+ * getElement(self, row, column)
+
+ * getRawElement(self, row, column)
+
+ * getStyleName(self, row, column)
+
+ * isVisible(self, row, column)
+
+ * removeStyleName(self, row, column, styleName)
+
+ * setAlignment(self, row, column, hAlign, vAlign)
+
+ * setAttr(self, row, column, attrName, value)
+
+ * setHeight(self, row, column, height)
+
+ * setHorizontalAlignment(self, row, column, align)
+
+ * setStyleName(self, row, column, styleName)
+
+ * setVerticalAlignment(self, row, column, align)
+
+ * setVisible(self, row, column, visible)
+
+ * setWidth(self, row, column, width)
+
+ * setWordWrap(self, row, column, wrap)
+

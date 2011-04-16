@@ -1,0 +1,111 @@
+= module ui = 
+= NAME =
+ui
+
+= FILE =
+/home/lkcl/src/pyjamas-desktop/pyjamas-webkit/pyjamas/ui.py
+
+= DESCRIPTION =
+This module implements the Pyjamas user-interface widget set for
+Pyjamas-Desktop.
+
+= Classes =
+{{-contents
+L#{CellFormatter}
+    L#{FlexCellFormatter}
+L#{DockPanelTmpRow}
+L#{Event}
+L#{EventObject}
+    L#{FormSubmitCompleteEvent}
+    L#{FormSubmitEvent}
+L#{Focus}
+L#{FocusListener}
+L#{HasAlignment}
+L#{HasHorizontalAlignment}
+L#{HasVerticalAlignment}
+L#{KeyboardListener}
+L#{LayoutData}
+L#{MouseListener}
+L#{RowFormatter}
+L#{UIObject}
+    L#{MenuItem}
+    L#{TreeItem}
+        L#{RootTreeItem}
+    L#{Widget}
+        L#{Composite}
+            L#{ClickDelegatePanel}
+            L#{TabBar}
+            L#{TabPanel}
+        L#{FileUpload}
+        L#{FocusWidget}
+            L#{ButtonBase}
+                L#{Button}
+                L#{CheckBox}
+                    L#{RadioButton}
+            L#{ListBox}
+            L#{TextBoxBase}
+                L#{PasswordTextBox}
+                L#{TextArea}
+                L#{TextBox}
+        L#{Frame}
+            L#{NamedFrame}
+        L#{Hidden}
+        L#{Hyperlink}
+        L#{Image}
+        L#{Label}
+            L#{HTML}
+        L#{MenuBar}
+        L#{Panel}
+            L#{ComplexPanel}
+                L#{AbsolutePanel}
+                    L#{RootPanelCls}
+                L#{CellPanel}
+                    L#{DockPanel}
+                    L#{HorizontalPanel}
+                    L#{VerticalPanel}
+                L#{DeckPanel}
+                L#{FlowPanel}
+                L#{HTMLPanel}
+                L#{StackPanel}
+            L#{HTMLTable}
+                L#{FlexTable}
+                L#{Grid}
+            L#{SimplePanel}
+                L#{FocusPanel}
+                L#{FormPanel}
+                L#{PopupPanel}
+                    L#{DialogBox}
+                    L#{MenuBarPopupPanel}
+                L#{ScrollPanel}
+                L#{TreeContentPanel}
+        L#{Tree}
+}}
+
+= Functions =
+ * HTMLPanel_createUniqueId()
+ * RootPanel(element=None)
+{{-method
+The function which is used to obtain a Root Panel, to which
+all widgets must ultimately be added.
+
+@param element: element can be None, in which case the default
+                root panel is returned.
+                element can be a string, in which case the
+                widget in the underlying DOM model with the
+                'id' given by element is returned.
+                element can also be a node in the underlying DOM model.
+                A good way to think of this is in terms of an
+                HTML document.  if element is None, the HTML
+                "body" is returned.  if element is a string,
+                getElementById('element') is returned.
+}}
+
+= Data =
+ * CheckBoxUnique = 0
+ * FormPanel_formId = 0
+ * HTMLPanel_sUid = 0
+ * prefetchImages = {}
+ * rootPanels = {}
+
+
+

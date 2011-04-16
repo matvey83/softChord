@@ -1,0 +1,96 @@
+= Introduction =
+
+Computer Applications help us with the presentation, creation
+and manipulation of information and knowledge.  Deployment of
+applications on the Internet has seen an explosive rise in
+complexity.  Programming languages and frameworks have struggled to
+keep up, imposing legacy infrastructure and ways of working that
+were never designed to cope with the ways in which they are now
+being used.
+
+Attempts are being made to provide better infrastructure that suits
+the increasing Internet-led demand for access to information and knowledge,
+yet at the same time provide an easier way to reuse the same source
+code to write applications that run stand-alone on the Desktop.
+Adobe AIR, Silverlight and its free-software counterpart, Moonlight, are
+proprietary-driven frameworks that blur the distinction between "Desktop"
+and "Internet".  Google's Web Toolkit (GWT) is a toolkit exclusive to Java 
+that allows you to write applications that look like they are Java Desktop
+applications, but actually they are being run in a web browser (as AJAX).
+You cannot, however, take the same GWT Java application and actually run
+it <i>as</i> a desktop application (unless it's under Adobe AIR, as AJAX).
+
+In 2006, GWT was ported to python, by James Tauber, in a successful
+experiment called Pyjamas.  The 80,000 or so lines of source code that made
+up GWT 1.2 were dramatically reduced to only 8,000, for Pyjamas.
+Thus, in exactly the same way that GWT is a java-to-javascript
+compiler and AJAX Widget set, Pyjamas is a python-to-javascript
+compiler and AJAX Widget set (with an identical API to that of GWT's
+Widget API).  In 2008, Pyjamas was ported to the Desktop, bypassing
+all of the javascript completely.  The underlying technology used was
+Webkit, which is the same technology behind Adobe AIR, Google Chrome,
+Safari, Midori and the iPhone browser. Thanks to Webkit, Pyjamas, by
+keeping such exalted company, becomes the world's first free-software
+Applications framework that is both cross-browser and cross-platform.
+Also, by using Webkit, the Pyjamas-Desktop port is cross-widget-set
+as well.
+
+The strategic significance of the independence of the Pyjamas User-Interface
+API is easily underestimated.  A free software python-based application
+can be written - once - and can run on any web browser, including
+IE6, IE7, Opera, Mozilla, Firefox and Safari, and also it can be run
+on embedded platforms such as smartphones and PDAs, as well as Desktop
+OSes such as Linux, Windows, FreeBSD and MacOSX.
+
+Also, the Pyjamas API is effectively a new type of Widget set, and
+is not only functionally superior in its scope and features to its
+competitors, Qt4 and Gtk2, but is also easier to use, extend and
+understand.  The reason for this is quite straightforward: Pyjamas
+is based on DOM model - browser - manipulation, and browser
+technology has had to mature much, much faster than Desktop technology.
+Browsers have to be far more tolerant, forgiving and flexible when
+it comes to layout and presentation, whereas the Desktop application
+APIs are really quite rigid; advise developers <i>not</i> to fix
+the width and height of widgets, for fear of interfering with
+the framework's limited ability to cope with resizing and layouts;
+extension of either of the competitor frameworks is far from
+straightforward; Rich text (such as HTML) support is limited or
+severely limited, and is broken by design.  By contrast, the 
+features that Pyjamas comes with <i>by default</i>, even in Pyjamas
+Desktop, includes not only full and complete CSS and HTML support, but
+also includes support for things like SVG 2D canvas and NPAPI plugins
+such as Adobe Flash.
+
+The future of Pyjamas on Desktops includes, using Webkit, the tantalising
+possibility of supporting other languages, such as c++ (Pyjamas++)
+and even Java.  It would be very interesting to see Google's Web Tookit
+ported to the Desktop, for example.  A project to port GWT to Ruby is
+partially complete, called RubyJS (http://rubyforge.org/projects/rubyjs) and
+there is a second Ruby-to-Javascript compiler, rb2js
+(http://rb2js.rubyforge.org/), So, although this book covers the Python
+programming language, it's definitely worthwhile raising these future
+language possibilities, as it would make the Pyjamas API a truly
+cross-language, cross-platform, cross-desktop and cross-widget-set
+Free Software Applications Development API.
+
+= Scope of this book =
+
+The purpose of this book is to assist Python developers who are either
+Web developers, PyQt4 or PyGtk2 Desktop developers to write applications
+that will run both on the Desktop and in a Web browser, depending on
+whether they choose to run the application using Pyjamas-Desktop, or
+to compile it to AJAX using the Pyjamas Javascript compiler.
+
+The book will introduce the beginner to the alien concept of
+"easy web application development"; it will serve as a reference
+for both beginners and experienced developers; also covered will be
+how to create your own widgets, and how to port a Javascript widget
+library (such as extjs, prototype or YUI - Yahoo User Interface)
+to Pyjamas.  Creation of Pyjamas widgets is something that is
+infinitely easier than it is for Gtk2 and Qt4, thanks to the simple
+concept of manipulating a browser-based DOM model.
+
+In only thirty minutes, even the average Python developer should
+be up and running, creating ubiquitous rich media applications, and
+be dreaming one day of writing their own version of a gmail client...
+

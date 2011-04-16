@@ -1,0 +1,16 @@
+= Class FormSubmitEvent (derived from EventObject) =
+
+== Methods defined: ==
+
+ * __init__(self, source)
+
+ * isCancelled(self)
+
+ * setCancelled(self, cancel)
+
+
+
+== Methods inherited from EventObject: ==
+
+ * getSource(self)
+

@@ -1,0 +1,10 @@
+build
+bin
+deb
+pyjd/__init__.py
+examples/showcase/build/
+examples/showcase/src/demoInfo.py
+output
+*.pyc
+*.pyo
+.*.sw?

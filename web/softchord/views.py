@@ -261,7 +261,7 @@ def view_song(request, song_id):
 
 
 
-def view_all(request):
+def prev_view_all(request):
     """
     Display the table of contents page
     """
@@ -284,10 +284,41 @@ def view_all(request):
 
 
 
+from django.pimentech.network import *
+
+@jsonremote(service)
+def getSongs(request):
+    song_list = []
+
+    q = Songs.objects.all().order_by("id")
+    for song in q:
+        id = song.id
+        num = song.number
+        title = song.title
+        song_list.append( (id, num, title) )
+
+    return song_list
 
 
+@jsonremote(service)
+def addSong(request, song_name):
+    s = Songs()
+    s.title = "New"
+    s.save()
+    return getSongs(request)
 
 
-
+@jsonremote(service)
+def deleteSong(request, song_id):
+    song_id = int(song_id)
+    try:
+        song = Songs.objects.get(id=song_id)
+    except Songs.DoesNotExist:
+        s = Songs.objects.get(id=song_id)
+        s.delete()
+    else:
+        pass
+    
+    return getSongs(request)
 
 

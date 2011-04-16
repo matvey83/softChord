@@ -1,0 +1,23 @@
+<html>
+<head>
+<title>Pyjamas application code</title>
+<script type="text/javascript">
+__window = parent;
+__navigator = __window.navigator;
+__screen = __window.screen;
+__history = __window.history;
+__location = __window.location;
+__document = __window.document;
+
+%(app_code)s
+
+try {
+    _%(app_name)s_%(app_name)s([],{}).onModuleLoad([],{});
+} catch(e) {
+    if (e != 'ReferenceError') throw e;
+}
+
+</script>
+</head>
+<body>This page can't be viewed without an application loader.</body>
+</html>

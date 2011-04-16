@@ -1,0 +1,53 @@
+<html>
+<head>
+<title>%(app_name)s</title>
+<script type="text/javascript">
+function __get_user_agent() {
+    var ua = navigator.userAgent.toLowerCase();
+    if (ua.indexOf('opera') != -1) {
+        return 'opera';
+    } else if (ua.indexOf('safari') != -1) {
+        return 'safari';
+    } else if (ua.indexOf('msie 6.0') != -1) {
+        return 'ie6';
+    } else if (ua.indexOf('msie7.0') != -1) {
+        return 'ie6';
+    } else if (ua.indexOf('msie 7.0') != -1) {
+        return 'ie6';
+    } else if (ua.indexOf('mozilla') != -1) {
+        var geckoIdx = ua.indexOf('gecko/');
+        if (geckoIdx == -1) return 'oldmoz';
+        var spaceIdx = ua.indexOf(' ', geckoIdx);
+        if (spaceIdx == -1) spaceIdx = ua.length;
+        var version = parseInt(ua.substring(geckoIdx + 6, spaceIdx));
+        if (version < 20051107) return 'oldmoz';
+        return 'moz';
+    }
+    return 'unknown';
+}
+
+function __load_app(name) {
+    document.body.innerHTML = '';
+}
+
+function __load_iframe() {
+    var loader_id = 'loader';
+    var __user_agent = __get_user_agent();
+    var iframe = document.createElement('iframe');
+    iframe.src = '%(app_name)s' + '_' + __user_agent + '.html';
+    iframe.onload = __load_app(loader_id);
+    iframe.style.visibility = 'hidden';
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0px';
+    iframe.style.height = '0px';
+    document.body.appendChild(iframe);
+}
+
+</script>
+</head>
+<body style="margin: 0px;" onload="__load_iframe()">
+  <span style="background: #D00; padding: 4px; font-size: 10pt; color: white; font-weight: bold;">
+  Loading ...
+  </span>
+</body>
+</html>

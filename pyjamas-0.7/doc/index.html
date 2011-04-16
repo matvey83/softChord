@@ -1,0 +1,321 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+ <meta name="keywords" content="Python Widgets, Python Web Widgets, Python Web Widget Set, Pyjamas, AJAX, Javascript, Python Javascript Compiler, Desktop Widgets, Desktop Widget Set" />
+ <meta name="description" content="Pyjamas Python Web Widgets and Javascript Compiler" />
+  <meta content="text/html; charset=ISO-8859-1" http-equiv="content-type">
+  <meta name="title" content="Python Web Toolkit - javascript compiler and AJAX Widgets" />
+  <title>pyjamas</title>
+<style type="text/css">
+<!--
+.code {
+margin-left: 50px;
+margin-right: 50px;
+background-color: #f0f0f0;
+padding: 10px;
+border: 1px solid;
+}
+body {
+padding: 20px;
+margin: 20px;
+h2 {
+font-weight: bold;
+font-family: Helvetica,Arial,sans-serif;
+}
+
+-->
+</style>
+</head>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+var pageTracker = _gat._getTracker("UA-5168765-3");
+pageTracker._trackPageview();
+</script>
+<body>
+<div
+ style="padding: 10px; height: 148px; background-color: rgb(102, 0, 153); font-family: Helvetica,Arial,sans-serif;">
+<div style="float: right; height:30px;">
+<script type="text/javascript" src="http://www.ohloh.net/p/4522/widgets/project_partner_badge.js"></script>
+<a href="http://sourceforge.net/donate/index.php?group_id=239074"><img src="http://images.sourceforge.net/images/project-support.jpg" width="88" height="32" border="0" alt="Support This Project" /> </a>
+</div>
+<div style="padding: 10px; float:left;">
+<img src="pyjamas.128x128.png" />
+</div>
+<big style="font-weight: bold; color: white;"><big><big><big>pyjamas</big></big></big></big>
+<br>
+<small><br>
+</small><big>
+<span style="color: white;">
+Pyjamas: write your own AJAX Framework
+</span>
+</big>
+</div>
+<h2> About <span style="color: rgb(102, 0, 153);">pyjamas</span></h2>
+<big><span
+ style="font-style: italic;"></span>
+ <span style="color: rgb(102, 0, 153); font-weight: bold;">Pyjamas</span>
+</big>
+is a port of
+<a href="http://code.google.com/webtoolkit/">Google Web
+Toolkit</a> to Python.
+(<a href="https://sourceforge.net/project/showfiles.php?group_id=239074">Download Pyjamas 0.6</a>).  Read the <a href="./FAQ.html">FAQ</a> and the
+list of <a href="./features.html">Features</a>.
+
+<h2> What is <span style="color: rgb(102, 0, 153);">pyjamas</span>?</h2>
+ <span style="color: rgb(102, 0, 153); font-weight: bold;">pyjamas</span>
+is a stand-alone python to javascript compiler, an AJAX framework / library
+and a Widget set API.
+
+<h2> Why should I use it? </h2>
+<p>
+You can write web applications in python - a readable programming language -
+instead of in HTML and Javascript, both of which become quickly unreadable
+for even medium-sized applications.  Your application's design can benefit
+from encapsulating high level concepts into classes and modules (instead
+of trying to fit as much HTML as you can stand into one page); you can
+reuse - and import - classes and modules.
+</p>
+<p>
+Also, the AJAX library takes care of all the browser interoperability
+issues on your behalf, leaving you free to focus on application development
+instead of learning all the "usual" browser incompatibilities.
+</p>
+
+<h2> What do other developers say about Pyjamas? </h2>
+<pre>
+"Thanks for developing this, it seems like a much "healthier" way to do
+web development,"
+-fran 
+</pre>
+
+<h2>Overview</h2>
+Like GWT,&nbsp;<big><span
+ style="color: rgb(102, 0, 153); font-weight: bold;">pyjamas</span></big>
+involves the translation of the application and libraries (including UI
+widgets and DOM classes) to Javascript and the packaging up of that
+Javascript code.<br>
+<table style="text-align: left; width: 100%;" border="0" cellpadding="0"
+ cellspacing="0">
+  <tbody>
+    <tr>
+      <td>There are two core developer tools included with&nbsp;<big><span
+ style="color: rgb(102, 0, 153); font-weight: bold;">pyjamas</span></big>.
+&nbsp;<span style="font-weight: bold;">pyjs</span><img
+ style="width: 22px; height: 22px;" alt="[1]" src="img/num1.png">
+translates Python code to Javascript by walking the Python abstract
+syntax tree and generating Javascript.<br>
+      <br>
+In many cases, built-in Python types require a custom Javascript
+implementation. &nbsp;For example, even though Python lists are similar
+to
+Javascript arrays, Python lists are converted to custom objects that
+implement methods such as <i>append</i>. &nbsp;These custom objects,
+required for translation <span style="font-weight: bold;">by pyjs</span>,
+are defined in a library called
+<span style="font-weight: bold;">pyjslib</span>.<img
+ style="width: 22px; height: 22px;" alt="[2]" src="img/num2.png"><br>
+      <br>
+Like GWT,&nbsp;<big><span
+ style="color: rgb(102, 0, 153); font-weight: bold;">pyjamas</span></big>
+comes with a set of UI widgets as well as a library for DOM
+manipulation.<img style="width: 23px; height: 22px;" alt="[3]"
+ src="img/num3.png"> &nbsp;These libraries are written in Python but
+are, like everything else, translated to Javascript for deployment.<br>
+      <br>
+The overall translation of individual components is managed by build<img
+ style="width: 22px; height: 22px;" alt="[4]" src="img/num4.png">
+which also creates the necessary boilerplate code. &nbsp;The result is
+a set of <span style="font-family: monospace;">.html</span> and <span
+ style="font-family: monospace;">.js</span> files that can be served up
+by a Web server.<br>
+      <br>
+There are other components planned which have not been covered here
+such as server-side code for communication in client-server
+applications.  The examples do however contain JSONRPC server-side
+source code (in cgi python, and php) which give an idea of what's
+involved.
+</td>
+      <td><img style="width: 348px; height: 315px;" alt="[overview]"
+ src="img/overview.png"></td>
+    </tr>
+  </tbody>
+</table>
+<br>
+<h2>Getting Started</h2>
+<p>
+    Pyjamas is slightly different from traditional Web development: it's
+    more like Desktop application development.  Emphasising this and
+    helping you to begin developing your first application, is a
+    <a href="./getting_started.html">getting started</a> page.  Also,
+    a more comprehensive and direct guide to getting started is in
+    the online <a href="./book/output/Bookreader.html#Getting%20Started">Pyjamas Book</a>.
+</p>
+
+<h2>Building User Interfaces with Pyjamas</h2>
+The
+<span style="font-family: monospace; font-weight:bold">ui</span> module
+contains all of the main classes you need to create your user interface.  At
+first, this module can be a quite confusing because of the number of classes
+defined.  To become familiar with
+the user interface side of Pyjamas, you might like to refer to the <a
+href="showcase/Showcase.html">Pyjamas User Interface Showcase</a>.  You
+might find the <a href="uiHierarchy.html">ui module class hierarchy</a> useful.
+
+Additionally, there is <a href="http://pyjd.sf.net/api">API documentation</a>
+on <a href="http://pyjd.sf.net">pyjd.org</a>, along with a
+<a href="http://pyjd.sf.net/controls_tutorial.html">tutorial</a> on how to
+create your own interactive widget.
+
+<h2>Pyjamas Book</h2>
+
+An online version of the
+<a href="./book/output/Bookreader.html">Pyjamas Book</a>
+is available to read, and is in development.  Contact <a href="mailto:lkcl@lkcl.net">lkcl@lkcl.net</a> if there are any issues that you believe should be
+covered; if you find any errors; or if the book proves useful enough to
+be worth paying for.  The Bookreader itself is a Pyjamas application
+which uses AJAX to load the contents as text files, and Wiki-like markup
+is used, on the browser, to generate the HTML displayed.
+
+<h2>Download</h2>
+<p>
+Pyjamas can be downloaded from sourceforge,
+<a href="https://sourceforge.net/project/showfiles.php?group_id=239074">here</a>.
+The current release is 0.6.  Latest source code in development
+is available from sourceforge subversion,
+<a href="http://sourceforge.net/svn/?group_id=239074">here</a>.
+</p>
+
+<p>
+For the impatient who just want to get the source without wading through
+sourceforge waffle:
+<pre>
+ svn co https://pyjamas.svn.sourceforge.net/svnroot/pyjamas pyjamas
+</pre>
+</p>
+
+<h2>Developer advice, and setting up a development environment</h2>
+
+<p>
+Web application development can be tricky: it can come as a bit of a shock
+when compared to python app development to learn that web browsers do not
+come with <i>any</i> proper debugging assistance whatsoever, by default.
+You <b>will</b> need to install and/or enable a debugger in the browsers
+that you use:
+</p>
+
+<ul>
+<li /> For Firefox, install both Venkman and Firebug.
+<li /> For IE, install the "Microsoft Script Debugger".
+<li /> For Safari, go to the settings and enable "Development".
+<li /> Opera users, you are extremely lucky: opera has stack tracing by default.
+</ul>
+
+<p>
+You should also note that the Pyjamas compiler has a "-d" option which
+will enable a python-like stack trace when a javascript exception occurs.
+The amount of javascript generated can be FIVE times larger, so only enable
+this during development.
+</p>
+
+<p>
+Lastly, it is worth reiterating that Pyjamas-Desktop runs as pure python:
+you should give serious consideration to running the application under
+Pyjamas-Desktop alongside developing it for the browser.  The availability
+of python runtime stack traces and the simple fact that the standard python
+interpreter is much better at catching certain kinds of errors than 
+(brain-damaged) browsers has generally found to make life much much easier.
+</p>
+
+<h2>News</h2>
+
+<ul>
+<li /><b>17th August 2009</b> The MSHTML Pyjamas-Desktop port takes
+shape!  Various interesting technical challenges have been mostly
+overcome, to bring IE's engine to the mix.  This is <i>not</i> the
+same approach as, for example,
+<a href="http://www.appcelerator.com/appcelerator-platform/titanium-architecture/">Titanium</a>, which enables &lt;script type="text/python" /&gt;.
+The MSHTML port of Pyjamas Desktop actually embeds an IWebBrowser2
+Active-X instance into a Win32 window, provides access to the Document
+of the IWebBrowser2 using Python/COM, and goes from there.  In other
+words, other than the python
+<a href="http://sf.net/projects/comtypes">"comtypes"</a> package, which
+is only 140k, and IE itself, there are no additional dependencies required
+to get pyjamas applications running under MSHTML.
+<li /><b>6th July 2009</b> Pyjamas compiles the Python version of
+<a href="http://trac.puremvc.org/PureMVC_Python/">PureMVC</a>.  Kees Bos
+improved the pyjamas compiler to the point where PureMVC would compile
+to Javascript and run with zero modifications.  He has also ported
+the <a href="./examples/employeeadmin">Employee Admin</a> wxWidgets
+example to run under Pyjamas, and it is close to working under PyJD as well.
+<li /><b>2nd July 2009</b> Pyjamas Desktop is ported to run under XUL,
+the Browser engine behind Mozilla Firefox.  Thanks to Hulahop (from the
+OLPC Sugar team) and to the developers of python-xpcom, Pyjamas Desktop
+was successfully ported to XUL in only two days.
+</ul>
+
+<h2>Useful Links</h2>
+<ul>
+
+  <li style="padding-bottom: 8px;">The
+    <a href="http://code.google.com/p/pyjamas">Google Code page</a>
+    has a wiki with
+    several pages you may find useful,
+    as well as the issue tracker we're using to log all the known bugs.
+    &nbsp;Please ignore the subversion
+    repository, it is now out-of-date: we have moved to 
+    <a href="http://sf.net/projects/pyjamas">sourceforge</a>
+  </li>
+
+  <li style="padding-bottom: 8px;">The
+    <a href="http://groups.google.com/group/pyjamas-dev">Google
+Group</a> is the main mailing list
+for people using or developing
+    <big><span style="color: rgb(102, 0, 153); font-weight: bold;">pyjamas</span>.</big>
+  </li>
+
+  <li style="padding-bottom: 8px;">
+  <a href="http://pyjd.sf.net">Pyjamas-Desktop</a>
+  is a tool for running&nbsp;<big><span
+ style="color: rgb(102, 0, 153); font-weight: bold;">pyjamas</span></big>
+    applications
+    on the desktop. &nbsp;
+  </li>
+
+  <li style="padding-bottom: 8px;">
+   The
+   <a href="http://sourceforge.net/projects/pyjamas">Sourceforge
+project page</a> will no doubt also be useful to some folks.
+  </li>
+
+  <li style="padding-bottom: 8px;">
+    The Online version of the
+    <a href="./book/output/Bookreader.html">Pyjamas Book</a>,
+    which is itself a Pyjamas-based AJAX book reader, contains a comprehensive
+    guide to Pyjamas.
+  </li>
+
+  <li style="padding-bottom: 8px;">The <a href="http://code.google.com/webtoolkit/documentation">GWT
+documentation pages</a>
+    are actually quite useful. &nbsp;<big><span
+     style="color: rgb(102, 0, 153); font-weight: bold;">pyjamas</span></big>
+    has reimplemented much of
+    GWT in Python, so you can use the GWT
+    documentation to learn how to build user interfaces in&nbsp;<big><span
+     style="color: rgb(102, 0, 153); font-weight: bold;">pyjamas</span><span
+     style="font-style: italic;"></span></big>.
+     </li>
+
+ <li style="padding-bottom: 8px;">
+  <a href="http://search.twitter.com/search?q=%23pyjamas">#pyjamas</a> on twitter.
+ </li>
+
+</ul>
+
+<big><span
+ style="color: rgb(102, 0, 153); font-weight: bold; font-style: italic;"></span></big>
+
+</body>
+</html>

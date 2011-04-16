@@ -1,0 +1,18 @@
+= Class Focus =
+
+# FocusImpl
+
+== Methods defined: ==
+
+ * blur(self, elem)
+
+ * createFocusable(self)
+
+ * focus(self, elem)
+
+ * getTabIndex(self, elem)
+
+ * setAccessKey(self, elem, key)
+
+ * setTabIndex(self, elem, index)
+

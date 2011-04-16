@@ -1,0 +1,8 @@
+= Class HasVerticalAlignment =
+
+== Data and other attributes defined: ==
+
+ * ALIGN_BOTTOM = 'bottom'
+ * ALIGN_MIDDLE = 'middle'
+ * ALIGN_TOP = 'top'
+
