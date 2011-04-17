@@ -6,4 +6,5 @@ rm -fr output/
 
 options="$*"
 if [ -z $options ] ; then options="-O";fi
-~/src/pyjamas-0.7/bin/pyjsbuild $options softchordapp
+../../pyjamas-0.7/bin/pyjsbuild $options softchordapp
+
