@@ -531,27 +531,43 @@ class Song:
         self.number = -1
         self.title = ""
         self.prefer = PREFER_NEITHER
-        self.key_note_id = -1
-        self.key_is_major = 0
+        self.key_note_id = -1 # Main key note
+        self.key_is_major = 0 # Major or minor?
+        self.alt_key_note_id = -1 # Alternative key note
 
         self.updateSongFromDatabase()
         self.updateSharpsOrFlats()
     
     
     def updateSongFromDatabase(self):
+        """
+        Read this song from the database, and populate the instnces properties.
+        """
         
-        for row in self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % self.id):
-            self.title = row[0]
-            self.number = row[1]
-            all_text = unicode(row[2])
-            self.key_note_id = row[3] # Can be None or -1
-            if self.key_note_id == None:
-                self.key_note_id = -1
-            self.key_is_major = row[4]
-            if self.key_is_major == None:
-                self.key_is_major = 0
-            break
+        # Read the song from the database:
+        try:
+            row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i" % self.id).fetchone()
+        except sqlite3.OperationalError:
+            # Old formatted songbook file
+            row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % self.id).fetchone()
+            # Create this prop
+            print 'exception'
+            self.app.curs.execute("ALTER TABLE songs ADD alt_key_note_id INTEGER")
+            row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i" % self.id).fetchone()
         
+        self.title = row[0]
+        self.number = row[1]
+        all_text = unicode(row[2])
+        self.key_note_id = row[3] # Can be None or -1
+        if self.key_note_id == None:
+            self.key_note_id = -1
+        self.key_is_major = row[4]
+        if self.key_is_major == None:
+            self.key_is_major = 0
+        self.alt_key_note_id = row[5]
+        
+
+        # Read the chords for this song form the database:
         song_chords = []
         for row in self.app.curs.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % self.id):
             id = row[0]
@@ -2961,7 +2977,6 @@ class App( QtGui.QApplication ):
             self.current_song.title = new_title
             self.setWaitCursor()
             try:
-                #self.curs.execute('UPDATE songs SET title="%s" WHERE id=%i' % (new_title, self.current_song.id))
                 self.curs.execute('UPDATE songs SET title=? WHERE id=?', (new_title, self.current_song.id))
                 self.curs.commit()
                 
@@ -3026,9 +3041,13 @@ class App( QtGui.QApplication ):
             note_id = (new_key_index-1) // 2
             is_major = (new_key_index-1) % 2
         
+        # Alternative key note ID (FIXME):
+        alt_key_note_id = -1
+        
         if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
             self.current_song.key_note_id = note_id
             self.current_song.key_is_major = is_major
+            self.current_song.alt_key_note_id = alt_key_note_id
 
             # Do not run this code if the value of the menu is first initialized
             self.current_song.changed()
@@ -4012,7 +4031,7 @@ class App( QtGui.QApplication ):
             self.curs = sqlite3.connect(unicode(songbook_file))
 
             self.curs.execute("CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)")
-            self.curs.execute("CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, key_note_id INTEGER, key_is_major INTEGER)")
+            self.curs.execute("CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, key_note_id INTEGER, key_is_major INTEGER, alt_key_note_id INTEGER)")
             self.setCurrentSongbook( unicode(songbook_file) )
         
     
