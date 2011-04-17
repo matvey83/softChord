@@ -551,21 +551,26 @@ class Song:
             # Old formatted songbook file
             row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % self.id).fetchone()
             # Create this prop
-            print 'exception'
+            print "Created songs.alt_key_note_id column"
             self.app.curs.execute("ALTER TABLE songs ADD alt_key_note_id INTEGER")
+            self.app.curs.commit()
             row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i" % self.id).fetchone()
         
         self.title = row[0]
         self.number = row[1]
         all_text = unicode(row[2])
+        
         self.key_note_id = row[3] # Can be None or -1
         if self.key_note_id == None:
             self.key_note_id = -1
+        
         self.key_is_major = row[4]
         if self.key_is_major == None:
             self.key_is_major = 0
-        self.alt_key_note_id = row[5]
         
+        self.alt_key_note_id = row[5]
+        if self.alt_key_note_id == None:
+            self.alt_key_note_id = -1
 
         # Read the chords for this song form the database:
         song_chords = []
@@ -964,15 +969,16 @@ class Song:
         if self.key_note_id != -1:
             self.key_note_id = transpose_note(self.key_note_id, steps)
         
+        # NOTE: Do NOT transpose the alternative key (but perhaps change it?)
+        #if self.alt_key_note_id != -1:
+        #    self.alt_key_note_id = transpose_note(self.alt_key_note_id, steps)
+        
         self.updateSharpsOrFlats()
         
-        self.changed()
+        self.current_song.sendToDatabase()
         self.app.editor.viewport().update()
     
 
-    def changed(self):
-        pass
-    
     def sendToDatabase(self):
         """
         Save this song to the database.
@@ -1000,8 +1006,8 @@ class Song:
             for song_char_num in chords_in_database:
                 self.app.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
             
-            self.app.curs.execute("UPDATE songs SET number = ?, title = ?, text = ?, key_note_id = ?, key_is_major = ?  WHERE id = ?",
-                (self.number, self.title, self.getAllText(), self.key_note_id, self.key_is_major, self.id))
+            self.app.curs.execute("UPDATE songs SET number=?, title=?, text=?, key_note_id=?, key_is_major=?, alt_key_note_id=? WHERE id=?",
+                (self.number, self.title, self.getAllText(), self.key_note_id, self.key_is_major, self.alt_key_note_id, self.id))
             self.app.curs.commit()
         finally:
             self.app.restoreCursor()
@@ -1285,7 +1291,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                     if other_chord.character_num == self.dragging_chord.character_num and other_chord != self.dragging_chord:
                         self.app.current_song.deleteChord(other_chord)
                         break
-                self.app.current_song.changed()
+                #self.current_song.sendToDatabase()
                 self.app.editor.viewport().update()
             
             self.dragging_chord_orig_position = -1
@@ -1570,8 +1576,7 @@ class App( QtGui.QApplication ):
         self.ui.songs_view.horizontalHeader().setStretchLastSection(True)
         self.ui.songs_view.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
         self.ui.songs_view.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
-        self.c( self.ui.songs_view.selectionModel(), "selectionChanged(QItemSelection, QItemSelection)",
-            self.songsSelectionChangedCallback )
+        self.ui.songs_view.selectionModel().selectionChanged.connect( self.songsSelectionChangedCallback )
         
         self.ui.song_filter_ef.textEdited.connect( self.songFilterEdited )
         self.ui.clear_filter_button.clicked.connect( self.clearFilterClicked )
@@ -1598,6 +1603,7 @@ class App( QtGui.QApplication ):
         self.ui.song_num_ef.setValidator( QtGui.QIntValidator(0, 1000000000, self.ui) )
         self.ignore_song_key_changed = False
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
+        self.c( self.ui.song_alt_key_menu, "currentIndexChanged(int)", self.currentSongAltKeyChanged )
         
         # Menu actions:
         self.ui.actionNewSongbook.triggered.connect(self.newSongbook)
@@ -1825,7 +1831,8 @@ class App( QtGui.QApplication ):
     def populateSongKeyMenu(self):
         # Populate the song key pull-down menu:
         keys_list = ["None"]
-
+        alt_keys_list = ["None"]
+        
         if self.current_song:
             for note_id, (text, alt_text) in enumerate(self.notes_list):
                 if note_id in [3, 8, 10]: # Eb, Ab, or Bb
@@ -1834,15 +1841,21 @@ class App( QtGui.QApplication ):
                     combined_text = text
                 
                 keys_list.append(combined_text + u" Major")
-                keys_list.append(combined_text + u" Minor")
+                keys_list.append(combined_text + u" minor")
+                alt_keys_list.append(combined_text)
         
         self.ignore_song_key_changed = True
         self.ui.song_key_menu.clear()
         self.ui.song_key_menu.addItems(keys_list)
         self.ui.song_key_menu.setMaxVisibleItems(25) # Show all keys (including "None")
+        
+        self.ui.song_alt_key_menu.clear()
+        self.ui.song_alt_key_menu.addItems(alt_keys_list)
+        self.ui.song_alt_key_menu.setMaxVisibleItems(13) # Show all keys (including "None")
         self.ignore_song_key_changed = False
         
         self.ui.song_key_menu.setEnabled( bool(self.current_song) )
+        self.ui.song_alt_key_menu.setEnabled( bool(self.current_song) )
         
     
     
@@ -2108,13 +2121,15 @@ class App( QtGui.QApplication ):
         if self.current_song == None:
             self.ui.song_title_ef.setText("")
             self.ui.song_num_ef.setText("")
-            self.ui.song_key_menu.setCurrentIndex(0) # None
+            self.ui.song_key_menu.setCurrentIndex(0) # "None" item
+            self.ui.song_alt_key_menu.setCurrentIndex(0) # "None" item
         
         
         self.editor.setEnabled( self.current_song != None )
         self.ui.song_title_ef.setEnabled( self.current_song != None )
         self.ui.song_num_ef.setEnabled( self.current_song != None )
         self.ui.song_key_menu.setEnabled( self.current_song != None )
+        self.ui.song_alt_key_menu.setEnabled( self.current_song != None )
         self.ui.transpose_up_button.setEnabled( self.current_song != None )
         self.ui.transpose_down_button.setEnabled( self.current_song != None )
         
@@ -2161,7 +2176,9 @@ class App( QtGui.QApplication ):
         if self.current_song == None and song == None:
             return
         
+        #self.ignore_song_key_changed = True
         self.sendCurrentSongToDatabase()
+        
         
         if self.current_song != None:
             # Update the current song in the database
@@ -2176,7 +2193,8 @@ class App( QtGui.QApplication ):
         if song == None:
             self.current_song = None
             self.previous_song_text = None
-            self.ui.song_key_menu.setCurrentIndex( 0 )
+            self.ui.song_key_menu.setCurrentIndex( 0 ) # "None" item
+            self.ui.song_alt_key_menu.setCurrentIndex( 0 ) # "None" item
             self.ui.song_num_ef.setText("")
             
             self.empty_doc = QtGui.QTextDocument()
@@ -2186,16 +2204,22 @@ class App( QtGui.QApplication ):
         else:
             self.current_song = song
             self.populateSongKeyMenu()
+        
             
             if not self.ignore_song_text_changed:
                 song_text = self.current_song.getAllText()
                 self.ignore_song_text_changed = False
                 self.previous_song_text = song_text
-
+        
             if self.current_song.key_note_id == -1:
                 self.ui.song_key_menu.setCurrentIndex( 0 )
             else:
                 self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major + 1)
+            
+            if self.current_song.alt_key_note_id == -1:
+                self.ui.song_alt_key_menu.setCurrentIndex( 0 )
+            else:
+                self.ui.song_alt_key_menu.setCurrentIndex( self.current_song.alt_key_note_id + 1)
             
             self.ui.song_title_ef.setText(self.current_song.title)
             if self.current_song.number == -1:
@@ -2207,6 +2231,8 @@ class App( QtGui.QApplication ):
             
             self.editor.setDocument(song.doc)
             self.editor.verticalScrollBar().setValue(0)
+        
+        #self.ignore_song_key_changed = False
         
         #print 'setCurrentSong'
         #self.clearUndoStack()
@@ -2222,7 +2248,7 @@ class App( QtGui.QApplication ):
         self.setWaitCursor()
         try:
             self.current_song.transpose(steps)
-            self.current_song.changed()
+            self.current_song.sendToDatabase()
             self.editor.viewport().update()
         finally:
             self.restoreCursor()
@@ -2298,7 +2324,7 @@ class App( QtGui.QApplication ):
         self.current_song._chords = new_all_chords
         self.previous_song_text = song_text
         
-        self.current_song.changed()
+        #self.current_song.sendToDatabase()
         
         #self.viewport().update()
         
@@ -3041,18 +3067,40 @@ class App( QtGui.QApplication ):
             note_id = (new_key_index-1) // 2
             is_major = (new_key_index-1) % 2
         
-        # Alternative key note ID (FIXME):
-        alt_key_note_id = -1
-        
         if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
             self.current_song.key_note_id = note_id
             self.current_song.key_is_major = is_major
-            self.current_song.alt_key_note_id = alt_key_note_id
-
-            # Do not run this code if the value of the menu is first initialized
-            self.current_song.changed()
+            
+            self.current_song.sendToDatabase()
             self.editor.viewport().update()
     
+   
+    
+    def currentSongAltKeyChanged(self, new_alt_key_index):
+        """
+        Called when the user modifies the selected song's key.
+        """
+        
+        if self.ignore_song_key_changed:
+            return
+
+        if self.current_song == None:
+            return
+        
+        song_id = self.current_song.id
+        
+        if new_alt_key_index == 0: # "None" menu item
+            alt_key_note_id = -1
+        else:
+            alt_key_note_id = (new_alt_key_index-1)
+        
+        if alt_key_note_id != self.current_song.alt_key_note_id:
+            self.current_song.alt_key_note_id = alt_key_note_id
+            
+            self.current_song.sendToDatabase()
+            self.editor.viewport().update()
+    
+
 
     def createNewSong(self):
         """
@@ -3562,7 +3610,7 @@ class App( QtGui.QApplication ):
             else:
                 self.current_song.replaceChord(orig_chord, new_chord)
             
-            self.current_song.changed()
+            #self.current_song.sendToDatabase()
             
             self.editor.viewport().update()
                 
