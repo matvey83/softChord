@@ -1315,7 +1315,7 @@ class CustomTextEdit(QtGui.QTextEdit):
             self.app.deleteSelectedChord()
             return
         else:
-            if event.modifiers() == Qt.NoModifier:
+            if not bool(event.modifiers() & Qt.AltModifier):
                 if self.app.processKeyPressed(key):
                     return
         
