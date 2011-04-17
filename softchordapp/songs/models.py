@@ -2,7 +2,7 @@ from django.db import models
 
 
 class Song(models.Model):
-    id = models.IntegerField(null=True, primary_key=True, blank=True)
+    #id = models.AutoField(primary_key=True)
     text = models.CharField(max_length=1000, blank=True)
     title = models.TextField(blank=True)
     key_note_id = models.IntegerField(null=True, blank=True)
@@ -14,7 +14,7 @@ class Song(models.Model):
         return self.title
 
 class SongChordLink(models.Model):
-    id = models.IntegerField(null=True, primary_key=True, blank=True)
+    #id = models.AutoField(primary_key=True)
     song_id = models.IntegerField(null=True, blank=True)
     character_num = models.IntegerField(null=True, blank=True)
     note_id = models.IntegerField(null=True, blank=True)
