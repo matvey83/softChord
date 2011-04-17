@@ -1,0 +1,67 @@
+Combining PyJS and PyV8 to produce an Optimising Python Compiler
+----------------------------------------------------------------
+
+pyjs.py is a stand-alone python-to-javascript.  PyV8 provides python
+bindings to the V8 Javascript Execution library, which provides fast
+JIT-compiled x86 and ARM assembler of a javascript application.
+
+Combining the two back-to-back would logically provide a way to
+compile python scripts to x86 or ARM assembler, resulting in a competitor
+to Psyco with the added advantage of supporting ARM CPUs.
+
+pyv8run.py demonstrates how this can be achieved.  It takes as input
+as its first argument a filename to be compiled to javascript and
+handed to the PyV8 execution engine.  More advanced versions of this
+principle would involve the creation of cached precompiled versions
+of scripts and modules, both the javascript (.pyj) and the JIT
+assembler (.py8).
+
+Dependencies
+------------
+
+You will require both the v8 library and pyv8.  They can be obtained
+from these locations:
+
+    http://code.google.com/p/v8
+    http://code.google.com/p/pyv8
+
+Follow the build instructions for each - you will not, at this time,
+be able to work on x86_64 platforms: you _will_ need to install 32-bit
+versions of python and boost-python (and development headers).
+As v8 is compiler technology, porting v8 to 64-bit is a major
+undertaking that has not yet been attempted.
+
+Testing
+-------
+
+very simple!
+
+echo print "hello" > test.py
+./pyv8run.py ./test.py
+
+What's Going On?
+----------------
+
+pyv8run.py uses pyjs.py and simply adds PyV8 as yet another "platform".
+Presently, the only function override that's supported is pyjslib.printFunc,
+which can be found in pyjamas/library/platform/pyjslibPyV8.py and this
+simple example is sufficient to demonstrate the principle.
+
+In the PyV8-platform-specific version of printFunc, a global routine
+named "print_fn" is called.  A class named Global which has a function
+named "print_fn" is then passed in to the PyV8 execution engine.
+The pyjs compiler knows that when a "print" statement is encountered,
+it must output "pyjslib_printFunc([print's arguments]);".  In this
+roundabout fashion, we eventually arrive back at "print", back inside
+pyv8run's Global.print_fn().
+
+In an ideal world, the PyV8 library would not be needed: a simple
+command-line tool similar to smjs (from spidermonkey) would suffice.
+However, the power of PyV8 comes from being able to access real
+python c-based dynamic modules, as sloisel's early experimental
+project (also named pyv8) showed.  In that work, which also used
+python-boost, sloisel managed to import Tcl/Tk into a pyv8 application,
+and had javascript firing up a python Tcl/Tk window, thanks to being
+able to gain access to the methods of the standard python c-based tk
+dynamic module.
+

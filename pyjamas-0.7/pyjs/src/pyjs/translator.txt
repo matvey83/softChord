@@ -1,0 +1,432 @@
+==========
+Translator
+==========
+
+The python -> javascript translator translates a single module into a
+javascript file. It accepts a list of source files, where each of the
+files is an override of its predecessor.
+
+
+    >>> from pyjs import translator
+
+Let us write a simple module.
+
+    >>> import tempfile, os
+    >>> tmp = tempfile.mkdtemp()
+
+    >>> mymodule1 = os.path.join(tmp, 'mymodule1.py')
+    >>> out_file = os.path.join(tmp, 'mymodule.js')
+    >>> f = file(mymodule1, 'w')
+    >>> f.write("""
+    ... def main():
+    ...     print 1
+    ... if __name__=='__main__':
+    ...     main()
+    ... """)
+    >>> f.close()
+
+The import statement just generates js functions, it does not care if
+modules are there.
+
+    >>> out_file = os.path.join(tmp, 'imports.js')
+    >>> imports = os.path.join(tmp, 'imports.py')
+    >>> f = file(imports, 'w')
+    >>> f.write("""
+    ... import a
+    ... from x.z import y, p as pp
+    ... import a.b
+    ... a.b.something()
+    ... import a
+    ... import a as a_foo
+    ... a.something()
+    ... a = 0
+    ... a += 1
+    ... bb = 0
+    ... from a.b import c
+    ... c()
+    ... a = 42
+    ... def main():
+    ...      import a.b
+    ...      a.b.something()
+    ...      a = 1
+    ...      import z as x
+    ...      x()
+    ...      from x.z import y, p as pp
+    ... """)
+    >>> f.close()
+
+    >>> translator.translate([imports], out_file,
+    ...                      debug=False,
+    ...                      print_statements = True,
+    ...                      function_argument_checking=True,
+    ...                      attribute_checking=True,
+    ...                      source_tracking=False,
+    ...                      line_tracking=False,
+    ...                      store_source=False)
+    ([...
+
+    (['a', 'x.z.y', 'x', 'x.z', 'x.z.p', 'a.b', 'a.b.c', 'z'], set([]))
+
+    >>> print file(out_file).read()
+    /* start module: imports */
+    var imports = $pyjs.loaded_modules["imports"] = function (__mod_name__) {
+    if(imports.__was_initialized__) return imports;
+    imports.__was_initialized__ = true;
+    if (__mod_name__ == null) __mod_name__ = 'imports';
+    var __name__ = imports.__name__ = __mod_name__;
+    try {
+    	pyjslib.__import__(['a'], 'a', 'imports');
+    	imports.a = $pyjs.__modules__.a;
+    	pyjslib.__import__(['x.z.y', 'x.z'], 'x.z.y', 'imports');
+    	imports.y = $pyjs.__modules__.x.z.y;
+    	pyjslib.__import__(['x.z.p', 'x.z'], 'x.z.p', 'imports');
+    	imports.pp = $pyjs.__modules__.x.z.p;
+    	pyjslib.__import__(['a.b', 'a'], 'a.b', 'imports');
+    	imports.a = $pyjs.__modules__.a;
+    	imports.a.b.something();
+    	imports.a = $pyjs.__modules__.a;
+    	imports.a_foo = $pyjs.__modules__.a;
+    	imports.a.something();
+    	imports.a = 0;
+    	imports.a += 1;
+    	imports.bb = 0;
+    	pyjslib.__import__(['a.b.c', 'a.b'], 'a.b.c', 'imports');
+    	imports.c = $pyjs.__modules__.a.b.c;
+    	imports.c();
+    	imports.a = 42;
+    	imports.main = function() {
+    		if ($pyjs.options.arg_count && arguments.length != 0) pyjs__exception_func_param(arguments.callee.__name__, 0, 0, arguments.length);
+    		var a,pp,y,x,z;
+    		pyjslib.__import__(['a.b', 'a'], 'a.b', 'imports');
+    		a = $pyjs.__modules__.a;
+    		a.b.something();
+    		a = 1;
+    		pyjslib.__import__(['z'], 'z', 'imports');
+    		x = $pyjs.__modules__.z;
+    		x();
+    		y = $pyjs.__modules__.x.z.y;
+    		pp = $pyjs.__modules__.x.z.p;
+    		return null;
+    	};
+    	imports.main.__name__ = 'main';
+    <BLANKLINE>
+    	imports.main.__bind_type__ = 0;
+    	imports.main.__args__ = [null,null];
+    	} catch (pyjs_attr_err) {throw pyjslib._errorMapping(pyjs_attr_err)};
+    	return this;
+    	}; /* end imports */
+    	$pyjs.modules_hash['imports'] = $pyjs.loaded_modules['imports'];
+    <BLANKLINE>
+    <BLANKLINE>
+    	/* end module: imports */
+    <BLANKLINE>
+    <BLANKLINE>
+    /*
+    PYJS_DEPS: ['a', 'x.z.y', 'x', 'x.z', 'x.z.p', 'a.b', 'a.b.c', 'z']
+    */
+    <BLANKLINE>
+
+    >>> baseclass = os.path.join(tmp, 'baseclass.py')
+    >>> f = file(baseclass, 'w')
+    >>> f.write("""
+    ... if 1:
+    ...     import pack4
+    ... import pack1
+    ... import pack1.mod
+    ... import pack1.mod as jod
+    ... from pack2.x import y
+    ... from pack2.x import something as z
+    ... print pack1
+    ... print y
+    ... def main():
+    ...     import pack3
+    ...     import pack3.sub
+    ...     import pack3.sub as pub
+    ...     from pack3 import z as y
+    ...     print pack3
+    ... """)
+    >>> f.close()
+
+    >>> deps = translator.translate([baseclass], out_file,
+    ...                      debug=False,
+    ...                      print_statements = True,
+    ...                      function_argument_checking=True,
+    ...                      attribute_checking=True,
+    ...                      source_tracking=False,
+    ...                      line_tracking=False,
+    ...                      store_source=False)
+
+Note that the __import__ function is called twice in edge-cases like
+the on in this example, it does not matter because duplicate imports
+do nothing. TODO: fix this
+
+    >>> for line in file(out_file):
+    ...     print line.strip()
+    /* start module: baseclass */
+    var baseclass = $pyjs.loaded_modules["baseclass"] = function (__mod_name__) {
+    if(baseclass.__was_initialized__) return baseclass;
+    baseclass.__was_initialized__ = true;
+    if (__mod_name__ == null) __mod_name__ = 'baseclass';
+    var __name__ = baseclass.__name__ = __mod_name__;
+    try {
+    if (pyjslib.bool(1)) {
+    pyjslib.__import__(['pack4'], 'pack4', 'baseclass');
+    baseclass.pack4 = $pyjs.__modules__.pack4;
+    }
+    pyjslib.__import__(['pack1'], 'pack1', 'baseclass');
+    baseclass.pack1 = $pyjs.__modules__.pack1;
+    pyjslib.__import__(['pack1.mod', 'pack1'], 'pack1.mod', 'baseclass');
+    baseclass.pack1 = $pyjs.__modules__.pack1;
+    baseclass.jod = $pyjs.__modules__.pack1.mod;
+    pyjslib.__import__(['pack2.x.y', 'pack2.x'], 'pack2.x.y', 'baseclass');
+    baseclass.y = $pyjs.__modules__.pack2.x.y;
+    pyjslib.__import__(['pack2.x.something', 'pack2.x'], 'pack2.x.something', 'baseclass');
+    baseclass.z = $pyjs.__modules__.pack2.x.something;
+    pyjslib.printFunc([baseclass.pack1], 1);
+    pyjslib.printFunc([baseclass.y], 1);
+    baseclass.main = function() {
+    if ($pyjs.options.arg_count && arguments.length != 0) pyjs__exception_func_param(arguments.callee.__name__, 0, 0, arguments.length);
+    var y,pub,pack3;
+    pyjslib.__import__(['pack3'], 'pack3', 'baseclass');
+    pack3 = $pyjs.__modules__.pack3;
+    pyjslib.__import__(['pack3.sub', 'pack3'], 'pack3.sub', 'baseclass');
+    pack3 = $pyjs.__modules__.pack3;
+    pyjslib.__import__(['pack3.sub', 'pack3'], 'pack3.sub', 'baseclass');
+    pub = $pyjs.__modules__.pack3.sub;
+    pyjslib.__import__(['pack3.z', 'pack3'], 'pack3.z', 'baseclass');
+    y = $pyjs.__modules__.pack3.z;
+    pyjslib.printFunc([pack3], 1);
+    return null;
+    };
+    baseclass.main.__name__ = 'main';
+    <BLANKLINE>
+    baseclass.main.__bind_type__ = 0;
+    baseclass.main.__args__ = [null,null];
+    } catch (pyjs_attr_err) {throw pyjslib._errorMapping(pyjs_attr_err)};
+    return this;
+    }; /* end baseclass */
+    $pyjs.modules_hash['baseclass'] = $pyjs.loaded_modules['baseclass'];
+    <BLANKLINE>
+    <BLANKLINE>
+    /* end module: baseclass */
+    <BLANKLINE>
+    <BLANKLINE>
+    /*
+    PYJS_DEPS: ['pack4', 'pack1', 'pack1.mod', 'pack2.x.y', 'pack2', 'pack2.x', 'pack2.x.something', 'pack3', 'pack3.sub', 'pack3.z']
+    */
+
+
+    >>> baseclass = os.path.join(tmp, 'baseclass.py')
+    >>> f = file(baseclass, 'w')
+    >>> f.write("""
+    ... if False:
+    ...     import pack1.sub
+    ...     import pack1
+    ...     from pack2.x import y
+    ... import pack1.sub
+    ... import pack1
+    ... import pack2
+    ... print pack1
+    ... print y
+    ... def main():
+    ...     if False:
+    ...         import pack3.sub1
+    ...         import pack3
+    ...     import pack3
+    ...     import pack3.sub2
+    ...     print pack3
+    ... """)
+    >>> f.close()
+
+    >>> deps = translator.translate([baseclass], out_file,
+    ...                      debug=False,
+    ...                      print_statements = True,
+    ...                      function_argument_checking=True,
+    ...                      attribute_checking=True,
+    ...                      source_tracking=False,
+    ...                      line_tracking=False,
+    ...                      store_source=False)
+
+Note that the block-level defines the smartness of the imports.
+
+    >>> for line in file(out_file):
+    ...     print line.strip()
+    /* start module: baseclass */
+    var baseclass = $pyjs.loaded_modules["baseclass"] = function (__mod_name__) {
+    if(baseclass.__was_initialized__) return baseclass;
+    baseclass.__was_initialized__ = true;
+    if (__mod_name__ == null) __mod_name__ = 'baseclass';
+    var __name__ = baseclass.__name__ = __mod_name__;
+    try {
+    if (pyjslib.bool(false)) {
+    pyjslib.__import__(['pack1.sub', 'pack1'], 'pack1.sub', 'baseclass');
+    baseclass.pack1 = $pyjs.__modules__.pack1;
+    pyjslib.__import__(['pack1'], 'pack1', 'baseclass');
+    baseclass.pack1 = $pyjs.__modules__.pack1;
+    pyjslib.__import__(['pack2.x.y', 'pack2.x'], 'pack2.x.y', 'baseclass');
+    baseclass.y = $pyjs.__modules__.pack2.x.y;
+    }
+    pyjslib.__import__(['pack1.sub', 'pack1'], 'pack1.sub', 'baseclass');
+    baseclass.pack1 = $pyjs.__modules__.pack1;
+    baseclass.pack1 = $pyjs.__modules__.pack1;
+    pyjslib.__import__(['pack2'], 'pack2', 'baseclass');
+    baseclass.pack2 = $pyjs.__modules__.pack2;
+    pyjslib.printFunc([baseclass.pack1], 1);
+    pyjslib.printFunc([baseclass.y], 1);
+    baseclass.main = function() {
+    if ($pyjs.options.arg_count && arguments.length != 0) pyjs__exception_func_param(arguments.callee.__name__, 0, 0, arguments.length);
+    var pack3;
+    if (pyjslib.bool(false)) {
+    pyjslib.__import__(['pack3.sub1', 'pack3'], 'pack3.sub1', 'baseclass');
+    pack3 = $pyjs.__modules__.pack3;
+    pyjslib.__import__(['pack3'], 'pack3', 'baseclass');
+    pack3 = $pyjs.__modules__.pack3;
+    }
+    pyjslib.__import__(['pack3'], 'pack3', 'baseclass');
+    pack3 = $pyjs.__modules__.pack3;
+    pyjslib.__import__(['pack3.sub2', 'pack3'], 'pack3.sub2', 'baseclass');
+    pack3 = $pyjs.__modules__.pack3;
+    pyjslib.printFunc([pack3], 1);
+    return null;
+    };
+    baseclass.main.__name__ = 'main';
+    <BLANKLINE>
+    baseclass.main.__bind_type__ = 0;
+    baseclass.main.__args__ = [null,null];
+    } catch (pyjs_attr_err) {throw pyjslib._errorMapping(pyjs_attr_err)};
+    return this;
+    }; /* end baseclass */
+    $pyjs.modules_hash['baseclass'] = $pyjs.loaded_modules['baseclass'];
+    <BLANKLINE>
+    <BLANKLINE>
+    /* end module: baseclass */
+    <BLANKLINE>
+    <BLANKLINE>
+    /*
+    PYJS_DEPS: ['pack1.sub', 'pack1', 'pack2.x.y', 'pack2', 'pack2.x', 'pack3.sub1', 'pack3', 'pack3.sub2']
+    */
+
+The following is not working right now.
+
+    >>> more = os.path.join(tmp, 'more.py')
+    >>> f = file(more, 'w')
+    >>> f.write("""
+    ... a = b = []
+    ... 3 # works
+    ... a[1] # is not working right now
+    ... """)
+    >>> f.close()
+
+    >>> deps = translator.translate([more], out_file,
+    ...                      debug=False,
+    ...                      print_statements = True,
+    ...                      function_argument_checking=True,
+    ...                      attribute_checking=True,
+    ...                      source_tracking=False,
+    ...                      line_tracking=False,
+    ...                      store_source=False)
+    Traceback (most recent call last):
+    ...
+    TranslationError: more line 4:
+    unsupported type, must be call or const (in _discard)
+    Subscript(Name('a'), 'OP_APPLY', [Const(1)])
+
+    >>> f = file(more, 'w')
+    >>> f.write("""
+    ... from write import write
+    ... write()
+    ... from write import x
+    ... """)
+    >>> f.close()
+
+    >>> deps = translator.translate([more], out_file,
+    ...                      debug=False,
+    ...                      print_statements = True,
+    ...                      function_argument_checking=True,
+    ...                      attribute_checking=True,
+    ...                      source_tracking=False,
+    ...                      line_tracking=False,
+    ...                      store_source=False)
+    >>> for line in file(out_file):
+    ...     print line.strip()
+    /* start module: more */
+    var more = $pyjs.loaded_modules["more"] = function (__mod_name__) {
+    if(more.__was_initialized__) return more;
+    more.__was_initialized__ = true;
+    if (__mod_name__ == null) __mod_name__ = 'more';
+    var __name__ = more.__name__ = __mod_name__;
+    try {
+    pyjslib.__import__(['write.write', 'write'], 'write.write', 'more');
+    more.write = $pyjs.__modules__.write.write;
+    more.write();
+    pyjslib.__import__(['write.x', 'write'], 'write.x', 'more');
+    more.x = $pyjs.__modules__.write.x;
+    } catch (pyjs_attr_err) {throw pyjslib._errorMapping(pyjs_attr_err)};
+    return this;
+    }; /* end more */
+    $pyjs.modules_hash['more'] = $pyjs.loaded_modules['more'];
+    <BLANKLINE>
+    <BLANKLINE>
+    /* end module: more */
+    <BLANKLINE>
+    <BLANKLINE>
+    /*
+    PYJS_DEPS: ['write.write', 'write', 'write.x']
+    */
+
+We cannot use top-level names that are reserved words in javascript.
+
+    >>> m = os.path.join(tmp, 'package.py')
+    >>> out_file = os.path.join(tmp, 'package.js')
+    >>> f = file(m, 'w')
+    >>> f.write("""
+    ... print 1
+    ... """)
+    >>> f.close()
+
+    >>> translator.translate([m], out_file,
+    ...                      debug=False,
+    ...                      print_statements = True,
+    ...                      function_argument_checking=True,
+    ...                      attribute_checking=True,
+    ...                      source_tracking=False,
+    ...                      line_tracking=False,
+    ...                      store_source=False)
+    Traceback (most recent call last):
+    ...
+    TranslationError: package line None:
+    reserved word used for top-level module 'package'
+    Module(None, Stmt([Printnl([Const(1)], None)]))
+
+Full overrides
+==============
+
+It is possible override the whole module by specifying a special flag in
+the override file.
+
+    >>> m = os.path.join(tmp, 'o1.py')
+    >>> out_file = os.path.join(tmp, 'o1.js')
+    >>> f = file(m, 'w')
+    >>> f.write("""
+    ... #@PYJS_FULL_OVERRIDE
+    ... print "this is o1 override full"
+    ... """)
+    >>> f.close()
+    >>> deps = translator.translate([more, m], out_file,
+    ...                      debug=False,
+    ...                      print_statements = True,
+    ...                      function_argument_checking=True,
+    ...                      attribute_checking=True,
+    ...                      source_tracking=False,
+    ...                      line_tracking=False,
+    ...                      store_source=False)
+    >>> deps
+    ([], set([]))
+    >>> print file(out_file).read()
+    /...('this is o1 override full')], 1);...
+
+
+    >>> import shutil
+    >>> shutil.rmtree(tmp)
+
+

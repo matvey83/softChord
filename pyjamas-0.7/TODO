@@ -1,0 +1,110 @@
+=====
+Todos
+=====
+
+After the europython merge we have still some things to change.
+
+- test on windows (who is willing?)
+
+- fix debug stuff in translated code
+
+- fix all example build scripts
+
+- test all examples
+
+- move all python library modules implemented for js into pyjs/lib
+
+- move all builtin modules implemented for js into pyjs/builtin
+
+- fix v8 runner (implement linker)
+
+- evtl. fix spidermonkey runner, but there is a linker that already
+  uses the js commandline interface from spidermonkey
+
+  [lkcl: yeah, but the commandline interface can't interact with
+   python modules.  i strongly recommend dropping cmd-line and using
+   python-spidermonkey.]
+
+- implement Backquote in translator
+
+- implement classes inside classes in translator
+
+From http://code.google.com/p/pyjamas/issues, for 0.6 release:
+
+97  Enhancement ui.Tree Widgets have too much whitespace around their contents
+200 Enhancement Datetime example
+209 Defect      Broke tests, --boilerplate-path needed
+
+49  Defect      __pygwt_onBadProperty is not defined        
+
+Python Builtins TODO
+---------------
+
+translator support for:
+
+    * GenExpr and GenExprInner
+        - if any(isinstance(child, Node) for child in node.getChildren()):
+        - write(', '.join(repr(child) for child in node.getChildren()))
+
+    * Conditional in classes:
+        class foo:
+            if True:
+                def fn(self):
+                    pass
+
+
+#234 from Beni Cherniavsky:
+
+Python builtins missing under pyjs:
+
+Easy to implement:
+    apply (somewhat deprecated)
+    basestring (String should do the job?)
+    bin (new in 2.6)
+    bytes (alias to str in 2.6)
+    globals
+    next
+    print (under from __future__ import print_function)
+    reduce
+    reversed
+    sorted
+    zip
+
+Require work to implement:
+    buffer (deprecated, irrelevant)
+    bytearray (new in 2.6)
+    coerce (somewhat deprecated)
+    complex
+    format
+    frozenset
+    id
+    intern
+    iter
+    locals
+    long
+    property
+    set
+    unichr
+    unicode
+    vars
+    xrange
+    zip
+
+Easy but not needed without interactive prompt:
+    copyright
+    credits
+    exit
+    help
+    license
+    quit
+
+Very hard / impossible within PyJS:
+    compile [lkcl: can be done with skulpt]
+    eval (very hard) [lkcl: can be done with skulpt]
+    execfile (very hard)
+    file
+    input
+    open
+    raw_input
+    reload
+

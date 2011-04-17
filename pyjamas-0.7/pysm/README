@@ -1,0 +1,43 @@
+Combining PyJS and Python-Spidermonkey 
+--------------------------------------
+
+pyjs.py is a stand-alone python-to-javascript.  Python-Spidermonkey
+provides python bindings to the Netscape / Mozilla spidermonkey javascript
+engine.  The combination of the two results in python being compiled
+to javascript, and then executed.
+
+pysmrun.py demonstrates how this can be achieved.  It takes as input
+as its first argument a filename to be compiled to javascript and
+handed to the spidermonkey execution library.
+
+Dependencies
+------------
+
+You will require Python-Spidermonkey from this locations:
+
+    http://pypi.python.org/pypi/python-spidermonkey
+
+Follow the build instructions.
+
+Testing
+-------
+
+very simple!
+
+echo print "hello" > test.py
+./pysmrun.py ./test.py
+
+What's Going On?
+----------------
+
+pysmrun.py uses pyjs.py and simply adds pysm as yet another "platform".
+Presently, the only function override that's supported is pyjslib.printFunc,
+which can be found in pyjamas/library/platform/pyjslibpysm.py and this
+simple example is sufficient to demonstrate the principle.
+
+In the pysm-platform-specific version of printFunc, a global routine
+named "pysm_print_fn" is called.  This is pre-added, before execution,
+to the javascript execution context, as a global, using
+python-spidermonkey's "add_global()" function.
+
+

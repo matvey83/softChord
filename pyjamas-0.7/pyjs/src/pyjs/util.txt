@@ -1,0 +1,54 @@
+==========================================
+Utility function for linkers and compilers
+==========================================
+
+
+    >>> from pyjs import util
+
+Copying a directory tree
+========================
+
+    >>> import tempfile, os
+    >>> tmp = tempfile.mkdtemp()
+    >>> src = os.path.join(tmp, 'src')
+    >>> dst = os.path.join(tmp, 'dst')
+
+The copytree_exists method copies the contents of src to dst.
+
+    >>> os.mkdir(src)
+    >>> f = open(os.path.join(src, 'testfile.txt'), 'w')
+    >>> f.write('jalla')
+    >>> f.close()
+
+dst does not need to exist.
+
+    >>> util.copytree_exists(src, dst)
+    >>> os.listdir(dst)
+    ['testfile.txt']
+
+By default, common known ignore files are ignored.
+
+    >>> f = open(os.path.join(src, '.DS_Store'), 'w')
+    >>> f.write('macos dir info')
+    >>> f.close()
+
+    >>> util.copytree_exists(src, dst)
+    >>> os.listdir(dst)
+    ['testfile.txt']
+
+For example CVS directories are also excluded.
+
+    >>> os.makedirs(os.path.join(src, 'sub', 'CVS', 'other'))
+    >>> util.copytree_exists(src, dst)
+    >>> os.listdir(os.path.join(dst, 'sub'))
+    []
+
+    >>> os.makedirs(os.path.join(src, '.svn'))
+    >>> util.copytree_exists(src, dst)
+    >>> os.listdir(dst)
+    ['sub', 'testfile.txt']
+
+    >>> os.makedirs(os.path.join(src, '.git'))
+    >>> util.copytree_exists(src, dst)
+    >>> os.listdir(dst)
+    ['sub', 'testfile.txt']

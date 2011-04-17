@@ -1,0 +1,162 @@
+Current Release: 0.7
+---------------
+
+This is the 0.7 release of Pyjamas.  Pyjamas comprises several projects,
+one of which is a stand-alone python-to-javascript compiler; other projects
+include a Graphical Widget Toolkit, such that pyjamas applications can run
+either in web browsers as pure javascript (with no plugins required)
+or stand-alone on the desktop (as a competitor to PyGTK2 and PyQT4).
+
+Features and enhancements of the stand-alone 0.7 series javascript
+compiler include:
+
+* the addition of generators (support for yield, by rewriting the function
+  so that it can be re-called and continue from the previous state);
+  the rewriting allows all browsers (not just firefox - the only browser
+  with a javascript-native "yield" feature) to appear to have python
+  "yield" functionality;
+
+* the beginnings of decorators support, and full support for properties,
+  with the addition of property();
+
+* some dramatic performance improvements due to a rewrite of for-loops;
+
+* improved support for import syntax (from . import module);
+
+* the addition of a built-in AST parser, use of which allows python 2.4
+  to compile programs with python 2.5 / 2.6 syntax into javascript;
+
+* addition of int and long types, and support for operator functions,
+  so that e.g list multiplication by numbers and list addition now work,
+  along with coercion between int, float and long types, and support
+  for floating point exceptions including raising ZeroDivisionError;
+
+* reintroduction of pyjscompile (equivalent to gcc -c foo.c -o foo.o).
+  This is in preparation for adding a separate linker command
+  (equivalent to gcc *.o -o foo), at which point Pyjamas apps will
+  be suitable for building using make, and Makefiles:
+  .py.js:
+      pyjscompile -o $< $@
+
+Overall, this release is a significant "pythonic" upgrade: for full
+details, see the CHANGELOG.
+
+In the User-Interface suite, which is separate from the Pyjamas
+stand-alone python-to-javascript compiler, the features and
+enhancements include:
+
+* The beginnings of a User-Interface and DOM regression test suite, that
+  is asynchronous and can generate and test the consequences of events.
+  It works by recording, using Pyjamas-Desktop, the HTML created by adding
+  and interacting with widgets and DOM (in "record" mode), then fetching
+  that HTML back using AJAX when the tests are run by the Browsers.
+  Care is taken to ensure that browsers that re-order Element Attributes are
+  taken into consideration.
+
+* An SVG / VML Canvas Library (a port of GWTCanvas).  This has been ported
+  to pure python, and consequently work under Pyjamas-Desktop as well.
+
+* A Graphical Chart Library (a port of GChart). This has been ported
+  to pure python, and consequently work under Pyjamas-Desktop as well.
+  For the same speed optimisations present in GChart, GChart for Pyjamas
+  can also use the python port of GWTCanvas.
+
+* A Google GMaps (v3) wrapper library.  This wrapper library uses the
+  Google GMaps javascript API, directly.  There are over ten demos and
+  examples that show how to use the API from Pyjamas.  Unfortunately,
+  the direct use of the GMaps javascript API precludes the use of
+  Pyjamas-Desktop, as it is quite tricky for PyJD ports to interact
+  (safely, if at all) with Javascript.  Javascript can be run
+  (through standard HTML methods), but initiation from Python and
+  interaction through Python is tricky.  Developers who may be
+  expecting to use Google GMaps on Pyjamas Desktop should therefore
+  assist in porting the Google GMaps Javascript API directly to
+  Python.
+
+* An internal restructure of Event handling, similar to GWT 1.7,
+  providing Focus, Mouse and Click "Mixin" modules so that developers
+  creating their own widgets have a minimal amount of work to do.
+  This redesign could only take place once Pyjamas supported multiple
+  inheritance (added in 0.6).
+
+Pyjamas
+-------
+
+Pyjamas is a port of Google Web Toolkit to Python, and thus enables
+the development of Rich Media AJAX applications in Python, with no
+need for special browser plugins.  Pyjamas contains a stand-alone
+python-to-javascript compiler, and also a Widget Set API that looks
+very similar to Desktop Widget Set APIs (such as PyQT4 or PyGTK2).
+
+Pyjamas also contains a Desktop Widget Set version, running as pure
+python, with three Desktop ports available.  Using web browser
+technology startlingly provides an alternative to traditional
+Widget sets, such as PyQT4 and PyGTK2, with the advantage of having
+full support for HTML, CSS, Plugins and other web-related features
+already built-in.  For the windows port, this can save users and
+developers around 30mb of downloads, as MSHTML is preinstalled on
+the Windows Operating System, as part of IE.
+
+For more information, see:
+
+    http://pyjs.org
+    http://pyjs.org/FAQ.html
+    http://pyjs.org/features.html
+
+Known bugs: http://code.google.com/p/pyjamas/issues
+            #290, #227, #228, #230, #304
+
+Pyjamas-Desktop
+---------------
+
+Pyjamas runs your python application in a Web Browser (as javascript).
+Pyjamas-Desktop runs exactly the same python application on the
+Desktop (as pure python).
+
+    http://pyjd.org
+
+Release 0.6 of Pyjamas incorporated Pyjamas-Desktop directly into
+the Pyjamas Distribution.  To use Pyjamas-Desktop there are three choices,
+with more planned [MacOSX PyObjC; KDE's PyKHTML].
+
+All ports of Pyjamas-Desktop will require a JSON library to be
+installed: as there are plenty already, it is counter-productive
+to write yet another one.  simplejson is recommended.
+
+1) - XULRunner
+
+install hulahop and python-xpcom.  hulahop, from OLPC SugarLabs,
+is distributed with both Debian and Ubuntu; python-xpcom is part
+of XULRunner and is also distributed with both Debian and Ubuntu.
+Other users should investigate the installation instructions for
+python-xpcom and hulahop for the operating system of their choice
+on the appropriate web sites.
+
+GNU/Linux, FreeBSD and other POSIX systems are strongly advised
+to use XULRunner for Pyjamas-Desktop: it is the most stable of the
+PyJD ports.
+
+2) - PyWebKitGtk
+
+you will need a patched version of pywebkitgtk:
+http://code.google.com/p/pywebkitgtk/issues/detail?id=13
+
+you will need a patched version of webkit:
+http://github.com/lkcl/webkit/16401.master
+
+Detailed build instructions are available here:
+http://wiki.github.com/lkcl/webkit/helping-with-16401master
+
+3) - MSHTML
+
+For Windows users, all that's required, other than installing python
+and Internet Explorer, is one further tiny package: Win32 "comtypes".
+
+Win32 "comtypes" can be downloaded here:
+* http://sourceforge.net/projects/comtypes/
+
+Unlike the other ports, which can comprise a whopping great bundle
+of anything up to 30mb in size, the MSHTML port literally requires
+nothing more than comtypes, thanks to the far-sighted design of the
+MSHTML Trident Engine and its extensive COM interface.
+

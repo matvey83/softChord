@@ -1,0 +1,35 @@
+var $wnd = window;
+var $doc = window.document;
+var $pyjs = new Object();
+$pyjs.global_namespace = this;
+$pyjs.__modules__ = {};
+$pyjs.modules_hash = {};
+$pyjs.available_modules = %(available_modules)s;
+$pyjs.loaded_modules = {};
+$pyjs.options = new Object();
+$pyjs.options.set_all = function (v) {
+    $pyjs.options.arg_ignore = v;
+    $pyjs.options.arg_count = v;
+    $pyjs.options.arg_is_instance = v;
+    $pyjs.options.arg_instance_type = v;
+    $pyjs.options.arg_kwarg_dup = v;
+    $pyjs.options.arg_kwarg_unexpected_keyword = v;
+    $pyjs.options.arg_kwarg_multiple_values = v;
+};
+$pyjs.options.set_all(true);
+$pyjs.trackstack = [];
+$pyjs.track = {module:'__main__', lineno: 1};
+$pyjs.trackstack.push($pyjs.track);
+$pyjs.__last_exception_stack__ = null;
+$pyjs.__last_exception__ = null;
+
+%(_pyjs)s
+
+%(modules_source)s
+
+/* initialize library */
+pyjslib("pyjslib");
+
+/* initialize application */
+%(entry_module)s("%(entry_module)s");
+

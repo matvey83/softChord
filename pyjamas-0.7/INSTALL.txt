@@ -1,0 +1,145 @@
+==================
+Installing Pyjamas
+==================
+
+BEFORE PROCEEDING READ THE FOLLOWING WARNING.
+
+DO NOT install the pyjamas libraries into /usr/share/python-support,
+/usr/lib/python2.N/site-packages or ANY location where the "standard"
+python interpreter could possibly pick them up.  The pyjamas libraries
+have nothing to do with python libraries when used by the compiler,
+and contain replacements for sys.py, time.py and other modules that
+are critical to pyjamas.   It goes without saying that if you overwrite
+the standard python modules with the pyjamas equivalents, you will run into
+massive problems.  Don't do it.
+
+Dependencies
+============
+
+For pyjamas javascript compilation, you need python 2 - that's it.
+
+For Pyjamas Desktop, you will need:
+
+* python-jsonrpc which can be downloaded from http://json-rpc.org
+  if you wish to use JSONRPC.
+
+* Win32 comtypes; or python-hulahop and python-xpcom, or a patched
+  version of pywebkitgtk and webkit-gobject
+
+  These are for the MSHTML, XULrunner and Webkit ports of Pyjamas
+  Desktop, respectively.
+
+    Win32:
+
+    * comtypes is available here: http://sourceforge.net/projects/comtypes/
+
+    XULrunner:
+
+    * python-xpcom requires XULrunner.  it's _big_.  it is recommended that
+      you use a standard gnu/linux distribution build.  if you ever manage
+      to get XULrunner and python-xpcom compiled for win32, you are officially
+      a hero: please tell everyone about it on pyjamas-dev.
+
+    Webkit:
+
+    use this code, for now:
+    * http://github.com/lkcl/webkit/16401.master
+    * http://code.google.com/p/pywebkitgtk/issues/detail?id=13
+
+Developer Sandbox Setup
+=======================
+
+"Sandbox" setup simply refers to an installation that can be used
+where it is placed, on the filesystem, without affecting any other
+installations.  The consequences of performing a "sandbox" install
+are that you can have as many "sandbox" installs as you like, each
+completely unrelated and having absolutely nothing to do with each
+other.
+
+Zope, Django and many other python systems make prevalent use of
+"sandbox" installs.  Every django app is its own "sandbox".  The
+creation of a "sandbox" in python is actually incredibly simple:
+all that is required is that a hard-coded path is inserted into
+sys.path.  This job is covered by bootstrap.py.
+
+Pyjamas
+-------
+
+In this directory run:
+
+ python bootstrap.py
+
+The files ``pyjd/__init__.py``, ``./bin/pyjsbuild`` and ``./bin/pyjscompile``
+will be created, custom-tailored with hard-coded paths specific to the exact
+absolute location that the bootstrap.py command is run from.  In this way, you
+will be able to install, test and use multiple versions of Pyjamas, without
+cross-interference.
+
+As they contain hard-coded paths, these custom-tailored commands CANNOT
+be "moved around".  If you move the pyjamas installation, re-run bootstrap.py
+to recreate the commands, with suitable hard-coded paths.
+
+To build pyjamas apps see ``./bin/pyjsbuild --help``
+
+Pyjamas Desktop
+---------------
+
+Sandbox installs of Pyjamas Desktop are tricky.  For pyjd applications
+to work, you will need to be able to import pyjd (built using
+python bootstrap.py: see above).
+
+There are two options for doing this:
+
+1) export PYTHONPATH={path to pyjamas}
+
+2) break the sandbox rules (specifically for pyjd) and run:
+
+    python run_bootstrap_first_then_pyjd_setup.py install
+
+If you decide to break the sandbox rules for pyjd, then, just as above,
+with pyjd/__init__.py containing hard-coded paths pointing to wherever
+you happened to create the sandbox, you MUST not "move around" the
+sandbox subdirectory, without also re-running bootstrap.py and re-running
+"python run_bootstrap_first_then_pyjd_setup.py install".
+
+System Installation
+===================
+
+If you are installing pyjamas system-wide, for use by MORE THAN ONE
+developer of the same multi-user system, follow the instructions in
+this section.  If you are the only person using pyjamas, or you
+intend to have several versions of pyjamas, DO NOT attempt a system-wide
+install.  In order to keep the pyjs-specific versions of libraries
+such as the reimplementations of time.py, sys.py etc. there are some
+tricky hoops that have to be jumped through.  System-wide installs
+should either be done by installing pre-built packages, or done WITH
+EXTREME CARE.  So - if you do not know what you are doing, and break your
+system, tough luck: you should have listened.
+
+First, you must use bootstrap.py to create suitable ./bin/pyjsbuild
+and ./bin/pyjscompile commands.  For example:
+
+ python bootstrap.py /usr/bin /usr/share/pyjamas
+
+After ./pyjd/__init__.py, ./bin/pyjsbuild and ./bin/pyjscompile have been
+created, they can now be installed system-wide, along with the libraries.
+
+ python run_bootstrap_first_then_setup.py install
+
+You *may* need to specify --install-data={pickasuitablelocation}
+and you *may* need to specify the same location to the bootstrap.py
+command (prior to running run_bootstrap_first_then_setup.py)
+
+ python bootstrap.py /usr/bin {pickasuitablelocation}
+
+The commands pyjscompile and pyjsbuild will be installed;
+the boilerplate web templates, the pyjamas "builtin" libraries
+and the UI Widget libraries will be installed as data libraries
+which pyjscompile and pyjsbuild will know about.   The default
+path is:
+
+    {sys.prefix}/share/pyjamas
+
+You can over-ride this default location with the PYJSPREFIX
+environment variable.
+

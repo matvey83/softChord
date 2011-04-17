@@ -1,0 +1,4 @@
+python main.py lib2to3/compiler/parse_tables.py
+python astgen.py lib2to3/compiler/ast.py
+
+python test_parse.py *.py */*.py /usr/lib/python2.5/*.py etc. etc.
