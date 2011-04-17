@@ -53,7 +53,9 @@ class SoftChordApp:
 
     def onClick(self, sender):
         # FIXME send ID instead of title
-        id = self.remote.deleteSong(sender.getValue(sender.getSelectedIndex()), self)
+        song_id = sender.getValue(sender.getSelectedIndex())
+        self.status.setText("song_id: %s" % song_id)
+        id = self.remote.deleteSong(song_id, self)
         if id<0:
             self.status.setText("Server Error or Invalid Response")
 
@@ -62,9 +64,11 @@ class SoftChordApp:
         if request_info.method == 'getAllSongs' or request_info.method == 'addSong' or request_info.method == 'deleteSong':
             self.status.setText(self.status.getText() + "HERE!")
             self.todoList.clear()
-            for task in response:
-                self.todoList.addItem(task[0])
-                self.todoList.setValue(self.todoList.getItemCount()-1, task[1])
+            for song in response:
+                title = song[0]
+                song_id = song[1]
+                self.todoList.addItem(title)
+                self.todoList.setValue(self.todoList.getItemCount()-1, song_id)
         else:
             self.status.setText(self.status.getText() + "none!")
 

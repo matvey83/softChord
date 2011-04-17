@@ -18,14 +18,16 @@ def getAllSongs(request):
 
     
 @jsonremote(service)
-def addSong(request, idFromJson):
+def addSong(request, titleFromJson):
     s = Song()
-    s.title = idFromJson
+    s.title = titleFromJson
     s.save()
     return getAllSongs(request)
 
 @jsonremote(service)
 def deleteSong(request, idFromJson):
+    #id = int(idFromJson.split(" ", 1)[0])
+    #Song.objects.all()
     s = Song.objects.get(id=idFromJson)
     s.delete()
     return getAllSongs(request)
