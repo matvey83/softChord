@@ -117,6 +117,23 @@
            <number>-1</number>
           </property>
           <item>
+           <widget class="QLabel" name="label_6">
+            <property name="text">
+             <string>Number:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="song_num_ef">
+            <property name="maximumSize">
+             <size>
+              <width>50</width>
+              <height>16777215</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QLabel" name="label_5">
             <property name="text">
              <string>Key:</string>
@@ -134,18 +151,18 @@
            </widget>
           </item>
           <item>
-           <widget class="QLabel" name="label_6">
+           <widget class="QLabel" name="label_7">
             <property name="text">
-             <string>Number:</string>
+             <string>Alternative key:</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QLineEdit" name="song_num_ef">
-            <property name="maximumSize">
+           <widget class="QComboBox" name="song_alt_key_menu">
+            <property name="minimumSize">
              <size>
-              <width>50</width>
-              <height>16777215</height>
+              <width>100</width>
+              <height>0</height>
              </size>
             </property>
            </widget>
