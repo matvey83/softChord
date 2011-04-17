@@ -1,14 +1,22 @@
 
+To Install:
+1) Install Django
+
+2) Setup the pre-installed pyjamas:
+    cd pyjamas-0.7/
+    python bootstrap.py
 
 
-3) 
-    cd media
+To build and run:
+
+1) Complile the front end to JavaScript and HTML:
+    cd softchordapp/media/
     ./build.sh
 
-
-4) Run the server:
-
+2) Run the server:
+    cd softchordapp/
     python manage.py runserver
 
-5) Test it out:
+3) Test it out:
     * In your browser, goto: http://127.0.0.1:8000/site_media/output/softchordapp.html
+
