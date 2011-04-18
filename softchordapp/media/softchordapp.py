@@ -1,6 +1,7 @@
 
 import pyjd # dummy for pyjs
 from pyjamas.ui.Label import Label
+from pyjamas.ui.Button import Button
 from pyjamas.ui.RootPanel import RootPanel
 from pyjamas.ui.VerticalPanel import VerticalPanel
 from pyjamas.ui.TextBox import TextBox
@@ -26,14 +27,19 @@ class SoftChordApp:
         self.newSongTextBox.addKeyboardListener(self)
         self.songListBox = ListBox()
         self.songListBox.setVisibleItemCount(7)
-        self.songListBox.setWidth("200px")
+        self.songListBox.setWidth("300px")
+        self.songListBox.setHeight("400px")
         self.songListBox.addClickListener(self)
-
+        
         panel.add(Label("Add New Song:"))
         panel.add(self.newSongTextBox)
         panel.add(Label("Click to Remove:"))
         panel.add(self.songListBox)
 
+        self.deleteSongButton = Button("Delete")
+        self.deleteSongButton.addClickListener(self)
+        panel.add(self.deleteSongButton)
+        
         self.status = Label()
         panel.add(self.status)
 
@@ -62,12 +68,22 @@ class SoftChordApp:
         Gets called when a user clicked in the <sender> widget.
         Currently deletes the song on which the user clicked.
         """
-        song_id = sender.getValue(sender.getSelectedIndex())
-        self.status.setText("song_id: %s" % song_id)
-        id = self.remote.deleteSong(song_id, self)
-        if id<0:
-            self.status.setText("Server Error or Invalid Response")
+        if sender == self.songListBox:
+            pass
+            #song_id = sender.getValue(sender.getSelectedIndex())
+            #self.status.setText("song_id: %s" % song_id)
+            #id = self.remote.deleteSong(song_id, self)
+            #if id<0:
+            #    self.status.setText("Server Error or Invalid Response")
 
+        elif sender == self.deleteSongButton:
+            # Figure out what song is selected in the table:
+            song_id = self.songListBox.getValue(self.songListBox.getSelectedIndex())
+            self.status.setText("song_id: %s" % song_id)
+            id = self.remote.deleteSong(song_id, self)
+            if id<0:
+                self.status.setText("Server Error or Invalid Response")
+    
     def onRemoteResponse(self, response, request_info):
         """
         Gets called when the backend (django) sends a packet to us.
