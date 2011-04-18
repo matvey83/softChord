@@ -1,3 +1,5 @@
+
+import pyjd # dummy for pyjs
 from pyjamas.ui.Label import Label
 from pyjamas.ui.RootPanel import RootPanel
 from pyjamas.ui.VerticalPanel import VerticalPanel
@@ -7,31 +9,36 @@ from pyjamas.ui import KeyboardListener
 
 from pyjamas.JSONService import JSONProxy
 
+import songs
+
 
 class SoftChordApp:
     def onModuleLoad(self):
+        """
+        Gets run when the page is first loaded.
+        Creates the widgets.
+        """
+
         self.remote = DataService()
         panel = VerticalPanel()
 
-        self.todoTextBox = TextBox()
-        self.todoTextBox.addKeyboardListener(self)
-
-        self.todoList = ListBox()
-        self.todoList.setVisibleItemCount(7)
-        self.todoList.setWidth("200px")
-        self.todoList.addClickListener(self)
+        self.newSongTextBox = TextBox()
+        self.newSongTextBox.addKeyboardListener(self)
+        self.songListBox = ListBox()
+        self.songListBox.setVisibleItemCount(7)
+        self.songListBox.setWidth("200px")
+        self.songListBox.addClickListener(self)
 
         panel.add(Label("Add New Song:"))
-        panel.add(self.todoTextBox)
+        panel.add(self.newSongTextBox)
         panel.add(Label("Click to Remove:"))
-        panel.add(self.todoList)
+        panel.add(self.songListBox)
 
         self.status = Label()
         panel.add(self.status)
 
         RootPanel().add(panel)
-
-
+    
 
     def onKeyUp(self, sender, keyCode, modifiers):
         pass
@@ -41,18 +48,20 @@ class SoftChordApp:
 
     def onKeyPress(self, sender, keyCode, modifiers):
         """
-        This functon handles the onKeyPress event, and will add the item in the text box to the list when the user presses the enter key.  In the future, this method will also handle the auto complete feature.
+        This functon handles the onKeyPress event
         """
-        if keyCode == KeyboardListener.KEY_ENTER and sender == self.todoTextBox:
+        if keyCode == KeyboardListener.KEY_ENTER and sender == self.newSongTextBox:
             id = self.remote.addSong(sender.getText(), self)
             sender.setText("")
 
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
 
-
     def onClick(self, sender):
-        # FIXME send ID instead of title
+        """
+        Gets called when a user clicked in the <sender> widget.
+        Currently deletes the song on which the user clicked.
+        """
         song_id = sender.getValue(sender.getSelectedIndex())
         self.status.setText("song_id: %s" % song_id)
         id = self.remote.deleteSong(song_id, self)
@@ -60,18 +69,25 @@ class SoftChordApp:
             self.status.setText("Server Error or Invalid Response")
 
     def onRemoteResponse(self, response, request_info):
+        """
+        Gets called when the backend (django) sends a packet to us.
+        Populates the song table with all songs in the database.
+        """
         self.status.setText("response received")
         if request_info.method == 'getAllSongs' or request_info.method == 'addSong' or request_info.method == 'deleteSong':
             self.status.setText(self.status.getText() + "HERE!")
-            self.todoList.clear()
-            for song in response:
-                title = song[0]
-                song_id = song[1]
-                self.todoList.addItem(title)
-                self.todoList.setValue(self.todoList.getItemCount()-1, song_id)
+            self.songListBox.clear()
+            for song_dict in response:
+                # FIXME we should not send the song text at this point, to save on bandwidth
+                song_obj = songs.Song(song_dict)
+                title = song_obj.title
+                song_id = song_obj.id
+                
+                self.songListBox.addItem(title)
+                self.songListBox.setValue(self.songListBox.getItemCount()-1, song_id)
         else:
             self.status.setText(self.status.getText() + "none!")
-
+    
     def onRemoteError(self, code, errobj, request_info):
         message = errobj['message']
         self.status.setText("Server Error or Invalid Response: ERROR %s - %s" % (code, message))
@@ -81,6 +97,12 @@ class DataService(JSONProxy):
         JSONProxy.__init__(self, "/services/", ["getAllSongs", "addSong", "deleteSong"])
 
 if __name__ == "__main__":
+    """
+    For running Pyjamas-Desktop.
+    """
+    pyjd.setup("public/softrchordapp.html")
+    #pyjd.setup("http://127.0.0.1:8000/site_media/output/softchordapp.html")
     app = SoftChordApp()
     app.onModuleLoad()
+    pyjd.run()
 
