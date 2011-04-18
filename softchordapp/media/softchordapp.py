@@ -22,28 +22,33 @@ class SoftChordApp:
 
         self.remote = DataService()
         panel = VerticalPanel()
+        
+        panel.add(Label("Add New Song:"))
 
         self.newSongTextBox = TextBox()
         self.newSongTextBox.addKeyboardListener(self)
+        panel.add(self.newSongTextBox)
+        
+        #panel.add(Label("Click to Remove:"))
+
         self.songListBox = ListBox()
         self.songListBox.setVisibleItemCount(7)
         self.songListBox.setWidth("300px")
         self.songListBox.setHeight("400px")
         self.songListBox.addClickListener(self)
-        
-        panel.add(Label("Add New Song:"))
-        panel.add(self.newSongTextBox)
-        panel.add(Label("Click to Remove:"))
         panel.add(self.songListBox)
-
+        
         self.deleteSongButton = Button("Delete")
         self.deleteSongButton.addClickListener(self)
         panel.add(self.deleteSongButton)
         
         self.status = Label()
         panel.add(self.status)
-
+        
         RootPanel().add(panel)
+        
+        # Populate the song table:
+        self.remote.getAllSongs(self)
     
 
     def onKeyUp(self, sender, keyCode, modifiers):
@@ -57,8 +62,8 @@ class SoftChordApp:
         This functon handles the onKeyPress event
         """
         if keyCode == KeyboardListener.KEY_ENTER and sender == self.newSongTextBox:
-            id = self.remote.addSong(sender.getText(), self)
-            sender.setText("")
+            id = self.remote.addSong(self.newSongTextBox.getText(), self)
+            self.newSongTextBox.setText("")
 
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
@@ -70,11 +75,6 @@ class SoftChordApp:
         """
         if sender == self.songListBox:
             pass
-            #song_id = sender.getValue(sender.getSelectedIndex())
-            #self.status.setText("song_id: %s" % song_id)
-            #id = self.remote.deleteSong(song_id, self)
-            #if id<0:
-            #    self.status.setText("Server Error or Invalid Response")
 
         elif sender == self.deleteSongButton:
             # Figure out what song is selected in the table:
