@@ -195,8 +195,8 @@ class DeleteSongsCommand( QtGui.QUndoCommand ):
             
             for song in self.songs:
                 song_text = song.getAllText()
-                self.app.curs.execute("INSERT INTO songs (id, number, text, title) VALUES (?, ?, ?, ?)",
-                    (song.id, song.number, song_text, song.title) )
+                self.app.curs.execute("INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
+                    (song.id, song.number, song.title, song.subtitle, song_text) )
                     
                 # Re-add all the chords:
                 for chord in song.iterateAllChords():
@@ -546,32 +546,38 @@ class Song:
         
         # Read the song from the database:
         try:
-            row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i" % self.id).fetchone()
+            row = self.app.curs.execute("SELECT number, title, subtitle, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i" % self.id).fetchone()
         except sqlite3.OperationalError:
             # Old formatted songbook file
             row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % self.id).fetchone()
             # Create this prop
-            print "Created songs.alt_key_note_id column"
             self.app.curs.execute("ALTER TABLE songs ADD alt_key_note_id INTEGER")
+            self.app.curs.execute("ALTER TABLE songs ADD subtitle TEXT")
             self.app.curs.commit()
-            row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i" % self.id).fetchone()
+            print "Table songs: created alt_key_note_id and subtitle columns"
+            # Re-try once the missing columns have been added:
+            row = self.app.curs.execute("SELECT number, title, subtitle, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i" % self.id).fetchone()
         
-        self.title = row[0]
-        self.number = row[1]
-        all_text = unicode(row[2])
+        self.number = row[0]
+        self.title = row[1]
+        self.subtitle = row[2]
+        if self.subtitle == None:
+            self.subtitle = ""
+
+        all_text = unicode(row[3])
         
-        self.key_note_id = row[3] # Can be None or -1
+        self.key_note_id = row[4] # Can be None or -1
         if self.key_note_id == None:
             self.key_note_id = -1
         
-        self.key_is_major = row[4]
+        self.key_is_major = row[5]
         if self.key_is_major == None:
             self.key_is_major = 0
         
-        self.alt_key_note_id = row[5]
+        self.alt_key_note_id = row[6]
         if self.alt_key_note_id == None:
             self.alt_key_note_id = -1
-
+        
         # Read the chords for this song form the database:
         song_chords = []
         for row in self.app.curs.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % self.id):
@@ -940,8 +946,8 @@ class Song:
         
         if self.title:
             converted_text += "{title:%s}\n" % self.title
-        if self.number:
-            converted_text += "{subtitle:%i}\n" % self.number
+        if self.number or self.subtitle:
+            converted_text += "{subtitle:%i %s}\n" % (self.number, self.subtitle)
         
         # Make a dict of chord strings (keyed by chord position in the song text:
         chord_texts_by_char_nums = {}
@@ -1006,15 +1012,15 @@ class Song:
             for song_char_num in chords_in_database:
                 self.app.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
             
-            self.app.curs.execute("UPDATE songs SET number=?, title=?, text=?, key_note_id=?, key_is_major=?, alt_key_note_id=? WHERE id=?",
-                (self.number, self.title, self.getAllText(), self.key_note_id, self.key_is_major, self.alt_key_note_id, self.id))
+            self.app.curs.execute("UPDATE songs SET number=?, title=?, subtitle=?, text=?, key_note_id=?, key_is_major=?, alt_key_note_id=? WHERE id=?",
+                (self.number, self.title, self.subtitle, self.getAllText(), self.key_note_id, self.key_is_major, self.alt_key_note_id, self.id))
             self.app.curs.commit()
         finally:
             self.app.restoreCursor()
         
         #print 'sendToDatabase'
         #self.app.clearUndoStack()
-        # self.app.updateUndoRedo()
+        # self.app.updateEditMenu()
     
 
             
@@ -1537,8 +1543,9 @@ class App( QtGui.QApplication ):
         self.pdf_options = PdfOptions()
         
         self.undo_stack = QtGui.QUndoStack()
-        self.undo_stack.canUndoChanged.connect(self.updateUndoRedo)
-        self.undo_stack.canRedoChanged.connect(self.updateUndoRedo)
+        self.undo_stack.canUndoChanged.connect(self.updateEditMenu)
+        self.undo_stack.canRedoChanged.connect(self.updateEditMenu)
+        self.focusChanged.connect(self.updateEditMenu)
         
         # Make a list of all chord types:
         self.chord_type_names = []
@@ -1584,7 +1591,7 @@ class App( QtGui.QApplication ):
         self.previous_song_text = None # Song text before last user's edit operation
 
         self.editor = CustomTextEdit(self)
-        self.editor.undoAvailable.connect( self.updateUndoRedo )
+        self.editor.undoAvailable.connect( self.updateEditMenu )
         
         self.ui.lyric_editor_layout.addWidget(self.editor)
         self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
@@ -1598,8 +1605,10 @@ class App( QtGui.QApplication ):
         self.c( self.ui.new_song_button, "clicked()", self.createNewSong )
         self.c( self.ui.delete_song_button, "clicked()", self.deleteSelectedSongs )
 
+        self.ui.song_num_ef.textEdited.connect( self.currentSongNumberEdited )
         self.ui.song_title_ef.textEdited.connect( self.currentSongTitleEdited )
-        self.c( self.ui.song_num_ef, "textEdited(QString)", self.currentSongNumberEdited )
+        self.ui.song_subtitle_ef.textEdited.connect( self.subtitleEdited )
+
         self.ui.song_num_ef.setValidator( QtGui.QIntValidator(0, 1000000000, self.ui) )
         self.ignore_song_key_changed = False
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
@@ -1820,7 +1829,7 @@ class App( QtGui.QApplication ):
         
         self.editor.viewport().update()
         #print 'chordEditorSelected()'
-        self.updateUndoRedo()
+        self.updateEditMenu()
     
 
     def __del__(self):
@@ -1990,21 +1999,33 @@ class App( QtGui.QApplication ):
         self.undo_stack.redo()
         self.viewport().update()
     
-    def updateUndoRedo(self):
-        undo_possible = False
-        redo_possible = False
-        if self.current_song and self.editor.lyric_editor_mode:
-            # Currently editing the lyrics:
-            # FIXME what if the lyrics editor can undo?
-            undo_possible = False
-            redo_possible = False
+    def updateEditMenu(self, ignored1=None, ignored2=None):
         
-        # In chord editor, or the songbook table:
-        undo_possible = self.undo_stack.canUndo()
-        redo_possible = self.undo_stack.canRedo()
+        focus_widget = self.focusWidget() # FIXME implement this properly
+
+        enable_paste = not self.clipboard.text().isEmpty()
+        
+        if self.current_song:
+            if self.editor.lyric_editor_mode:
+                # Currently editing the lyrics (QTextEdit)
+                # FIXME what if the lyrics editor can undo?
+                # FIXME We need to attach slots to QTextEdit.undoAvailable() and redoAvailable() signals
+                undo_possible = False
+                redo_possible = False
+            else:
+                # In chord editor
+                undo_possible = self.undo_stack.canUndo()
+                redo_possible = self.undo_stack.canRedo()
+                # FIXME Enable paste only if CHORD text is selected:
+        else:
+            # Not currently editing a song:
+            undo_possible = self.undo_stack.canUndo()
+            redo_possible = self.undo_stack.canRedo()
+            enable_paste = True # FIXME enable based on the focus widget
         
         self.ui.actionUndo.setEnabled(undo_possible)
         self.ui.actionRedo.setEnabled(redo_possible)
+        self.ui.actionPaste.setEnabled(enable_paste)
     
 
     def clearUndoStack(self):
@@ -2164,7 +2185,7 @@ class App( QtGui.QApplication ):
         self.ui.actionCloseSongbook.setEnabled(songbook_open)
         self.ui.actionSaveSongbook.setEnabled(songbook_open)
         
-        self.updateUndoRedo()
+        self.updateEditMenu()
             
     
     def setCurrentSong(self, song):
@@ -2222,6 +2243,8 @@ class App( QtGui.QApplication ):
                 self.ui.song_alt_key_menu.setCurrentIndex( self.current_song.alt_key_note_id + 1)
             
             self.ui.song_title_ef.setText(self.current_song.title)
+            self.ui.song_subtitle_ef.setText(self.current_song.subtitle)
+
             if self.current_song.number == -1:
                 self.ui.song_num_ef.setText("")
             else:
@@ -2236,7 +2259,7 @@ class App( QtGui.QApplication ):
         
         #print 'setCurrentSong'
         #self.clearUndoStack()
-        # self.app.updateUndoRedo()
+        # self.app.updateEditMenu()
         
 
 
@@ -3015,8 +3038,33 @@ class App( QtGui.QApplication ):
 
             finally:
                 self.restoreCursor()
-        
     
+
+    def subtitleEdited(self, new_note_str):
+        """
+        User has specified a new song note (comment).
+        """
+        
+        if not self.current_song:
+            raise ValueError("No current song")
+        
+        new_note_str = unicode(new_note_str)
+        
+        self.current_song.subtitle = new_note_str
+        self.setWaitCursor()
+        try:
+            self.curs.execute('UPDATE songs SET subtitle=? WHERE id=?', (new_note_str, self.current_song.id))
+            self.curs.commit()
+            
+            row_num = self.songs_model.getSongsRow(self.current_song)
+            rowobj = self.songs_model.getRow(row_num)
+            rowobj.subtitle = new_note_str
+        finally:
+            self.restoreCursor()
+
+
+    
+
     def currentSongNumberEdited(self, new_num_str):
         """
         Called when the user modifies the selected song's number.
@@ -3106,9 +3154,6 @@ class App( QtGui.QApplication ):
         """
         Add a new song to the database and the songs table, and select it.
         """
-        song_text = ""
-        song_number = -1 # NULL
-        song_title = ""
         
         row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
         if row[0] == None:
@@ -3116,8 +3161,8 @@ class App( QtGui.QApplication ):
         else:
             song_id = row[0] + 1
         
-        out = self.curs.execute("INSERT INTO songs (id, number, text, title) VALUES (?, ?, ?, ?)",
-            (song_id, song_number, song_text, song_title) )
+        out = self.curs.execute("INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
+            (song_id, -1, "", "", "") )
         self.curs.commit()
         
         # Update the song table from database:
@@ -3147,7 +3192,7 @@ class App( QtGui.QApplication ):
         self.undo_stack.push( DeleteSongsCommand(self, selected_song_ids) )
             
         #self.updateStates()
-        self.updateUndoRedo()
+        self.updateEditMenu()
     
     
     def setSongDatabaseId(self):
@@ -3651,9 +3696,8 @@ class App( QtGui.QApplication ):
         text = self.clipboard.text()
         self.ui.actionPasteAsNewSong.setEnabled(not text.isEmpty())
 
-        # FIXME depends on whether in chords or lyrics editor, and whether clipboard contains a chord text
-        self.ui.actionPaste.setEnabled(not text.isEmpty())
         self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
+        self.updateEditMenu()
     
     
     def pasteAsNewSong(self):
@@ -3814,12 +3858,15 @@ class App( QtGui.QApplication ):
             line_start_char_num += len(lyrics) + 1 # 1 for the EOL character
         
 
-        self._importSongFromLyricsAndChords(song_title, song_num, global_song_text, global_song_chords)
+        self._importSongFromLyricsAndChords(song_num, song_title, "", global_song_text, global_song_chords)
     
 
 
-    def _importSongFromLyricsAndChords(self, song_title, song_num, global_song_text, global_song_chords):
-        
+    def _importSongFromLyricsAndChords(self, song_num=-1, song_title="", song_subtitle="", song_text="", song_chords=None):
+        """
+        Import the given song to the database.
+        """
+
         row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
         if row[0] == None:
             song_id = 0
@@ -3828,8 +3875,8 @@ class App( QtGui.QApplication ):
         
         song_title = unicode(song_title)
 
-        self.curs.execute("INSERT INTO songs (id, number, text, title) VALUES (?, ?, ?, ?)",
-            (song_id, song_num, global_song_text, song_title) )
+        self.curs.execute("INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
+            (song_id, song_num, song_title, song_subtitle, song_text) )
         
         # Get the next available ID:
         row = self.curs.execute("SELECT MAX(id) from song_chord_link").fetchone()
@@ -3837,19 +3884,20 @@ class App( QtGui.QApplication ):
             chord_id = 0
         else:
             chord_id = row[0]+1
-        #chord_id = row[0]+1 if row[0] != None else 0
         
-        for song_char_num, chord in global_song_chords.iteritems():
-            (marker, note_id, type_id, bass_id, in_parentheses) = chord
-            if not marker:
-                marker = ""
-            
-            in_parentheses = int(in_parentheses)
-            
-            self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
-            
-            chord_id += 1 # Increment the ID for the next chord.
+        # Add song's chords (if any):
+        if song_chords:
+            for song_char_num, chord in song_chords.iteritems():
+                (marker, note_id, type_id, bass_id, in_parentheses) = chord
+                if not marker:
+                    marker = ""
+                
+                in_parentheses = int(in_parentheses)
+                
+                self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
+                
+                chord_id += 1 # Increment the ID for the next chord.
         self.curs.commit()
         
         # Update the song table from database:
@@ -3863,8 +3911,8 @@ class App( QtGui.QApplication ):
         
         song_title = ""
         song_num = -1 # NULL
+        song_subtitle = ""
         
-
         tmp_warnings = []
         song_lines = []
         
@@ -3885,11 +3933,11 @@ class App( QtGui.QApplication ):
                     continue
                 if custom_string.startswith('subtitle:'):
                     # If the subtitle is a number, treat it as a song number:
-                    tmp_song_number = custom_string[9:]
+                    tmp_subtitle = custom_string[9:]
                     try:
-                        song_num = int(tmp_song_number)
+                        song_num = int(tmp_subtitle)
                     except:
-                        pass
+                        song_subtitle = tmp_subtitle
                     else:
                         continue
                 
@@ -3955,7 +4003,7 @@ class App( QtGui.QApplication ):
             except:
                 pass
         
-        self._importSongFromLyricsAndChords(song_title, song_num, global_song_text, global_song_chords)
+        self._importSongFromLyricsAndChords(song_num, song_title, "", global_song_text, global_song_chords)
 
 
             
@@ -4079,7 +4127,7 @@ class App( QtGui.QApplication ):
             self.curs = sqlite3.connect(unicode(songbook_file))
 
             self.curs.execute("CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)")
-            self.curs.execute("CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, key_note_id INTEGER, key_is_major INTEGER, alt_key_note_id INTEGER)")
+            self.curs.execute("CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, key_is_major INTEGER, alt_key_note_id INTEGER)")
             self.setCurrentSongbook( unicode(songbook_file) )
         
     
