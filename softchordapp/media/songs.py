@@ -149,6 +149,11 @@ def get_chord_text(chord, prefer_sharps_or_flats):
 
 
 
+class SongChord:
+    def __init__(self, chord_dict):
+        for key, value in chord_dict.iteritems():
+            setattr(self, key, value)
+
 
 class Song:
     def __init__(self, song_dict):
@@ -157,7 +162,12 @@ class Song:
         """
         
         for key, value in song_dict.iteritems():
-            setattr(self, key, value)
+            if key == "chords":
+                self.chords = []
+                for chord_dict in value:
+                    self.chords.append( SongChord(chord_dict) )
+            else:
+                setattr(self, key, value)
         
         # The above loop will set these variables:
         # self.id
@@ -168,21 +178,16 @@ class Song:
         # self.alt_key_note_id
 
 
+"""
+
 
 def get_song_lines(song):
     
     if True:
         song_name = song.title
         song_text = song.text
-
-        chords = []
-        SongChordLink.objects.all()
-        subset = SongChordLink.objects.filter(song_id=song_id)
-        for chord in subset:
-            chords.append(chord)
         
-        
-        prefer_sharps_or_flats = get_sharp_flat_preference(chords)
+        prefer_sharps_or_flats = get_sharp_flat_preference(song.chords)
         
         # Make a dict of chord strings (keyed by chord position in the song text:
         chord_texts_by_char_nums = {}
@@ -249,5 +254,5 @@ def get_song_lines(song):
 
 
 
-
+"""
 

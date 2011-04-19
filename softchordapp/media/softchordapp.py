@@ -8,6 +8,8 @@ from pyjamas.ui.HorizontalPanel import HorizontalPanel
 from pyjamas.ui.TextBox import TextBox
 from pyjamas.ui.ListBox import ListBox
 from pyjamas.ui.TextArea import TextArea
+from pyjamas.ui.ScrollPanel import ScrollPanel
+from pyjamas.ui.HTML import HTML
 from pyjamas.ui import KeyboardListener
 
 from pyjamas.JSONService import JSONProxy
@@ -56,6 +58,12 @@ class SoftChordApp:
         self.textArea.setCharacterWidth(30)
         self.textArea.setVisibleLines(50)
         main_layout.add(self.textArea)
+
+        self.scrollPanel = ScrollPanel(Size=("300px", "100px"))
+        self.songHtml = HTML("<b>Test</b> test")
+        self.songHtml.setHTML("<i>test2</i><br>test3")
+        self.scrollPanel.add(self.songHtml)
+        main_layout.add(self.scrollPanel)
         
         RootPanel().add(main_layout)
         
