@@ -1,7 +1,7 @@
 #!/bin/python
-import os, shutil, subprocess
+import os, shutil, subprocess, sys
 
-MEDIA_DIR = os.path.dirname(__file__)
+MEDIA_DIR = os.path.abspath(os.path.dirname(__file__))
 
 os.chdir(MEDIA_DIR)
 
@@ -15,7 +15,27 @@ if os.path.isdir(out_dir):
 #../../pyjamas-0.7/bin/pyjsbuild $options softchordapp
 
 # Complie the app:
-pyjsbuild = os.path.join("..", "..", "pyjamas-0.7", "bin", "pyjsbuild")
-subprocess.call([ pyjsbuild, "softchordapp" ])
+#pyjsbuild = os.path.join("..", "..", "pyjamas-0.7", "bin", "pyjsbuild")
+#err = subprocess.call([ pyjsbuild, "softchordapp" ])
+#if err:
+#    print "ERROR"
+#    sys.exit(1)
 
+
+sys.argv.append("softchordapp")
+
+pyjspth = os.path.abspath(os.path.join("..", "..", "pyjamas-0.7"))
+
+
+#sys.path[0:0] = [r'/Users/adzhigir/src/pyjamas-0.7/pyjs/src']
+sys.path[0:0] = [r'%s/pyjs/src' % pyjspth]
+sys.path.append(os.path.join(pyjspth, 'pgen'))
+import pyjs
+pyjs.pyjspth = pyjspth
+pyjs.path += [os.path.join(pyjspth, 'library'),
+os.path.join(pyjspth, 'addons'),
+]
+
+import pyjs.browser
+pyjs.browser.build_script()
 

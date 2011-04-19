@@ -61,7 +61,6 @@ class SoftChordApp:
 
         self.scrollPanel = ScrollPanel(Size=("300px", "100px"))
         self.songHtml = HTML("<b>Test</b> test")
-        self.songHtml.setHTML("<i>test2</i><br>test3")
         self.scrollPanel.add(self.songHtml)
         main_layout.add(self.scrollPanel)
         
@@ -128,6 +127,7 @@ class SoftChordApp:
             self.status.setText(self.status.getText() + " - song received")
             song_obj = songs.Song(response)
             self.status.setText(self.status.getText() + "; id: %i; num-chords: %i" % (song_obj.id, len(song_obj.chords) ) )
+            self.songHtml.setHTML(song_obj.getHtml())
             self.textArea.setText(song_obj.text)
         
         else:

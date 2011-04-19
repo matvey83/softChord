@@ -153,6 +153,16 @@ class SongChord:
     def __init__(self, chord_dict):
         for key, value in chord_dict.iteritems():
             setattr(self, key, value)
+        
+        # Will set these attributes:
+        #self.id
+        #self.song_id
+        #self.character_num
+        #self.note_id
+        #self.chord_type_id
+        #self.bass_note_id
+        #self.marker
+        #self.in_parentheses
 
 
 class Song:
@@ -176,22 +186,22 @@ class Song:
         # self.key_note_id
         # self.key_is_major
         # self.alt_key_note_id
-
-
-"""
-
-
-def get_song_lines(song):
     
-    if True:
-        song_name = song.title
-        song_text = song.text
+    
+
+    def getLines(self):
+        """
+        Get the song's list of lines (each consisting of chords list and lyrics list)
+        """
         
-        prefer_sharps_or_flats = get_sharp_flat_preference(song.chords)
+        song_name = self.title
+        song_text = self.text
+        
+        prefer_sharps_or_flats = get_sharp_flat_preference(self.chords)
         
         # Make a dict of chord strings (keyed by chord position in the song text:
         chord_texts_by_char_nums = {}
-        for chord in chords:
+        for chord in self.chords:
             chord_song_char_num = chord.character_num
             #chord_text = chord.getChordText()
             chord_text = get_chord_text(chord, prefer_sharps_or_flats)
@@ -220,39 +230,61 @@ def get_song_lines(song):
             # If last line was not blank:
             song_lines.append( (curr_line_chords, curr_line_lyrics) )
         
+        return song_lines
+
+    def getHtml(self):
+        #return "<b>NEW</b>"
         
-        # Find the next ID (forward):
-        next_id = song_id + 1
-        while True:
-            try:
-                song = Songs.objects.get(id=next_id)
-            except Songs.DoesNotExist:
-                next_id += 1
-                if next_id == 1000:
-                    # This is the last song
-                    next_id = song_id
-                    break
-            else:
-                break
+        song_lines = self.getLines()
         
-        # Find the next ID (backward):
-        prev_id = song_id - 1
-        while True:
-            try:
-                song = Songs.objects.get(id=prev_id)
-            except Songs.DoesNotExist:
-                prev_id -= 1
-                if prev_id == 0:
-                    # This is the first song
-                    prev_id = song_id
-                    break
-            else:
-                break
-    
-    
-    return song_lines
+        html = ""
+        for line1, line2 in song_lines:
+            # for each <chord, lyrics> line
+            if not line2:
+                # Empty line
+                html += "<br>\n"
+                continue
+            
+            html += """
+            <table cellpadding=0 cellspacing=0>
+            <tr>
+            """
+            
+            # Chords for this line
+            for chord in line1:
+                html += "<td align=center><small><small>%s</small></small></td>" % chord
+            html += "</tr>\n"
+
+            # Lyrics for this line
+            html += "<tr>\n"
+            # <div style="text-align:center;" id="lyrics">
+            for char in line2:
+                if char == " ":
+                    html += "<td>&nbsp;</td>"
+                else:
+                    html += "<td align=center>%s</td>" % char
+            
+            #</div>
+            html += """
+            </tr>
+            </table>
+            """
+        
+        return html
 
 
 
-"""
+
+
+
+
+
+
+
+
+
+
+
+
+
 

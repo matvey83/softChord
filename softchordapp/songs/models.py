@@ -1,7 +1,10 @@
 from django.db import models
 
 
-class Song(models.Model):
+class DBSong(models.Model):
+    """
+    Database Song table (each entry is a song)
+    """
     id = models.AutoField(primary_key=True)
     text = models.CharField(max_length=1000, blank=True)
     title = models.TextField(blank=True)
@@ -13,7 +16,10 @@ class Song(models.Model):
     def __unicode__(self):
         return self.title
 
-class SongChord(models.Model):
+class DBSongChord(models.Model):
+    """
+    Databse SongChord table (each entry is a chord assigned to a letter of a song)
+    """
     id = models.AutoField(primary_key=True)
     song_id = models.IntegerField(null=True, blank=True)
     character_num = models.IntegerField(null=True, blank=True)
