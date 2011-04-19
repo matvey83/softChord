@@ -4,8 +4,10 @@ from pyjamas.ui.Label import Label
 from pyjamas.ui.Button import Button
 from pyjamas.ui.RootPanel import RootPanel
 from pyjamas.ui.VerticalPanel import VerticalPanel
+from pyjamas.ui.HorizontalPanel import HorizontalPanel
 from pyjamas.ui.TextBox import TextBox
 from pyjamas.ui.ListBox import ListBox
+from pyjamas.ui.TextArea import TextArea
 from pyjamas.ui import KeyboardListener
 
 from pyjamas.JSONService import JSONProxy
@@ -21,31 +23,41 @@ class SoftChordApp:
         """
 
         self.remote = DataService()
-        panel = VerticalPanel()
         
-        panel.add(Label("Add New Song:"))
+        main_layout = HorizontalPanel()
+        
+        songlist_layout = VerticalPanel()
+        
+        songlist_layout.add(Label("Add New Song:"))
 
         self.newSongTextBox = TextBox()
         self.newSongTextBox.addKeyboardListener(self)
-        panel.add(self.newSongTextBox)
+        songlist_layout.add(self.newSongTextBox)
         
-        #panel.add(Label("Click to Remove:"))
+        #songlist_layout.add(Label("Click to Remove:"))
 
         self.songListBox = ListBox()
         self.songListBox.setVisibleItemCount(7)
         self.songListBox.setWidth("300px")
         self.songListBox.setHeight("400px")
         self.songListBox.addClickListener(self)
-        panel.add(self.songListBox)
+        songlist_layout.add(self.songListBox)
         
         self.deleteSongButton = Button("Delete")
         self.deleteSongButton.addClickListener(self)
-        panel.add(self.deleteSongButton)
-        
+        songlist_layout.add(self.deleteSongButton)
+         
         self.status = Label()
-        panel.add(self.status)
+        songlist_layout.add(self.status)
         
-        RootPanel().add(panel)
+        main_layout.add(songlist_layout)
+        
+        self.textArea = TextArea()
+        self.textArea.setCharacterWidth(30)
+        self.textArea.setVisibleLines(50)
+        main_layout.add(self.textArea)
+        
+        RootPanel().add(main_layout)
         
         # Populate the song table:
         self.remote.getAllSongs(self)
@@ -108,6 +120,7 @@ class SoftChordApp:
             self.status.setText(self.status.getText() + " - song received")
             song_obj = songs.Song(response)
             self.status.setText(self.status.getText() + "; id: %i" % song_obj.id)
+            self.textArea.setText(song_obj.text)
         
         else:
             # Unknown response received form the server
