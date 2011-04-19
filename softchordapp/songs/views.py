@@ -7,6 +7,15 @@ from django.shortcuts import render_to_response
 service = JSONRPCService()
 
 
+def song_to_dict(song):
+    """
+    Convert the given Song object to a dict.
+    """
+    # Convert the Song object to dict:
+    song_dict = song.__dict__
+    del song_dict["_state"] # Used by django
+    return song_dict
+
 
 @jsonremote(service)
 def getAllSongs(request):
@@ -15,15 +24,23 @@ def getAllSongs(request):
     """
     song_list = []
     for song in Song.objects.all():
-        # Convert the Song object to dict:
-        song_dict = song.__dict__
-        del song_dict["_state"] # Used by django
-        song_list.append(song_dict)
-
+        song_list.append( (song.id, song.number, song.title) )
     # Send the list of songs to the front end:
     return song_list
     
+
+@jsonremote(service)
+def getSong(request, id):
+    """
+    Gets called by the front end to retreive a Song of the given ID from the database.
+    """
+    try:
+        song = Song.objects.get(id=id)
+    except Songs.DoesNotExist:
+        raise
+    return song_to_dict(song)
     
+
 @jsonremote(service)
 def addSong(request, titleFromJson):
     """
