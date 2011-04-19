@@ -119,7 +119,7 @@ class SoftChordApp:
         elif request_info.method == 'getSong':
             self.status.setText(self.status.getText() + " - song received")
             song_obj = songs.Song(response)
-            self.status.setText(self.status.getText() + "; id: %i" % song_obj.id)
+            self.status.setText(self.status.getText() + "; id: %i; num-chords: %i" % (song_obj.id, len(song_obj.chords) ) )
             self.textArea.setText(song_obj.text)
         
         else:

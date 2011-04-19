@@ -2,7 +2,7 @@ from django.db import models
 
 
 class Song(models.Model):
-    #id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True)
     text = models.CharField(max_length=1000, blank=True)
     title = models.TextField(blank=True)
     key_note_id = models.IntegerField(null=True, blank=True)
@@ -13,8 +13,8 @@ class Song(models.Model):
     def __unicode__(self):
         return self.title
 
-class SongChordLink(models.Model):
-    #id = models.AutoField(primary_key=True)
+class SongChord(models.Model):
+    id = models.AutoField(primary_key=True)
     song_id = models.IntegerField(null=True, blank=True)
     character_num = models.IntegerField(null=True, blank=True)
     note_id = models.IntegerField(null=True, blank=True)
