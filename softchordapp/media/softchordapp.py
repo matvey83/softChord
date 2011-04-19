@@ -26,7 +26,9 @@ class SoftChordApp:
 
         self.remote = DataService()
         
-        main_layout = HorizontalPanel()
+        main_layout = VerticalPanel()
+
+        h_layout = HorizontalPanel()
         
         songlist_layout = VerticalPanel()
         
@@ -49,20 +51,23 @@ class SoftChordApp:
         self.deleteSongButton.addClickListener(self)
         songlist_layout.add(self.deleteSongButton)
          
-        self.status = Label()
-        songlist_layout.add(self.status)
         
-        main_layout.add(songlist_layout)
+        h_layout.add(songlist_layout)
         
-        self.textArea = TextArea()
-        self.textArea.setCharacterWidth(30)
-        self.textArea.setVisibleLines(50)
-        main_layout.add(self.textArea)
-
-        self.scrollPanel = ScrollPanel(Size=("300px", "100px"))
-        self.songHtml = HTML("<b>Test</b> test")
+        #self.textArea = TextArea()
+        #self.textArea.setCharacterWidth(30)
+        #self.textArea.setVisibleLines(50)
+        #h_layout.add(self.textArea)
+        
+        self.scrollPanel = ScrollPanel(Size=("500px", "300px"))
+        self.songHtml = HTML("<b>Please select a song in the left table</b>")
         self.scrollPanel.add(self.songHtml)
-        main_layout.add(self.scrollPanel)
+        h_layout.add(self.scrollPanel)
+        
+        main_layout.add(h_layout)
+        
+        self.status = Label()
+        main_layout.add(self.status)
         
         RootPanel().add(main_layout)
         
@@ -128,7 +133,7 @@ class SoftChordApp:
             song_obj = songs.Song(response)
             self.status.setText(self.status.getText() + "; id: %i; num-chords: %i" % (song_obj.id, len(song_obj.chords) ) )
             self.songHtml.setHTML(song_obj.getHtml())
-            self.textArea.setText(song_obj.text)
+            #self.textArea.setText(song_obj.text)
         
         else:
             # Unknown response received form the server
