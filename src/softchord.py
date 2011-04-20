@@ -351,13 +351,10 @@ class SongsTableModel(QtCore.QAbstractTableModel):
         if role == Qt.DisplayRole:
             if orientation == Qt.Horizontal:
                 return self.header_list[section]
-                #return QtCore.QVariant(self.header_list[section])
             else:
                 rowobj = self._data[section]
                 return rowobj.id
-                #return QtCore.QVariant(section+1)
-
-        return None # QtCore.QVariant()        
+        return None
     
     def getRow(self, row):
         return self._data[row]
@@ -392,7 +389,7 @@ class SongsTableModel(QtCore.QAbstractTableModel):
 
 class SongsProxyModel(QtGui.QSortFilterProxyModel):
     """ 
-    Proxy model that allows showing/hiding rows in the residues table.
+    Proxy model that allows showing/hiding rows in the songs table.
     """
 
     def __init__(self, app):
@@ -552,7 +549,6 @@ class Song:
             row = self.app.curs.execute("SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i" % self.id).fetchone()
             # Create this prop
             self.app.curs.execute("ALTER TABLE songs ADD alt_key_note_id INTEGER")
-            self.app.curs.execute("ALTER TABLE songs ADD subtitle TEXT")
             self.app.curs.commit()
             print "Table songs: created alt_key_note_id and subtitle columns"
             # Re-try once the missing columns have been added:
@@ -871,7 +867,10 @@ class Song:
         song_text = unicode()
         self.updateSharpsOrFlats()
         
-        for linenum, line_text in enumerate(self.iterateLineTexts()):
+        #for linenum, line_text in enumerate(self.iterateLineTexts()):
+        
+        lines = self.getAllText().split("\n")
+        for linenum, text in enumerate(lines):
             
             if self.getLineHasChords(linenum):
                 # Add the chords line above this line
@@ -1343,7 +1342,8 @@ class CustomTextEdit(QtGui.QTextEdit):
             self.app.deleteSelectedChord()
             return
         else:
-            if not bool(event.modifiers() & Qt.AltModifier):
+            if not bool(event.modifiers() & Qt.ControlModifier):
+                # We are not invoking a shortcut (Control on Windows, Command on Mac)
                 if self.app.processKeyPressed(key):
                     return
         
