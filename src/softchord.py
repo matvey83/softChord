@@ -980,7 +980,7 @@ class Song:
         
         self.updateSharpsOrFlats()
         
-        self.current_song.sendToDatabase()
+        self.app.sendCurrentSongToDatabase()
         self.app.editor.viewport().update()
     
 
@@ -2058,6 +2058,7 @@ class App( QtGui.QApplication ):
         """
         Called when the song selection changes.
         """
+
         # Commit any changes in the current song:
         self.curs.commit()
         
@@ -2347,7 +2348,8 @@ class App( QtGui.QApplication ):
         self.current_song._chords = new_all_chords
         self.previous_song_text = song_text
         
-        #self.current_song.sendToDatabase()
+        # DO NOT ENABLE! Deletes the chords   ???
+        #self.sendCurrentSongToDatabase()
         
         #self.viewport().update()
         
@@ -3119,7 +3121,7 @@ class App( QtGui.QApplication ):
             self.current_song.key_note_id = note_id
             self.current_song.key_is_major = is_major
             
-            self.current_song.sendToDatabase()
+            self.sendCurrentSongToDatabase()
             self.editor.viewport().update()
     
    
@@ -3145,7 +3147,7 @@ class App( QtGui.QApplication ):
         if alt_key_note_id != self.current_song.alt_key_note_id:
             self.current_song.alt_key_note_id = alt_key_note_id
             
-            self.current_song.sendToDatabase()
+            self.sendCurrentSongToDatabase()
             self.editor.viewport().update()
     
 
@@ -3655,7 +3657,7 @@ class App( QtGui.QApplication ):
             else:
                 self.current_song.replaceChord(orig_chord, new_chord)
             
-            #self.current_song.sendToDatabase()
+            #self.sendCurrentSongToDatabase()
             
             self.editor.viewport().update()
                 
