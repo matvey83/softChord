@@ -200,91 +200,107 @@ class Song:
         prefer_sharps_or_flats = get_sharp_flat_preference(self.chords)
         
         # Make a dict of chord strings (keyed by chord position in the song text:
-        chord_texts_by_char_nums = {}
+        chords_by_char = {}
         for chord in self.chords:
             chord_song_char_num = chord.character_num
             #chord_text = chord.getChordText()
             chord_text = get_chord_text(chord, prefer_sharps_or_flats)
-            
-            # Replace "♯" with "#" and "♭" with "b":
-            #chord_text = chord_text.replace("♯", "#").replace("♭", "b")
-            
-            chord_texts_by_char_nums[chord_song_char_num] = chord_text
+            chords_by_char[chord_song_char_num] = chord_text
         
         
         # Convert the song into a list of (chords, lyrics), for each line:
-        song_lines = []
-        
-        curr_line_lyrics = []
-        curr_line_chords = []
-        for curr_char_num, char in enumerate(song_text):
+        lines = []
+        word = ""
+        lyrics = []
+        chords = []
+        for char_num, char in enumerate(song_text):
             if char == "\n":
-                song_lines.append( (curr_line_chords, curr_line_lyrics) )
-                curr_line_lyrics = []
-                curr_line_chords = []
-            else:
-                curr_line_chords.append( chord_texts_by_char_nums.get(curr_char_num, "") )
-                curr_line_lyrics.append(char)
+                # End of line
+                if word:
+                    lyrics.append(word)
+                word = ""
+                lines.append( (chords, lyrics) )
+                chords = []
+                lyrics = []
+                continue
+            
+            chord = chords_by_char.get(char_num)
+            if chord:
+                # Chord found:
+                if word:
+                    lyrics.append(word)
+                word = ""
+                chords.append(chord)
+            word += char
         
-        if curr_line_lyrics:
-            # If last line was not blank:
-            song_lines.append( (curr_line_chords, curr_line_lyrics) )
+        # There was text after the last EOF character and after last chord:
+        if word:
+            lyrics.append(word)
+        lines.append( (chords, lyrics) )
         
-        return song_lines
+        return lines
+
 
     def getHtml(self):
-        #return "<b>NEW</b>"
         
         song_lines = self.getLines()
         
-        html = ""
-        for line1, line2 in song_lines:
-            # for each <chord, lyrics> line
-            if not line2:
-                # Empty line
-                html += "<br>\n"
-                continue
-            
-            html += """
-            <table cellpadding=0 cellspacing=0>
-            <tr>
-            """
-            
-            # Chords for this line
-            for chord in line1:
-                html += "<td align=center><small><small>%s</small></small></td>" % chord
-            html += "</tr>\n"
+        # 
+        # The idea for this HTML rendering of song text, came from 
+        # webchord.pl by Martin Vilcans (martin@mamaviol.org)
+        #
+        
+        # FIXME replace special characters
+        #$chopro	=~ s/\</\&lt;/g; # replace < with &lt;
+        #$chopro	=~ s/\>/\&gt;/g; # replace > with &gt;
+        #$chopro	=~ s/\&/\&amp;/g; # replace & with &amp;
 
-            # Lyrics for this line
-            html += "<tr>\n"
-            # <div style="text-align:center;" id="lyrics">
-            for char in line2:
-                if char == " ":
-                    html += "<td>&nbsp;</td>"
-                else:
-                    html += "<td align=center>%s</td>" % char
+        html = """
+        <HTML><HEAD>
+        <STYLE TYPE="text/css"><!--
+        H1 {
+        font-family: "Arial", Helvetica;
+        font-size: 24pt;
+        }
+        H2 {
+        font-family: "Arial", Helvetica;
+        font-size: 16pt;
+        }
+        .lyrics, .lyrics_chorus { font-size 12pt; }
+        .lyrics_tab, .lyrics_chorus_tab { font-family: "Courier New", Courier; font-size 10pt; }
+        .lyrics_chorus, .lyrics_chorus_tab, .chords_chorus, .chords_chorus_tab { font-weight: bold; }
+        .chords, .chords_chorus, .chords_tab, .chords_chorus_tab { font-size: 10pt; color: blue; padding-right: 4pt;}
+
+        .comment, .comment_italic, .comment_box { background-color: #ffbbaa; }
+        .comment_italic { font-style: italic; }
+        .comment_box { border: solid; }
+        --></STYLE>
+        </HEAD><BODY>
+        """
+
+        for chords, lyrics in song_lines:
+            if len(chords) < len(lyrics):
+                chords.insert(0, "")
             
-            #</div>
-            html += """
-            </tr>
-            </table>
-            """
+            if not lyrics:
+                # Empty line
+                html += "<BR>\n"
+            
+            if len(lyrics) == 1 and not chords: #chords[0] == "":
+                # Line without chords
+                lyric = lyrics[0].replace(" ", "&nbsp;")
+                html += "<DIV class=\"lyrics\">%s</DIV>\n" % lyric
+            else:
+                html += "<TABLE cellpadding=0 cellspacing=0>";
+                html += "<TR>\n";
+                for chord in chords:
+                    html +="<TD class=\"chords\">%s</TD>" % chord
+                html += "</TR>\n<TR>\n"
+                for lyric in lyrics:
+                    lyric = lyric.replace(" ", "&nbsp;")
+                    html += "<TD class=\"lyrics\">%s</TD>" % lyric
+                html += "</TR></TABLE>\n"
+        html += "</BODY>"
         
         return html
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
