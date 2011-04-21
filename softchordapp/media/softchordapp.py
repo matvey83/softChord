@@ -29,6 +29,7 @@ class SoftChordApp:
         main_layout = VerticalPanel()
 
         h_layout = HorizontalPanel()
+        h_layout.setPadding(10)
         
         songlist_layout = VerticalPanel()
         
@@ -59,10 +60,11 @@ class SoftChordApp:
         #self.textArea.setVisibleLines(50)
         #h_layout.add(self.textArea)
         
-        self.scrollPanel = ScrollPanel(Size=("500px", "300px"))
+        #self.scrollPanel = ScrollPanel(Size=("400px", "500px"))
         self.songHtml = HTML("<b>Please select a song in the left table</b>")
-        self.scrollPanel.add(self.songHtml)
-        h_layout.add(self.scrollPanel)
+        #self.scrollPanel.add(self.songHtml)
+        #h_layout.add(self.scrollPanel)
+        h_layout.add(self.songHtml)
         
         main_layout.add(h_layout)
         

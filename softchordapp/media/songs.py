@@ -247,7 +247,7 @@ class Song:
         
         # 
         # The idea for this HTML rendering of song text, came from 
-        # webchord.pl by Martin Vilcans (martin@mamaviol.org)
+        # webchord.pl by Martin Vilcans
         #
         
         # FIXME replace special characters
@@ -259,25 +259,23 @@ class Song:
         <HTML><HEAD>
         <STYLE TYPE="text/css"><!--
         H1 {
-        font-family: "Arial", Helvetica;
-        font-size: 24pt;
+            font-family: "Arial", Helvetica;
+            font-size: 24pt;
         }
         H2 {
-        font-family: "Arial", Helvetica;
-        font-size: 16pt;
+            font-family: "Arial", Helvetica;
+            font-size: 16pt;
         }
         .lyrics, .lyrics_chorus { font-size 12pt; }
-        .lyrics_tab, .lyrics_chorus_tab { font-family: "Courier New", Courier; font-size 10pt; }
-        .lyrics_chorus, .lyrics_chorus_tab, .chords_chorus, .chords_chorus_tab { font-weight: bold; }
-        .chords, .chords_chorus, .chords_tab, .chords_chorus_tab { font-size: 10pt; color: blue; padding-right: 4pt;}
-
-        .comment, .comment_italic, .comment_box { background-color: #ffbbaa; }
-        .comment_italic { font-style: italic; }
-        .comment_box { border: solid; }
+        .lyrics_chorus, .chords_chorus { font-weight: bold; }
+        .chords, .chords_chorus { font-size: 10pt; color: blue; padding-right: 4pt;}
         --></STYLE>
-        </HEAD><BODY>
+        </HEAD>
+        <BODY>
         """
-
+        
+        # FIXME Use H1/H2 for title and/or song number, etc.
+        
         for chords, lyrics in song_lines:
             if len(chords) < len(lyrics):
                 chords.insert(0, "")
