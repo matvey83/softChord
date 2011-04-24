@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>910</width>
-    <height>820</height>
+    <width>1087</width>
+    <height>809</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -134,6 +134,23 @@
            </widget>
           </item>
           <item>
+           <widget class="QLabel" name="label_11">
+            <property name="text">
+             <string>Note:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="song_subtitle_ef">
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QLabel" name="label_5">
             <property name="text">
              <string>Key:</string>
@@ -195,6 +212,9 @@
            <widget class="QLineEdit" name="song_title_ef"/>
           </item>
          </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_9"/>
         </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_5">
@@ -282,8 +302,8 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>499</width>
-               <height>517</height>
+               <width>733</width>
+               <height>518</height>
               </rect>
              </property>
             </widget>
@@ -367,7 +387,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>910</width>
+     <width>1087</width>
      <height>22</height>
     </rect>
    </property>
@@ -381,6 +401,7 @@
     <addaction name="actionExportText"/>
     <addaction name="actionExportChordPro"/>
     <addaction name="actionExportClipboard"/>
+    <addaction name="actionExportSongToPdf"/>
    </widget>
    <widget class="QMenu" name="menuFile">
     <property name="title">
@@ -430,6 +451,7 @@
     <addaction name="separator"/>
     <addaction name="actionNewSong"/>
     <addaction name="actionDeleteSongs"/>
+    <addaction name="actionRemoveTrailingSpaces"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
@@ -643,6 +665,19 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+V</string>
+   </property>
+  </action>
+  <action name="actionExportSongToPdf">
+   <property name="text">
+    <string>Export to PDF...</string>
+   </property>
+  </action>
+  <action name="actionRemoveTrailingSpaces">
+   <property name="text">
+    <string>Remove trailing spaces</string>
+   </property>
+   <property name="toolTip">
+    <string>Remove trailing spaces from every line in the selected song(s)</string>
    </property>
   </action>
  </widget>

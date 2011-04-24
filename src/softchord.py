@@ -870,7 +870,7 @@ class Song:
         #for linenum, line_text in enumerate(self.iterateLineTexts()):
         
         lines = self.getAllText().split("\n")
-        for linenum, text in enumerate(lines):
+        for linenum, line_text in enumerate(lines):
             
             if self.getLineHasChords(linenum):
                 # Add the chords line above this line
@@ -980,8 +980,6 @@ class Song:
         
         self.updateSharpsOrFlats()
         
-        self.app.sendCurrentSongToDatabase()
-        self.app.editor.viewport().update()
     
 
     def sendToDatabase(self):
@@ -1043,8 +1041,23 @@ class Song:
             self.prefer = PREFER_FLATS
         else:
             self.prefer = PREFER_NEITHER
-
     
+
+    def removeTrailingSpaces(self):
+        """
+        Remove trailing spaces from every line of the song.
+        """
+        
+        # Make a dict of chord strings (keyed by chord position in the song text:
+        chord_texts_by_char_nums = {}
+        for chord in self.iterateAllChords():
+            chord_texts_by_char_nums[chord.character_num] = chord
+        
+        all_text = self.getAllText()
+
+        num_deleted_chars = 0
+        
+        # FIXME
 
 
 
@@ -1625,10 +1638,12 @@ class App( QtGui.QApplication ):
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
         
         self.ui.actionDeleteSongs.triggered.connect( self.deleteSelectedSongs )
+        self.ui.actionRemoveTrailingSpaces.triggered.connect( self.removeTrailingSpaces )
         self.ui.actionDeleteSong.triggered.connect( self.deleteSelectedSongs )
 
         self.ui.actionSetID.triggered.connect( self.setSongDatabaseId )
         self.c( self.ui.actionExportSinglePdf, "triggered()", self.exportToSinglePdf )
+        self.ui.actionExportSongToPdf.triggered.connect( self.exportToSinglePdf )
         self.c( self.ui.actionExportMultiplePdfs, "triggered()", self.exportToMultiplePdfs )
         self.c( self.ui.actionExportText, "triggered()", self.exportToText )
         
@@ -2157,6 +2172,7 @@ class App( QtGui.QApplication ):
         
         self.ui.delete_song_button.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSongs.setEnabled( num_selected > 0 )
+        self.ui.actionRemoveTrailingSpaces.setEnabled( num_selected > 0 )
         self.ui.actionDeleteSong.setEnabled( num_selected == 1 )
         self.ui.actionSetID.setEnabled(num_selected == 1)
         
@@ -2167,6 +2183,7 @@ class App( QtGui.QApplication ):
         
         self.ui.menuSong.setEnabled( num_selected == 1 ) # not working?
         self.ui.actionExportText.setEnabled( num_selected == 1 )
+        self.ui.actionExportSongToPdf.setEnabled( num_selected == 1 )
         self.ui.actionExportChordPro.setEnabled( num_selected == 1 )
         self.ui.actionCopySongText.setEnabled( num_selected == 1 )
         self.ui.actionExportClipboard.setEnabled( num_selected == 1 )
@@ -3196,6 +3213,15 @@ class App( QtGui.QApplication ):
         #self.updateStates()
         self.updateEditMenu()
     
+
+    def removeTrailingSpaces(self):
+        self.warning("Not implemented yet")
+        return
+        
+        for song_index, song_id in enumerate(self.getSelectedSongIds()):
+            song = Song(self, song_id)
+            song.removeTrailingSpaces()
+
     
     def setSongDatabaseId(self):
         """
