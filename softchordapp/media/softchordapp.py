@@ -11,7 +11,6 @@ from pyjamas.ui.TextArea import TextArea
 from pyjamas.ui.ScrollPanel import ScrollPanel
 from pyjamas.ui.HTML import HTML
 from pyjamas.ui import KeyboardListener
-
 from pyjamas.JSONService import JSONProxy
 
 import songs
@@ -34,11 +33,16 @@ class SoftChordApp:
         songlist_layout = VerticalPanel()
         
         songlist_layout.add(Label("Add New Song:"))
+ 	
 
         self.newSongTextBox = TextBox()
-        self.newSongTextBox.addKeyboardListener(self)
+	self.newSongTextBox.addKeyboardListener(self)
         songlist_layout.add(self.newSongTextBox)
         
+       	self.addSongButton = Button("Add Song")
+	self.addSongButton.addClickListener(self)
+	songlist_layout.add(self.addSongButton)
+
         #songlist_layout.add(Label("Click to Remove:"))
 
         self.songListBox = ListBox()
@@ -52,7 +56,6 @@ class SoftChordApp:
         self.deleteSongButton.addClickListener(self)
         songlist_layout.add(self.deleteSongButton)
          
-        
         h_layout.add(songlist_layout)
         
         #self.textArea = TextArea()
@@ -106,6 +109,12 @@ class SoftChordApp:
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
         
+	elif sender == self.addSongButton:
+            id = self.remote.addSong(self.newSongTextBox.getText(), self)
+            self.newSongTextBox.setText("")
+            if id<0:
+                self.status.setText("Server Error or Invalid Response")
+ 
         elif sender == self.deleteSongButton:
             # Figure out what song is selected in the table:
             song_id = self.songListBox.getValue(self.songListBox.getSelectedIndex())

@@ -1,6 +1,6 @@
 
 pyjdversion = r'0.7~+pre2'
-pyjdinitpth = r'/Users/adzhigir/src/softchord/pyjamas-0.7'
+pyjdinitpth = r'/Users/serge/softchord/pyjamas-0.7'
 
 import os
 import sys
