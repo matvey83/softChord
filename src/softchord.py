@@ -1459,6 +1459,8 @@ class PdfOptions:
         self.generate_table_of_contents = False
         self.print_song_num = True
         self.print_song_title = False
+        self.print_song_key = True
+        self.print_song_comment = True # Usually "Pesn' Vozhrozhdeniya" number
         self.page_width = 8.5
         self.page_height = 11.0
 
@@ -1502,7 +1504,9 @@ class PdfDialog:
         self.ui.generate_table_of_contents_box.setChecked(pdf_options.generate_table_of_contents)
         self.ui.print_song_num_box.setChecked(pdf_options.print_song_num)
         self.ui.print_song_title_box.setChecked(pdf_options.print_song_title)
-
+        self.ui.print_song_key_box.setChecked(pdf_options.print_song_key)
+        self.ui.print_song_comment_box.setChecked(pdf_options.print_song_comment)
+        
         # Allow table of contents only when generating one PDF for multiple songs:
         if not single_pdf_export:
             self.ui.generate_table_of_contents_box.setChecked(False)
@@ -1524,6 +1528,8 @@ class PdfDialog:
             pdf_options.generate_table_of_contents = self.ui.generate_table_of_contents_box.isChecked()
             pdf_options.print_song_num = self.ui.print_song_num_box.isChecked()
             pdf_options.print_song_title = self.ui.print_song_title_box.isChecked()
+            pdf_options.print_song_key = self.ui.print_song_comment_box.isChecked()
+            pdf_options.print_song_comment = self.ui.print_song_comment_box.isChecked()
 
             return True
         else:
@@ -3333,7 +3339,7 @@ class App( QtGui.QApplication ):
         
         curr_left = chord_rect.left()
         orig_top = chord_rect.top()
-        raise_distance = chord_rect.height() / 5.0 # Distance to raise the flat/sharp signs by
+        raise_distance = chord_rect.height() / 10.0 # Distance to raise the flat/sharp signs by
         raised_top = chord_rect.top() - raise_distance
         raised_baseline = normal_baseline - raise_distance
 
@@ -3383,12 +3389,28 @@ class App( QtGui.QApplication ):
             if self.pdf_options.print_song_num and song.number != -1:
                 header_list.append( str(song.number) )
             
+            if self.pdf_options.print_song_comment and song.subtitle:
+                header_list.append(song.subtitle)
+            
+            if self.pdf_options.print_song_key and song.key_note_id != -1:
+                song_key_str = "Key: %s" % song._getNoteString(song.key_note_id)
+                if not song.key_is_major:
+                    song_key_str += "m"
+                
+                if song.alt_key_note_id != -1:
+                    alt_song_key_str = song._getNoteString(song.alt_key_note_id)
+                    if not song.key_is_major:
+                        alt_song_key_str += "m"
+                    song_key_str += " (%s)" % alt_song_key_str
+                
+                header_list.append(song_key_str)
+            
             if self.pdf_options.print_song_title and song.title:
                 header_list.append(song.title)
             
             if header_list:
-                # Combine the song number string and/or song title string:
-                header_str = " ".join(header_list)
+                # Combine the song number string, song key, song subtitle, and/or song title string:
+                header_str = "  ".join(header_list)
                 
                 painter.setFont(self.lyrics_font)
                 

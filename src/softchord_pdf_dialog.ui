@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>500</width>
-    <height>341</height>
+    <height>379</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -25,6 +25,20 @@
     <widget class="QCheckBox" name="print_song_title_box">
      <property name="text">
       <string>Print song title</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="print_song_key_box">
+     <property name="text">
+      <string>Print song key &amp; alternative key</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="print_song_comment_box">
+     <property name="text">
+      <string>Print song comment (note)</string>
      </property>
     </widget>
    </item>
