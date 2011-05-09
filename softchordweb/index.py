@@ -4,9 +4,14 @@ import web
 from network import JSONRPCService, jsonremote
 import os
 
-
-#print "Content-type: text/html\n\n"
-#print "TEST2"
+"""
+# Requires Python 2.5 or above:
+try:
+    db = web.database(dbn='sqlite', db='songs.songbook')
+except Exception, err:
+    print "Content-type: text/html\n\n"
+    print "Exception: %s" % (str(err))
+"""
         
 urls = (
     '/rpc/',  'rpc', # For the demo (remote)
@@ -55,6 +60,9 @@ service = JSONRPCService()
 
 # a "wrapper" class around the jsonrpc service "service"
 class rpc:
+    """
+    Class for handling JSON-RPC requests
+    """
     def POST(self):
         return service(web.webapi.data())
 
@@ -63,11 +71,11 @@ class rpc:
 @jsonremote(service)
 def echo(request, user_name):
     web.debug(repr(request))
-    return "hello world %s" % user_name
+    return "echo() result: %s" % user_name
 
 @jsonremote(service)
 def reverse(request, user_name):
-    return "hello world %s" % user_name[::-1]
+    return "reverse() result: %s" % user_name[::-1]
 
 
 
