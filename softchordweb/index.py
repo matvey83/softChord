@@ -135,7 +135,7 @@ def getSong(request, song_id):
     Gets called by the front end to retreive a Song of the given ID from the database.
     """
     
-    results = db.select("songs")
+    results = db.select("songs", where="id=%s" % song_id)
     
     song_dict = None
     for row in results:
@@ -146,7 +146,7 @@ def getSong(request, song_id):
         return "SONG DOES NOT EXIST: %i" % song_id
     
     chords = []
-    results = db.select("song_chord_link", where="song_id=%s"%song_id)
+    results = db.select("song_chord_link", where="song_id=%s" % song_id)
     for row in results:
         chords.append( dict(row) )
     

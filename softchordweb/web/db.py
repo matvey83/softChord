@@ -941,6 +941,11 @@ class MySQLDB(DB):
         self.supports_multiple_insert = True
     
     def _db_cursor(self):
+        """
+        HACK by Matvey to get this module to work with version 1.2.0 of MySQLdb
+        that is installed on the GoDaddy server. Without this, query outputs have
+        question marks instead of the proper UTF8-encoded characters.
+        """
         curs = self.ctx.db.cursor()
         curs.execute("SET CHARACTER SET utf8")
         return curs
