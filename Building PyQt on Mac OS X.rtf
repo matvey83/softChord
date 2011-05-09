@@ -1,0 +1,87 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1038\cocoasubrtf350
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fmodern\fcharset0 Courier;}
+{\colortbl;\red255\green255\blue255;\red38\green38\blue38;}
+\margl1440\margr1440\vieww17420\viewh18540\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\ql\qnatural\pardirnatural
+
+\f0\fs24 \cf0 \
+\
+1. Download and install MacPorts (www.macports.org)\
+\
+\pard\pardeftab720\sl340\ql\qnatural
+
+\f1\fs26 \cf2 \
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\ql\qnatural\pardirnatural
+
+\f0\fs24 \cf0 2. Run these commands:\
+\pard\pardeftab720\sl340\ql\qnatural
+
+\f1\fs26 \cf2 $ sudo port install python27\
+$ sudo port install python_select   (May not be needed at this point)\
+$ sudo python_select python27\
+$ sudo port install py27-macholib\
+$ sudo port install py27-sip\
+$ sudo port install py27-pyqt4\
+$ sudo port install py25-py2app-devel\
+\
+3. Run python_select python27\
+\
+\
+NOTE: At this point you will be able to run the PyQt application via the python command:\
+$ python softchordeditor_gui.py\
+\
+\
+\
+\
+How to deploy on Mac OS X:\
+\
+\
+To deploy, you need to install PyInstaller\
+\
+\pard\pardeftab720\sl340\ql\qnatural
+{\field{\*\fldinst{HYPERLINK "http://tech.xster.net/tips/deploy-pyqt-applications-on-mac-os-x-with-pyinstaller/"}}{\fldrslt \cf2 http://tech.xster.net/tips/deploy-pyqt-applications-on-mac-os-x-with-pyinstaller/}}\
+\
+\pard\pardeftab720\sl340\ql\qnatural
+{\field{\*\fldinst{HYPERLINK "http://diotavelli.net/PyQtWiki/Deploying_PyQt_Applications"}}{\fldrslt \cf2 http://diotavelli.net/PyQtWiki/Deploying_PyQt_Applications}}\
+\
+\
+\
+HACK for double icon in dock:\
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\ql\qnatural\pardirnatural
+{\field{\*\fldinst{HYPERLINK "http://www.pyinstaller.org/ticket/156"}}{\fldrslt \cf2 http://www.pyinstaller.org/ticket/156}}\
+/Users/hi-gear/PyInstaller/source/linux/main.c\
+\
+See:\
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\ql\qnatural\pardirnatural
+{\field{\*\fldinst{HYPERLINK "http://www.mail-archive.com/pyinstaller@googlegroups.com/msg01978.html"}}{\fldrslt \cf2 http://www.mail-archive.com/pyinstaller@googlegroups.com/msg01978.html}}\
+\
+\
+Instructions:\
+1) Download latest sources\
+2) cd into PyInstaller/sources/\
+3) Modify common/main.c:\
+\
+   basically comment-out these lines:\
+\pard\pardeftab720\ql\qnatural
+
+\fs24 \cf0  \{\{\{\
+         /*\
+         wait(&rc);\
+         rc = WEXITSTATUS(rc);\
+\
+         VS("Back to parent...\\n");\
+         if (strcmp(workpath, homepath) != 0)\
+             clear(workpath);\
+         */\
+ \}\}\}\
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\ql\qnatural\pardirnatural
+
+\fs26 \cf2 \
+5) cd .. and build pyinstaller (see the included README file)\
+4) cd ..; python Configure.py\
+\
+\pard\pardeftab720\sl340\ql\qnatural
+\cf2 \
+\
+\
+}
