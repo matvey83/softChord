@@ -15,6 +15,7 @@ from pyjamas.JSONService import JSONProxy
 # For generating HTML from the song text and chords:
 import songs
 
+TEXT_WAITING = "Waiting for response..."
 
 class SoftChordWeb:
     def onModuleLoad(self):
@@ -23,63 +24,35 @@ class SoftChordWeb:
         Creates the widgets.
         """
 
-        self.TEXT_WAITING = "Waiting for response..."
-        self.TEXT_ERROR = "Server Error"
-        self.METHOD_ECHO = "Echo"
-        self.METHOD_REVERSE = "Reverse"
-        self.METHOD_UPPERCASE = "UPPERCASE"
-        self.METHOD_LOWERCASE = "lowercase"
-        self.METHOD_NONEXISTANT = "Non existant"
-        self.methods = [self.METHOD_ECHO, self.METHOD_REVERSE, 
-                        self.METHOD_UPPERCASE, self.METHOD_LOWERCASE, 
-                        self.METHOD_NONEXISTANT]
-
+        
         self.remote = EchoServicePython()
 
         self.status=Label()
         self.text_area = TextArea()
-        self.text_area.setText("""{'Test'} [\"String\"]
-\tTest Tab
-Test Newline\n
-after newline
-""" + r"""Literal String:
-{'Test'} [\"String\"]
-""")
+        self.text_area.setText("""Enter some text here, and watch it get sent to the server and echoed back.""")
         self.text_area.setCharacterWidth(80)
-        self.text_area.setVisibleLines(8)
+        self.text_area.setVisibleLines(3)
         
-        self.method_list = ListBox()
-        self.method_list.setName("hello")
-        self.method_list.setVisibleItemCount(1)
-        for method in self.methods:
-            self.method_list.addItem(method)
-        self.method_list.setSelectedIndex(0)
+        self.test_button = Button("Test Connection", self)
 
-        method_panel = HorizontalPanel()
-        method_panel.add(HTML("Remote string method to call: "))
-        method_panel.add(self.method_list)
-        method_panel.setSpacing(8)
-
-        self.button_py = Button("Send to Python Service", self)
-
-        buttons = HorizontalPanel()
-        buttons.add(self.button_py)
-        buttons.setSpacing(8)
+        #buttons = HorizontalPanel()
+        #buttons.add(self.test_button)
+        #buttons.setSpacing(8)
         
         info = """<h2>softChord Web</h2>
         <p>Enter some text below, and press a button to send the text
            to an Echo service on your server. An echo service simply sends the exact same text back that it receives.
            </p>"""
         
-        demo_panel = VerticalPanel()
-        demo_panel.add(HTML(info))
-        demo_panel.add(self.text_area)
-        demo_panel.add(method_panel)
-        demo_panel.add(buttons)
-        demo_panel.add(self.status)
+        test_panel = VerticalPanel()
+        test_panel.add(HTML(info))
+        test_panel.add(self.text_area)
+        #test_panel.add(buttons)
+        test_panel.add(self.test_button)
+        test_panel.add(self.status)
         
         root_panel = RootPanel()
-        root_panel.add(demo_panel)
+        root_panel.add(test_panel)
 
         
         main_layout = VerticalPanel()
@@ -100,6 +73,7 @@ after newline
         self.songListBox = ListBox()
         self.songListBox.setVisibleItemCount(7)
         self.songListBox.setWidth("300px")
+        #self.songListBox.setWidth("600px")
         self.songListBox.setHeight("400px")
         self.songListBox.addClickListener(self)
         songlist_layout.add(self.songListBox)
@@ -160,23 +134,12 @@ after newline
         Currently deletes the song on which the user clicked.
         """
 
-        self.status.setText(self.TEXT_WAITING)
-        method = self.methods[self.method_list.getSelectedIndex()]
+        self.status.setText(TEXT_WAITING)
         text = self.text_area.getText()
 
         # demonstrate proxy & callMethod()
-        if sender == self.button_py:
-            if method == self.METHOD_ECHO:
-                id = self.remote.echo(text, self)
-            elif method == self.METHOD_REVERSE:
-                id = self.remote.reverse(text, self)
-            elif method == self.METHOD_UPPERCASE:
-                id = self.remote.uppercase(text, self)
-            elif method == self.METHOD_LOWERCASE:
-                id = self.remote.lowercase(text, self)
-            elif method == self.METHOD_NONEXISTANT:
-                id = self.remote.nonexistant(text, self)
-    
+        if sender == self.test_button:
+            id = self.remote.echo(text, self)
 
         elif sender == self.songListBox:
             song_id = self.songListBox.getValue(self.songListBox.getSelectedIndex())

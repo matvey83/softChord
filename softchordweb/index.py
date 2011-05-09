@@ -6,23 +6,20 @@ import os
 
 try:
     # NOTE: This uses sqlite3, which requires Python 2.5 or above
+    # If this works, that means we are running locally
     db = web.database(dbn='sqlite', db='songs.songbook')
 except Exception, err:
     # sqlite3 is not installed (we are on the server), try MySQLdb:
-    #print "Content-type: text/html\n\n"
-    #print "Exception: %s" % (str(err))
-    #db = web.database(dbn="mysql", db="softchord", user="softchord", password="Concord123")
-    #db = web.database(dbn="mysql", db="softchord.db.6582285.hostedresource.com", user="softchord", pw="Concord123", charset=None)
     db = web.database(dbn="mysql", host="softchord.db.6582285.hostedresource.com", db="softchord", user="softchord", pw="Concord123", charset=None, use_unicode=False)
     # NOTE: We MUST wet charset to None in order to work with version 1.2.0 of MySQLdb (installed on godaddy servers).
     # Also note that our web.py installtion is also modified to work with that version of MySQLdb.
     
 
 urls = (
-    '/rpc/',  'rpc', # For the demo (remote)
-    '/songs/index.py/rpc/',  'rpc', # For the demo (local)
-    '/songs/(.*)', 'static', # static content (remote)
-    '/(.*)', 'static', # static content (local)
+    '/rpc/',  'rpc', # For RPC calls (remote)
+    '/songs/index.py/rpc/',  'rpc', # For RPC calls (local)
+    '/songs/(.*)', 'static', # static content, e.g. the PyJamas-generated files (remote)
+    '/(.*)', 'static', # static content, e.g. the PyJamas-generated files (local)
 )
 
 # to wrap static content like this is possibly a bit of an unnecessary hack,
@@ -37,7 +34,7 @@ class static:
         """
         
         if not name:
-            # If simply /songs/ is specified, load the PyJamas main page:
+            # If simply /index.py/ is specified, load the main front-end page:
             name = 'softchordweb.html'
         
         ext = name.split(".")[-1]
@@ -60,58 +57,33 @@ class static:
             web.header("Content-Type", cType[ext])
             return open(path, "rb").read()
         else:
+            # If the static contents was not found
             web.notfound()
             return "NOT FOUND: %s" % name
 
 service = JSONRPCService()
 
-# a "wrapper" class around the jsonrpc service "service"
+# Handler class for the jsonrpc service requests
 class rpc:
     """
     Class for handling JSON-RPC requests
     """
     def POST(self):
+        # Post a reply from our functions, the reply will get sent back to the client:
         return service(web.webapi.data())
 
-# the two demo functions
 
+# RPC function for testing the connection:
 @jsonremote(service)
-def echo(request, user_name):
+def echo(request, test_str):
     web.debug(repr(request))
-    return "echo() result: %s" % user_name
-
-@jsonremote(service)
-def reverse(request, user_name):
-    return "reverse() result: %s" % user_name[::-1]
-
-
+    return "echo() result: %s" % test_str
 
 
 #
 # softChord-specific RPC functions:
 #
 
-
-def song_to_dict(song, chords):
-    """
-    Convert the given Song object to a dict.
-    (DBSong obj and a list of DBSongChord objects)
-    This makes it easily convertable to JSON format to send to the server
-    """
-
-    # Convert the Song object to dict:
-    song_dict = song.__dict__
-    del song_dict["_state"] # Used by django
-    
-    chords_converted = []
-    for chord in chords:
-        chord_dict = chord.__dict__
-        del chord_dict["_state"] # Used by django
-        chords_converted.append(chord_dict)
-    
-    song_dict["chords"] = chords_converted
-    
-    return song_dict
 
 
 @jsonremote(service)
@@ -125,8 +97,11 @@ def getAllSongs(request):
         results = db.select("songs")
         for row in results:
             song_list.append( (row.id, row.number, row.title) )
+        # This list of songs will get converted to JSON and passed to the front-end (client):
         return song_list
+    
     except Exception, err:
+        # FIXME Implement a better way of informing the client of the error???
         return [ (0, 0, str(err)) ]
 
 @jsonremote(service)
@@ -152,22 +127,14 @@ def getSong(request, song_id):
     
     song_dict["chords"] = chords
     
+    # This song dict will get converted to JSON and passed to the front-end (client):
     return song_dict
     
     
-    # Fetch all the chords for this song:
-    chords = []
-    DBSongChord.objects.all()
-    for chord in DBSongChord.objects.filter(song_id=song_id):
-        chords.append(chord)
-    
-    return song_to_dict(song, chords)
-
-
 
 app = web.application(urls, globals())
 
-
+# Serve the content:
 if __name__ == "__main__":
     try:
         app.run()
