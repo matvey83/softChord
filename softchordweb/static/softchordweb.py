@@ -34,7 +34,7 @@ class SoftChordWeb:
                         self.METHOD_UPPERCASE, self.METHOD_LOWERCASE, 
                         self.METHOD_NONEXISTANT]
 
-        self.remote_py = EchoServicePython()
+        self.remote = EchoServicePython()
 
         self.status=Label()
         self.text_area = TextArea()
@@ -81,8 +81,6 @@ after newline
         root_panel = RootPanel()
         root_panel.add(demo_panel)
 
-
-        ### FIXME  self.remote = DataService()
         
         main_layout = VerticalPanel()
 
@@ -124,7 +122,7 @@ after newline
         root_panel.add(main_layout)
         
         # Populate the song table:
-        # FIXME   self.remote.getAllSongs(self)
+        self.remote.getAllSongs(self)
 
 
 
@@ -169,15 +167,15 @@ after newline
         # demonstrate proxy & callMethod()
         if sender == self.button_py:
             if method == self.METHOD_ECHO:
-                id = self.remote_py.echo(text, self)
+                id = self.remote.echo(text, self)
             elif method == self.METHOD_REVERSE:
-                id = self.remote_py.reverse(text, self)
+                id = self.remote.reverse(text, self)
             elif method == self.METHOD_UPPERCASE:
-                id = self.remote_py.uppercase(text, self)
+                id = self.remote.uppercase(text, self)
             elif method == self.METHOD_LOWERCASE:
-                id = self.remote_py.lowercase(text, self)
+                id = self.remote.lowercase(text, self)
             elif method == self.METHOD_NONEXISTANT:
-                id = self.remote_py.nonexistant(text, self)
+                id = self.remote.nonexistant(text, self)
     
 
         elif sender == self.songListBox:
@@ -253,7 +251,7 @@ after newline
 
 class EchoServicePython(JSONProxy):
     def __init__(self):
-        JSONProxy.__init__(self, "/songs/index.py/rpc/", ["echo", "reverse", "uppercase", "lowercase", "nonexistant"])
+        JSONProxy.__init__(self, "/songs/index.py/rpc/", ["echo", "reverse", "uppercase", "lowercase", "nonexistant", "getAllSongs", "getSong", "addSong", "deleteSong"])
 
 if __name__ == '__main__':
     """
