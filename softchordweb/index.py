@@ -12,7 +12,10 @@ except Exception, err:
     #print "Content-type: text/html\n\n"
     #print "Exception: %s" % (str(err))
     #db = web.database(dbn="mysql", db="softchord", user="softchord", password="Concord123")
-    db = web.database(dbn="mysql", db="softchord.db.6582285.hostedresource.com", user="softchord", password="Concord123")
+    #db = web.database(dbn="mysql", db="softchord.db.6582285.hostedresource.com", user="softchord", pw="Concord123", charset=None)
+    db = web.database(dbn="mysql", host="softchord.db.6582285.hostedresource.com", db="softchord", user="softchord", pw="Concord123", charset=None, use_unicode=False)
+    # NOTE: We MUST wet charset to None in order to work with version 1.2.0 of MySQLdb (installed on godaddy servers).
+    # Also note that our web.py installtion is also modified to work with that version of MySQLdb.
     
 
 urls = (
@@ -117,14 +120,14 @@ def getAllSongs(request):
     Gets called by the front end to retreive the list of songs in the database.
     """
     
-    song_list = []
-    results = db.select("songs") #, what="id,number,title")
-    for row in results:
-        print 'ROW:', row.id, row.number, row.title
-        song_list.append( (row.id, row.number, row.title) )
-    
-    return song_list
-    
+    try:
+        song_list = []
+        results = db.select("songs")
+        for row in results:
+            song_list.append( (row.id, row.number, row.title) )
+        return song_list
+    except Exception, err:
+        return [ (0, 0, str(err)) ]
 
 @jsonremote(service)
 def getSong(request, song_id):
@@ -137,7 +140,6 @@ def getSong(request, song_id):
     song_dict = None
     for row in results:
         song_dict = dict(row)
-        #song_dict["chords"] = []
         break
     
     if row == None:

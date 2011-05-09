@@ -939,6 +939,11 @@ class MySQLDB(DB):
         self.dbname = "mysql"
         DB.__init__(self, db, keywords)
         self.supports_multiple_insert = True
+    
+    def _db_cursor(self):
+        curs = self.ctx.db.cursor()
+        curs.execute("SET CHARACTER SET utf8")
+        return curs
         
     def _process_insert_query(self, query, tablename, seqname):
         return query, SQLQuery('SELECT last_insert_id();')
