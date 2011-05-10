@@ -17,6 +17,19 @@ import songs
 
 TEXT_WAITING = "Waiting for response..."
 
+
+class DataService(JSONProxy):
+    """
+    Class for handling RPC requests to the server. An instance of this class is saved
+    to SoftChordWeb.remote. When methods of this class are invoked, the corresponding
+    methods on the server are invoked using JSON-RPC.
+    """
+    def __init__(self):
+        # Initialize with a list of available functions on the server:
+        remote_procedures=["echo", "getAllSongs", "getSong", "addSong", "deleteSong"]
+        JSONProxy.__init__(self, "/songs/index.py/rpc/", remote_procedures)
+
+
 class SoftChordWeb:
     def onModuleLoad(self):
         """
@@ -25,7 +38,7 @@ class SoftChordWeb:
         """
 
         
-        self.remote = EchoServicePython()
+        self.remote = DataService()
 
         self.status=Label()
         self.text_area = TextArea()
@@ -73,9 +86,8 @@ class SoftChordWeb:
         self.songListBox = ListBox()
         self.songListBox.setVisibleItemCount(7)
         self.songListBox.setWidth("300px")
-        #self.songListBox.setWidth("600px")
         self.songListBox.setHeight("400px")
-        self.songListBox.addClickListener(self)
+        self.songListBox.addChangeListener(self)
         songlist_layout.add(self.songListBox)
         
         self.deleteSongButton = Button("Delete")
@@ -97,25 +109,20 @@ class SoftChordWeb:
         
         # Populate the song table:
         self.remote.getAllSongs(self)
-
-
-
-
-
-
-
-
     
-
+    
+    """
     def onKeyUp(self, sender, keyCode, modifiers):
         pass
 
     def onKeyDown(self, sender, keyCode, modifiers):
         pass
+    """
 
     def onKeyPress(self, sender, keyCode, modifiers):
         """
         This functon handles the onKeyPress event
+        NOTE USED currently (previously it would add a new song)
         """
         if keyCode == KeyboardListener.KEY_ENTER and sender == self.newSongTextBox:
             id = self.remote.addSong(self.newSongTextBox.getText(), self)
@@ -124,10 +131,17 @@ class SoftChordWeb:
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
     
-
-
-
-
+    def onChange(self, sender):
+        """
+        Called when a new song is selected in the song list
+        """
+        if sender == self.songListBox:
+            song_id = self.songListBox.getValue(self.songListBox.getSelectedIndex())
+            self.status.setText("selected song_id: %s" % song_id)
+            id = self.remote.getSong(song_id, self)
+            if id<0:
+                self.status.setText("Server Error or Invalid Response")
+    
     def onClick(self, sender):
         """
         Gets called when a user clicked in the <sender> widget.
@@ -137,18 +151,12 @@ class SoftChordWeb:
         self.status.setText(TEXT_WAITING)
         text = self.text_area.getText()
 
-        # demonstrate proxy & callMethod()
         if sender == self.test_button:
+            # Test the remote connection
             id = self.remote.echo(text, self)
-
-        elif sender == self.songListBox:
-            song_id = self.songListBox.getValue(self.songListBox.getSelectedIndex())
-            self.status.setText("selected song_id: %s" % song_id)
-            id = self.remote.getSong(song_id, self)
-            if id<0:
-                self.status.setText("Server Error or Invalid Response")
         
         elif sender == self.deleteSongButton:
+            # NOT USED (can only read the database currently)
             # Figure out what song is selected in the table:
             song_id = self.songListBox.getValue(self.songListBox.getSelectedIndex())
             self.status.setText("delete song_id: %s" % song_id)
@@ -156,9 +164,6 @@ class SoftChordWeb:
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
     
-
-
-
 
     def onRemoteResponse(self, response, request_info):
         """
@@ -212,9 +217,6 @@ class SoftChordWeb:
         #self.status.setText("Server Error or Invalid Response: ERROR %s - %s" % (code, message))
 
 
-class EchoServicePython(JSONProxy):
-    def __init__(self):
-        JSONProxy.__init__(self, "/songs/index.py/rpc/", ["echo", "reverse", "uppercase", "lowercase", "nonexistant", "getAllSongs", "getSong", "addSong", "deleteSong"])
 
 if __name__ == '__main__':
     """
@@ -223,7 +225,7 @@ if __name__ == '__main__':
     # for pyjd, set up a web server and load the HTML from there:
     # this convinces the browser engine that the AJAX will be loaded
     # from the same URI base as the URL, it's all a bit messy...
-    pyjd.setup("http://127.0.0.1/examples/jsonrpc/public/SoftChordWeb.html")
+    pyjd.setup("http://127.0.0.1/<change to path of static-slash-output>/SoftChordWeb.html")
     app = SoftChordWeb()
     app.onModuleLoad()
     pyjd.run()

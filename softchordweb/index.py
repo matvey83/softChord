@@ -131,10 +131,9 @@ def getSong(request, song_id):
     return song_dict
     
     
-
 app = web.application(urls, globals())
 
-# Serve the content:
+# Run the web.py's server, and serve the content:
 if __name__ == "__main__":
     try:
         app.run()
