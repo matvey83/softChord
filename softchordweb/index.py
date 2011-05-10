@@ -35,7 +35,10 @@ class static:
         
         if not name:
             # If simply /index.py/ is specified, load the main front-end page:
-            name = 'softchordweb.html'
+            #name = 'softchordweb.html'
+            # Modified version of PyJamas-generated softchordweb.html that has
+            # the title changed to "softChord Web":
+            name = 'softchordweb-custom.html'
         
         ext = name.split(".")[-1]
         
