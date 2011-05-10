@@ -87,8 +87,6 @@ def echo(request, test_str):
 # softChord-specific RPC functions:
 #
 
-
-
 @jsonremote(service)
 def getAllSongs(request):
     """
