@@ -5,8 +5,8 @@ from pyjamas.ui.TextArea import TextArea
 from pyjamas.ui.Label import Label
 from pyjamas.ui.Button import Button
 from pyjamas.ui.HTML import HTML
-from pyjamas.ui.TextBox import TextBox
-from pyjamas.ui import KeyboardListener
+#from pyjamas.ui.TextBox import TextBox
+#from pyjamas.ui import KeyboardListener
 from pyjamas.ui.VerticalPanel import VerticalPanel
 from pyjamas.ui.HorizontalPanel import HorizontalPanel
 from pyjamas.ui.ListBox import ListBox
@@ -48,10 +48,6 @@ class SoftChordWeb:
         
         self.test_button = Button("Test Connection", self)
 
-        #buttons = HorizontalPanel()
-        #buttons.add(self.test_button)
-        #buttons.setSpacing(8)
-        
         info = """<h2>softChord Web</h2>
         <p>Enter some text below, and press a button to send the text
            to an Echo service on your server. An echo service simply sends the exact same text back that it receives.
@@ -60,7 +56,6 @@ class SoftChordWeb:
         test_panel = VerticalPanel()
         test_panel.add(HTML(info))
         test_panel.add(self.text_area)
-        #test_panel.add(buttons)
         test_panel.add(self.test_button)
         test_panel.add(self.status)
         
@@ -77,9 +72,9 @@ class SoftChordWeb:
         
         songlist_layout.add(Label("Add New Song:"))
 
-        self.newSongTextBox = TextBox()
-        self.newSongTextBox.addKeyboardListener(self)
-        songlist_layout.add(self.newSongTextBox)
+        #self.newSongTextBox = TextBox()
+        #self.newSongTextBox.addKeyboardListener(self)
+        #songlist_layout.add(self.newSongTextBox)
         
         #songlist_layout.add(Label("Click to Remove:"))
 
@@ -111,13 +106,12 @@ class SoftChordWeb:
         self.remote.getAllSongs(self)
     
     
-    """
+    '''
     def onKeyUp(self, sender, keyCode, modifiers):
         pass
 
     def onKeyDown(self, sender, keyCode, modifiers):
         pass
-    """
 
     def onKeyPress(self, sender, keyCode, modifiers):
         """
@@ -130,7 +124,8 @@ class SoftChordWeb:
 
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
-    
+    '''
+
     def onChange(self, sender):
         """
         Called when a new song is selected in the song list
