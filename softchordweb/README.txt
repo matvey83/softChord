@@ -1,7 +1,7 @@
 To run locally:
 
 1) python index.py 
-2) Browse to http://127.0.0.1:8080/songs/
+2) Browse to http://127.0.0.1:8080/
 
 
 To deploy:
