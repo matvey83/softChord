@@ -115,7 +115,6 @@ def get_note_string(note_id, prefer_sharps_or_flats):
 
 
 
-
 def get_chord_text(chord, prefer_sharps_or_flats):
     """
     Returns string of the chord.
@@ -145,6 +144,19 @@ def get_chord_text(chord, prefer_sharps_or_flats):
     return chord_str
 
 
+def transpose_note(note_id, steps):
+    """
+    Transpose the given note ID up by <steps>.
+    Returns the transposed note ID.
+    """
+    note_id += steps
+
+    if note_id < 0:
+        note_id += 12
+    elif note_id > 11:
+        note_id -= 12
+
+    return note_id
 
 
 
@@ -163,6 +175,18 @@ class SongChord:
         #self.bass_note_id
         #self.marker
         #self.in_parentheses
+    
+    def transpose(self, steps):
+        """
+        Transpose this chord the specified number of steps up.
+        <steps> can be negative.
+        """
+        self.note_id = transpose_note(self.note_id, steps)
+        if self.bass_note_id != -1:
+            self.bass_note_id = transpose_note(self.bass_note_id, steps)
+    
+
+        
 
 
 class Song:
@@ -302,3 +326,14 @@ class Song:
         
         return html
 
+
+    
+    def transpose(self, steps):
+        for chord in self.chords:
+            chord.transpose(steps)
+        
+        if self.key_note_id != -1:
+            self.key_note_id = transpose_note(self.key_note_id, steps)
+
+
+#EOF

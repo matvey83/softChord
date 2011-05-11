@@ -177,16 +177,20 @@ class SoftChordWeb:
                 self.songListBox.setValue(self.songListBox.getItemCount()-1, song_id)
         
         elif request_info.method == 'getSong':
-            self.status.setText(self.status.getText() + " - song received")
+            self.status.setText("Song received, parsing JSON...")
+            
+            # Convert the JSON respose (from the server) into a Song object:
             song_obj = songs.Song(response)
-            self.status.setText(self.status.getText() + "; id: %i; num-chords: %i" % (song_obj.id, len(song_obj.chords) ) )
+            
+            # Transpose the song up by half step before showing:
+            # (for demonstration of the transpose method for Serge):
+            song_obj.transpose(1)
+            
+            self.status.setText("Received song: id: %i; num-chords: %i" % (song_obj.id, len(song_obj.chords) ) )
             self.songHtml.setHTML(song_obj.getHtml())
-            #self.textArea.setText(song_obj.text)
         
-        #else:
-        #    # Unknown response received form the server
-        #    self.status.setText(self.status.getText() + "none!")
         else:
+            # Unknown response received form the server
             self.status.setText(response)
     
 
