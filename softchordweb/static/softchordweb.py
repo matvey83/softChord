@@ -102,6 +102,9 @@ class SoftChordWeb:
         
         root_panel.add(main_layout)
         
+        # The currently selected song:
+        self.current_song = None
+        
         # Populate the song table:
         self.remote.getAllSongs(self)
     
@@ -180,20 +183,27 @@ class SoftChordWeb:
             self.status.setText("Song received, parsing JSON...")
             
             # Convert the JSON respose (from the server) into a Song object:
-            song_obj = songs.Song(response)
+            song = songs.Song(response)
+            self.status.setText("Received song: id: %i; num-chords: %i" % (song.id, len(song.chords) ) )
+            self.current_song = song
+            self.displayCurrentSong()
             
             # Transpose the song up by half step before showing:
             # (for demonstration of the transpose method for Serge):
-            song_obj.transpose(1)
-            
-            self.status.setText("Received song: id: %i; num-chords: %i" % (song_obj.id, len(song_obj.chords) ) )
-            self.songHtml.setHTML(song_obj.getHtml())
-        
+            self.transposeCurrentSong(1)
         else:
             # Unknown response received form the server
             self.status.setText(response)
     
-
+    def transposeCurrentSong(self, up_steps):
+        if not self.current_song:
+            pass # error, no song selected
+        self.current_song.transpose(up_steps)
+        self.displayCurrentSong()
+    
+    def displayCurrentSong(self):
+        self.songHtml.setHTML(self.current_song.getHtml())
+    
     def onRemoteError(self, code, errobj, request_info):
         # onRemoteError gets the HTTP error code or 0 and
         # errobj is an jsonrpc 2.0 error dict:
