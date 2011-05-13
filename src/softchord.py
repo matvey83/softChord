@@ -3757,8 +3757,7 @@ class App( QtGui.QApplication ):
 
         self.setWaitCursor()
         text = unicode(self.clipboard.text())
-        song_title = "Pasted from clipboard"
-        self.importSongFromText(text, song_title)
+        self.importSongFromText(text)
         self.restoreCursor()
     
     
@@ -3793,10 +3792,13 @@ class App( QtGui.QApplication ):
                 self.restoreCursor()
     
 
-    def importSongFromText(self, input_text, song_title):
+    def importSongFromText(self, input_text, song_title=None):
         """
         Adds the song specified with the given text to the database.
         input_text should contain all lines, decoded, in Unicode.
+
+        If the title is not specified, then the first line of the lyrics
+        becomes the title.
         """
         
         
@@ -3893,6 +3895,10 @@ class App( QtGui.QApplication ):
                     song_lines.append( (line, {}) )
                 prev_chords = []
         
+        # If the title is not specified, set it to the first line of lyrics:
+        if song_title == None and song_lines:
+            # Also remove leading and trailing spaces:
+            song_title = song_lines[0][0].strip()
         
         # Make a global-reference text and chords dict:
         global_song_text = ""
