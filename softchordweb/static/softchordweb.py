@@ -64,10 +64,10 @@ class SoftChordWeb:
         root_panel.add(self.status)
         
         
-        main_layout = VerticalPanel()
         
         h_layout = HorizontalPanel()
         h_layout.setPadding(10)
+        
         
         songlist_layout = VerticalPanel()
         
@@ -90,19 +90,44 @@ class SoftChordWeb:
         self.deleteSongButton = Button("Delete")
         self.deleteSongButton.addClickListener(self)
         #songlist_layout.add(self.deleteSongButton)
-         
         
         h_layout.add(songlist_layout)
         
+        
+        
+        
+        curr_song_layout = VerticalPanel()
+        
+        # Transpose Button panel:
+        tb_layout = HorizontalPanel()
+    
+        
+        self.transposeUpButton = Button("Transpose Up")
+        self.transposeUpButton.addClickListener(self)
+	tb_layout.add(self.transposeUpButton)
+        
+        self.transposeDownButton = Button("Transpose Down")
+        self.transposeDownButton.addClickListener(self)
+	tb_layout.add(self.transposeDownButton) 
+        
+        curr_song_layout.add(tb_layout)
+        
         self.songHtml = HTML("<b>Please select a song in the left table</b>")
-        h_layout.add(self.songHtml)
+        curr_song_layout.add(self.songHtml)
         
-        main_layout.add(h_layout)
+        h_layout.add(curr_song_layout)
         
-        root_panel.add(main_layout)
+        
+        root_panel.add(h_layout)
+        
         
         # The currently selected song:
         self.current_song = None
+        
+        # Disable the Transpose Up and Transpose Down Buttons:
+        self.transposeUpButton.setEnabled(False)
+        self.transposeDownButton.setEnabled(False)
+        
         
         # Populate the song table:
         self.remote.getAllSongs(self)
@@ -160,7 +185,14 @@ class SoftChordWeb:
             id = self.remote.deleteSong(song_id, self)
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
+
+        elif sender == self.transposeUpButton:
+            # Transpose the current song up by half a step
+            self.transposeCurrentSong(+1)
     
+        elif sender == self.transposeDownButton:
+            # Transpose the current song down by half a step
+            self.transposeCurrentSong(-1)
 
     def onRemoteResponse(self, response, request_info):
         """
@@ -186,6 +218,10 @@ class SoftChordWeb:
             self.status.setText("Received song: id: %i; num-chords: %i" % (song.id, len(song.chords) ) )
             self.current_song = song
             self.displayCurrentSong()
+
+            # Enable the transpose buttons:
+            self.transposeUpButton.setEnabled(True)
+            self.transposeDownButton.setEnabled(True)
             
             # Transpose the song up by half step before showing:
             # (for demonstration of the transpose method for Serge):
@@ -198,7 +234,7 @@ class SoftChordWeb:
         if not self.current_song:
             pass # error, no song selected
         self.current_song.transpose(up_steps)
-        self.displayCurrentSong()
+        self.displayCurrentSong()  
     
     def displayCurrentSong(self):
         self.songHtml.setHTML(self.current_song.getHtml())
