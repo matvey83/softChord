@@ -37,41 +37,42 @@ class SoftChordWeb:
         Creates the widgets.
         """
 
-        
+        # For managing JSON-RPC (communicaiton with the server):
         self.remote = DataService()
-
+        
+        root_panel = RootPanel()
+        
+        root_panel.add(HTML("<h2>softChord Web</h2>"))
+        
         self.status=Label()
         self.text_area = TextArea()
-        self.text_area.setText("""Enter some text here, and watch it get sent to the server and echoed back.""")
+        self.text_area.setText("Enter some text here, and watch it get sent to the server and echoed back.")
         self.text_area.setCharacterWidth(80)
         self.text_area.setVisibleLines(3)
         
-        self.test_button = Button("Test Connection", self)
-
-        info = """<h2>softChord Web</h2>
-        <p>Enter some text below, and press a button to send the text
-           to an Echo service on your server. An echo service simply sends the exact same text back that it receives.
-           </p>"""
-        
+        # For testing the server connection:
         test_panel = VerticalPanel()
-        test_panel.add(HTML(info))
+        test_panel.add(HTML("Test the server connection:"))
         test_panel.add(self.text_area)
+        self.test_button = Button("Test Connection", self)
         test_panel.add(self.test_button)
         test_panel.add(self.status)
+        #root_panel.add(test_panel)
         
-        root_panel = RootPanel()
-        root_panel.add(test_panel)
-
+        # Label for displaying status from the server:
+        self.status = Label()
+        root_panel.add(self.status)
+        
         
         main_layout = VerticalPanel()
-
+        
         h_layout = HorizontalPanel()
         h_layout.setPadding(10)
         
         songlist_layout = VerticalPanel()
         
-        songlist_layout.add(Label("Add New Song:"))
-
+        songlist_layout.add(Label('Songs from songbook "Звуки Неба":'))
+        
         #self.newSongTextBox = TextBox()
         #self.newSongTextBox.addKeyboardListener(self)
         #songlist_layout.add(self.newSongTextBox)
@@ -85,9 +86,10 @@ class SoftChordWeb:
         self.songListBox.addChangeListener(self)
         songlist_layout.add(self.songListBox)
         
+        # Currently not possible to delete a song (otherwise anyone could delete any song):
         self.deleteSongButton = Button("Delete")
         self.deleteSongButton.addClickListener(self)
-        songlist_layout.add(self.deleteSongButton)
+        #songlist_layout.add(self.deleteSongButton)
          
         
         h_layout.add(songlist_layout)
@@ -96,9 +98,6 @@ class SoftChordWeb:
         h_layout.add(self.songHtml)
         
         main_layout.add(h_layout)
-        
-        self.status = Label()
-        main_layout.add(self.status)
         
         root_panel.add(main_layout)
         
