@@ -5,6 +5,14 @@ To Install:
 2) Setup the pre-installed pyjamas:
     cd pyjamas-0.7/
     python bootstrap.py
+    OR (if you will be using Pyjamas-Desktop)
+    sudo python run_bootstrap_first_then_setup.py install
+
+
+***** NOT WORKING YET ****
+3) Setup Pyjamas-Desktop
+    export PYTHONPATH=/Users/adzhigir/src/softchord/pyjamas-0.7/library/
+**************************
 
 
 To build and run:
