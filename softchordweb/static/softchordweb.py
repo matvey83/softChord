@@ -159,7 +159,7 @@ class SoftChordWeb:
         """
         if sender == self.songListBox:
             song_id = self.songListBox.getValue(self.songListBox.getSelectedIndex())
-            self.status.setText("selected song_id: %s" % song_id)
+            self.status.setText("Please wait...") # selected song_id: %s" % song_id)
             id = self.remote.getSong(song_id, self)
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
@@ -181,7 +181,7 @@ class SoftChordWeb:
             # NOT USED (can only read the database currently)
             # Figure out what song is selected in the table:
             song_id = self.songListBox.getValue(self.songListBox.getSelectedIndex())
-            self.status.setText("delete song_id: %s" % song_id)
+            self.status.setText("Please wait...") # delete song_id: %s" % song_id)
             id = self.remote.deleteSong(song_id, self)
             if id<0:
                 self.status.setText("Server Error or Invalid Response")
