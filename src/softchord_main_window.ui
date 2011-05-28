@@ -415,6 +415,7 @@
     <addaction name="actionImportClipboard"/>
     <addaction name="actionImportChordPro"/>
     <addaction name="actionImportText"/>
+    <addaction name="actionAppendSongbook"/>
     <addaction name="separator"/>
     <addaction name="actionPrint"/>
     <addaction name="separator"/>
@@ -461,7 +462,7 @@
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionNewSong">
    <property name="text">
-    <string>New song</string>
+    <string>New Song</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+N</string>
@@ -474,7 +475,7 @@
   </action>
   <action name="actionExportText">
    <property name="text">
-    <string>Export to TEXT...</string>
+    <string>Export To TEXT...</string>
    </property>
   </action>
   <action name="actionPrint">
@@ -487,17 +488,17 @@
   </action>
   <action name="actionLyricsFont">
    <property name="text">
-    <string>Lyrics font...</string>
+    <string>Lyrics Font...</string>
    </property>
   </action>
   <action name="actionChordsFont">
    <property name="text">
-    <string>Chords font...</string>
+    <string>Chords Font...</string>
    </property>
   </action>
   <action name="actionImportText">
    <property name="text">
-    <string>Import from TEXT...</string>
+    <string>Import From TEXT...</string>
    </property>
   </action>
   <action name="actionQuit">
@@ -558,12 +559,12 @@
   </action>
   <action name="actionExportMultiplePdfs">
    <property name="text">
-    <string>Export to multiple PDFs...</string>
+    <string>Export to Multiple PDFs...</string>
    </property>
   </action>
   <action name="actionSelectAll">
    <property name="text">
-    <string>Select all</string>
+    <string>Select All</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+A</string>
@@ -574,12 +575,12 @@
   </action>
   <action name="actionImportChordPro">
    <property name="text">
-    <string>Import from ChordPro...</string>
+    <string>Import From ChordPro...</string>
    </property>
   </action>
   <action name="actionExportChordPro">
    <property name="text">
-    <string>Export to ChordPro...</string>
+    <string>Export To ChordPro...</string>
    </property>
   </action>
   <action name="actionSetID">
@@ -599,7 +600,7 @@
   </action>
   <action name="actionDeleteSongs">
    <property name="text">
-    <string>Delete selected songs</string>
+    <string>Delete Selected songs</string>
    </property>
   </action>
   <action name="actionExportSongPDF">
@@ -614,17 +615,17 @@
   </action>
   <action name="actionImportClipboard">
    <property name="text">
-    <string>Import from Clipboard...</string>
+    <string>Import From Clipboard...</string>
    </property>
   </action>
   <action name="actionExportClipboard">
    <property name="text">
-    <string>Export to Clipboard</string>
+    <string>Export To Clipboard</string>
    </property>
   </action>
   <action name="actionZoomIn">
    <property name="text">
-    <string>Zoom in</string>
+    <string>Zoom In</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+=</string>
@@ -632,7 +633,7 @@
   </action>
   <action name="actionZoomOut">
    <property name="text">
-    <string>Zoom out</string>
+    <string>Zoom Out</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+-</string>
@@ -640,7 +641,7 @@
   </action>
   <action name="actionZoomActual">
    <property name="text">
-    <string>Actual zoom</string>
+    <string>Actual Zoom</string>
    </property>
   </action>
   <action name="actionCopy">
@@ -669,15 +670,20 @@
   </action>
   <action name="actionExportSongToPdf">
    <property name="text">
-    <string>Export to PDF...</string>
+    <string>Export To PDF...</string>
    </property>
   </action>
   <action name="actionRemoveTrailingSpaces">
    <property name="text">
-    <string>Remove trailing spaces</string>
+    <string>Remove Trailing Spaces</string>
    </property>
    <property name="toolTip">
     <string>Remove trailing spaces from every line in the selected song(s)</string>
+   </property>
+  </action>
+  <action name="actionAppendSongbook">
+   <property name="text">
+    <string>Append Another Songbook...</string>
    </property>
   </action>
  </widget>

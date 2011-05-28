@@ -42,7 +42,7 @@ chord_types_list = [
   (4, u"Minor 7th", u"m7"),
   (5, u"Dominant 7th", u"7"),
   (6, u"Add 9", u"9"),
-  (7, u"Diminished", u"dim"),
+  (7, u"Augmented", u"aug"),
   (8, u"Major 6th", u"6"),
   (9, u"Minor 6th", u"m6"),
   (10, u"11th", u"11"),
@@ -50,6 +50,7 @@ chord_types_list = [
   (12, u"Diminished 7th", u"°7"),
 ]
 
+# Alternative text for chord types (for parsing text):
 alternative_type_names = {
    "sus" : "sus4",
    "s4" : "sus4",
@@ -445,7 +446,7 @@ class SongChord:
         self.note_id = note_id
         self.chord_type_id = chord_type_id
         self.bass_note_id = bass_note_id
-
+        
         if marker == u"-1" or marker == None or marker == "None":
             # FIXME the database should have only one of these in it
             marker = ""
@@ -1638,6 +1639,7 @@ class App( QtGui.QApplication ):
         self.ui.actionOpenSongbook.triggered.connect(self.openSongbook)
         self.ui.actionCloseSongbook.triggered.connect(self.closeSongbook)
         self.ui.actionSaveSongbook.triggered.connect(self.saveSongbook)
+        self.ui.actionAppendSongbook.triggered.connect(self.appendSongbookSelected)
         
         self.ui.actionPrint.triggered.connect( self.printSelectedSongs )
         self.c( self.ui.actionQuit, "triggered()", self.ui.close )
@@ -2208,6 +2210,7 @@ class App( QtGui.QApplication ):
         
         self.ui.actionCloseSongbook.setEnabled(songbook_open)
         self.ui.actionSaveSongbook.setEnabled(songbook_open)
+        self.ui.actionAppendSongbook.setEnabled(songbook_open)
         
         self.updateEditMenu()
             
@@ -3899,6 +3902,16 @@ class App( QtGui.QApplication ):
         if song_title == None and song_lines:
             # Also remove leading and trailing spaces:
             song_title = song_lines[0][0].strip()
+            # Strip "1." (if present):
+            for find_str in ["1", "Пр.", "Припев" "Chorus", "Куплет", ".", ":", ")"]:
+                if song_title.startswith(find_str):
+                    song_title = song_title[ len(find_str) : ].strip()
+            # Remove any trailing punctuation marks:
+            if song_title[-1] in [",", ".", ";", ":"]: # NOTE: question mark is ok
+                song_title = song_title[:-1]
+            if not song_title:
+                # In case all of the title got stripped
+                song_title = "Unknown"
         
         # Make a global-reference text and chords dict:
         global_song_text = ""
@@ -3917,12 +3930,13 @@ class App( QtGui.QApplication ):
         self._importSongFromLyricsAndChords(song_num, song_title, "", global_song_text, global_song_chords)
     
 
-
-    def _importSongFromLyricsAndChords(self, song_num=-1, song_title="", song_subtitle="", song_text="", song_chords=None):
+    def _importSong(self, song_num, song_title, song_subtitle, song_text, key_note_id, key_is_major, alt_key_note_id):
         """
-        Import the given song to the database.
+        Import the given song (except chords).
+        Returns the ID assigned to the new song.
+        NOTE: curs.commit() MUST be called afterwards.
         """
-
+        
         row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
         if row[0] == None:
             song_id = 0
@@ -3930,30 +3944,55 @@ class App( QtGui.QApplication ):
             song_id = row[0]+1
         
         song_title = unicode(song_title)
-
-        self.curs.execute("INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
-            (song_id, song_num, song_title, song_subtitle, song_text) )
         
-        # Get the next available ID:
-        row = self.curs.execute("SELECT MAX(id) from song_chord_link").fetchone()
-        if row[0] == None:
-            chord_id = 0
-        else:
-            chord_id = row[0]+1
+        self.curs.execute("INSERT INTO songs (id, number, title, subtitle, text, key_note_id, key_is_major, alt_key_note_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (song_id, song_num, song_title, song_subtitle, song_text, key_note_id, key_is_major, alt_key_note_id) )
+        
+        return song_id
+        
+
+    def _importChord(self, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses, chord_id=None):
+        """
+        Import the given chord to the database.
+        Returns the ID assigned to the new chord entry (if ID was not given).
+        NOTE: curs.commit() MUST be called afterwards.
+        """
+        
+        if chord_id == None:
+            # Get the next available ID:
+            row = self.curs.execute("SELECT MAX(id) from song_chord_link").fetchone()
+            if row[0] == None:
+                chord_id = 0
+            else:
+                chord_id = row[0]+1
+        
+        if not marker:
+            marker = ""
+        in_parentheses = int(in_parentheses)
+        self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
+        
+        return chord_id        
+    
+
+    
+    def _importSongFromLyricsAndChords(self, song_num=-1, song_title="", song_subtitle="", song_text="", song_chords=None):
+        """
+        Import the given song to the database.
+        song_chords (optional) should be a dict: key=song_char_num, values: (marker, note_id, type_id, bass_id, in_parentheses)
+        """
+
+        song_id = self._importSong(song_num, song_title, song_subtitle, song_text)
         
         # Add song's chords (if any):
+        chord_id = None # So that _importChord() assigned a new ID to the new chord
         if song_chords:
             for song_char_num, chord in song_chords.iteritems():
                 (marker, note_id, type_id, bass_id, in_parentheses) = chord
-                if not marker:
-                    marker = ""
                 
-                in_parentheses = int(in_parentheses)
-                
-                self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
-                
+                chord_id = self._importChord(song_id, song_char_num, note_id, type_id, bass_id, marker, id_parentheses, chord_id)
                 chord_id += 1 # Increment the ID for the next chord.
+        
         self.curs.commit()
         
         # Update the song table from database:
@@ -4096,6 +4135,31 @@ class App( QtGui.QApplication ):
         else:
             bass_str = None
         
+        """
+        def standardize_note_str(note_str):
+            if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
+            if note_str[0] == u'Е': # Russian letter
+                note_str[0] = 'E'
+            elif note_str[0] == u'С': # Russian letter
+                note_str[0] = 'C'
+            elif note_str[0] == u'В': # Russian letter
+                note_str[0] = 'B'
+            elif note_str[0] == u'А': # Russian letter
+                note_str[0] = 'A'
+            elif note_str[0] == 'H': # European style (H instead of B)
+                note_str[0] = 'B'
+            elif note_str[0] == 'Н': # Russian letter "N" (H instead of B)
+                note_str[0] = 'B'
+            
+            chord_str[0] = chord_str[0].upper()
+
+            if not chord_str[0]in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
+                raise ValueError("Invalid note string: '%s'" % note_str)
+            
+            if 
+            
+        """
+    
         if chord_str[0] == u'Е': # Russian letter
             chord_str = 'E' + chord_str[1:]
         if chord_str[0] == u'С': # Russian letter
@@ -4105,6 +4169,8 @@ class App( QtGui.QApplication ):
         if chord_str[0] == u'А': # Russian letter
             chord_str = 'A' + chord_str[1:]
         if chord_str[0] == 'H': # European style (H instead of B)
+            chord_str = 'B' + chord_str[1:]
+        if chord_str[0] == 'Н': # Russian letter "N" (H instead of B)
             chord_str = 'B' + chord_str[1:]
         
         if chord_str[0] in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
@@ -4167,7 +4233,41 @@ class App( QtGui.QApplication ):
         self.songs_model.updateFromDatabase()
         self.updateStates()
         
+
+    def appendSongbookFile(self, filename):
+        """
+        Append the given songbook to the currently open songbook.
+        """
         
+        self.setWaitCursor()
+        try:
+            # This step can't be undoed:
+            self.clearUndoStack()
+
+            self.ui.songs_view.selectionModel().clearSelection()
+            
+            curs2 = sqlite3.connect(filename)
+            
+            chord_id = None # So that _importChord() assigned a new ID to the new chord
+            
+            for row in curs2.execute("SELECT number, title, subtitle, text, key_note_id, key_is_major, alt_key_note_id FROM songs ORDER BY id"):
+                (song_num, song_title, song_subtitle, song_text, key_note_id, key_is_major, alt_key_note_id) = row
+                song_id = self._importSong(song_num, song_title, song_subtitle, song_text, key_note_id, key_is_major, alt_key_note_id)
+                
+                for row in curs2.execute("SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i" % song_id):
+                    (id, song_char_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) = row
+                    
+                    chord_id = self._importChord(song_id, song_char_num, note_id, chord_type_id, bass_note_id, marker, id_parentheses, chord_id)
+                    chord_id += 1 # Increment the ID for the next chord.
+            
+            self.curs.commit()
+            
+            self.songs_model.updateFromDatabase()
+            self.updateStates()
+        finally:
+            self.restoreCursor()
+    
+
     def newSongbook(self):
         songbook_file = QtGui.QFileDialog.getSaveFileName(self.ui,
                     "Save songbook as:",
@@ -4241,6 +4341,19 @@ class App( QtGui.QApplication ):
             # FIXME re-open the current song
 
 
+    def appendSongbookSelected(self):
+        """
+        Append a user-selected songbook to the currently opened songbook.
+        """
+
+        songbook_file = QtGui.QFileDialog.getOpenFileName(self.ui,
+                "Select a songbook to append",
+                QtCore.QDir.home().path(), # initial dir
+                "Songbook format (*.songbook)",
+        )
+        if songbook_file:
+            self.appendSongbookFile( unicode(songbook_file) )
+    
 
 
 
