@@ -2577,7 +2577,8 @@ class App( QtGui.QApplication ):
                 table_of_contents_lines = []
                 for song_id in song_ids:
                     title, num = self.songs_model.getTitleAndNumFromId(song_id)
-                    table_of_contents_lines.append( (title, num) )
+                    if num != -1:
+                        table_of_contents_lines.append( (title, num) )
                 
                 # Sort by song name:
                 # FIXME remove the leading "The", "A", etc:
@@ -3982,7 +3983,7 @@ class App( QtGui.QApplication ):
         song_chords (optional) should be a dict: key=song_char_num, values: (marker, note_id, type_id, bass_id, in_parentheses)
         """
 
-        song_id = self._importSong(song_num, song_title, song_subtitle, song_text)
+        song_id = self._importSong(song_num, song_title, song_subtitle, song_text, key_note_id=-1, key_is_major=0, alt_key_note_id=-1)
         
         # Add song's chords (if any):
         chord_id = None # So that _importChord() assigned a new ID to the new chord
