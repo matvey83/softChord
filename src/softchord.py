@@ -3991,7 +3991,7 @@ class App( QtGui.QApplication ):
             for song_char_num, chord in song_chords.iteritems():
                 (marker, note_id, type_id, bass_id, in_parentheses) = chord
                 
-                chord_id = self._importChord(song_id, song_char_num, note_id, type_id, bass_id, marker, id_parentheses, chord_id)
+                chord_id = self._importChord(song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses, chord_id)
                 chord_id += 1 # Increment the ID for the next chord.
         
         self.curs.commit()
