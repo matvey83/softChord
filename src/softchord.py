@@ -29,6 +29,11 @@ import platform
 
 LYRICS_SIZE = 20 # 14
 CHORDS_SIZE = 12 # 9
+
+# For Zvuki Neba songbook:
+LYRICS_SIZE = 14
+CHORDS_SIZE = 9
+
 CHORDS_COLOR = "BLACK"
 CHORDS_COLOR = "BLUE"
 
@@ -530,7 +535,7 @@ class Song:
         self.title = ""
         self.prefer = PREFER_NEITHER
         self.key_note_id = -1 # Main key note
-        self.key_is_major = 0 # Major or minor?
+        self.key_is_major = -1 # Major or minor?
         self.alt_key_note_id = -1 # Alternative key note
 
         self.updateSongFromDatabase()
@@ -567,9 +572,10 @@ class Song:
         if self.key_note_id == None:
             self.key_note_id = -1
         
+        #print 'saved in database key_is_major:', row[5], 'type:', type(row[5])
         self.key_is_major = row[5]
         if self.key_is_major == None:
-            self.key_is_major = 0
+            self.key_is_major = -1
         
         self.alt_key_note_id = row[6]
         if self.alt_key_note_id == None:
@@ -1010,6 +1016,7 @@ class Song:
             for song_char_num in chords_in_database:
                 self.app.curs.execute("DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i" % (self.id, song_char_num))
             
+            #print 'saving to database song_num:', self.number, 'key_is_major:', self.key_is_major
             self.app.curs.execute("UPDATE songs SET number=?, title=?, subtitle=?, text=?, key_note_id=?, key_is_major=?, alt_key_note_id=? WHERE id=?",
                 (self.number, self.title, self.subtitle, self.getAllText(), self.key_note_id, self.key_is_major, self.alt_key_note_id, self.id))
             self.app.curs.commit()
@@ -1872,8 +1879,8 @@ class App( QtGui.QApplication ):
                 else:
                     combined_text = text
                 
-                keys_list.append(combined_text + u" Major")
                 keys_list.append(combined_text + u" minor")
+                keys_list.append(combined_text + u" Major")
                 alt_keys_list.append(combined_text)
         
         self.ignore_song_key_changed = True
@@ -2262,7 +2269,8 @@ class App( QtGui.QApplication ):
             if self.current_song.key_note_id == -1:
                 self.ui.song_key_menu.setCurrentIndex( 0 )
             else:
-                self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major + 1)
+                #print 'setting menu key id', self.current_song.key_note_id, 'major:', self.current_song.key_is_major
+                self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major + 1 )
             
             if self.current_song.alt_key_note_id == -1:
                 self.ui.song_alt_key_menu.setCurrentIndex( 0 )
@@ -3139,7 +3147,7 @@ class App( QtGui.QApplication ):
         
         if new_key_index == 0:
             note_id = -1
-            is_major = 1
+            is_major = -1
         else:
             note_id = (new_key_index-1) // 2
             is_major = (new_key_index-1) % 2
@@ -3147,6 +3155,7 @@ class App( QtGui.QApplication ):
         if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
             self.current_song.key_note_id = note_id
             self.current_song.key_is_major = is_major
+            print 'setting is_major to', is_major
             
             self.sendCurrentSongToDatabase()
             self.editor.viewport().update()
@@ -3397,6 +3406,7 @@ class App( QtGui.QApplication ):
                 header_list.append(song.subtitle)
             
             if self.pdf_options.print_song_key and song.key_note_id != -1:
+                #print 'song num:', song.number, 'key_note_id:', song.key_note_id, 'is_major:', song.key_is_major
                 song_key_str = "Key: %s" % song._getNoteString(song.key_note_id)
                 if not song.key_is_major:
                     song_key_str += "m"
@@ -3983,7 +3993,7 @@ class App( QtGui.QApplication ):
         song_chords (optional) should be a dict: key=song_char_num, values: (marker, note_id, type_id, bass_id, in_parentheses)
         """
 
-        song_id = self._importSong(song_num, song_title, song_subtitle, song_text, key_note_id=-1, key_is_major=0, alt_key_note_id=-1)
+        song_id = self._importSong(song_num, song_title, song_subtitle, song_text, key_note_id=-1, key_is_major=-1, alt_key_note_id=-1)
         
         # Add song's chords (if any):
         chord_id = None # So that _importChord() assigned a new ID to the new chord
