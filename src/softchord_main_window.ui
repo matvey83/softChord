@@ -453,6 +453,7 @@
     <addaction name="actionNewSong"/>
     <addaction name="actionDeleteSongs"/>
     <addaction name="actionRemoveTrailingSpaces"/>
+    <addaction name="actionRenumberSongs"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
@@ -684,6 +685,11 @@
   <action name="actionAppendSongbook">
    <property name="text">
     <string>Append Another Songbook...</string>
+   </property>
+  </action>
+  <action name="actionRenumberSongs">
+   <property name="text">
+    <string>Renumber all songs...</string>
    </property>
   </action>
  </widget>

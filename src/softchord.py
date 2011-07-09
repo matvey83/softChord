@@ -1655,6 +1655,7 @@ class App( QtGui.QApplication ):
         self.ui.actionDeleteSongs.triggered.connect( self.deleteSelectedSongs )
         self.ui.actionRemoveTrailingSpaces.triggered.connect( self.removeTrailingSpaces )
         self.ui.actionDeleteSong.triggered.connect( self.deleteSelectedSongs )
+        self.ui.actionRenumberSongs.triggered.connect(self.renumberAllSongs)
 
         self.ui.actionSetID.triggered.connect( self.setSongDatabaseId )
         self.c( self.ui.actionExportSinglePdf, "triggered()", self.exportToSinglePdf )
@@ -3155,7 +3156,7 @@ class App( QtGui.QApplication ):
         if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
             self.current_song.key_note_id = note_id
             self.current_song.key_is_major = is_major
-            print 'setting is_major to', is_major
+            #print 'setting is_major to', is_major
             
             self.sendCurrentSongToDatabase()
             self.editor.viewport().update()
@@ -3241,6 +3242,38 @@ class App( QtGui.QApplication ):
             song = Song(self, song_id)
             song.removeTrailingSpaces()
 
+    def renumberAllSongs(self):
+        """
+        Re-number all songs in the database (song number, not IDs).
+        """
+
+        if not self.question("All songs in the songbook will be renumbered consecutively starting with 1. Continue?"):
+            return
+        
+        all_song_ids = self.songs_model.getAllSongIds()
+        
+        for song_num, song_id in enumerate(all_song_ids, start=1):
+            self.curs.execute('UPDATE songs SET number=? WHERE id=?', (song_num, song_id))
+        self.curs.commit()
+        
+        # Update the song table from database:
+        self.songs_model.updateFromDatabase()
+    
+
+
+    def question(self, msg, button1="OK", button2="Cancel", title="softChord - Question"):
+        """ 
+        Display a prompt dialog window with specified text.
+        Returns True if first button (default OK) is pressed, False otherwise.
+        """
+        mbox = QtGui.QMessageBox(self.ui)
+        mbox.setText(msg)
+        mbox.setWindowTitle(title)
+        mbox.setIcon(QtGui.QMessageBox.Question)
+        b1 = mbox.addButton(button1, QtGui.QMessageBox.ActionRole)
+        b2 = mbox.addButton(button2, QtGui.QMessageBox.RejectRole)
+        mbox.exec_()
+        return ( mbox.clickedButton() == b1 )
     
     def setSongDatabaseId(self):
         """
