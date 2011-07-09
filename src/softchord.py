@@ -1055,17 +1055,86 @@ class Song:
         """
         Remove trailing spaces from every line of the song.
         """
-        
-        # Make a dict of chord strings (keyed by chord position in the song text:
-        chord_texts_by_char_nums = {}
-        for chord in self.iterateAllChords():
-            chord_texts_by_char_nums[chord.character_num] = chord
-        
-        all_text = self.getAllText()
 
-        num_deleted_chars = 0
+        original_text = self.getAllText()
         
-        # FIXME
+        # Make a list of characters that have chords associtated with them, so that we don't delete them by accident:
+        chars_used_for_chords = []
+        for chord in self.iterateAllChords():
+            chars_used_for_chords.append(chord.character_num)
+        #print "chars_used_for_chords:", chars_used_for_chords
+        
+        all_song_delete_positions = []
+        
+        # Make a list of characters that are to be deleted:
+        wait_for_next_line = False
+        char_num = len(original_text)
+        for char in reversed(original_text):
+            char_num -= 1
+            #print "Iterating char:", char_num, char
+            if wait_for_next_line:
+                if char == "\n":
+                    wait_for_next_line = False
+                    #print "  new-line"
+            elif char == "\n":
+                # Another new line (or new line at end of song)
+                continue
+            else:
+                #print "  char == ' ' : ", (char == " ")
+                #print "  char_num in chars_used_for_chords:", (char_num in chars_used_for_chords)
+                if char == " " and not char_num in chars_used_for_chords:
+                    all_song_delete_positions.append(char_num)
+                else:
+                    #print "  waiting for next line"
+                    wait_for_next_line = True
+        
+        #print "all_song_delete_positions:", all_song_delete_positions
+        
+        # Delete trailing spaces and Create a renumber map
+        renumber_map = {}
+        num_deleted_chars = 0
+        modified_text = ""
+        for char_num, char in enumerate(original_text):
+            if char_num in all_song_delete_positions:
+                num_deleted_chars += 1
+            else:
+                renumber_map[char_num] = char_num - num_deleted_chars
+                modified_text += char
+        
+        #print "renumber_map:", renumber_map
+        print "Number of characters deleted from this song:", len(all_song_delete_positions)
+        print "Number of characters in original_text:", len(original_text)
+        #print "Number of characters in modified_text:", len(modified_text)
+        
+        # Renumber the chords based on the renumber_map:
+        new_all_chords = []
+        for chord in self.iterateAllChords():
+            try:
+                chord.new_character_num = renumber_map[chord.character_num]
+            except KeyError:
+                continue
+            else:
+                new_all_chords.append(chord)
+        
+        
+        # Update the database:
+        
+        for chord in new_all_chords:
+            self.app.curs.execute("UPDATE song_chord_link SET character_num=? WHERE song_id=? AND character_num=?", 
+                (chord.new_character_num, chord.song_id, chord.character_num))
+        
+        self.app.curs.execute("UPDATE songs SET text=? WHERE id=?",
+            (modified_text, self.id))
+        
+        self.app.curs.commit()
+        print "Database updated"
+        print ""
+        
+        # self.setAllText(modified_text, new_all_chords)
+        
+        # FIXME THIS WILL NOT WORK ON THE SONG THAT IS CURRENTLY EDITED!
+        
+        
 
 
 
@@ -3235,12 +3304,15 @@ class App( QtGui.QApplication ):
     
 
     def removeTrailingSpaces(self):
-        self.warning("Not implemented yet")
-        return
         
+        # FIXME Save the current song to database?
+
         for song_index, song_id in enumerate(self.getSelectedSongIds()):
             song = Song(self, song_id)
             song.removeTrailingSpaces()
+        
+        # FIXME Update the current song from database
+
 
     def renumberAllSongs(self):
         """
@@ -3598,6 +3670,7 @@ class App( QtGui.QApplication ):
             
             # When exporting to PDF, undo the zoom scaling:
             scale_ratio /= self.zoom_factor
+            print "Scale ratio:", scale_ratio
         
         # Go to songs's reference frame:
         output_painter.translate(rect.left(), rect.top())
