@@ -135,6 +135,27 @@ paper_sizes_list = [
 ]
 
 
+def replace_russian_characeters(text):
+    modified_text = ""
+    
+    # FIXME Use the built-in replace method instead
+    for char in text:
+        if char == u'Е': # Russian letter
+            char = 'E'
+        if char == u'С': # Russian letter
+            char = 'C'
+        if char == u'В': # Russian letter
+            char = 'B'
+        if char == u'А': # Russian letter
+            char = 'A'
+        if char == 'H': # European style (H instead of B)
+            char = 'B'
+        if char == 'Н': # Russian letter "N" (H instead of B)
+            char = 'B'
+        modified_text += char
+
+    return modified_text
+
 
 class AddChordCommand( QtGui.QUndoCommand ):
     def __init__(self, song, chord):
@@ -4009,10 +4030,45 @@ class App( QtGui.QApplication ):
                 words.append( (current_word, current_word_start, i) )
             
             
-            # Try to break up words made up of 
-
-
+            # Try to break up words that contain multiple chords:
+            NOTES = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+            modified_words = []
             for word, word_start, word_end in words:
+                word = replace_russian_characeters(word)
+                
+                num_notes = 0
+                for char in word:
+                    if char in NOTES:
+                        num_notes += 1
+                    elif char == '/':
+                        num_notes -= 1
+                
+                if num_notes > 1:
+                    # Try to break up the word:
+                    chord_starts = [word_start]
+                    
+                    char_pos = word_start
+                    for char in word[1:]:
+                        char_pos += 1 # Start with second char
+                        if char in NOTES:
+                            chord_starts.append(char_pos)
+                    
+                    # FIXME This will not handle parenthesis and markers properly
+                    
+                    for i, chord_start in enumerate(chord_starts):
+                        try:
+                            chord_end = chord_starts[i+1]-1
+                        except IndexError:
+                            chord_end = word_end
+                        
+                        chord_text = word[chord_start-word_start : chord_end - word_start+1]
+                        
+                        modified_words.append( (chord_text, chord_start, chord_end) )
+                    
+                else:
+                    modified_words.append( (word, word_start, word_end) )
+            
+            for word, word_start, word_end in modified_words:
                 if word == u'/':
                     num_chords += 1
                     converted_chord = None
@@ -4260,6 +4316,9 @@ class App( QtGui.QApplication ):
         Convert the specified chord string to a note_id, chord_type_id, and a bass_note_id.
         """
         
+        chord_str = replace_russian_characeters(chord_str)
+
+
         input_chord_str = chord_str[:]
         
         in_parentheses = chord_str.startswith('(') and chord_str.endswith(')')
@@ -4287,18 +4346,6 @@ class App( QtGui.QApplication ):
         else:
             bass_str = None
         
-        if chord_str[0] == u'Е': # Russian letter
-            chord_str = 'E' + chord_str[1:]
-        if chord_str[0] == u'С': # Russian letter
-            chord_str = 'C' + chord_str[1:]
-        if chord_str[0] == u'В': # Russian letter
-            chord_str = 'B' + chord_str[1:]
-        if chord_str[0] == u'А': # Russian letter
-            chord_str = 'A' + chord_str[1:]
-        if chord_str[0] == 'H': # European style (H instead of B)
-            chord_str = 'B' + chord_str[1:]
-        if chord_str[0] == 'Н': # Russian letter "N" (H instead of B)
-            chord_str = 'B' + chord_str[1:]
         
         if chord_str[0] in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
             if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
