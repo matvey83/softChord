@@ -3790,8 +3790,7 @@ class App( QtGui.QApplication ):
         
         
         # Not over a chord, check the letter:
-        x -= 5.0
-        
+        offset_x = x - 5.0
         
         if self.editor.dragging_chord:
             # Make sure drag obove (not over) a letter would be cought:
@@ -3800,15 +3799,18 @@ class App( QtGui.QApplication ):
             if y > chord_rect.top() and y < char_rect.top():
                 y = char_rect.top() + 1
         
-        cursor = self.editor.cursorForPosition( QtCore.QPoint(x,y) )
-        if cursor.atBlockEnd():
-            # Entire line is "selected"
-            if cursor.atBlockStart():
+        cursor = self.editor.cursorForPosition( QtCore.QPoint(offset_x,y) )
+        
+        # If at the start or end of line, make sure the cursor is actually over a character:
+        at_start = cursor.atBlockStart()
+        at_end = cursor.atBlockEnd()
+        if at_start or at_end:
+            r = self.editor.cursorRect(cursor)
+            if at_start and x < r.left():
                 return None
-            else:
-                # Select the last character in this line:
-                cursor.setPosition(cursor.position()-1)
-
+            if at_end and x >= r.right():
+                return None
+        
         pos = cursor.position()
         return (False, pos)
         
