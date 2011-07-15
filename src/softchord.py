@@ -27,12 +27,13 @@ import shutil
 import platform
 
 
+# For full-page printout:
 LYRICS_SIZE = 20 # 14
 CHORDS_SIZE = 12 # 9
 
 # For Zvuki Neba songbook:
-LYRICS_SIZE = 14
-CHORDS_SIZE = 9
+LYRICS_SIZE = 11 # 14
+CHORDS_SIZE = 6 # 9
 
 CHORDS_COLOR = "BLACK"
 CHORDS_COLOR = "BLUE"
@@ -358,6 +359,7 @@ class SongsTableModel(QtCore.QAbstractTableModel):
             if orientation == Qt.Horizontal:
                 return self.header_list[section]
             else:
+                return None # Do not vertical header
                 rowobj = self._data[section]
                 return rowobj.id
         return None
@@ -2692,6 +2694,8 @@ class App( QtGui.QApplication ):
                     raise IOError("Failed to flush page to disk, disk full?")
             
             
+            min_scale_ratio = 1.0
+            
             for song_id in song_ids:
                 if progress.wasCanceled():
                     break
@@ -2703,12 +2707,16 @@ class App( QtGui.QApplication ):
                 
                 song = Song(self, song_id)
                 
-                self.printSong(song, printer, painter, page_num)
+                scale_ratio = self.printSong(song, printer, painter, page_num)
+                if scale_ratio < min_scale_ratio:
+                    min_scale_ratio = scale_ratio
                 
                 num_printed += 1
                 progress.setValue(num_printed)
                 
             painter.end()
+            
+            self.info("The biggest song was scaled down to %.2f" % min_scale_ratio)
         
         except IOError, err:
             self.error(str(err))
@@ -2755,19 +2763,23 @@ class App( QtGui.QApplication ):
                 song_left = left_margin + x*width
                 
                 paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
-                self.drawSongToRect(song, painter, paint_rect, exporting=True)
+                scale_ratio = self.drawSongToRect(song, painter, paint_rect, exporting=True)
         else:
             song_width = width - left_margin - right_margin
             song_height = height - top_margin - bottom_margin
             song_top = top_margin
             song_left = left_margin
             paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
-            self.drawSongToRect(song, painter, paint_rect, exporting=True)
+            scale_ratio = self.drawSongToRect(song, painter, paint_rect, exporting=True)
         
         self.editor.setDocument(orig_document)
     
+        return scale_ratio
+
+
     # FIXME FIXME Re-factor out the common code from these two methods!
     
+
 
     def printTableOfConentsPage(self, lines, printer, painter, page_num):
         """
@@ -3648,10 +3660,13 @@ class App( QtGui.QApplication ):
         pic_bottom = layout_bounding_rect.bottom()
         # FIXME this does not account for the header line and the first chords line
         
+
         # Figure out what the scaling factor should be:
+        #print "exporting:", exporting, "zoom_factor:", self.zoom_factor
         if not exporting:
             # Painting to screen, zoom factor is already applied to font size
             scale_ratio = 1.0 
+            actual_scale_ratio = None
         else:
             # Exporting, make sure the song fits into the specified <rect>:
             # Adjust according to the view zoom factor:
@@ -3669,8 +3684,8 @@ class App( QtGui.QApplication ):
                 scale_ratio = 1.0 # / self.zoom_factor # Adjust by the view zoom factor
             
             # When exporting to PDF, undo the zoom scaling:
+            actual_scale_ratio = scale_ratio
             scale_ratio /= self.zoom_factor
-            print "Scale ratio:", scale_ratio
         
         # Go to songs's reference frame:
         output_painter.translate(rect.left(), rect.top())
@@ -3685,7 +3700,9 @@ class App( QtGui.QApplication ):
         # Go to the original reference frame:
         output_painter.translate(-rect.left(), -rect.top())
         
+        return actual_scale_ratio
     
+
     # FIXME FIXME factor-out the common code between these two methods!
     
     def drawTableOfContentsPageToRect(self, lines, painter, rect):
@@ -4024,7 +4041,7 @@ class App( QtGui.QApplication ):
                 if song_title.startswith(find_str):
                     song_title = song_title[ len(find_str) : ].strip()
             # Remove any trailing punctuation marks:
-            if song_title[-1] in [",", ".", ";", ":"]: # NOTE: question mark is ok
+            if song_title and song_title[-1] in [",", ".", ";", ":"]: # NOTE: question mark is ok
                 song_title = song_title[:-1]
             if not song_title:
                 # In case all of the title got stripped
