@@ -25,6 +25,7 @@ import codecs
 import copy
 import shutil
 import platform
+import traceback
 
 
 # For full-page printout:
@@ -1942,7 +1943,7 @@ class App( QtGui.QApplication ):
     def populateSongKeyMenu(self):
         # Populate the song key pull-down menu:
         keys_list = ["None"]
-        alt_keys_list = ["None"]
+        alt_keys_list = ["NA"]
         
         if self.current_song:
             for note_id, (text, alt_text) in enumerate(self.notes_list):
@@ -2616,8 +2617,11 @@ class App( QtGui.QApplication ):
                 # No selection, print the whole song book
                 song_ids = self.songs_model.getAllSongIds()
             
-            num_printed = self.printSongsToPrinter(song_ids, printer, "Printing...")
-            # In case of an IOError, num_printed will be 0.
+            try:
+                num_printed = self.printSongsToPrinter(song_ids, printer, "Printing...")
+                # In case of an IOError, num_printed will be 0.
+            except Exception, err:
+                self.error( "Error printing:\n\n%s " % traceback.format_exc() )
     
     
     def printSongsToPrinter(self, song_ids, printer, progress_message):
@@ -2887,8 +2891,7 @@ class App( QtGui.QApplication ):
 
         except Exception, err:
             self.restoreCursor()
-            self.error("Error generating PDF:\n%s" % str(err))
-            raise
+            self.error( "Error exporting:\n\n%s " % traceback.format_exc() )
         else:
             self.restoreCursor()
 
@@ -3027,9 +3030,14 @@ class App( QtGui.QApplication ):
         The chords are included (as separate lines above the lyrics)
         """
         
-        self.setWaitCursor()
         
         # self.sendCurrentSongToDatabase()
+        
+        if not self.current_song:
+            self.warning("Please select a song first")
+            return
+        
+        self.setWaitCursor()
         
         song_text = self.current_song.getAsText()
         
@@ -3900,8 +3908,7 @@ class App( QtGui.QApplication ):
             self.importSongFromText(text)
         except Exception, err:
             self.restoreCursor()
-            import traceback
-            self.error( "Error while parsing the text:\n\n%s " % traceback.format_exc() )
+            self.error( "Error parsing the text:\n\n%s " % traceback.format_exc() )
         else:
             self.restoreCursor()
     
@@ -4001,6 +4008,10 @@ class App( QtGui.QApplication ):
             if current_word:
                 words.append( (current_word, current_word_start, i) )
             
+            
+            # Try to break up words made up of 
+
+
             for word, word_start, word_end in words:
                 if word == u'/':
                     num_chords += 1
@@ -4276,31 +4287,6 @@ class App( QtGui.QApplication ):
         else:
             bass_str = None
         
-        """
-        def standardize_note_str(note_str):
-            if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
-            if note_str[0] == u'Е': # Russian letter
-                note_str[0] = 'E'
-            elif note_str[0] == u'С': # Russian letter
-                note_str[0] = 'C'
-            elif note_str[0] == u'В': # Russian letter
-                note_str[0] = 'B'
-            elif note_str[0] == u'А': # Russian letter
-                note_str[0] = 'A'
-            elif note_str[0] == 'H': # European style (H instead of B)
-                note_str[0] = 'B'
-            elif note_str[0] == 'Н': # Russian letter "N" (H instead of B)
-                note_str[0] = 'B'
-            
-            chord_str[0] = chord_str[0].upper()
-
-            if not chord_str[0]in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
-                raise ValueError("Invalid note string: '%s'" % note_str)
-            
-            if 
-            
-        """
-    
         if chord_str[0] == u'Е': # Russian letter
             chord_str = 'E' + chord_str[1:]
         if chord_str[0] == u'С': # Russian letter
