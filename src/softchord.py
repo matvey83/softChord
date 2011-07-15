@@ -3896,10 +3896,16 @@ class App( QtGui.QApplication ):
 
         self.setWaitCursor()
         text = unicode(self.clipboard.text())
-        self.importSongFromText(text)
-        self.restoreCursor()
+        try:
+            self.importSongFromText(text)
+        except Exception, err:
+            self.restoreCursor()
+            import traceback
+            self.error( "Error while parsing the text:\n\n%s " % traceback.format_exc() )
+        else:
+            self.restoreCursor()
     
-    
+
     def importFromText(self, text_file=None):
         """
         Lets the user select a text file to import.
@@ -3954,7 +3960,6 @@ class App( QtGui.QApplication ):
             pass
         
         song_lines = [] # each item is a tuple of line text and chord list.
-        
         
         prev_chords = {}
         for line in song_text:
