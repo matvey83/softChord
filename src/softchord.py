@@ -27,14 +27,18 @@ import shutil
 import platform
 import traceback
 
-
-# For full-page printout:
-LYRICS_SIZE = 20 # 14
-CHORDS_SIZE = 12 # 9
+# FIXME Make this an option? Or save into the songbook file?
+PRINT_SONGBOOK = False
 
 # For Zvuki Neba songbook:
-LYRICS_SIZE = 11 # 14
-CHORDS_SIZE = 6 # 9
+if PRINT_SONGBOOK:
+    LYRICS_SIZE = 11 # 14
+    CHORDS_SIZE = 7 # 9
+else:
+    # For full-page printout:
+    LYRICS_SIZE = 20 # 14
+    CHORDS_SIZE = 12 # 9
+
 
 CHORDS_COLOR = "BLACK"
 CHORDS_COLOR = "BLUE"
@@ -660,6 +664,8 @@ class Song:
         chords_height, lyrics_height, line_height = self.app.getHeightsWithChords()
         with_chords_top_margin = line_height - lyrics_height
         
+        with_chords_top_margin *= 1.03 # Add some spacing between lines (that have chords
+        
         
         # Set the margin for the first line (the top of the document):
         # NOTE: We are always setting the top margin for the first line with the assumption that
@@ -711,6 +717,7 @@ class Song:
             line_start_char += len(line_text) + 1 # Add the eof-of-line character
         
         self.app.ignore_song_text_changed = False
+
 
     def _getNoteString(self, note_id):
         """
@@ -3012,6 +3019,10 @@ class App( QtGui.QApplication ):
         Paste the chord of the clipboard (if any) onto the selected character (if any)
         """
         
+        if self.editor.lyric_editor_mode:
+            self.editor.paste()
+            return
+        
         if self.selected_char_num == None or not self.current_song:
             return
         
@@ -3416,8 +3427,7 @@ class App( QtGui.QApplication ):
     
     
     def getCharRects(self, song_char_num, chord=None):
-        te = self.editor
-        cursor = te.textCursor()
+        cursor = self.editor.textCursor()
         
         if chord != None:
             has_chord = True
@@ -3435,9 +3445,9 @@ class App( QtGui.QApplication ):
         
         # Find the bounding rect for this character:
         cursor.setPosition(song_char_num)
-        left_rect = te.cursorRect(cursor)
+        left_rect = self.editor.cursorRect(cursor)
         cursor.setPosition(song_char_num+1)
-        right_rect = te.cursorRect(cursor)
+        right_rect = self.editor.cursorRect(cursor)
         
         char_left = left_rect.left()
         char_right = right_rect.right()
@@ -3681,7 +3691,6 @@ class App( QtGui.QApplication ):
         """
         
         # FIXME will not account for chord text:
-        te = self.editor
         tf = song.doc.rootFrame()
         layout_bounding_rect = song.doc.documentLayout().frameBoundingRect(tf)
         
