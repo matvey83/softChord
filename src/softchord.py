@@ -1780,6 +1780,9 @@ class App( QtGui.QApplication ):
         self.ui.actionPasteAsNewSong.triggered.connect(self.pasteAsNewSong)
         self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
         
+        self.ui.actionChordEditorMode.triggered.connect(self.chordEditorSelected)
+        self.ui.actionLyricEditorMode.triggered.connect(self.lyricEditorSelected)
+        
         self.ui.actionZoomIn.triggered.connect(self.zoomIn)
         self.ui.actionZoomOut.triggered.connect(self.zoomOut)
         self.ui.actionZoomActual.triggered.connect(self.zoomActual)

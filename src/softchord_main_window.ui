@@ -225,6 +225,9 @@
           </property>
           <item>
            <widget class="QToolButton" name="chord_editor_button">
+            <property name="toolTip">
+             <string>Enter chord editing mode (⌘K)</string>
+            </property>
             <property name="text">
              <string>Chord Editor Mode</string>
             </property>
@@ -232,6 +235,9 @@
           </item>
           <item>
            <widget class="QToolButton" name="lyric_editor_button">
+            <property name="toolTip">
+             <string>Enter lyric editing mode (⌘L)</string>
+            </property>
             <property name="text">
              <string>Lyric Editor Mode</string>
             </property>
@@ -283,6 +289,9 @@
               <height>100</height>
              </size>
             </property>
+            <property name="toolTip">
+             <string/>
+            </property>
             <property name="frameShape">
              <enum>QFrame::StyledPanel</enum>
             </property>
@@ -297,7 +306,7 @@
               <rect>
                <x>0</x>
                <y>0</y>
-               <width>733</width>
+               <width>651</width>
                <height>542</height>
               </rect>
              </property>
@@ -449,6 +458,9 @@
     <addaction name="actionDeleteSongs"/>
     <addaction name="actionRemoveTrailingSpaces"/>
     <addaction name="actionRenumberSongs"/>
+    <addaction name="separator"/>
+    <addaction name="actionChordEditorMode"/>
+    <addaction name="actionLyricEditorMode"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
@@ -685,6 +697,22 @@
   <action name="actionRenumberSongs">
    <property name="text">
     <string>Renumber all songs...</string>
+   </property>
+  </action>
+  <action name="actionChordEditorMode">
+   <property name="text">
+    <string>Chord Editor Mode</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+K</string>
+   </property>
+  </action>
+  <action name="actionLyricEditorMode">
+   <property name="text">
+    <string>Lyric Editor Mode</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+L</string>
    </property>
   </action>
  </widget>
