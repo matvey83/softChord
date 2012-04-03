@@ -2751,7 +2751,11 @@ class App( QtGui.QApplication ):
                 
             painter.end()
             
-            self.info("The biggest song was scaled down to %.2f" % min_scale_ratio)
+            if min_scale_ratio != 1.0:
+                if len(song_ids) > 1:
+                    self.info("The biggest song was scaled down to %.2f" % min_scale_ratio)
+                else:
+                    self.info("The song was scaled down to %.2f" % min_scale_ratio)
         
         except IOError, err:
             self.error(str(err))
