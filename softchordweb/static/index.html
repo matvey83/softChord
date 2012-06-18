@@ -5,28 +5,34 @@
     <script src="http://code.jquery.com/jquery-latest.js"></script>
     <script src="/static/softchordweb.js"></script>
     <script src="http://code.angularjs.org/angular-1.0.0.min.js"></script>
-
-
   </head>
+
   <body>
     <div ng-controller="SongTableCtrl">
-      <h2>Current Song</h2>
-      <span>Title: {{current_song.title}}</span>
-      <br/>
-      <div ng:bind-html-unsafe="current_html"></div>
-      <br/>
-    
-      <h2>All Songs</h2>
-      <span>Total: {{songs.length}}</span>
-      <ul class="unstyled">
-        <li ng-repeat="song in songs">
-          <a href="" ng-click="loadSong(song.number)">
-            <span class="song-row">{{song.number}} {{song.title}}</span>
-          </a>
-        </li>
-      </ul>
+    <table><tr valign="top"`>
+      <td>
+
+          <h2>All Songs</h2>
+          <span>Total: {{songs.length}}</span>
+          <ul class="unstyled">
+            <li ng-repeat="song in songs">
+              <a href="" ng-click="loadSong(song.number)">
+                <span class="song-row">{{song.number}} {{song.title}}</span>
+              </a>
+            </li>
+          </ul>
+     
+       </td><td>
+
+          <h2>Current Song</h2>
+          <span>Title: {{current_song.title}}</span>
+          <br/>
+          <div ng:bind-html-unsafe="current_html"></div>
+          <br/>
+
+      </td>
+    </tr></table>        
     </div>
-    
 
   </body>
 </html>
