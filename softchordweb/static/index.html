@@ -1,0 +1,39 @@
+<!doctype html>
+<html ng-app>
+  <head>
+    <title>softChord Web</title>
+    <script src="http://code.jquery.com/jquery-latest.js"></script>
+    <script src="/static/softchordweb.js"></script>
+    <script src="http://code.angularjs.org/angular-1.0.0.min.js"></script>
+
+
+  </head>
+  <body>
+    <div ng-controller="SongTableCtrl">
+      <h2>Current Song</h2>
+      <span>Title: {{current_song.title}}</span>
+      <p>{{ current_html }}</p>
+
+      <h2>All Songs</h2>
+      <span>Total: {{songs.length}}</span>
+      [ <a href="" ng-click="archive()">archive</a> ]
+      <ul class="unstyled">
+        <li ng-repeat="song in songs">
+          <input type="checkbox" ng-model="song.done">
+          <span class="done-{{song.done}}">{{song.number}} {{song.title}}</span>
+            <a href="" ng-click="loadSong(song.number)">Load</a>
+        </li>
+      </ul>
+      <form ng-submit="addTodo()">
+        <input type="text" ng-model="todoText"  size="30"
+               placeholder="add new todo here">
+        <input class="btn-primary" type="submit" value="add">
+      </form>
+    </div>
+
+
+
+
+  </body>
+</html>
+
