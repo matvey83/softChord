@@ -12,27 +12,21 @@
     <div ng-controller="SongTableCtrl">
       <h2>Current Song</h2>
       <span>Title: {{current_song.title}}</span>
-      <p>{{ current_html }}</p>
-
+      <br/>
+      <div ng:bind-html-unsafe="current_html"></div>
+      <br/>
+    
       <h2>All Songs</h2>
       <span>Total: {{songs.length}}</span>
-      [ <a href="" ng-click="archive()">archive</a> ]
       <ul class="unstyled">
         <li ng-repeat="song in songs">
-          <input type="checkbox" ng-model="song.done">
-          <span class="done-{{song.done}}">{{song.number}} {{song.title}}</span>
-            <a href="" ng-click="loadSong(song.number)">Load</a>
+          <a href="" ng-click="loadSong(song.number)">
+            <span class="song-row">{{song.number}} {{song.title}}</span>
+          </a>
         </li>
       </ul>
-      <form ng-submit="addTodo()">
-        <input type="text" ng-model="todoText"  size="30"
-               placeholder="add new todo here">
-        <input class="btn-primary" type="submit" value="add">
-      </form>
     </div>
-
-
-
+    
 
   </body>
 </html>
