@@ -5,35 +5,76 @@
     <script src="http://code.jquery.com/jquery-latest.js"></script>
     <script src="/static/softchordweb.js"></script>
     <script src="http://code.angularjs.org/angular-1.0.0.min.js"></script>
+    <style>
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+#content {
+    /*background: #EEE;*/
+    /* border-left: 1px solid #000;
+    border-right: 1px solid #000; */
+    padding: 0 20px 0 20px;
+    margin: auto;
+    /* font: 1.5em arial, verdana, sans-serif; */
+    /* width: 960px; */
+    /*height: 100%;*/
+}
+    </style>
+
   </head>
 
-  <body>
-    <div ng-controller="SongTableCtrl">
-    <table><tr valign="top"`>
-      <td>
 
-          <h2>All Songs</h2>
-          <span>Total: {{songs.length}}</span>
-          <ul class="unstyled">
-            <li ng-repeat="song in songs">
+
+  <body>
+    <div id="content" ng-controller="SongTableCtrl">
+    <table border=1>
+      <tr id="header-row">
+        <td>
+           <h2>All Songs</h2>
+           <span>Total: {{songs.length}}</span>
+        </td>
+        <td>
+           <h2>Current Song</h2>
+           Title: {{current_song.title}}
+        </td>
+      <tr valign="top">
+      <td>
+          <div id="left-table" style="border : solid 2px; padding : 4px; width : 300px; overflow : auto; ">
+            <div ng-repeat="song in songs">
               <a href="" ng-click="loadSong(song.number)">
                 <span class="song-row">{{song.number}} {{song.title}}</span>
               </a>
-            </li>
-          </ul>
-     
-       </td><td>
-
-          <h2>Current Song</h2>
-          <span>Title: {{current_song.title}}</span>
-          <br/>
-          <div ng:bind-html-unsafe="current_html"></div>
-          <br/>
-
-      </td>
+            </div>
+         </div>
+       </td>
+       <td>
+          <div id="right-table" style="width: 400px; overflow: auto;">
+            <p ng:bind-html-unsafe="current_html"></p>
+          </div>
+       </td>
     </tr></table>        
     </div>
 
   </body>
 </html>
 
+
+<script>
+$(document).ready(function() {
+    function resize_page() {
+        var left_table_height = $(document).height() - $("#header-row").height() - 50;
+        $("#left-table").height(left_table_height);
+        $("#right-table").height(left_table_height);
+    }
+    
+    resize_page();
+
+    // for the window resize
+    $(window).resize(function() {
+        resize_page();
+    });
+});
+
+</script>
