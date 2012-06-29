@@ -2919,7 +2919,12 @@ class App( QtGui.QApplication ):
             printer.setFullPage(True) # considers whole page instead of only printable area.
             printer.setOrientation(QtGui.QPrinter.Portrait)
             printer.setOutputFileName(pdf_file)
-            printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+            
+            # OLD: printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+            if sys.platform == 'win32':
+                printer.setOutputFormat(QtGui.QPrinter.PdfFormat) 
+            elif sys.platform == 'darwin':
+                printer.setOutputFormat(QtGui.QPrinter.NativeFormat) 
             
             num_printed = self.printSongsToPrinter(song_ids, printer, "Exporting to PDF...")
             # On IOError, num_printed will be 0.
@@ -2982,7 +2987,12 @@ class App( QtGui.QApplication ):
                 printer.setFullPage(True) # considers whole page instead of only printable area.
                 printer.setOrientation(QtGui.QPrinter.Portrait)
                 printer.setOutputFileName(pdf_file)
-                printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+                
+                # OLD: printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
+                if sys.platform == 'win32':
+                    printer.setOutputFormat(QtGui.QPrinter.PdfFormat) 
+                elif sys.platform == 'darwin':
+                    printer.setOutputFormat(QtGui.QPrinter.NativeFormat) 
                 
                 painter = QtGui.QPainter()
                 if not painter.begin(printer):
