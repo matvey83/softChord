@@ -2202,22 +2202,12 @@ class App( QtGui.QApplication ):
         self.hover_char_num = None # Remove the hover highlighting
         #self.updateCurrentSongFromDatabase()  FIXME REMOVE
         
-        num_selected = len(selected.indexes())# - len(deselected.indexes())
-
-        one_song_selected = False
-        num_cols = self.songs_model.columnCount()
-        if self.current_song == None:
-            if len(selected.indexes()) == num_cols:
-                # Exactly one song was just selected (previously none were selected)
-                one_song_selected = True
-        else:
-            if len(deselected.indexes()) == len(selected.indexes()):
-                # Ones seong was de-selected and one song was selected:
-                one_song_selected = True
+        sel_indecies = self.ui.songs_view.selectedIndexes()
+        num_selected = len(sel_indecies) / self.songs_model.columnCount()
         
         self.setWaitCursor()
-        if one_song_selected:
-            index = selected.indexes()[0]
+        if num_selected == 1:
+            index = sel_indecies[0]
             index = self.songs_proxy_model.mapToSource(index)
             song_id = self.songs_model.getRowSongID(index.row())
             song = Song(self, song_id)
