@@ -1175,7 +1175,8 @@ class CustomTextEdit(QtGui.QTextEdit):
     """
     """
     def __init__(self, app):
-        QtGui.QWidget.__init__(self, app.ui)
+        # QtGui.QWidget.__init__(self, app.ui)
+        QtGui.QTextEdit.__init__(self, app.ui)
         self.app = app
         
         self.dragging_chord_orig_position = -1
@@ -1666,6 +1667,7 @@ class App( QtGui.QApplication ):
 
         self.curs = None
         self.current_song = None
+        self.empty_doc = QtGui.QTextDocument()
         
         self.pdf_options = PdfOptions()
         
@@ -2356,7 +2358,6 @@ class App( QtGui.QApplication ):
             self.ui.song_alt_key_menu.setCurrentIndex( 0 ) # "None" item
             self.ui.song_num_ef.setText("")
             
-            self.empty_doc = QtGui.QTextDocument()
             self.editor.setDocument(self.empty_doc)
             self.editor.verticalScrollBar().setValue(0)
         
@@ -2391,7 +2392,9 @@ class App( QtGui.QApplication ):
             
             song.doc.setDefaultFont(self.lyrics_font)
             
+            # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
             self.editor.setDocument(song.doc)
+
             self.editor.verticalScrollBar().setValue(0)
         
         #self.ignore_song_key_changed = False
@@ -2742,15 +2745,28 @@ class App( QtGui.QApplication ):
                 
                 song = Song(self, song_id)
                 
+                # Set this song's document (will be reset later):
+                self.editor.setDocument(song.doc)
+                # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
+
                 scale_ratio = self.printSong(song, printer, painter, page_num)
                 if scale_ratio < min_scale_ratio:
                     min_scale_ratio = scale_ratio
                 
                 num_printed += 1
                 progress.setValue(num_printed)
-                
+            
+            
+            # Restore the previous document:
+            if self.current_song == None:
+                self.editor.setDocument(self.empty_doc)
+            else:
+                self.editor.setDocument(self.current_song.doc)
+            # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
+
             painter.end()
             
+
             if min_scale_ratio != 1.0:
                 if len(song_ids) > 1:
                     self.info("The biggest song was scaled down to %.2f" % min_scale_ratio)
@@ -2772,6 +2788,7 @@ class App( QtGui.QApplication ):
     
     
     def printSong(self, song, printer, painter, page_num):
+        # NOTE: The song's document should already be in the editor for this to work!
         
         # Figure out what the margins should be:
         # Convert to points (from inches):
@@ -2780,7 +2797,7 @@ class App( QtGui.QApplication ):
         top_margin = self.pdf_options.top_margin * 72.0
         bottom_margin = self.pdf_options.bottom_margin * 72.0
         
-        orig_document = self.editor.document().clone()
+        # orig_document = self.editor.document().clone()
         
         if self.pdf_options.alternate_margins and not page_num % 2:
             # If alternating margins and this is an even page:
@@ -2789,7 +2806,6 @@ class App( QtGui.QApplication ):
         width = printer.width() #- 300
         height = printer.height() #- 300
         
-        self.editor.setDocument(song.doc)
         
         if self.pdf_options.print_4_per_page:
             width  = width // 2
@@ -2811,8 +2827,6 @@ class App( QtGui.QApplication ):
             paint_rect = QtCore.QRect(song_left, song_top, song_width, song_height)
             scale_ratio = self.drawSongToRect(song, painter, paint_rect, exporting=True)
         
-        self.editor.setDocument(orig_document)
-    
         return scale_ratio
 
 
@@ -2974,6 +2988,10 @@ class App( QtGui.QApplication ):
             
             song = Song(self, song_id)
             
+            # Set this song's document (will be reset later):
+            self.editor.setDocument(song.doc)
+            # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
+            
             pdf_file = os.path.join( unicode(dir), unicode(song.title) + ".pdf" )
             
             
@@ -3009,6 +3027,14 @@ class App( QtGui.QApplication ):
                 raise
             
         progress.setValue(i+1)
+        
+        # Restore the previous document:
+        if self.current_song == None:
+            self.editor.setDocument(self.empty_doc)
+        else:
+            self.editor.setDocument(self.current_song.doc)
+        # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
+            
     
     
     def cutSelected(self):
