@@ -1766,7 +1766,7 @@ class App( QtGui.QApplication ):
         self.c( self.ui.actionExportText, "triggered()", self.exportToText )
         
         self.ui.actionExportChordPro.triggered.connect( self.exportToChordPro )
-        self.ui.actionImportText.triggered.connect( self.importFromText )
+        self.ui.actionImportText.triggered.connect( self.browseForTextFile )
         self.ui.actionImportChordPro.triggered.connect( self.importFromChordPro )
         self.ui.actionLyricsFont.triggered.connect( self.changeLyricsFont )
         self.ui.actionChordsFont.triggered.connect( self.changeChordFont )
@@ -1778,7 +1778,8 @@ class App( QtGui.QApplication ):
         self.ui.actionPaste.triggered.connect(self.pasteSelected)
         self.ui.actionCopySongText.triggered.connect(self.copySongText)
         self.ui.actionExportClipboard.triggered.connect(self.copySongText)
-
+        
+        # FIXME we need only one way to import a song from the clipboard. Remove one of these actions:
         self.ui.actionPasteAsNewSong.triggered.connect(self.pasteAsNewSong)
         self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
         
@@ -3955,8 +3956,6 @@ class App( QtGui.QApplication ):
         
         text = self.clipboard.text()
         self.ui.actionPasteAsNewSong.setEnabled(not text.isEmpty())
-
-        self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
         self.updateEditMenu()
     
     
@@ -3976,44 +3975,50 @@ class App( QtGui.QApplication ):
             self.restoreCursor()
     
 
-    def importFromText(self, text_file=None):
+    def browseForTextFile(self):
         """
         Lets the user select a text file to import.
         """
-        if not text_file:
-            text_files = QtGui.QFileDialog.getOpenFileNames(self.ui,
-                    "Select a text file to import",
-                    QtCore.QDir.home().path(), # initial dir
-                    "Text format (*.txt *.text)", ###### *.textClipping)", # *.textClipping is used on MacOSX
-            )
-        else:
-            text_files = [text_file]
-        
+        text_files = QtGui.QFileDialog.getOpenFileNames(self.ui,
+                "Select a text file to import",
+                QtCore.QDir.home().path(), # initial dir
+                "Text format (*.txt *.text)", ###### *.textClipping)", # *.textClipping is used on MacOSX
+        )
         if text_files:
-            self.setWaitCursor()
-            try:
-                for filename in text_files:
-                    # Convert QString to a Python string:
-                    filename = unicode(filename)
-                    
-                    song_title = os.path.splitext(os.path.basename(filename))[0]
-                    
-                    # "rU" makes sure that the line endings are handled properly:
-                    
-                    print 'reading:', filename
-                    text = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig').read()
+            self.importTextFiles(text_files)
+    
+
+    def importTextFiles(self, text_files):
+        self.setWaitCursor()
+        try:
+            for filename in text_files:
+                # Convert QString to a Python string:
+                filename = unicode(filename)
+                
+                song_title = os.path.splitext(os.path.basename(filename))[0]
+                
+                # "rU" makes sure that the line endings are handled properly:
+                text = codecs.open( filename, 'rU', encoding='utf_8_sig').read()
+
+                try:
                     self.importSongFromText(text, song_title)
-            finally:
-                self.restoreCursor()
+                except Exception, err:
+                    self.restoreCursor()
+                    self.error( "Error parsing the text:\n\n%s " % traceback.format_exc() )
+                    break
+        finally:
+            self.restoreCursor()
     
 
     def importSongFromText(self, input_text, song_title=None):
         """
         Adds the song specified with the given text to the database.
         input_text should contain all lines, decoded, in Unicode.
-
+        
         If the title is not specified, then the first line of the lyrics
         becomes the title.
+        
+        Will raise an exception if an error in the text was found.
         """
         
         
@@ -4168,7 +4173,6 @@ class App( QtGui.QApplication ):
         global_song_chords = {} # key: position in the global_song_text
         line_start_char_num = 0
         for lyrics, chords_dict in song_lines:
-            
             global_song_text += lyrics + '\n'
             for line_char_num, chord in chords_dict.iteritems():
                 song_char_num = line_char_num + line_start_char_num
@@ -4231,7 +4235,7 @@ class App( QtGui.QApplication ):
         Import the given song to the database.
         song_chords (optional) should be a dict: key=song_char_num, values: (marker, note_id, type_id, bass_id, in_parentheses)
         """
-
+        
         song_id = self._importSong(song_num, song_title, song_subtitle, song_text, key_note_id=-1, key_is_major=-1, alt_key_note_id=-1)
         
         # Add song's chords (if any):
@@ -4595,7 +4599,7 @@ def main():
             for filename in input_files:
                 ext = os.path.splitext(filename)[1]
                 if ext == '.txt':
-                    app.importFromText(filename)
+                    app.importTextFiles( [filename ] )
                 elif ext in chordpro_extensions:
                     app.importFromChordPro(filename)
                 else:
