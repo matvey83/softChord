@@ -1194,6 +1194,7 @@ class CustomTextEdit(QtGui.QTextEdit):
         Called when the widget needs to draw the current song.
         """
 
+        print "paintEvent start"
         if self.lyric_editor_mode:
             
             
@@ -1258,6 +1259,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                 self.app.drawSongToRect(self.app.current_song, painter, paint_rect)
             
             painter.end()
+        print "paintEvent end\n"
     
 
     def leaveEvent(self, event):
@@ -1721,12 +1723,16 @@ class App( QtGui.QApplication ):
 
         self.editor = CustomTextEdit(self)
         self.editor.undoAvailable.connect( self.updateEditMenu )
-        
+        # self.print_editor = CustomTextEdit(self)
+        #self.print_editor.setVisible(False)
+        self.print_editor = self.editor        # FIXME
+
         self.ui.lyric_editor_layout.addWidget(self.editor)
         self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
         self.ui.chord_scroll_area.hide()
         
         self.editor.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
+        self.print_editor.setLineWrapMode(int(QtGui.QTextEdit.NoWrap))
         self.editor.textChanged.connect( self.lyricsTextChanged )
         
         self.c( self.ui.transpose_up_button, "clicked()", self.transposeUp )
@@ -1762,7 +1768,7 @@ class App( QtGui.QApplication ):
         self.ui.actionSetID.triggered.connect( self.setSongDatabaseId )
         self.c( self.ui.actionExportSinglePdf, "triggered()", self.exportToSinglePdf )
         self.ui.actionExportSongToPdf.triggered.connect( self.exportToSinglePdf )
-        self.c( self.ui.actionExportMultiplePdfs, "triggered()", self.exportToMultiplePdfs )
+        self.ui.actionExportMultiplePdfs.triggered.connect( self.exportToMultiplePdfs )
         self.c( self.ui.actionExportText, "triggered()", self.exportToText )
         
         self.ui.actionExportChordPro.triggered.connect( self.exportToChordPro )
@@ -1860,6 +1866,7 @@ class App( QtGui.QApplication ):
         self.chords_color = QtGui.QColor(CHORDS_COLOR)
         self.white_color = QtGui.QColor("WHITE")
         self.editor.setFont(self.lyrics_font)
+        self.print_editor.setFont(self.lyrics_font)
         
         self._orig_closeEvent = self.ui.closeEvent
         self.ui.closeEvent = self.closeEvent
@@ -2597,6 +2604,7 @@ class App( QtGui.QApplication ):
         self.lyrics_font.setPointSizeF( self.lyrics_font_size * self.zoom_factor )
         self.lyrics_font_metrics = QtGui.QFontMetricsF(self.lyrics_font)
         self.editor.setFont(self.lyrics_font)
+        self.print_editor.setFont(self.lyrics_font)
         if self.current_song:
             self.current_song.setDocMargins()
         self.editor.viewport().update()
@@ -2737,9 +2745,10 @@ class App( QtGui.QApplication ):
                 song = Song(self, song_id)
                 
                 # Set this song's document (will be reset later):
-                self.editor.setDocument(song.doc)
+                print "have set print_editor to song's document"
+                self.print_editor.setDocument(song.doc)
                 # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
-
+                
                 scale_ratio = self.printSong(song, printer, painter, page_num)
                 if scale_ratio < min_scale_ratio:
                     min_scale_ratio = scale_ratio
@@ -2747,14 +2756,15 @@ class App( QtGui.QApplication ):
                 num_printed += 1
                 progress.setValue(num_printed)
             
-            
+            self.print_editor.setDocument(self.empty_doc)
+            '''
             # Restore the previous document:
             if self.current_song == None:
                 self.editor.setDocument(self.empty_doc)
             else:
                 self.editor.setDocument(self.current_song.doc)
             # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
-
+            '''
             painter.end()
             
 
@@ -2980,7 +2990,7 @@ class App( QtGui.QApplication ):
             song = Song(self, song_id)
             
             # Set this song's document (will be reset later):
-            self.editor.setDocument(song.doc)
+            self.print_editor.setDocument(song.doc)
             # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
             
             pdf_file = os.path.join( unicode(dir), unicode(song.title) + ".pdf" )
@@ -3018,14 +3028,15 @@ class App( QtGui.QApplication ):
                 raise
             
         progress.setValue(i+1)
-        
+        self.print_editor.setDocument(self.empty_doc)
+        '''
         # Restore the previous document:
         if self.current_song == None:
             self.editor.setDocument(self.empty_doc)
         else:
             self.editor.setDocument(self.current_song.doc)
         # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
-            
+        ''' 
     
     
     def cutSelected(self):
@@ -3460,8 +3471,8 @@ class App( QtGui.QApplication ):
         self.songs_model.updateFromDatabase()
     
     
-    def getCharRects(self, song_char_num, chord=None):
-        cursor = self.editor.textCursor()
+    def getCharRects(self, editor, song_char_num, chord=None):
+        cursor = editor.textCursor()
         
         if chord != None:
             has_chord = True
@@ -3479,9 +3490,9 @@ class App( QtGui.QApplication ):
         
         # Find the bounding rect for this character:
         cursor.setPosition(song_char_num)
-        left_rect = self.editor.cursorRect(cursor)
+        left_rect = editor.cursorRect(cursor)
         cursor.setPosition(song_char_num+1)
-        right_rect = self.editor.cursorRect(cursor)
+        right_rect = editor.cursorRect(cursor)
         
         char_left = left_rect.left()
         char_right = right_rect.right()
@@ -3572,7 +3583,7 @@ class App( QtGui.QApplication ):
 
     
 
-    def _drawSongToPainter(self, song, painter, exporting=False):
+    def _drawSongToPainter(self, song, painter, header_list, exporting=False):
         """
         Draw the given song to the given painter.
         Always draws the main text and chords.
@@ -3580,61 +3591,19 @@ class App( QtGui.QApplication ):
         When exporting, optionally draws song num and/or title.
         """
         
-        
-        # Height of the header line:
-        lyrics_height = self.lyrics_font_metrics.height()
-        
-        # Draw the header, if exporting (and on):
-        header_list = []
-        if exporting:
-            # Print song number and/or title to the header (first) line:
-            header_list = []
-            if self.pdf_options.print_song_num and song.number != -1:
-                header_list.append( str(song.number) )
-            
-            if self.pdf_options.print_song_comment and song.subtitle:
-                header_list.append(song.subtitle)
-            
-            if self.pdf_options.print_song_key and song.key_note_id != -1:
-                #print 'song num:', song.number, 'key_note_id:', song.key_note_id, 'is_major:', song.key_is_major
-                song_key_str = "Key: %s" % song._getNoteString(song.key_note_id)
-                if not song.key_is_major:
-                    song_key_str += "m"
-                
-                if song.alt_key_note_id != -1:
-                    alt_song_key_str = song._getNoteString(song.alt_key_note_id)
-                    if not song.key_is_major:
-                        alt_song_key_str += "m"
-                    song_key_str += " (%s)" % alt_song_key_str
-                
-                header_list.append(song_key_str)
-            
-            if self.pdf_options.print_song_title and song.title:
-                header_list.append(song.title)
-            
-            if header_list:
-                # Combine the song number string, song key, song subtitle, and/or song title string:
-                header_str = "  ".join(header_list)
-                
-                painter.setFont(self.lyrics_font)
-                
-                x = 5.0 # For some reason needed for alignment
-                y = 0.0
-                
-                # FIXME what if the title is too long?
-                header_rect = QtCore.QRect(x, y, 1000.0, lyrics_height)
-                painter.drawText(header_rect, QtCore.Qt.AlignLeft, header_str)
-        
+        # NOTE: Everything here is unscaled (original font sizes, etc)
         
         if exporting:
-            # Un-do the editor margins when exporting:
-            painter.translate(-self.doc_editor_offset, -self.doc_editor_offset)
-            
-            # Lower the main text if header is drawn:
-            if header_list:
-                painter.translate(0.0, lyrics_height)
+            editor = self.print_editor
+        else:
+            editor = self.editor
         
+        print "_drawSongToPainter() start"
         
+
+
+        
+
         if not exporting:
             # On Windows, don't use the default dark blue, as it will not work correctly
             # With default chord and text colors (blue and black):
@@ -3646,7 +3615,7 @@ class App( QtGui.QApplication ):
 
             # Draw any selection rects:
             if self.hover_char_num != None:
-                char_rect, chord_rect = self.getCharRects(self.hover_char_num)
+                char_rect, chord_rect = self.getCharRects(editor, self.hover_char_num)
                 
                 # Mouse is currently hovering over this letter:
                 # Draw a hover rectangle:
@@ -3655,7 +3624,7 @@ class App( QtGui.QApplication ):
                     painter.fillRect(chord_rect, hover_brush)
                 
             if self.selected_char_num != None:
-                char_rect, chord_rect = self.getCharRects(self.selected_char_num)
+                char_rect, chord_rect = self.getCharRects(editor, self.selected_char_num)
                 
                 # Draw a selection rectangle:
                 painter.fillRect(char_rect, selection_brush)
@@ -3667,7 +3636,7 @@ class App( QtGui.QApplication ):
             
         
         for chord in song._chords:
-            char_rect, chord_rect = self.getCharRects(chord.character_num, chord)
+            char_rect, chord_rect = self.getCharRects(editor, chord.character_num, chord)
             
             chord_text = chord.getChordText()
             painter.setFont(self.chords_font)
@@ -3678,39 +3647,37 @@ class App( QtGui.QApplication ):
             #else:
             painter.setPen(self.chords_color)
             
-            
             if chord_rect:
                 self.drawChord(painter, chord_rect, chord_text)
             else:
                 print 'no chord rect!'
         
-
         
+        
+
+        # Draw the lyrics document:
+
         painter.setFont(self.lyrics_font)
         painter.setPen(self.lyrics_color)
         
-        # Draw the lyrics document:
-        doc = self.editor.document()
+        doc = editor.document()
         
-        scroll_x = self.editor.horizontalScrollBar().value()
-        scroll_y = self.editor.verticalScrollBar().value()
-        painter.translate(-scroll_x, -scroll_y)
+        # When drawing to screen, we need to offset the current scroll bar values:
+        # (this will basically raise the document to (0,0) position temporarily)
+        if not exporting:
+            scroll_x = editor.horizontalScrollBar().value()
+            scroll_y = editor.verticalScrollBar().value()
+            painter.translate(-scroll_x, -scroll_y)
         
         doc.drawContents( painter, QtCore.QRectF(0.0, 0.0, 10000.0, 10000.0) )
         
-        #text_str = doc.toPlainText()
-        #painter.drawText(x, y, text_str)
+        if not exporting:
+            # Revert the scroll offset translation:
+            painter.translate(scroll_x, scroll_y)
         
         
-        # Revert translations:
-        if exporting:
-            # Un-do the editor margins when exporting:
-            painter.translate(self.doc_editor_offset, self.doc_editor_offset)
-            if header_list:
-                painter.translate(0.0, -lyrics_height)
         
-        # Must go to 0,0 for the next song to draw right (PDF export): ?????
-        #painter.translate(0.0, 0.0)
+        print "_drawSongToPainter() end"
          
 
 
@@ -3759,21 +3726,88 @@ class App( QtGui.QApplication ):
             actual_scale_ratio = scale_ratio
             scale_ratio /= self.zoom_factor
         
+        
+        # Height of the header line:
+        lyrics_height = self.lyrics_font_metrics.height()
+        
+        # Print song number and/or title to the header (first) line:
+        header_list = []
+
+        if exporting:
+            if self.pdf_options.print_song_num and song.number != -1:
+                header_list.append( str(song.number) )
+            
+            if self.pdf_options.print_song_comment and song.subtitle:
+                header_list.append(song.subtitle)
+            
+            if self.pdf_options.print_song_key and song.key_note_id != -1:
+                #print 'song num:', song.number, 'key_note_id:', song.key_note_id, 'is_major:', song.key_is_major
+                song_key_str = "Key: %s" % song._getNoteString(song.key_note_id)
+                if not song.key_is_major:
+                    song_key_str += "m"
+                
+                if song.alt_key_note_id != -1:
+                    alt_song_key_str = song._getNoteString(song.alt_key_note_id)
+                    if not song.key_is_major:
+                        alt_song_key_str += "m"
+                    song_key_str += " (%s)" % alt_song_key_str
+                
+                header_list.append(song_key_str)
+            
+            if self.pdf_options.print_song_title and song.title:
+                header_list.append(song.title)
+
+
+
         # Go to songs's reference frame:
         output_painter.translate(rect.left(), rect.top())
         output_painter.scale(scale_ratio, scale_ratio)
         
-        self._drawSongToPainter(song, output_painter, exporting)
-        #output_painter.drawText(100, 100, "TEST")
+
+        # Offset the editor margins when exporting:
+        if exporting:
+            output_painter.translate(-self.doc_editor_offset, -self.doc_editor_offset)
         
+        if header_list:
+            # Combine the song number string, song key, song subtitle, and/or song title string:
+            header_str = "  ".join(header_list)
+            output_painter.setFont(self.lyrics_font)
+            
+            x = 5.0 # For some reason needed for alignment
+            y = 0.0
+            
+            # FIXME what if the title is too long?
+            header_rect = QtCore.QRect(x, y, 1000.0, lyrics_height)
+            output_painter.drawText(header_rect, QtCore.Qt.AlignLeft, header_str)
+            
+            print "header list included, translated by:", lyrics_height
+            output_painter.translate(0.0, lyrics_height)
+        
+        
+        # Draw the song lyrics and chirds:
+        self._drawSongToPainter(song, output_painter, header_list, exporting)
+        # output_painter.drawText(100, 100, "TEST")
+        
+        
+        if header_list:
+            print "translating back by", lyrics_height
+            output_painter.translate(0.0, -lyrics_height)
+        
+        # Revert the editor margins when exporting:
+        if exporting:
+            output_painter.translate(self.doc_editor_offset, self.doc_editor_offset)
+        
+
         # Redo the effect of scaling:
         output_painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
         
         # Go to the original reference frame:
         output_painter.translate(-rect.left(), -rect.top())
         
+        
         return actual_scale_ratio
     
+
 
     # FIXME FIXME factor-out the common code between these two methods!
     
@@ -3846,7 +3880,7 @@ class App( QtGui.QApplication ):
         
         for chord in self.current_song._chords:
             song_char_num = chord.character_num
-            char_rect, chord_rect = self.getCharRects(chord.character_num, chord)
+            char_rect, chord_rect = self.getCharRects(self.editor, chord.character_num, chord)
             
             if y > chord_rect.top() and y < chord_rect.bottom():
                 if y < chord_rect.bottom() and not dragging:
@@ -3867,7 +3901,7 @@ class App( QtGui.QApplication ):
         if self.editor.dragging_chord:
             # Make sure drag obove (not over) a letter would be cought:
             chord = self.editor.dragging_chord
-            char_rect, chord_rect = self.getCharRects(chord.character_num, chord)
+            char_rect, chord_rect = self.getCharRects(self.editor, chord.character_num, chord)
             if y > chord_rect.top() and y < char_rect.top():
                 y = char_rect.top() + 1
         
