@@ -98,10 +98,11 @@ if not os.path.basename(sys.executable).lower().startswith("python"):
 else:
     exec_dir = "."
 
-script_ui_file = os.path.join(exec_dir, "softchord_main_window.ui" )
-chord_dialog_ui_file = os.path.join(exec_dir, "softchord_chord_dialog.ui")
-pdf_dialog_ui_file = os.path.join(exec_dir, "softchord_pdf_dialog.ui")
+# script_ui_file = os.path.join(exec_dir, "softchord_main_window.ui" )
+# chord_dialog_ui_file = os.path.join(exec_dir, "softchord_chord_dialog.ui")
+# pdf_dialog_ui_file = os.path.join(exec_dir, "softchord_pdf_dialog.ui")
 
+import softchord_main_window_ui, softchord_chord_dialog_ui, softchord_pdf_dialog_ui
 
 
 
@@ -427,7 +428,7 @@ class SongsProxyModel(QtGui.QSortFilterProxyModel):
 
     def __init__(self, app):
         self.app = app
-        QtGui.QSortFilterProxyModel.__init__(self, app.ui)
+        QtGui.QSortFilterProxyModel.__init__(self, app.win)
 
     def filterAcceptsRow(self, sourceRow, sourceParent):
         model = self.sourceModel()
@@ -1161,8 +1162,7 @@ class CustomTextEdit(QtGui.QTextEdit):
     """
     """
     def __init__(self, app):
-        # QtGui.QWidget.__init__(self, app.ui)
-        QtGui.QTextEdit.__init__(self, app.ui)
+        QtGui.QTextEdit.__init__(self, app.win)
         self.app = app
         
         self.dragging_chord_orig_position = -1
@@ -1455,7 +1455,7 @@ class CustomTextEdit(QtGui.QTextEdit):
                     return
         
         # Let the main window handle this event (required for undo/redo shortcuts):
-        self.app.ui.keyPressEvent(event)
+        self.app.win.keyPressEvent(event)
     
     
     def keyReleaseEvent(self, event):
@@ -1471,16 +1471,21 @@ class CustomTextEdit(QtGui.QTextEdit):
     
 
 
-class ChordDialog:
+class ChordDialog(QtGui.QDialog):
     """
     Dialog for allowing the user to set the chord note & type.
     """
 
     def c(self, widget, signal_str, slot):
-        self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
+        self.win.connect(widget, QtCore.SIGNAL(signal_str), slot)
+
     def __init__(self, app):
+        QtGui.QDialog.__init__(self, app.win)
+
         self.app = app
-        self.ui = uic.loadUi(chord_dialog_ui_file)
+        # self.ui = uic.loadUi(chord_dialog_ui_file)
+        self.ui = softchord_chord_dialog_ui.Ui_Dialog()
+        self.ui.setupUi(self) 
         
         notes_list = []
         for note_id in range(12):
@@ -1524,9 +1529,9 @@ class ChordDialog:
 
         self.ui.in_parentheses_box.setChecked(in_parentheses)
         
-        self.ui.show()
-        self.ui.raise_()
-        out = self.ui.exec_()
+        self.show()
+        self.raise_()
+        out = self.exec_()
         if out: # OK pressed:
             chord.note_id = self.ui.note_menu.currentIndex()
             chord.chord_type_id = self.ui.chord_type_menu.currentIndex()
@@ -1560,22 +1565,28 @@ class PdfOptions:
 
 
 
-class PdfDialog:
+class PdfDialog(QtGui.QDialog):
     """
     Dialog for allowing the user to set up printing and PDF export options.
     """
 
     def c(self, widget, signal_str, slot):
         self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
+
     def __init__(self, app):
+        QtGui.QDialog.__init__(self, app.win)
+
         self.app = app
-        self.ui = uic.loadUi(pdf_dialog_ui_file)
-        self.ui.left_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
-        self.ui.right_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
-        self.ui.top_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
-        self.ui.bottom_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
-        self.ui.page_width_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
-        self.ui.page_height_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self.ui) )
+        # self.ui = uic.loadUi(pdf_dialog_ui_file)
+        self.ui = softchord_pdf_dialog_ui.Ui_Dialog()
+        self.ui.setupUi(self) 
+        
+        self.ui.left_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self) )
+        self.ui.right_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self) )
+        self.ui.top_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self) )
+        self.ui.bottom_margin_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self) )
+        self.ui.page_width_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self) )
+        self.ui.page_height_ef.setValidator( QtGui.QDoubleValidator(0, 1000000000, 5, self) )
     
     
     
@@ -1606,9 +1617,9 @@ class PdfDialog:
             self.ui.generate_table_of_contents_box.setChecked(False)
             self.ui.generate_table_of_contents_box.setVisible(False)
         
-        self.ui.show()
-        self.ui.raise_()
-        out = self.ui.exec_()
+        self.show()
+        self.raise_()
+        out = self.exec_()
         if out: # OK pressed:
             # FIXME what if the user entered ""?
             pdf_options.left_margin = float(self.ui.left_margin_ef.text())
@@ -1638,7 +1649,7 @@ class App( QtGui.QApplication ):
     The main application class.
     """
     def c(self, widget, signal_str, slot):
-        self.ui.connect(widget, QtCore.SIGNAL(signal_str), slot)
+        self.win.connect(widget, QtCore.SIGNAL(signal_str), slot)
         
         self.doc_editor_offset = 10.0
     
@@ -1646,7 +1657,10 @@ class App( QtGui.QApplication ):
     def __init__(self, args):
         QtGui.QApplication.__init__(self, args) 
         
-        self.ui = uic.loadUi(script_ui_file)
+        # self.ui = uic.loadUi(script_ui_file)
+        self.win = QtGui.QMainWindow()
+        self.ui = softchord_main_window_ui.Ui_MainWindow()
+        self.ui.setupUi(self.win) 
         
         self.on_windows = platform.system() == "Windows"
 
@@ -1727,7 +1741,7 @@ class App( QtGui.QApplication ):
         self.ui.song_title_ef.textEdited.connect( self.currentSongTitleEdited )
         self.ui.song_subtitle_ef.textEdited.connect( self.subtitleEdited )
 
-        self.ui.song_num_ef.setValidator( QtGui.QIntValidator(0, 1000000000, self.ui) )
+        self.ui.song_num_ef.setValidator( QtGui.QIntValidator(0, 1000000000, self.win) )
         self.ignore_song_key_changed = False
         self.c( self.ui.song_key_menu, "currentIndexChanged(int)", self.currentSongKeyChanged )
         self.c( self.ui.song_alt_key_menu, "currentIndexChanged(int)", self.currentSongAltKeyChanged )
@@ -1740,7 +1754,7 @@ class App( QtGui.QApplication ):
         self.ui.actionAppendSongbook.triggered.connect(self.appendSongbookSelected)
         
         self.ui.actionPrint.triggered.connect( self.printSelectedSongs )
-        self.c( self.ui.actionQuit, "triggered()", self.ui.close )
+        self.c( self.ui.actionQuit, "triggered()", self.win.close )
         self.c( self.ui.actionNewSong, "triggered()", self.createNewSong )
         
         self.ui.actionDeleteSongs.triggered.connect( self.deleteSelectedSongs )
@@ -1851,8 +1865,8 @@ class App( QtGui.QApplication ):
         self.editor.setFont(self.lyrics_font)
         self.print_editor.setFont(self.lyrics_font)
         
-        self._orig_closeEvent = self.ui.closeEvent
-        self.ui.closeEvent = self.closeEvent
+        self._orig_closeEvent = self.win.closeEvent
+        self.win.closeEvent = self.closeEvent
 
         
         self.populateSongKeyMenu()
@@ -1878,8 +1892,8 @@ class App( QtGui.QApplication ):
 
         self.updateStates()
         
-        self.ui.show()
-        self.ui.raise_()
+        self.win.show()
+        self.win.raise_()
         
     
     def event(self, event):
@@ -2160,23 +2174,23 @@ class App( QtGui.QApplication ):
     
     def warning(self, text):
         """ Display a warning dialog box with the given text """
-        QtGui.QMessageBox.warning(self.ui, "Warning", text)
+        QtGui.QMessageBox.warning(self.win, "Warning", text)
 
     def info(self, text):
         """ Display an information dialog box with the given text """
-        QtGui.QMessageBox.information(self.ui, "Information", text)
+        QtGui.QMessageBox.information(self.win, "Information", text)
     
     def error(self, text):
         """ Display an error dialog box with the given text """
-        QtGui.QMessageBox.warning(self.ui, "Error", text)
+        QtGui.QMessageBox.warning(self.win, "Error", text)
 
     def setWaitCursor(self):
         """ Set the mouse cursor to the watch """
-        self.ui.setCursor( QtGui.QCursor(QtCore.Qt.WaitCursor) )
+        self.win.setCursor( QtGui.QCursor(QtCore.Qt.WaitCursor) )
 
     def restoreCursor(self):
         """ Set the mouse cursor to the default arrow. """
-        self.ui.setCursor( QtGui.QCursor(QtCore.Qt.ArrowCursor) )
+        self.win.setCursor( QtGui.QCursor(QtCore.Qt.ArrowCursor) )
 
 
     def songsSelectionChangedCallback(self, selected=None, deselected=None):
@@ -2547,7 +2561,7 @@ class App( QtGui.QApplication ):
         # Make a copy:
         new_font = QtGui.QFont(self.chords_font)
         
-        new_font, ok = QtGui.QFontDialog.getFont(new_font, self.ui)
+        new_font, ok = QtGui.QFontDialog.getFont(new_font, self.win)
         if ok:
             self.chords_font_size = new_font.pointSizeF()
             self.chords_font = new_font
@@ -2563,7 +2577,7 @@ class App( QtGui.QApplication ):
         # Make a copy:
         new_font = QtGui.QFont(self.lyrics_font)
 
-        new_font, ok = QtGui.QFontDialog.getFont(new_font, self.ui)
+        new_font, ok = QtGui.QFontDialog.getFont(new_font, self.win)
         if ok:
             self.lyrics_font_size = new_font.pointSizeF()
             self.lyrics_font = new_font
@@ -2615,7 +2629,7 @@ class App( QtGui.QApplication ):
         
         painter = QtGui.QPainter()
         
-        print_dialog = QtGui.QPrintDialog(printer, self.ui)
+        print_dialog = QtGui.QPrintDialog(printer, self.win)
         if print_dialog.exec_() == QtGui.QDialog.Accepted:
             ok = PdfDialog(self).display(self.pdf_options, single_pdf_export=True)
             if not ok:
@@ -2640,7 +2654,7 @@ class App( QtGui.QApplication ):
         Will display an error dialog on error.
         """
         
-        progress = QtGui.QProgressDialog(progress_message, "Abort", 0, len(song_ids), self.ui)
+        progress = QtGui.QProgressDialog(progress_message, "Abort", 0, len(song_ids), self.win)
         progress.setWindowModality(Qt.WindowModal)
         # Open the progress dialog right away:
         progress.setMinimumDuration(0)
@@ -2878,7 +2892,7 @@ class App( QtGui.QApplication ):
             else:
                 suggested_path = QtCore.QDir.home().path()
             
-            pdf_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+            pdf_file = QtGui.QFileDialog.getSaveFileName(self.win,
                         "Save PDF file as:",
                         suggested_path,
                         "PDF format (*.pdf)",
@@ -2935,7 +2949,7 @@ class App( QtGui.QApplication ):
             return
         
         suggested_dir = unicode(QtCore.QDir.home().path())
-        dir = QtGui.QFileDialog.getExistingDirectory(self.ui,
+        dir = QtGui.QFileDialog.getExistingDirectory(self.win,
                     "Save PDF file in directory:",
                     suggested_dir,
         )
@@ -2943,7 +2957,7 @@ class App( QtGui.QApplication ):
             # User cancelled
             return
         
-        progress = QtGui.QProgressDialog("Exporting to PDFs...", "Abort", 0, len(song_ids), self.ui)
+        progress = QtGui.QProgressDialog("Exporting to PDFs...", "Abort", 0, len(song_ids), self.win)
         progress.setWindowModality(Qt.WindowModal)
         # Open the progress dialog right away:
         progress.setMinimumDuration(0)
@@ -3110,7 +3124,7 @@ class App( QtGui.QApplication ):
         if not text_file:
             suggested_path = os.path.join( unicode(QtCore.QDir.home().path()), unicode(self.current_song.title) + ".txt" )
             
-            text_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+            text_file = QtGui.QFileDialog.getSaveFileName(self.win,
                     "Save text file as:",
                     suggested_path,
                     "Text format (*.txt)",
@@ -3157,7 +3171,7 @@ class App( QtGui.QApplication ):
         if not filename:
             suggested_path = os.path.join( unicode(QtCore.QDir.home().path()), unicode(self.current_song.title) + ".chordpro" )
             
-            filename = QtGui.QFileDialog.getSaveFileName(self.ui,
+            filename = QtGui.QFileDialog.getSaveFileName(self.win,
                     "Save text file as:",
                     suggested_path,
                     "ChordPro format (*.chordpro)",
@@ -3399,7 +3413,7 @@ class App( QtGui.QApplication ):
         Display a prompt dialog window with specified text.
         Returns True if first button (default OK) is pressed, False otherwise.
         """
-        mbox = QtGui.QMessageBox(self.ui)
+        mbox = QtGui.QMessageBox(self.win)
         mbox.setText(msg)
         mbox.setWindowTitle(title)
         mbox.setIcon(QtGui.QMessageBox.Question)
@@ -3418,7 +3432,7 @@ class App( QtGui.QApplication ):
         
         all_song_ids = self.songs_model.getAllSongIds()
         
-        new_id, ok = QtGui.QInputDialog.getInteger(self.ui, "softChord", "Enter a new ID for this song:", curr_id, 1)
+        new_id, ok = QtGui.QInputDialog.getInteger(self.win, "softChord", "Enter a new ID for this song:", curr_id, 1)
         if not ok or new_id == curr_id:
             # User cancelled or selected same ID
             return 
@@ -3919,7 +3933,7 @@ class App( QtGui.QApplication ):
         """
         if not filename:
             filter_string = "ChordPro format (%s)" % ' '.join( ['*'+ext for ext in chordpro_extensions] )
-            chordpro_files = QtGui.QFileDialog.getOpenFileNames(self.ui,
+            chordpro_files = QtGui.QFileDialog.getOpenFileNames(self.win,
                     "Select a ChordPro file to import",
                     QtCore.QDir.home().path(), # initial dir
                     filter_string,
@@ -3969,7 +3983,7 @@ class App( QtGui.QApplication ):
         """
         Lets the user select a text file to import.
         """
-        text_files = QtGui.QFileDialog.getOpenFileNames(self.ui,
+        text_files = QtGui.QFileDialog.getOpenFileNames(self.win,
                 "Select a text file to import",
                 QtCore.QDir.home().path(), # initial dir
                 "Text format (*.txt *.text)", ###### *.textClipping)", # *.textClipping is used on MacOSX
@@ -4433,12 +4447,12 @@ class App( QtGui.QApplication ):
         
         if filename == None:
             self.curs = None
-            self.ui.setWindowTitle("softChord")
+            self.win.setWindowTitle("softChord")
         else:
             #self.info('Database: %s; exists: %s' % (songbook_file, os.path.isfile(filename)))
             self.curs = sqlite3.connect(filename)
             songbook_name = os.path.splitext(os.path.basename(filename))[0]
-            self.ui.setWindowTitle("softChord - %s" % songbook_name)
+            self.win.setWindowTitle("softChord - %s" % songbook_name)
         
         self.songs_model.updateFromDatabase()
         self.updateStates()
@@ -4479,7 +4493,7 @@ class App( QtGui.QApplication ):
     
 
     def newSongbook(self):
-        songbook_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+        songbook_file = QtGui.QFileDialog.getSaveFileName(self.win,
                     "Save songbook as:",
                     QtCore.QDir.home().path(), # initial dir
                     "Songbook format (*.songbook)",
@@ -4498,7 +4512,7 @@ class App( QtGui.QApplication ):
         
     
     def openSongbook(self):
-        songbook_file = QtGui.QFileDialog.getOpenFileName(self.ui,
+        songbook_file = QtGui.QFileDialog.getOpenFileName(self.win,
                 "Select a songbook to open",
                 QtCore.QDir.home().path(), # initial dir
                 "Songbook format (*.songbook)",
@@ -4525,7 +4539,7 @@ class App( QtGui.QApplication ):
         
         new_songbook_file = None
         while True:
-            new_songbook_file = QtGui.QFileDialog.getSaveFileName(self.ui,
+            new_songbook_file = QtGui.QFileDialog.getSaveFileName(self.win,
                         "Save songbook as:",
                         suggested_path,
                         "Songbook foramt (*.songbook)",
@@ -4556,7 +4570,7 @@ class App( QtGui.QApplication ):
         Append a user-selected songbook to the currently opened songbook.
         """
 
-        songbook_file = QtGui.QFileDialog.getOpenFileName(self.ui,
+        songbook_file = QtGui.QFileDialog.getOpenFileName(self.win,
                 "Select a songbook to append",
                 QtCore.QDir.home().path(), # initial dir
                 "Songbook format (*.songbook)",
