@@ -244,7 +244,6 @@ class DeleteSongsCommand( QtGui.QUndoCommand ):
             # Update the song table from database:
             self.app.songs_model.updateFromDatabase()
             
-            #print 'undo done'
         finally:
             self.app.restoreCursor()
             
@@ -1054,9 +1053,6 @@ class Song:
         finally:
             self.app.restoreCursor()
         
-        #print 'sendToDatabase'
-        #self.app.clearUndoStack()
-        # self.app.updateEditMenu()
     
 
             
@@ -1093,7 +1089,6 @@ class Song:
         chars_used_for_chords = []
         for chord in self.iterateAllChords():
             chars_used_for_chords.append(chord.character_num)
-        #print "chars_used_for_chords:", chars_used_for_chords
         
         all_song_delete_positions = []
         
@@ -1102,24 +1097,18 @@ class Song:
         char_num = len(original_text)
         for char in reversed(original_text):
             char_num -= 1
-            #print "Iterating char:", char_num, char
             if wait_for_next_line:
                 if char == "\n":
                     wait_for_next_line = False
-                    #print "  new-line"
             elif char == "\n":
                 # Another new line (or new line at end of song)
                 continue
             else:
-                #print "  char == ' ' : ", (char == " ")
-                #print "  char_num in chars_used_for_chords:", (char_num in chars_used_for_chords)
                 if char == " " and not char_num in chars_used_for_chords:
                     all_song_delete_positions.append(char_num)
                 else:
-                    #print "  waiting for next line"
                     wait_for_next_line = True
         
-        #print "all_song_delete_positions:", all_song_delete_positions
         
         # Delete trailing spaces and Create a renumber map
         renumber_map = {}
@@ -1132,10 +1121,8 @@ class Song:
                 renumber_map[char_num] = char_num - num_deleted_chars
                 modified_text += char
         
-        #print "renumber_map:", renumber_map
-        print "Number of characters deleted from this song:", len(all_song_delete_positions)
-        print "Number of characters in original_text:", len(original_text)
-        #print "Number of characters in modified_text:", len(modified_text)
+        # print "Number of characters deleted from this song:", len(all_song_delete_positions)
+        # print "Number of characters in original_text:", len(original_text)
         
         # Renumber the chords based on the renumber_map:
         new_all_chords = []
@@ -1158,8 +1145,7 @@ class Song:
             (modified_text, self.id))
         
         self.app.curs.commit()
-        print "Database updated"
-        print ""
+        # print "Database updated"
         
         # self.setAllText(modified_text, new_all_chords)
         
@@ -1194,9 +1180,7 @@ class CustomTextEdit(QtGui.QTextEdit):
         Called when the widget needs to draw the current song.
         """
 
-        print "paintEvent start"
         if self.lyric_editor_mode:
-            
             
             # Paint the lyrics text, selection rect, and cursor:
             QtGui.QTextEdit.paintEvent(self, event)
@@ -1259,7 +1243,6 @@ class CustomTextEdit(QtGui.QTextEdit):
                 self.app.drawSongToRect(self.app.current_song, painter, paint_rect)
             
             painter.end()
-        print "paintEvent end\n"
     
 
     def leaveEvent(self, event):
@@ -1972,7 +1955,6 @@ class App( QtGui.QApplication ):
         self.editor.setUndoRedoEnabled(False)
         
         self.editor.viewport().update()
-        #print 'chordEditorSelected()'
         self.updateEditMenu()
     
 
@@ -2173,7 +2155,6 @@ class App( QtGui.QApplication ):
     
 
     def clearUndoStack(self):
-        #print 'clearUndoStack called'
         self.undo_stack.clear()
     
     
@@ -2372,7 +2353,6 @@ class App( QtGui.QApplication ):
             if self.current_song.key_note_id == -1:
                 self.ui.song_key_menu.setCurrentIndex( 0 )
             else:
-                #print 'setting menu key id', self.current_song.key_note_id, 'major:', self.current_song.key_is_major
                 self.ui.song_key_menu.setCurrentIndex( self.current_song.key_note_id*2 + self.current_song.key_is_major + 1 )
             
             if self.current_song.alt_key_note_id == -1:
@@ -2396,10 +2376,6 @@ class App( QtGui.QApplication ):
             self.editor.verticalScrollBar().setValue(0)
         
         #self.ignore_song_key_changed = False
-        
-        #print 'setCurrentSong'
-        #self.clearUndoStack()
-        # self.app.updateEditMenu()
         
 
 
@@ -2685,8 +2661,6 @@ class App( QtGui.QApplication ):
                 
                 max_songs_per_page = int( printable_height // lyrics_height )
                 
-                #print 'max_songs_per_page:', max_songs_per_page
-                
                 # FIXME use smaller font size for table of contents
                 # FIXME Do not leave less than ~10 song titles per page.
                 
@@ -2745,7 +2719,6 @@ class App( QtGui.QApplication ):
                 song = Song(self, song_id)
                 
                 # Set this song's document (will be reset later):
-                print "have set print_editor to song's document"
                 self.print_editor.setDocument(song.doc)
                 # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
                 
@@ -2757,14 +2730,6 @@ class App( QtGui.QApplication ):
                 progress.setValue(num_printed)
             
             self.print_editor.setDocument(self.empty_doc)
-            '''
-            # Restore the previous document:
-            if self.current_song == None:
-                self.editor.setDocument(self.empty_doc)
-            else:
-                self.editor.setDocument(self.current_song.doc)
-            # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
-            '''
             painter.end()
             
 
@@ -2980,7 +2945,10 @@ class App( QtGui.QApplication ):
         
         progress = QtGui.QProgressDialog("Exporting to PDFs...", "Abort", 0, len(song_ids), self.ui)
         progress.setWindowModality(Qt.WindowModal)
+        # Open the progress dialog right away:
+        progress.setMinimumDuration(0)
 
+        min_scale_ratio = 1.0
         for i, song_id in enumerate(song_ids):
             progress.setValue(i)
             
@@ -3018,7 +2986,9 @@ class App( QtGui.QApplication ):
                     raise IOError("Failed to open the output file for writing")
                 
                 # Always print the song as if to the first page, when exporting to multiple PDFs:
-                self.printSong(song, printer, painter, 1)
+                scale_ratio = self.printSong(song, printer, painter, 1)
+                if scale_ratio < min_scale_ratio:
+                    min_scale_ratio = scale_ratio
                 
                 painter.end()
             
@@ -3027,17 +2997,16 @@ class App( QtGui.QApplication ):
                 self.error("Error generating PDF:\n%s" % str(err))
                 raise
             
-        progress.setValue(i+1)
+        progress.setValue(i+1) # Close the progress dialog
         self.print_editor.setDocument(self.empty_doc)
-        '''
-        # Restore the previous document:
-        if self.current_song == None:
-            self.editor.setDocument(self.empty_doc)
-        else:
-            self.editor.setDocument(self.current_song.doc)
-        # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
-        ''' 
-    
+
+        if min_scale_ratio != 1.0:
+            if len(song_ids) > 1:
+                self.info("The biggest song was scaled down to %.2f" % min_scale_ratio)
+            else:
+                self.info("The song was scaled down to %.2f" % min_scale_ratio)
+
+
     
     def cutSelected(self):
         """
@@ -3072,14 +3041,12 @@ class App( QtGui.QApplication ):
             return
         
         text = unicode(self.clipboard.text())
-        print 'CLIPBOARD:', text
         
         try:
             converted_chord = self.convertChordFromString(text)
         except ValueError, err:
             print "not a chord"
             return 
-        print 'converted:', converted_chord
         
         (marker, note_id, type_id, bass_id, in_parentheses) = converted_chord
         new_chord = SongChord(self.current_song, self.selected_char_num, note_id, type_id, bass_id, marker, in_parentheses)
@@ -3094,11 +3061,9 @@ class App( QtGui.QApplication ):
         if prev_chord:
             # Replacing exising chord
             self.current_song.replaceChord(prev_chord, new_chord)
-            print 'chord replaced'
         else:
             # Adding a new chord
             self.current_song.addChord(new_chord)
-            print 'chord added'
 
     
     def copySongText(self):
@@ -3322,7 +3287,6 @@ class App( QtGui.QApplication ):
         if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
             self.current_song.key_note_id = note_id
             self.current_song.key_is_major = is_major
-            #print 'setting is_major to', is_major
             
             self.sendCurrentSongToDatabase()
             self.editor.viewport().update()
@@ -3598,10 +3562,6 @@ class App( QtGui.QApplication ):
         else:
             editor = self.editor
         
-        print "_drawSongToPainter() start"
-        
-
-
         
 
         if not exporting:
@@ -3677,8 +3637,6 @@ class App( QtGui.QApplication ):
         
         
         
-        print "_drawSongToPainter() end"
-         
 
 
     def drawSongToRect(self, song, output_painter, rect, exporting=False):
@@ -3780,7 +3738,6 @@ class App( QtGui.QApplication ):
             header_rect = QtCore.QRect(x, y, 1000.0, lyrics_height)
             output_painter.drawText(header_rect, QtCore.Qt.AlignLeft, header_str)
             
-            print "header list included, translated by:", lyrics_height
             output_painter.translate(0.0, lyrics_height)
         
         
@@ -3790,7 +3747,6 @@ class App( QtGui.QApplication ):
         
         
         if header_list:
-            print "translating back by", lyrics_height
             output_painter.translate(0.0, -lyrics_height)
         
         # Revert the editor margins when exporting:
