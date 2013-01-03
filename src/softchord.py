@@ -1870,17 +1870,8 @@ class App( QtGui.QApplication ):
 
         
         self.populateSongKeyMenu()
-        
-        default_db_file1 = os.path.join( exec_dir, "zvuki_neba.songbook" )
-        default_db_file2 = os.path.join( exec_dir, "solo_and_group_songs.songbook")
-        
-        if os.path.isfile(default_db_file1):
-            self.setCurrentSongbook(default_db_file1)
-        elif os.path.isfile(default_db_file2):
-            self.setCurrentSongbook(default_db_file2)
-        else:
-            self.setCurrentSongbook(None)
-        
+        self.setCurrentSongbook(None)
+
         self.songs_model.updateFromDatabase()
         
         self.ui.lyric_editor_button.clicked.connect( self.lyricEditorSelected )
