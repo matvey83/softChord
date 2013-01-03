@@ -36,15 +36,20 @@ NOTE: Only step 4 will need to be performed for subsequent builds.
 
 How to compile on Mac OS X:
 
-1) Install PyInstaller
+1) pip install pyinstaller
 
 2) CD into the "softchord" directory.
 
-3) Run "python mac_combile.py"
+3) Copy the newly installed "pyinstaller" directory into the softchord
+directory
+
+4) python pyinstaller/pyinstaller.py src/softchord.py --onefile --windowed --noconfirm --name "softChord X.Y.Z"
+
+5) cp src/Info.plist dist/softChord\ 0.9.1.app/Contents/Info.plist 
+
+6) Copy the database into the dir dist/ directory
 
 
-
-
-
-
+See:
+http://tech.xster.net/tips/deploy-pyqt-applications-on-mac-os-x-with-pyinstaller/
 
