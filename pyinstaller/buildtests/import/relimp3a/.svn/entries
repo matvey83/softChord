@@ -1,0 +1,56 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/buildtests/import/relimp3a
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+aa
+dir
+
+
+
+add
+
+relimp3b.py
+file
+
+
+
+add
+
+relimp3c.py
+file
+
+
+
+add
+
+__init__.py
+file
+
+
+
+add
+

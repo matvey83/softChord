@@ -1,0 +1,63 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/source/common
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+launch.h
+file
+
+
+
+add
+
+main.c
+file
+
+
+
+add
+
+utils.h
+file
+
+
+
+add
+
+mkdtemp.h
+file
+
+
+
+add
+
+launch.c
+file
+
+
+
+add
+

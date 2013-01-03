@@ -1,0 +1,77 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/source/windows
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+dllmain.c
+file
+
+
+
+add
+
+utils.c
+file
+
+
+
+add
+
+manifest.xml
+file
+
+
+
+add
+
+run.rc
+file
+
+
+
+add
+
+dllmain.def
+file
+
+
+
+add
+
+resource.h
+file
+
+
+
+add
+
+runw.rc
+file
+
+
+
+add
+

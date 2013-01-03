@@ -1,0 +1,210 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/buildtests/libraries
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+test_pycrypto.py
+file
+
+
+
+add
+
+test_usb.py
+file
+
+
+
+add
+
+test_pycrypto.spec
+file
+
+
+
+add
+
+test_wx_pubsub_kwargs.py
+file
+
+
+
+add
+
+test_wx.py
+file
+
+
+
+add
+
+test_wx.spec
+file
+
+
+
+add
+
+test_xml.py
+file
+
+
+
+add
+
+test_sqlalchemy.py
+file
+
+
+
+add
+
+test_Image2.py
+file
+
+
+
+add
+
+test_PIL2.py
+file
+
+
+
+add
+
+test_Image2.spec
+file
+
+
+
+add
+
+test_PIL2.spec
+file
+
+
+
+add
+
+test_numpy.py
+file
+
+
+
+add
+
+test_numpy.spec
+file
+
+
+
+add
+
+test_pyttsx.py
+file
+
+
+
+add
+
+test_wx_pubsub.py
+file
+
+
+
+add
+
+test_pyodbc.py
+file
+
+
+
+add
+
+test_enchant.py
+file
+
+
+
+add
+
+test_onefile_tkinter.py
+file
+
+
+
+add
+
+test_Image.py
+file
+
+
+
+add
+
+test_PIL.py
+file
+
+
+
+add
+
+test_Image.spec
+file
+
+
+
+add
+
+test_PIL.spec
+file
+
+
+
+add
+
+tinysample.tiff
+file
+
+
+
+add
+
+
+
+
+
+has-props
+has-prop-mods
+
+test_wx_pubsub_arg1.py
+file
+
+
+
+add
+

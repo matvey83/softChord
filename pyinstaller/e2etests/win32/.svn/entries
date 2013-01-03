@@ -1,0 +1,70 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/e2etests/win32
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+NextID.py
+file
+
+
+
+add
+
+testMSOffice.py
+file
+
+
+
+add
+
+testNextID.vbs
+file
+
+
+
+add
+
+testcomext.py
+file
+
+
+
+add
+
+testEnsureDispatch.py
+file
+
+
+
+add
+
+readme.txt
+file
+
+
+
+add
+

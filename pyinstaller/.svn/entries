@@ -1,0 +1,133 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+pyinstaller-gui.py
+file
+
+
+
+add
+
+pip-egg-info
+dir
+
+
+
+add
+
+buildtests
+dir
+
+
+
+add
+
+.pylintrc
+file
+
+
+
+add
+
+setup.py
+file
+
+
+
+add
+
+pyinstaller.py
+file
+
+
+
+add
+
+e2etests
+dir
+
+
+
+add
+
+utils
+dir
+
+
+
+add
+
+source
+dir
+
+
+
+add
+
+README.rst
+file
+
+
+
+add
+
+doc
+dir
+
+
+
+add
+
+PyInstaller
+dir
+
+
+
+add
+
+MANIFEST.in
+file
+
+
+
+add
+
+support
+dir
+
+
+
+add
+
+examples
+dir
+
+
+
+add
+

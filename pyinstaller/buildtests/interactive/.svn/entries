@@ -1,0 +1,126 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/buildtests/interactive
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+test_buffering.spec
+file
+
+
+
+add
+
+test_matplotlib.spec
+file
+
+
+
+add
+
+test_wx.py
+file
+
+
+
+add
+
+test_tkinter.py
+file
+
+
+
+add
+
+test_wx.spec
+file
+
+
+
+add
+
+test_pyqt4.py
+file
+
+
+
+add
+
+test_pygame.py
+file
+
+
+
+add
+
+test_tkinter.spec
+file
+
+
+
+add
+
+test_pyqt4.spec
+file
+
+
+
+add
+
+test_pygame.spec
+file
+
+
+
+add
+
+test_tix.py
+file
+
+
+
+add
+
+test_tix.spec
+file
+
+
+
+add
+
+test_buffering.py
+file
+
+
+
+add
+
+test_matplotlib.py
+file
+
+
+
+add
+

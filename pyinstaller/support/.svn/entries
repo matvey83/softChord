@@ -1,0 +1,63 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/support
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+_pyi_egg_install.py
+file
+
+
+
+add
+
+rthooks.dat
+file
+
+
+
+add
+
+_pyi_bootstrap.py
+file
+
+
+
+add
+
+loader
+dir
+
+
+
+add
+
+rthooks
+dir
+
+
+
+add
+

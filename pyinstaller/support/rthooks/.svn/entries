@@ -1,0 +1,112 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/support/rthooks
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+pyi_rth_qt4plugins.py
+file
+
+
+
+add
+
+pyi_rth_versioneddll.py
+file
+
+
+
+add
+
+pyi_rth_Tkinter.py
+file
+
+
+
+add
+
+pyi_rth_django.py
+file
+
+
+
+add
+
+pyi_rth_Image.py
+file
+
+
+
+add
+
+pyi_rth_mpldata.py
+file
+
+
+
+add
+
+pyi_rth_opengl.py
+file
+
+
+
+add
+
+pyi_rth_win32comgenpy.py
+file
+
+
+
+add
+
+pyi_rth_babel.py
+file
+
+
+
+add
+
+pyi_rth_PIL_Image.py
+file
+
+
+
+add
+
+pyi_rth_encodings.py
+file
+
+
+
+add
+
+pyi_rth_usb.py
+file
+
+
+
+add
+
