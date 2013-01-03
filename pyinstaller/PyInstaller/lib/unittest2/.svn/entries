@@ -1,0 +1,119 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/PyInstaller/lib/unittest2
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+test
+dir
+
+
+
+add
+
+compatibility.py
+file
+
+
+
+add
+
+runner.py
+file
+
+
+
+add
+
+suite.py
+file
+
+
+
+add
+
+case.py
+file
+
+
+
+add
+
+util.py
+file
+
+
+
+add
+
+result.py
+file
+
+
+
+add
+
+__init__.py
+file
+
+
+
+add
+
+__main__.py
+file
+
+
+
+add
+
+signals.py
+file
+
+
+
+add
+
+main.py
+file
+
+
+
+add
+
+collector.py
+file
+
+
+
+add
+
+loader.py
+file
+
+
+
+add
+

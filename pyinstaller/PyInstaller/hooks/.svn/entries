@@ -1,0 +1,868 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/PyInstaller/hooks
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+hook-pywintypes.py
+file
+
+
+
+add
+
+hook-parser.py
+file
+
+
+
+add
+
+hook-DateTime.mxDateTime.py
+file
+
+
+
+add
+
+hook-DateTime.py
+file
+
+
+
+add
+
+hook-paste.exceptions.reporter.py
+file
+
+
+
+add
+
+hook-cx_Oracle.py
+file
+
+
+
+add
+
+hook-pywinauto.py
+file
+
+
+
+add
+
+hook-PyQt4.uic.py
+file
+
+
+
+add
+
+hook-xml.py
+file
+
+
+
+add
+
+__init__.py
+file
+
+
+
+add
+
+hook-django.contrib.py
+file
+
+
+
+add
+
+hook-_mysql.py
+file
+
+
+
+add
+
+hook-PyQt4.Qt.py
+file
+
+
+
+add
+
+hook-PIL.Image.py
+file
+
+
+
+add
+
+hook-pygments.lexers.py
+file
+
+
+
+add
+
+hook-PyQt4.QtGui.py
+file
+
+
+
+add
+
+hook-email.message.py
+file
+
+
+
+add
+
+hook-pyttsx.py
+file
+
+
+
+add
+
+hook-wx.lib.pubsub.setuparg1.py
+file
+
+
+
+add
+
+hook-PyQt4.QtCore.py
+file
+
+
+
+add
+
+hook-PyQt4.QtNetwork.py
+file
+
+
+
+add
+
+hook-PyQt4.phonon.py
+file
+
+
+
+add
+
+hook-setuptools.py
+file
+
+
+
+add
+
+hook-xml.dom.html.py
+file
+
+
+
+add
+
+hook-pygame.py
+file
+
+
+
+add
+
+hook-enchant.checker.py
+file
+
+
+
+add
+
+hook-xml.dom.html.HTMLDocument.py
+file
+
+
+
+add
+
+hook-PIL.py
+file
+
+
+
+add
+
+hook-OpenGL.py
+file
+
+
+
+add
+
+hook-django.db.py
+file
+
+
+
+add
+
+hook-kinterbasdb.py
+file
+
+
+
+add
+
+hook-_sre.py
+file
+
+
+
+add
+
+hook-pyexpat.py
+file
+
+
+
+add
+
+hook-PIL.SpiderImagePlugin.py
+file
+
+
+
+add
+
+hook-time.py
+file
+
+
+
+add
+
+hook-pywinauto.tests.py
+file
+
+
+
+add
+
+hook-win32com.py
+file
+
+
+
+add
+
+hook-django.db.backends.mysql.py
+file
+
+
+
+add
+
+hook-django.db.backends.oracle.py
+file
+
+
+
+add
+
+hook-psycopg2.py
+file
+
+
+
+add
+
+hook-django.contrib.sessions.py
+file
+
+
+
+add
+
+hook-zmq.py
+file
+
+
+
+add
+
+hook-_elementtree.py
+file
+
+
+
+add
+
+hook-cPickle.py
+file
+
+
+
+add
+
+hook-regex.py
+file
+
+
+
+add
+
+hook-iu.py
+file
+
+
+
+add
+
+hook-PyQt4.QtHelp.py
+file
+
+
+
+add
+
+hook-xml.dom.ext.reader.py
+file
+
+
+
+add
+
+hook-xml.etree.cElementTree.py
+file
+
+
+
+add
+
+shared_PIL_Image.py
+file
+
+
+
+add
+
+hook-lxml.etree.py
+file
+
+
+
+add
+
+hook-_tkinter.py
+file
+
+
+
+add
+
+hook-matplotlib.backends.py
+file
+
+
+
+add
+
+hook-pyodbc.py
+file
+
+
+
+add
+
+hook-PyQt4.Qwt5.py
+file
+
+
+
+add
+
+hook-pythoncom.py
+file
+
+
+
+add
+
+django-import-finder.py
+file
+
+
+
+add
+
+hook-Image.py
+file
+
+
+
+add
+
+hookutils.py
+file
+
+
+
+add
+
+hook-carchive.py
+file
+
+
+
+add
+
+hook-PyQt4.Qt3Support.py
+file
+
+
+
+add
+
+hook-PyQt4.QtSql.py
+file
+
+
+
+add
+
+hook-django.core.cache.py
+file
+
+
+
+add
+
+hook-PyQt4.uic.port_v3.py
+file
+
+
+
+add
+
+hook-matplotlib.numerix.py
+file
+
+
+
+add
+
+hook-django.db.backends.py
+file
+
+
+
+add
+
+hook-codecs.py
+file
+
+
+
+add
+
+hook-win32ui.py
+file
+
+
+
+add
+
+hook-django.py
+file
+
+
+
+add
+
+hook-sqlalchemy.py
+file
+
+
+
+add
+
+hook-django.core.management.py
+file
+
+
+
+add
+
+hook-PyQt4.QtTest.py
+file
+
+
+
+add
+
+shared_PIL_SpiderImagePlugin.py
+file
+
+
+
+add
+
+hook-wx.lib.activex.py
+file
+
+
+
+add
+
+hook-storm.database.py
+file
+
+
+
+add
+
+hook-SpiderImagePlugin.py
+file
+
+
+
+add
+
+hook-encodings.py
+file
+
+
+
+add
+
+hook-anydbm.py
+file
+
+
+
+add
+
+hook-PyQt4.QtWebKit.py
+file
+
+
+
+add
+
+hook-dns.rdata.py
+file
+
+
+
+add
+
+hook-xml.dom.py
+file
+
+
+
+add
+
+enchant-datafiles-finder.py
+file
+
+
+
+add
+
+hook-PyQt4.py
+file
+
+
+
+add
+
+hook-distutils.py
+file
+
+
+
+add
+
+hook-PyQt4.QtSvg.py
+file
+
+
+
+add
+
+hook-qt.py
+file
+
+
+
+add
+
+hook-enchant.checker.wxSpellCheckerDialog.py
+file
+
+
+
+add
+
+hook-PyQt4.QtXml.py
+file
+
+
+
+add
+
+hook-pygments.styles.py
+file
+
+
+
+add
+
+hook-xml.sax.saxexts.py
+file
+
+
+
+add
+
+hook-lxml.objectify.py
+file
+
+
+
+add
+
+hook-usb.py
+file
+
+
+
+add
+
+hook-mako.codegen.py
+file
+
+
+
+add
+
+hook-PyQt4.uic.port_v2.py
+file
+
+
+
+add
+
+hook-xml.dom.domreg.py
+file
+
+
+
+add
+
+hook-xml.sax.py
+file
+
+
+
+add
+
+hook-OpenGL_accelerate.py
+file
+
+
+
+add
+
+hook-PyQt4.QtAssistant.py
+file
+
+
+
+add
+
+hook-cStringIO.py
+file
+
+
+
+add
+
+hook-site.py
+file
+
+
+
+add
+
+hook-babel.py
+file
+
+
+
+add
+
+hook-gadfly.py
+file
+
+
+
+add
+
+hook-vtkpython.py
+file
+
+
+
+add
+
+hook-matplotlib.py
+file
+
+
+
+add
+
+hook-PyQt4.QtOpenGL.py
+file
+
+
+
+add
+
+hook-django.core.mail.py
+file
+
+
+
+add
+
+hook-tables.py
+file
+
+
+
+add
+
+hook-cElementTree.py
+file
+
+
+
+add
+
+hook-django.db.backends.mysql.base.py
+file
+
+
+
+add
+
+hook-django.db.backends.oracle.base.py
+file
+
+
+
+add
+
+hook-xml.dom.ext.py
+file
+
+
+
+add
+
+hook-win32com.client.py
+file
+
+
+
+add
+
+hook-enchant.py
+file
+
+
+
+add
+
+hook-os.py
+file
+
+
+
+add
+
+hook-h5py.py
+file
+
+
+
+add
+
+hook-gtk.py
+file
+
+
+
+add
+
+hook-email.py
+file
+
+
+
+add
+
+hook-django.core.py
+file
+
+
+
+add
+
+hook-PyQt4.QtScript.py
+file
+
+
+
+add
+
+hook-wx.lib.pubsub.core.py
+file
+
+
+
+add
+

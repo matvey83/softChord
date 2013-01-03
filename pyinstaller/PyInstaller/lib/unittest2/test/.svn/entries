@@ -1,0 +1,147 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/PyInstaller/lib/unittest2/test
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+test_suite.py
+file
+
+
+
+add
+
+test_assertions.py
+file
+
+
+
+add
+
+dummy.py
+file
+
+
+
+add
+
+test_unittest2_with.py
+file
+
+
+
+add
+
+__init__.py
+file
+
+
+
+add
+
+test_loader.py
+file
+
+
+
+add
+
+test_program.py
+file
+
+
+
+add
+
+test_discovery.py
+file
+
+
+
+add
+
+test_runner.py
+file
+
+
+
+add
+
+test_new_tests.py
+file
+
+
+
+add
+
+test_case.py
+file
+
+
+
+add
+
+support.py
+file
+
+
+
+add
+
+test_result.py
+file
+
+
+
+add
+
+test_functiontestcase.py
+file
+
+
+
+add
+
+test_setups.py
+file
+
+
+
+add
+
+test_skipping.py
+file
+
+
+
+add
+
+test_break.py
+file
+
+
+
+add
+

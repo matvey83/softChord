@@ -1,0 +1,91 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/doc/source
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+tools
+dir
+
+
+
+add
+
+docutils-man.conf
+file
+
+
+
+add
+
+Manual.rst
+file
+
+
+
+add
+
+pyi-build.rst
+file
+
+
+
+add
+
+pyi-makeCOMServer.rst
+file
+
+
+
+add
+
+docutils.conf
+file
+
+
+
+add
+
+Makefile
+file
+
+
+
+add
+
+pyinstaller.rst
+file
+
+
+
+add
+
+pyi-makespec.rst
+file
+
+
+
+add
+

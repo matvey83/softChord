@@ -1,0 +1,77 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/PyInstaller/depend
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+modules.py
+file
+
+
+
+add
+
+owner.py
+file
+
+
+
+add
+
+__init__.py
+file
+
+
+
+add
+
+utils.py
+file
+
+
+
+add
+
+impdirector.py
+file
+
+
+
+add
+
+imptracker.py
+file
+
+
+
+add
+
+dylib.py
+file
+
+
+
+add
+

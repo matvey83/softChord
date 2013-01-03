@@ -1,0 +1,119 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/PyInstaller
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+bindepend.py
+file
+
+
+
+add
+
+depend
+dir
+
+
+
+add
+
+makespec.py
+file
+
+
+
+add
+
+utils
+dir
+
+
+
+add
+
+hooks
+dir
+
+
+
+add
+
+__init__.py
+file
+
+
+
+add
+
+build.py
+file
+
+
+
+add
+
+fake
+dir
+
+
+
+add
+
+lib
+dir
+
+
+
+add
+
+loader
+dir
+
+
+
+add
+
+configure.py
+file
+
+
+
+add
+
+log.py
+file
+
+
+
+add
+
+compat.py
+file
+
+
+
+add
+

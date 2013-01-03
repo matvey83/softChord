@@ -1,0 +1,168 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/source/zlib
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+inffast.h
+file
+
+
+
+add
+
+ioapi.c
+file
+
+
+
+add
+
+inffixed.h
+file
+
+
+
+add
+
+unzip.c
+file
+
+
+
+add
+
+zlib.h
+file
+
+
+
+add
+
+ioapi.h
+file
+
+
+
+add
+
+crypt.h
+file
+
+
+
+add
+
+zutil.c
+file
+
+
+
+add
+
+unzip.h
+file
+
+
+
+add
+
+README
+file
+
+
+
+add
+
+crc32.c
+file
+
+
+
+add
+
+zutil.h
+file
+
+
+
+add
+
+inftrees.c
+file
+
+
+
+add
+
+crc32.h
+file
+
+
+
+add
+
+inflate.c
+file
+
+
+
+add
+
+inftrees.h
+file
+
+
+
+add
+
+zconf.h
+file
+
+
+
+add
+
+inflate.h
+file
+
+
+
+add
+
+inffast.c
+file
+
+
+
+add
+
+adler32.c
+file
+
+
+
+add
+

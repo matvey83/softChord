@@ -1,0 +1,42 @@
+10
+
+dir
+0
+https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/PyInstaller/lib/junitxml/tests
+https://softchord.svn.sourceforge.net/svnroot/softchord
+add
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+be02edf8-907f-434d-9d52-e0ffb5e9bc3f
+
+test_junitxml.py
+file
+
+
+
+add
+
+__init__.py
+file
+
+
+
+add
+
