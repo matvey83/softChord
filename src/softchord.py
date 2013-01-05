@@ -4122,7 +4122,7 @@ class App( QtGui.QApplication ):
                     try:
                         converted_chord = self.convertChordFromString(word)
                     except ValueError, err:
-                        tmp_warnings.append( 'WARNING: %s; chord: "%s"' % (str(err), word) ) #word.encode('utf-8')) )
+                        tmp_warnings.append( '  WARNING: %s; chord: "%s"' % (str(err), word) )
                         num_non_chords += 1
                     else:
                         chord_middle_char = (word_start + word_end) // 2
@@ -4135,7 +4135,7 @@ class App( QtGui.QApplication ):
                 # This is a chords line
                 prev_chords = tmp_chords
                 for warning_str in tmp_warnings:
-                    print '  ', warning_str
+                    print warning_str.encode('utf-8')
             else:
                 # This is a lyrics line
                 if prev_chords:
