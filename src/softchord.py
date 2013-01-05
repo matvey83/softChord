@@ -2075,8 +2075,26 @@ class App( QtGui.QApplication ):
                 
                 self.current_song.replaceChord(prev_chord, new_chord)
                 return True
-                
         
+        # Determine if "m" key is pressed:
+        if key == Qt.Key_M:
+            prev_chord = None
+            for iter_chord in self.current_song.iterateAllChords():
+                if iter_chord.character_num == self.selected_char_num:
+                    prev_chord = iter_chord
+                    break
+            
+            if prev_chord:
+                # Chord already exists, flip major/minor
+                new_chord = copy.copy(prev_chord)
+                if new_chord.chord_type_id == 0:
+                    new_chord.chord_type_id = 1
+                else:
+                    new_chord.chord_type_id = 0
+                self.current_song.replaceChord(prev_chord, new_chord)
+            return
+        
+        # Determine if a note key was pressed:
         key_note_dict = {
             Qt.Key_C : 0,
             Qt.Key_D : 2,
@@ -2105,20 +2123,14 @@ class App( QtGui.QApplication ):
             self.current_song.addChord(new_chord)
         else:
             new_chord = copy.copy(prev_chord)
-            if new_chord.note_id == note_id:
-                # Key of the current chord note was pressed, reverse Major/minor:
-                if new_chord.chord_type_id == 0:
-                    new_chord.chord_type_id = 1
-                else:
-                    new_chord.chord_type_id = 0
-            else:
-                # A different note, change to <note> major:
-                new_chord.note_id = note_id
-                new_chord.chord_type_id = 0
-                new_chord.marker = ""
-                new_chord.in_parentheses = False
+            
+            # Change this chord to <note> major:
+            new_chord.note_id = note_id
+            new_chord.chord_type_id = 0
+            new_chord.marker = ""
+            new_chord.in_parentheses = False
             self.current_song.replaceChord(prev_chord, new_chord)
-        
+
         return True
         
     
