@@ -3429,7 +3429,9 @@ class App( QtGui.QApplication ):
             return 
         
         if new_id in all_song_ids:
-            self.error("The ID %i is already used in this songbook" % new_id)
+            song = Song(self, new_id)
+            self.error("The ID %i is already used by song #%s (%s)" % 
+                (new_id, song.number, song.title))
             return
         
         self.curs.execute('UPDATE songs SET id=? WHERE id=?', (new_id, curr_id))
