@@ -3958,7 +3958,11 @@ class App( QtGui.QApplication ):
         """
         Paste text from clipboard as a new song.
         """
-
+        
+        if self.current_songbook_filename == None:
+            self.warning("Please open/create a song book first")
+            return
+        
         self.setWaitCursor()
         text = unicode(self.clipboard.text())
         try:
