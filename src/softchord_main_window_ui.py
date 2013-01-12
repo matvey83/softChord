@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'src/softchord_main_window.ui'
 #
-# Created: Sat Jan 12 00:46:57 2013
+# Created: Sat Jan 12 14:09:06 2013
 #      by: PyQt4 UI code generator 4.8.6
 #
 # WARNING! All changes made in this file will be lost!
@@ -139,7 +139,7 @@ class Ui_MainWindow(object):
 "p, li { white-space: pre-wrap; }\n"
 "</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:11pt; font-weight:400; font-style:normal;\">\n"
 "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Enter chord editing mode (⌘K).   This mode allows you to modify chords for the current song.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.chord_editor_button.setText(QtGui.QApplication.translate("MainWindow", "Chord Editor Mode", None, QtGui.QApplication.UnicodeUTF8))
+        self.chord_editor_button.setText(QtGui.QApplication.translate("MainWindow", "Edit Chords", None, QtGui.QApplication.UnicodeUTF8))
         self.chord_editor_button.setObjectName(_fromUtf8("chord_editor_button"))
         self.horizontalLayout_6.addWidget(self.chord_editor_button)
         self.lyric_editor_button = QtGui.QToolButton(self.layoutWidget1)
@@ -148,7 +148,7 @@ class Ui_MainWindow(object):
 "p, li { white-space: pre-wrap; }\n"
 "</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:11pt; font-weight:400; font-style:normal;\">\n"
 "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Enter lyric editing mode (⌘L).   This mode lets you modify the song text.</p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
-        self.lyric_editor_button.setText(QtGui.QApplication.translate("MainWindow", "Lyric Editor Mode", None, QtGui.QApplication.UnicodeUTF8))
+        self.lyric_editor_button.setText(QtGui.QApplication.translate("MainWindow", "Edit Text", None, QtGui.QApplication.UnicodeUTF8))
         self.lyric_editor_button.setObjectName(_fromUtf8("lyric_editor_button"))
         self.horizontalLayout_6.addWidget(self.lyric_editor_button)
         spacerItem1 = QtGui.QSpacerItem(40, 20, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
@@ -173,20 +173,20 @@ class Ui_MainWindow(object):
 "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
 "p, li { white-space: pre-wrap; }\n"
 "</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:13pt; font-weight:400; font-style:normal;\">\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">To add a new chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Press on a lyrics letter to select it, then press one of the following keys: A, B, C, D, E, F, or G.  To assign a sharp or a flat, press the &quot;Up&quot; or &quot;Down&quot; key afterwards to &quot;transpose&quot; the chord.  To create a minor chord, press the &quot;M&quot; key.  To create more advanced chord variations, double-click on the created chord (a dialog box will open).</span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To add a new chord:</span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Press on a lyrics letter to select it, then press one of the following keys: A, B, C, D, E, F, or G.  To assign a sharp or a flat, press the &quot;Up&quot; or &quot;Down&quot; key afterwards to &quot;transpose&quot; the chord.  To create a minor chord, press the &quot;M&quot; key.  To create advanced chords, double-click on the created chord (a dialog box will open).</span></p>\n"
 "<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">To edit a chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Either double click it, or click it to select, and then press &quot;M&quot; to toggle major/minor, press another letter to assign a different note, or press &quot;Up&quot; or &quot;Down&quot; keys to transpose it.</span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To edit a chord:</span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Click on the chord to select it, then press &quot;M&quot; to toggle major/minor, press another letter to assign a different note, or press &quot;Up&quot; or &quot;Down&quot; keys to transpose it. Double-click on the chord for advanced modifications.</span></p>\n"
 "<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">To move a chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Click on it to select it, and then use the &quot;Left&quot; or &quot;Right&quot; keys to move it relative to the lyrics below it. Alternatively you can simply drag it to the new place.</span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To move a chord:</span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Click on the chord to select it, and then use the &quot;Left&quot; or &quot;Right&quot; keys to move it relative to the lyrics below it. Alternatively you can simply drag it to the new place.</span></p>\n"
 "<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">To duplicate a chord:</span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To duplicate a chord:</span></p>\n"
 "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">While holding the &quot;Option&quot; key, click and drag the chord. Alternatively you can use copy-and-paste.</span></p>\n"
 "<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">To delete a chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Click on it to select it, and press the &quot;Delete&quot; key.</span></p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To delete a chord:</span></p>\n"
+"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Click on the chord to select it, and press the &quot;Delete&quot; key.</span></p></body></html>", None, QtGui.QApplication.UnicodeUTF8))
         self.chords_editor_label.setText(QtGui.QApplication.translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
 "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
 "p, li { white-space: pre-wrap; }\n"
