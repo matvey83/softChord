@@ -1941,8 +1941,8 @@ class App( QtGui.QApplication ):
         
         self.editor.viewport().setCursor( QtCore.Qt.IBeamCursor)
 
-        self.ui.lyrics_editor_label.show()
         self.ui.chords_editor_label.hide()
+        self.ui.lyrics_editor_label.show()
         self.editor.lyric_editor_mode = True
         self.editor.setUndoRedoEnabled(True)
         
