@@ -2914,11 +2914,12 @@ class App( QtGui.QApplication ):
             printer.setOrientation(QtGui.QPrinter.Portrait)
             printer.setOutputFileName(pdf_file)
             
-            # OLD: printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
             if sys.platform == 'win32':
                 printer.setOutputFormat(QtGui.QPrinter.PdfFormat) 
             elif sys.platform == 'darwin':
-                printer.setOutputFormat(QtGui.QPrinter.NativeFormat) 
+                # DON'T set it to NativeFormat, as that messes
+                # page size on export
+                printer.setOutputFormat(QtGui.QPrinter.PdfFormat)
             
             num_printed = self.printSongsToPrinter(song_ids, printer, "Exporting to PDF...")
             # On IOError, num_printed will be 0.
