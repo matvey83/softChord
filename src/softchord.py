@@ -2751,13 +2751,8 @@ class App( QtGui.QApplication ):
             self.print_editor.setDocument(self.empty_doc)
             painter.end()
             
+            self.reportScaleRatio(min_scale_ratio, len(song_ids))
 
-            if min_scale_ratio != 1.0:
-                if len(song_ids) > 1:
-                    self.info("The biggest song was scaled down to %.2f" % min_scale_ratio)
-                else:
-                    self.info("The song was scaled down to %.2f" % min_scale_ratio)
-        
         except IOError, err:
             self.error(str(err))
             return 0
@@ -3018,12 +3013,18 @@ class App( QtGui.QApplication ):
             
         progress.setValue(i+1) # Close the progress dialog
         self.print_editor.setDocument(self.empty_doc)
+    
+        self.reportScaleRatio(min_scale_ratio, len(song_ids))
+    
+
+    def reportScaleRatio(self, min_scale_ratio, num_songs):
 
         if min_scale_ratio != 1.0:
-            if len(song_ids) > 1:
-                self.info("The biggest song was scaled down to %.2f" % min_scale_ratio)
+            scale_percent = min_scale_ratio * 100.0
+            if num_songs > 1:
+                self.info("Some songs were scaled down up to %.1f%% to fit the page." % scale_percent)
             else:
-                self.info("The song was scaled down to %.2f" % min_scale_ratio)
+                self.info("The song was scaled down to %.1f%% to fit the page." % scale_percent)
 
 
     
