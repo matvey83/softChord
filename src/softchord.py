@@ -46,19 +46,19 @@ CHORDS_COLOR = "BLUE"
 PREFER_SHARPS, PREFER_FLATS, PREFER_NEITHER = range(3)
 
 chord_types_list = [
-  (0, u"Major", u""),
-  (1, u"Minor", u"m"),
-  (2, u"Suspended 4th", u"sus4"),
-  (3, u"Major 7th", u"M7"),
-  (4, u"Minor 7th", u"m7"),
-  (5, u"Dominant 7th", u"7"),
-  (6, u"Add 9", u"9"),
-  (7, u"Augmented", u"aug"),
-  (8, u"Major 6th", u"6"),
-  (9, u"Minor 6th", u"m6"),
-  (10, u"11th", u"11"),
-  (11, u"Diminished", u"°"),
-  (12, u"Diminished 7th", u"°7"),
+  (0, "Major", u""),
+  (1, "Minor", u"m"),
+  (2, "Suspended 4th", u"sus4"),
+  (3, "Major 7th", u"M7"),
+  (4, "Minor 7th", u"m7"),
+  (5, "Dominant 7th", u"7"),
+  (6, "Add 9", u"9"),
+  (7, "Augmented", u"aug"),
+  (8, "Major 6th", u"6"),
+  (9, "Minor 6th", u"m6"),
+  (10, "11th", u"11"),
+  (11, "Diminished", u"°"),
+  (12, "Diminished 7th", u"°7"),
 ]
 
 # Alternative text for chord types (for parsing text):
@@ -1679,6 +1679,8 @@ class App( QtGui.QApplication ):
         self.chord_type_names = []
         self.chord_type_prints = []
         for chord_type_id, name, print_text in chord_types_list:
+            if print_text:
+                name = "%s - %s" % (print_text, name)
             self.chord_type_names.append(name)
             self.chord_type_prints.append(print_text)
         
