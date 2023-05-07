@@ -7,4 +7,3 @@ if __name__ == '__main__':
     import softchord
 
     softchord.main()
-
