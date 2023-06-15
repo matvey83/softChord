@@ -3560,7 +3560,7 @@ class App(QtWidgets.QApplication):
 
             # FIXME what if the title is too long?
             header_rect = QtCore.QRect(x, y, 1000.0, lyrics_height)
-            output_painter.drawText(header_rect, Qt.AlignLeft, header_str)
+            output_painter.drawText(header_rect, Qt.AlignmentFlag.AlignLeft, header_str)
 
             output_painter.translate(0.0, lyrics_height)
 
@@ -3596,15 +3596,15 @@ class App(QtWidgets.QApplication):
 
         max_width = rect.width()
         max_height = rect.height()
-        max_name_width = max_width - self.lyrics_font_metrics.width(".999")
+        max_name_width = max_width - self.lyrics_font_metrics.boundingRect(".999").width()
 
         lyrics_height = self.lyrics_font_metrics.height()
-        dot_char_width = self.lyrics_font_metrics.width(".")
+        dot_char_width = self.lyrics_font_metrics.boundingRect(".").width()
 
         curr_height = 0.0
         for song_name, song_num in lines:
             # Keep removing the last word of the song title until it fits into a line:
-            while self.lyrics_font_metrics.width(song_name) > max_name_width:
+            while self.lyrics_font_metrics.boundingRect(song_name).width() > max_name_width:
                 # Remove the last word:
                 s = song_name.split()
                 if len(s) == 1:
@@ -3615,10 +3615,10 @@ class App(QtWidgets.QApplication):
                 song_name = song_name[:-remove_chars]
 
             name_bounds_rect = painter.drawText(0, curr_height, max_width,
-                                                lyrics_height, Qt.AlignLeft,
+                                                lyrics_height, Qt.AlignmentFlag.AlignLeft,
                                                 song_name)
             num_bounds_rect = painter.drawText(0, curr_height, max_width,
-                                               lyrics_height, Qt.AlignRight,
+                                               lyrics_height, Qt.AlignmentFlag.AlignRight,
                                                str(song_num))
 
             dots_left = name_bounds_rect.right()
@@ -3633,7 +3633,7 @@ class App(QtWidgets.QApplication):
 
                 # FIXME display dots a bit higher
                 painter.drawText(dots_left, curr_height, dots_width,
-                                 lyrics_height, Qt.AlignLeft, dots_str)
+                                 lyrics_height, Qt.AlignmentFlag.AlignLeft, dots_str)
 
             curr_height += lyrics_height
 
