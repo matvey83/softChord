@@ -144,10 +144,7 @@ if __name__ == "__main__":
     song_title = None
     filename = sys.argv[1].decode('utf-8')
 
-    #fh = codecs.open( unicode(filename).encode('utf-8'), 'rU', encoding='utf_8_sig')
-    #fh = open(filename) #.encode('utf-8'), 'rU', encoding='utf_8_sig')
-
-    song_text = codecs.open(unicode(filename), 'rU',
+    song_text = codecs.open(filename, 'rU',
                             encoding='utf_8_sig').readlines()
 
     tmp_warnings = []

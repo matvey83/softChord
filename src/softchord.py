@@ -4,14 +4,14 @@ The main source file for softChord (previously softChord Editor)
 
 Writen by: Matvey Adzhigirey
 Development started in 10 December 2010
-
+Ported to Qt6 in May-June 2023.
 """
 
 # NOTE The sqlite3 is intentionally used instead of QtSql.
 
-from PyQt6 import QtCore, QtGui, QtWidgets, uic
+from PyQt6 import QtCore, QtGui, QtWidgets #, uic
 from PyQt6.QtCore import Qt
-from PyQt6.QtPrintSupport import QPrinter
+from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt6.QtGui import QPageSize
 
 PageSizeId = QPageSize.PageSizeId
@@ -438,13 +438,13 @@ class SongsProxyModel(QtCore.QSortFilterProxyModel):
 
         rowobj = model.getRow(sourceRow)
 
-        if QtCore.QString(rowobj.title).contains(filter_string,
-                                                 Qt.CaseInsensitive):
+        # TODO also strip out punctuation (e.g. commas)
+        lower_filter_str = filter_string.casefold()
+        if lower_filter_str in rowobj.title.casefold():
             return True
 
         if rowobj.number != -1:
-            if QtCore.QString(str(rowobj.number)).contains(
-                    filter_string, Qt.CaseInsensitive):
+            if lower_filter_str in str(rowobj.number):
                 return True
 
         return False
@@ -1398,7 +1398,7 @@ class CustomTextEdit(QtWidgets.QTextEdit):
         Called when mouse is DOUBLE-CLICKED in the song chords widget.
         """
         if self.lyric_editor_mode:
-            super.mouseDoubleClickEvent(event)
+            super().mouseDoubleClickEvent(event)
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
@@ -1906,8 +1906,8 @@ class App(QtWidgets.QApplication):
             source_index = self.songs_model.index(row, 0)
             proxy_index = self.songs_proxy_model.mapFromSource(source_index)
             selection_model.select(
-                proxy_index, QtGui.QItemSelectionModel.Select |
-                QtGui.QItemSelectionModel.Rows)
+                proxy_index, QtCore.QItemSelectionModel.SelectionFlag.Select |
+                QtCore.QItemSelectionModel.SelectionFlag.Rows)
             #self.ui.songs_view.selectRow(proxy_index.row())
 
     def clearFilterClicked(self):
@@ -2583,13 +2583,11 @@ class App(QtWidgets.QApplication):
 
         printer = QPrinter()
         printer.setFullPage(True)
-        printer.setPageSize(PageSizeId.Letter)
+        #printer.setPageSize(QPageSize.Letter)
         printer.setPageOrientation(QtGui.QPageLayout.Orientation.Portrait)
 
-        painter = QtGui.QPainter()
-
-        print_dialog = QtGui.QPrintDialog(printer, self.win)
-        if print_dialog.exec() == QtWidgets.QDialog.Accepted:
+        print_dialog = QPrintDialog(printer, self.win)
+        if print_dialog.exec(): # accepted
             ok = PdfDialog(self).display(self.pdf_options,
                                          single_pdf_export=True)
             if not ok:
@@ -3147,7 +3145,7 @@ class App(QtWidgets.QApplication):
             suggested_path = os.path.join(QtCore.QDir.home().path(),
                                           self.current_song.title + ".chordpro")
 
-            filename = QtWidgetrs.QFileDialog.getSaveFileName(
+            filename = QtWidgets.QFileDialog.getSaveFileName(
                 self.win,
                 "Save text file as:",
                 suggested_path,
@@ -3524,7 +3522,7 @@ class App(QtWidgets.QApplication):
                 let_width = self.chords_font_metrics.horizontalAdvance(letter)
                 baseline = normal_baseline
 
-            #bound_rect = painter.drawText(letter_rect, QtCore.Qt.AlignLeft, letter)
+            #bound_rect = painter.drawText(letter_rect, Qt.AlignLeft, letter)
 
             pos = QtCore.QPointF(letter_left, baseline)
             painter.drawText(pos, letter)
@@ -3710,7 +3708,7 @@ class App(QtWidgets.QApplication):
 
             # FIXME what if the title is too long?
             header_rect = QtCore.QRect(x, y, 1000.0, lyrics_height)
-            output_painter.drawText(header_rect, QtCore.Qt.AlignLeft,
+            output_painter.drawText(header_rect, Qt.AlignLeft,
                                     header_str)
 
             output_painter.translate(0.0, lyrics_height)
@@ -3918,7 +3916,7 @@ class App(QtWidgets.QApplication):
         """
 
         text = self.clipboard.text()
-        self.ui.actionPasteAsNewSong.setEnabled(not text.isEmpty())
+        self.ui.actionPasteAsNewSong.setEnabled(bool(text))
         self.updateEditMenu()
 
     def pasteAsNewSong(self):
