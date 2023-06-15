@@ -144,8 +144,7 @@ if __name__ == "__main__":
     song_title = None
     filename = sys.argv[1].decode('utf-8')
 
-    song_text = codecs.open(filename, 'rU',
-                            encoding='utf_8_sig').readlines()
+    song_text = codecs.open(filename, 'rU', encoding='utf_8_sig').readlines()
 
     tmp_warnings = []
     song_lines = []
