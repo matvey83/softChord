@@ -74,8 +74,6 @@ def convert_chord(chord_str):
     Convert the specified chord string to a note_id, chord_type_id, and a bass_note_id.
     """
 
-    input_chord_str = chord_str[:]
-
     in_parentheses = False
     marker = None
 
@@ -86,7 +84,6 @@ def convert_chord(chord_str):
     else:
         bass = None
 
-    #print 'chord_str after bass removal:', chord_str.encode('utf-8')
     if chord_str[0] in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
         if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
             note = chord_str[:2]
@@ -96,11 +93,7 @@ def convert_chord(chord_str):
             type = chord_str[1:]
     else:
         raise ValueError("First chord letter is not a note")
-        #print 'WARNING first chord letter is not a note:', chord_str.encode('utf-8')
-        #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
-        #return None
 
-    #print '      ', note, '  ', type, '  ', bass
 
     if len(note) > 1:
         if note[1] == u'#':
@@ -113,11 +106,6 @@ def convert_chord(chord_str):
         elif bass[1] == u'b':
             bass = bass[0] + u'♭'
 
-    #if bass:
-    #    print 'converting:', note.encode('utf-8'), type, bass.encode('utf-8')
-    #else:
-    #    print 'converting:', note.encode('utf-8'), type, 'None'
-
     note_id = note_text_id_dict[note]
     if bass != None:
         bass_id = note_text_id_dict[bass]
@@ -128,13 +116,6 @@ def convert_chord(chord_str):
         type_id = chord_type_texts_dict[type]
     except KeyError:
         raise ValueError("Unkown chord type")
-        #print 'WARNING: unknown chord type:', type.encode('utf-8')
-        #print '  INPUT CHORD:', input_chord_str.encode('utf-8')
-        #return None
-
-    #print '  note:', note_id
-    #print '  type:', type_id
-    #print '  bass:', bass_id
 
     return (marker, note_id, type_id, bass_id, in_parentheses)
 
@@ -190,11 +171,7 @@ if __name__ == "__main__":
             line_lyrics += char
             curr_adjusted_char_num += 1
 
-        print('line lyrics:', line_lyrics)
-        print('line_chords:', line_chords)
-
         chords_dict = {}
-        #converted_chords = []
 
         for char_num, chord_text in line_chords:
             try:
@@ -203,10 +180,8 @@ if __name__ == "__main__":
                 tmp_warnings.append('WARNING: %s CHORD "%s"' %
                                     (str(err), word.encode('utf-8')))
             else:
-                #converted_chords.append( (char_num, converted_chord) )
                 chords_dict[char_num] = converted_chord
 
-        #print 'converted_chords:', converted_chords
         print('')
         song_lines.append((line_lyrics, chords_dict))
 
@@ -224,43 +199,6 @@ if __name__ == "__main__":
             global_song_chords[song_char_num] = chord
 
         line_start_char_num += len(lyrics) + 1  # 1 for the EOL character
-    """
-    if True:
-        print 'IMPORTING'
-        
-        song_id = 0
-        for row in curs.execute("SELECT MAX(id) from songs"):
-            song_id = row[0] + 1
-        print 'song_id:', song_id
-        print 'song_num:', song_num
-        print 'song_title:', song_title.encode('utf-8')
-        
-        # Replace all double quotes with single quotes:
-        global_song_text = global_song_text.replace('"', "'")
-
-        out = curs.execute("INSERT INTO songs (id, number, text, title) " + \
-            'VALUES (%i, %i, "%s", "%s")' % (song_id, song_num, global_song_text, song_title))
-        print 'song add out:', out
-        
-        for song_char_num, chord in global_song_chords.iteritems():
-            (marker, note_id, type_id, bass_id, in_parentheses) = chord
-            if not marker:
-                marker = ""
-            
-            in_parentheses = int(in_parentheses)
-            
-            # Get the next available ID:
-            chord_id = 0
-            for row in curs.execute("SELECT MAX(id) from song_chord_link"):
-                chord_id = row[0] + 1
-            
-            out = curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                        'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
-        
-        curs.commit()
-        print 'DONE', out
-
-    """
     # Go to next song
 
 #EOF

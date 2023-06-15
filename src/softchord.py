@@ -9,7 +9,7 @@ Ported to Qt6 in May-June 2023.
 
 # NOTE The sqlite3 is intentionally used instead of QtSql.
 
-from PyQt6 import QtCore, QtGui, QtWidgets  #, uic
+from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt6.QtGui import QPageSize
@@ -85,7 +85,6 @@ global_notes_list = [
 # File extensions that can be used for the ChordPro file format:
 chordpro_extensions = [".pro", ".chopro", ".chordpro", ".cpm"]
 
-#print 'dir executable:', dir(sys.executable)
 if not os.path.basename(sys.executable).lower().startswith("python"):
     exec_dir = os.path.dirname(sys.executable)
 else:
@@ -266,32 +265,9 @@ class DeleteSongsCommand(QtGui.QUndoCommand):
             # Update the song table from database:
             self.app.songs_model.updateFromDatabase()
 
-            #print 'redo done'
         finally:
             self.app.restoreCursor()
 
-
-"""
-class SvgTextObject(QObject, public QTextObjectInterface
-     {
-              Q_OBJECT
-                   Q_INTERFACES(QTextObjectInterface)
-
-                    public:
-                         QSizeF intrinsicSize(QTextDocument *doc, int posInDocument,
-                                                   const QTextFormat &format);
-                              void drawObject(QPainter *painter, const QRectF &rect, QTextDocument *doc,
-                                                   int posInDocument, const QTextFormat &format);
-                               };
-
-"""
-
-
-def tr(text):
-    """
-    Returns translated GUI text. Not implemented yet.
-    """
-    return text
 
 
 def transpose_note(note_id, steps):
@@ -383,8 +359,6 @@ class SongsTableModel(QtCore.QAbstractTableModel):
                 return self.header_list[section]
             else:
                 return None  # Do not vertical header
-                rowobj = self._data[section]
-                return rowobj.id
         return None
 
     def getRow(self, row):
@@ -453,14 +427,6 @@ class SongsProxyModel(QtCore.QSortFilterProxyModel):
         leftData = self.sourceModel().data(left)
         rightData = self.sourceModel().data(right)
         return False  # FIXME
-        # Convert strings to floats:
-        leftDataFloat, leftOk = leftData.toFloat()
-        rightDataFloat, rightOk = rightData.toFloat()
-        if leftOk and rightOk:
-            return leftDataFloat < rightDataFloat
-        else:
-            # Non-number value ("NA", for example):
-            return leftData.toString() < rightData.toString()
 
 
 class SongChord:
@@ -509,7 +475,6 @@ class SongChord:
         # Convert the chord note and type to a text string:
         if self.marker:  # Not NULL
             # Add the chord prefix (example: "1:", "2:")
-
             chord_str = '%s:%s%s' % (self.marker, note_text, chord_type_text)
         else:
             chord_str = '%s%s' % (note_text, chord_type_text)
@@ -599,7 +564,6 @@ class Song:
         if self.key_note_id == None:
             self.key_note_id = -1
 
-        #print 'saved in database key_is_major:', row[5], 'type:', type(row[5])
         self.key_is_major = row[5]
         if self.key_is_major == None:
             self.key_is_major = -1
@@ -613,7 +577,7 @@ class Song:
         for row in self.app.curs.execute(
                 "SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i"
                 % self.id):
-            id = row[0]
+            # id = row[0]
             song_char_num = row[1]
             note_id = row[2]
             chord_type_id = row[3]
@@ -707,7 +671,6 @@ class Song:
             if block == self.doc.end():
                 break
 
-            # block = next(iter(block))
             block = block.next()
 
             line_start_char += len(
@@ -889,23 +852,16 @@ class Song:
         song_text = ''
         self.updateSharpsOrFlats()
 
-        #for linenum, line_text in enumerate(self.iterateLineTexts()):
-
         lines = self.getAllText().split("\n")
         for linenum, line_text in enumerate(lines):
 
             if self.getLineHasChords(linenum):
                 # Add the chords line above this line
 
-                line_chord_text_list = [u' '] * len(
-                    line_text)  # FIXME add a few to the end???
+                line_chord_text_list = [u' '] * len(line_text)
 
                 # Figure out the lyric letter for the mouse location:
-                song_char_num = -1
                 for line_char_num in range(len(line_text)):
-                    song_char_num = self.lineCharToSongChar(
-                        linenum, line_char_num)
-
                     # Figure out if a chord is attached to this letter:
                     for chord in self.iterateAllChords():
                         chord_song_char_num = chord.character_num
@@ -994,9 +950,9 @@ class Song:
         if self.key_note_id != -1:
             self.key_note_id = transpose_note(self.key_note_id, steps)
 
-        # NOTE: Do NOT transpose the alternative key (but perhaps change it?)
-        #if self.alt_key_note_id != -1:
-        #    self.alt_key_note_id = transpose_note(self.alt_key_note_id, steps)
+        # NOTE: Do NOT transpose the alternative key, but clear it:
+        if self.alt_key_note_id != -1:
+            self.alt_key_note_id = -1
 
         self.updateSharpsOrFlats()
 
@@ -1107,9 +1063,6 @@ class Song:
                 renumber_map[char_num] = char_num - num_deleted_chars
                 modified_text += char
 
-        # print "Number of characters deleted from this song:", len(all_song_delete_positions)
-        # print "Number of characters in original_text:", len(original_text)
-
         # Renumber the chords based on the renumber_map:
         new_all_chords = []
         for chord in self.iterateAllChords():
@@ -1131,9 +1084,6 @@ class Song:
                               (modified_text, self.id))
 
         self.app.curs.commit()
-        # print "Database updated"
-
-        # self.setAllText(modified_text, new_all_chords)
 
         # FIXME THIS WILL NOT WORK ON THE SONG THAT IS CURRENTLY EDITED!
 
@@ -1170,14 +1120,6 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                 painter = QtGui.QPainter()
                 painter.begin(self.viewport())
 
-                #scale_ratio = self.app.zoom_factor
-                #scale_ratio = 1.0
-                #painter.scale(scale_ratio, scale_ratio)
-
-                #QTextDocument::drawContents ( QPainter * p, const QRectF & rect = QRectF() )
-                #rect = QtCore.QRectF(0.0, 0.0, 1000.0, 1000.0)
-                #self.document().drawContents(painter) #, rect)
-
                 painter.setFont(self.app.chords_font)
                 painter.setPen(self.app.chords_color)
 
@@ -1189,18 +1131,15 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                     chords_height, lyrics_height, line_height = self.app.getHeightsWithChords(
                     )
 
-                    cursor.setPosition(
-                        chord.character_num)  #, QtGui.QTextCursor.KeepAnchor)
+                    cursor.setPosition(chord.character_num)
                     left_rect = self.cursorRect(cursor)
-                    cursor.setPosition(chord.character_num +
-                                       1)  #, QtGui.QTextCursor.KeepAnchor)
+                    cursor.setPosition(chord.character_num + 1)
                     right_rect = self.cursorRect(cursor)
 
                     chord_text = chord.getChordText()
 
-                    chord_middle = (left_rect.left() + right_rect.right()
-                                   ) // 2  # Average of left and right
-                    #chord_width = self.app.chords_font_metrics.width(chord_text)
+                    # Average of left and right
+                    chord_middle = (left_rect.left() + right_rect.right()) // 2
                     chord_width = self.app.getChordWidth(chord_text)
                     chord_left = chord_middle - (chord_width / 2.0)
                     chord_top = left_rect.bottom() - line_height
@@ -1209,8 +1148,6 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                                                chord_width, chords_height)
 
                     self.app.drawChord(painter, chord_rect, chord_text)
-
-                #painter.scale(1.0/scale_ratio, 1.0/scale_ratio)
 
                 painter.end()
 
@@ -1292,11 +1229,6 @@ class CustomTextEdit(QtWidgets.QTextEdit):
             if not self.dragging_chord:
                 # Hovering, highlight the new chord/letter
                 self.app.hover_char_num = song_char_num
-
-                # No chord is being currently dragged. Clear previous selection:
-                # WHEN? self.app.selected_char_num = song_char_num
-                # self.app.selected_char_num = None
-
             else:
                 # Dragging - A chord is being dragged
                 song = self.app.current_song
@@ -1304,7 +1236,6 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                 if song_char_num != self.dragging_chord.character_num:
                     # The dragged chord was moved to a new position
 
-                    #prev_chord_linenum, prev_line_char_num = song.songCharToLineChar(self.dragging_chord.character_num)
                     new_chord = copy.copy(self.dragging_chord)
                     new_chord.character_num = song_char_num
                     song.replaceChord(self.dragging_chord, new_chord)
@@ -1387,7 +1318,6 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                     if other_chord.character_num == self.dragging_chord.character_num and other_chord != self.dragging_chord:
                         self.app.current_song.deleteChord(other_chord)
                         break
-                #self.current_song.sendToDatabase()
                 self.app.editor.viewport().update()
 
             self.dragging_chord_orig_position = -1
@@ -1460,7 +1390,6 @@ class ChordDialog(QtWidgets.QDialog):
         super().__init__(app.win)
 
         self.app = app
-        # self.ui = uic.loadUi(chord_dialog_ui_file)
         self.ui = softchord_chord_dialog_ui.Ui_Dialog()
         self.ui.setupUi(self)
 
@@ -1548,7 +1477,6 @@ class PdfDialog(QtWidgets.QDialog):
         super().__init__(app.win)
 
         self.app = app
-        # self.ui = uic.loadUi(pdf_dialog_ui_file)
         self.ui = softchord_pdf_dialog_ui.Ui_Dialog()
         self.ui.setupUi(self)
 
@@ -1634,7 +1562,6 @@ class App(QtWidgets.QApplication):
         super().__init__(args)
         self.doc_editor_offset = 0  # FIXME
 
-        # self.ui = uic.loadUi(script_ui_file)
         self.win = QtWidgets.QMainWindow()
         self.ui = softchord_main_window_ui.Ui_MainWindow()
         self.ui.setupUi(self.win)
@@ -1703,8 +1630,6 @@ class App(QtWidgets.QApplication):
 
         self.editor = CustomTextEdit(self)
         self.editor.undoAvailable.connect(self.updateEditMenu)
-        # self.print_editor = CustomTextEdit(self)
-        #self.print_editor.setVisible(False)
         self.print_editor = self.editor  # FIXME
 
         self.ui.lyric_editor_layout.addWidget(self.editor)
@@ -1802,8 +1727,6 @@ class App(QtWidgets.QApplication):
         # Set zoom to 100%:
         self.zoom_factor = 1.0
         pos = self.zoom_levels.index(1.0)
-        # FIXME
-        # self.ui.zoom_slider.setTickPosition(pos)
         self.ui.zoom_slider.setSliderPosition(pos)
 
         self.clipboard = self.clipboard()
@@ -1834,18 +1757,6 @@ class App(QtWidgets.QApplication):
                                         QtGui.QFont.Weight.Bold)
         self.symbols_font_metrics = QtGui.QFontMetricsF(self.symbols_font)
 
-        # FIXME self.updateEditorFonts() ??
-
-        # Search for a font that can display sharp and flat characters correctly:
-        #for name in [
-        #    'MS Reference Sans Serif'
-        #    'Lucida Sans Unicode',
-        #    'Arial Unicode MS',
-        #        ]:
-        #    font = QtGui.QFont(name, 14, QtGui.QFont.Weight.Bold)
-        #    if font.exactMatch():
-        #        self.chords_font = font
-        #        break
 
         # BLUE is ideal for songbook printing:
         self.chords_color = QtGui.QColor(CHORDS_COLOR)
@@ -1874,10 +1785,7 @@ class App(QtWidgets.QApplication):
         self.win.raise_()
 
     def event(self, event):
-        # if event.type() == Qt.QEvent.FileOpen:
         if event.type() == QtGui.QFileOpenEvent:
-            # Cast as QFileOpenEvent!
-            #self.openSongbook
             filename = event.file()
             if filename.endswith(".songbook"):
                 self.setCurrentSongbook(filename)
@@ -1900,7 +1808,6 @@ class App(QtWidgets.QApplication):
 
         self.filter_string = new_text
 
-        #self.songs_proxy_model.layoutChanged.emit() # Forces the view to redraw
         self.songs_model.layoutChanged.emit()  # Forces the view to redraw
 
         # FIXME re-select the subset of selected rows that is still visible
@@ -1910,7 +1817,6 @@ class App(QtWidgets.QApplication):
             selection_model.select(
                 proxy_index, QtCore.QItemSelectionModel.SelectionFlag.Select |
                 QtCore.QItemSelectionModel.SelectionFlag.Rows)
-            #self.ui.songs_view.selectRow(proxy_index.row())
 
     def clearFilterClicked(self):
         self.ui.song_filter_ef.setText("")
@@ -2183,7 +2089,6 @@ class App(QtWidgets.QApplication):
 
         self.selected_char_num = None  # Remove the selection
         self.hover_char_num = None  # Remove the hover highlighting
-        #self.updateCurrentSongFromDatabase()  FIXME REMOVE
 
         sel_indecies = self.ui.songs_view.selectedIndexes()
         num_selected = len(sel_indecies) / self.songs_model.columnCount()
@@ -2200,11 +2105,6 @@ class App(QtWidgets.QApplication):
 
         self.updateStates()
         self.restoreCursor()
-
-        # Sroll the chords table to the top (and left):
-        #self.ui.chord_scroll_area.horizontalScrollBar().setValue(0)
-        #self.ui.chord_scroll_area.verticalScrollBar().setValue(0)
-
         self.chordEditorSelected()
 
     def getSelectedSongIds(self):
@@ -2218,24 +2118,6 @@ class App(QtWidgets.QApplication):
             song_id = self.songs_model.getRowSongID(index.row())
             selected_song_ids.append(song_id)
         return selected_song_ids
-
-    def updateCurrentSongFromDatabase(self):
-        """
-        Re-reads the current song from the database.
-        """
-        #### OBSOLETE FIXME REMOVE THIS METHOD
-
-        self.setWaitCursor()
-        selected_song_ids = self.getSelectedSongIds()
-
-        if len(selected_song_ids) == 1:
-            song_id = selected_song_ids[0]
-            song = Song(self, song_id)
-            self.setCurrentSong(song)
-        else:
-            self.setCurrentSong(None)
-        self.updateStates()
-        self.restoreCursor()
 
     def updateStates(self):
         """
@@ -2305,12 +2187,9 @@ class App(QtWidgets.QApplication):
         if self.current_song == None and song == None:
             return
 
-        #self.ignore_song_key_changed = True
         self.sendCurrentSongToDatabase()
 
         if self.current_song != None:
-            # Update the current song in the database
-            #self.current_song.sendToDatabase()
 
             # Clear the document of the QTextEdit before setting it to a new document.
             # This is needed to prevent a crash on Windows:
@@ -2365,7 +2244,6 @@ class App(QtWidgets.QApplication):
 
             self.editor.verticalScrollBar().setValue(0)
 
-        #self.ignore_song_key_changed = False
 
     def _transposeCurrentSong(self, steps):
         """
@@ -2448,11 +2326,6 @@ class App(QtWidgets.QApplication):
 
         self.current_song._chords = new_all_chords
         self.previous_song_text = song_text
-
-        # DO NOT ENABLE! Deletes the chords   ???
-        #self.sendCurrentSongToDatabase()
-
-        #self.viewport().update()
 
         self.ignore_song_text_changed = False
 
@@ -2968,7 +2841,6 @@ class App(QtWidgets.QApplication):
                     QtGui.QPageLayout.Orientation.Portrait)
                 printer.setOutputFileName(pdf_file)
 
-                # OLD: printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
                 if sys.platform == 'win32':
                     printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
                 elif sys.platform == 'darwin':
@@ -3070,8 +2942,6 @@ class App(QtWidgets.QApplication):
         The chords are included (as separate lines above the lyrics)
         """
 
-        # self.sendCurrentSongToDatabase()
-
         if not self.current_song:
             self.warning("Please select a song first")
             return
@@ -3118,12 +2988,10 @@ class App(QtWidgets.QApplication):
             self.setWaitCursor()
             try:
                 with codecs.open(text_file, 'w', encoding='utf_8_sig') as fh:
-                    for song_index, song_id in enumerate(
-                            self.getSelectedSongIds()):
+                    for song_id in self.getSelectedSongIds():
                         # NOTE for now there will always be only one song exported.
                         song = Song(self, song_id)
 
-                        # Encode the unicode string as UTF-8 before writing to file:
                         song_text = song.getAsText()
 
                         # Fix the line endings that that they work on all OSes, including Windows NotePad:
@@ -3163,8 +3031,7 @@ class App(QtWidgets.QApplication):
             self.setWaitCursor()
             try:
                 with codecs.open(filename, 'w', encoding='utf_8_sig') as fh:
-                    for song_index, song_id in enumerate(
-                            self.getSelectedSongIds()):
+                    for song_id in self.getSelectedSongIds():
                         # NOTE for now there will always be only one song exported.
                         song = Song(self, song_id)
 
@@ -3290,8 +3157,6 @@ class App(QtWidgets.QApplication):
         if self.current_song == None:
             return
 
-        song_id = self.current_song.id
-
         if new_alt_key_index == 0:  # "None" menu item
             alt_key_note_id = -1
         else:
@@ -3331,7 +3196,6 @@ class App(QtWidgets.QApplication):
         song = Song(self, song_id)
         self.setCurrentSong(song)
 
-        ####self.updateCurrentSongFromDatabase() # FIXME REMOVE
         self.lyricEditorSelected()
 
     def deleteSelectedSongs(self):
@@ -3342,18 +3206,16 @@ class App(QtWidgets.QApplication):
 
         # Will set the current song to None:
         self.ui.songs_view.selectionModel().clearSelection()
-        #self.setCurrentSong(None)
 
         self.undo_stack.push(DeleteSongsCommand(self, selected_song_ids))
 
-        #self.updateStates()
         self.updateEditMenu()
 
     def removeTrailingSpaces(self):
 
         # FIXME Save the current song to database?
 
-        for song_index, song_id in enumerate(self.getSelectedSongIds()):
+        for song_id in self.getSelectedSongIds():
             song = Song(self, song_id)
             song.removeTrailingSpaces()
 
@@ -3456,9 +3318,6 @@ class App(QtWidgets.QApplication):
         char_left = left_rect.left()
         char_right = right_rect.right()
 
-        char_top = left_rect.top()
-        char_bottom = left_rect.bottom()
-
         char_width = right_rect.right() - left_rect.left()
         char_height = left_rect.bottom() - left_rect.top()
         char_rect = QtCore.QRectF(left_rect.left(), left_rect.top(), char_width,
@@ -3497,46 +3356,30 @@ class App(QtWidgets.QApplication):
         the spacing is correct.
         """
 
-        r = chord_rect.right()
-
         normal_height = self.chords_font_metrics.height()
         normal_baseline = chord_rect.bottom() - (0.2 * normal_height
                                                 )  # FIXME hack
 
-        chord_left = chord_rect.left()
-
-        chord_width = chord_rect.width()
-        chord_center = (chord_rect.right() - chord_rect.left()) / 2.0
-
         letter_left = chord_rect.left()
 
-        curr_left = chord_rect.left()
-        orig_top = chord_rect.top()
-        raise_distance = chord_rect.height(
-        ) / 10.0  # Distance to raise the flat/sharp signs by
-        raised_top = chord_rect.top() - raise_distance
+        # Distance to raise the flat/sharp signs by
+        raise_distance = chord_rect.height() / 10.0
         raised_baseline = normal_baseline - raise_distance
 
         for letter in chord_text:
-            #letter_rect = QtCore.QRect(letter_left, chord_rect.top(), 1000.0, 1000.0)
             if letter in ["♯", "♭"]:
                 # FIXME: On Windows, the flat is drawn a little off
-                #letter_rect.setTop(raised_top)
                 painter.setFont(self.symbols_font)
                 let_width = self.symbols_font_metrics.horizontalAdvance(letter)
                 baseline = raised_baseline
             else:
-                #letter_rect.setTop(orig_top)
                 painter.setFont(self.chords_font)
                 let_width = self.chords_font_metrics.horizontalAdvance(letter)
                 baseline = normal_baseline
 
-            #bound_rect = painter.drawText(letter_rect, Qt.AlignLeft, letter)
-
             pos = QtCore.QPointF(letter_left, baseline)
             painter.drawText(pos, letter)
 
-            #letter_left = bound_rect.right()
             letter_left += let_width
 
         # FIXME restore chord_rect and font?
@@ -3723,7 +3566,6 @@ class App(QtWidgets.QApplication):
 
         # Draw the song lyrics and chirds:
         self._drawSongToPainter(song, output_painter, header_list, exporting)
-        # output_painter.drawText(100, 100, "TEST")
 
         if header_list:
             output_painter.translate(0.0, -lyrics_height)
@@ -3808,12 +3650,7 @@ class App(QtWidgets.QApplication):
         if not self.current_song:
             return None
 
-        # Scale:
-        #x = float(x) / self.zoom_factor
-        #y = float(y) / self.zoom_factor
-
         for chord in self.current_song._chords:
-            song_char_num = chord.character_num
             char_rect, chord_rect = self.getCharRects(self.editor,
                                                       chord.character_num,
                                                       chord)
@@ -4587,10 +4424,6 @@ def main():
     """
 
     app = App(sys.argv)
-    #print 'applicationDirPath():', app.applicationDirPath()
-    #print 'applicationFilePath():', app.applicationFilePath()
-    #print 'arguments:', map(unicode, app.arguments())
-    #print 'libraryPaths():', map(unicode, app.libraryPaths())
     app.setOverrideCursor(QtGui.QCursor(Qt.CursorShape.WaitCursor))
 
     input_files = [filename for filename in sys.argv[1:]]
