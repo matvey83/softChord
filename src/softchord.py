@@ -9,7 +9,7 @@ Ported to Qt6 in May-June 2023.
 
 # NOTE The sqlite3 is intentionally used instead of QtSql.
 
-from PyQt6 import QtCore, QtGui, QtWidgets #, uic
+from PyQt6 import QtCore, QtGui, QtWidgets  #, uic
 from PyQt6.QtCore import Qt
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt6.QtGui import QPageSize
@@ -1359,7 +1359,8 @@ class CustomTextEdit(QtWidgets.QTextEdit):
 
                         # If option is held, copy the chord:
                         key_modifiers = event.modifiers()
-                        if bool(key_modifiers & Qt.KeyboardModifier.AltModifier):
+                        if bool(key_modifiers &
+                                Qt.KeyboardModifier.AltModifier):
                             self.original_chord = self.app.current_song.copyChord(
                                 self.dragging_chord,
                                 self.dragging_chord_orig_position)
@@ -1431,7 +1432,8 @@ class CustomTextEdit(QtWidgets.QTextEdit):
             self.app.deleteSelectedChord()
             return
         else:
-            if not bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            if not bool(event.modifiers() &
+                        Qt.KeyboardModifier.ControlModifier):
                 # We are not invoking a shortcut (Control on Windows, Command on Mac)
                 if self.app.processKeyPressed(key):
                     return
@@ -2015,7 +2017,10 @@ class App(QtWidgets.QApplication):
         if self.selected_char_num == None:
             return False
 
-        if key in [Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down]:
+        if key in [
+                Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up,
+                Qt.Key.Key_Down
+        ]:
             # Move or transpose the selected chord
             prev_chord = None
             for iter_chord in self.current_song.iterateAllChords():
@@ -2587,7 +2592,7 @@ class App(QtWidgets.QApplication):
         printer.setPageOrientation(QtGui.QPageLayout.Orientation.Portrait)
 
         print_dialog = QPrintDialog(printer, self.win)
-        if print_dialog.exec(): # accepted
+        if print_dialog.exec():  # accepted
             ok = PdfDialog(self).display(self.pdf_options,
                                          single_pdf_export=True)
             if not ok:
@@ -2613,7 +2618,7 @@ class App(QtWidgets.QApplication):
         """
 
         progress = QtWidgets.QProgressDialog(progress_message, "Abort", 0,
-                                         len(song_ids), self.win)
+                                             len(song_ids), self.win)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         # Open the progress dialog right away:
         progress.setMinimumDuration(0)
@@ -2923,7 +2928,7 @@ class App(QtWidgets.QApplication):
             return
 
         progress = QtWidgets.QProgressDialog("Exporting to PDFs...", "Abort", 0,
-                                         len(song_ids), self.win)
+                                             len(song_ids), self.win)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         # Open the progress dialog right away:
         progress.setMinimumDuration(0)
@@ -2953,12 +2958,14 @@ class App(QtWidgets.QApplication):
                 else:
                     page_size = QtCore.QSizeF(self.pdf_options.page_width,
                                               self.pdf_options.page_height)
-                page_size = QtGui.QPageSize(page_size, QtGui.QPageSize.Unit.Inch)
+                page_size = QtGui.QPageSize(page_size,
+                                            QtGui.QPageSize.Unit.Inch)
                 printer.setPageSize(page_size)
                 printer.setFullPage(
                     True
                 )  # considers whole page instead of only printable area.
-                printer.setPageOrientation(QtGui.QPageLayout.Orientation.Portrait)
+                printer.setPageOrientation(
+                    QtGui.QPageLayout.Orientation.Portrait)
                 printer.setOutputFileName(pdf_file)
 
                 # OLD: printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
@@ -3111,7 +3118,8 @@ class App(QtWidgets.QApplication):
             self.setWaitCursor()
             try:
                 with codecs.open(text_file, 'w', encoding='utf_8_sig') as fh:
-                    for song_index, song_id in enumerate(self.getSelectedSongIds()):
+                    for song_index, song_id in enumerate(
+                            self.getSelectedSongIds()):
                         # NOTE for now there will always be only one song exported.
                         song = Song(self, song_id)
 
@@ -3155,7 +3163,8 @@ class App(QtWidgets.QApplication):
             self.setWaitCursor()
             try:
                 with codecs.open(filename, 'w', encoding='utf_8_sig') as fh:
-                    for song_index, song_id in enumerate(self.getSelectedSongIds()):
+                    for song_index, song_id in enumerate(
+                            self.getSelectedSongIds()):
                         # NOTE for now there will always be only one song exported.
                         song = Song(self, song_id)
 
@@ -3708,8 +3717,7 @@ class App(QtWidgets.QApplication):
 
             # FIXME what if the title is too long?
             header_rect = QtCore.QRect(x, y, 1000.0, lyrics_height)
-            output_painter.drawText(header_rect, Qt.AlignLeft,
-                                    header_str)
+            output_painter.drawText(header_rect, Qt.AlignLeft, header_str)
 
             output_painter.translate(0.0, lyrics_height)
 
@@ -3904,7 +3912,8 @@ class App(QtWidgets.QApplication):
                 for filename in chordpro_files:
                     # "rU" makes sure that the line endings are handled properly:
                     # file_text = codecs.open(filename.encode('utf-8'), 'rU', encoding='utf_8_sig').read()
-                    with codecs.open(filename, 'rU', encoding='utf_8_sig') as fh:
+                    with codecs.open(filename, 'rU',
+                                     encoding='utf_8_sig') as fh:
                         file_text = fh.read()
                     self.importSongFromChordProText(file_text)
             finally:
@@ -3966,7 +3975,7 @@ class App(QtWidgets.QApplication):
                     except Exception as err:
                         self.restoreCursor()
                         self.error("Error parsing the text:\n\n%s " %
-                               traceback.format_exc())
+                                   traceback.format_exc())
                         break
         finally:
             self.restoreCursor()
