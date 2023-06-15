@@ -340,14 +340,14 @@ class SongsTableModel(QtCore.QAbstractTableModel):
             col = index.column()
             if col == 0:
                 if rowobj.number == -1:  # Invalid song number
-                    return QtCore.QVariant("")
+                    return None
                 else:
-                    return QtCore.QVariant(rowobj.number)
+                    return rowobj.number
 
             elif col == 1:
-                return QtCore.QVariant(rowobj.title)
+                return rowobj.title
 
-        return QtCore.QVariant()
+        return None
 
     def headerData(self, section, orientation, role):
         """
@@ -426,7 +426,7 @@ class SongsProxyModel(QtCore.QSortFilterProxyModel):
     def lessThan(self, left, right):
         leftData = self.sourceModel().data(left)
         rightData = self.sourceModel().data(right)
-        return False  # FIXME
+        return leftData < rightData
 
 
 class SongChord:
