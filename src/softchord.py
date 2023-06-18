@@ -990,7 +990,6 @@ class Song:
                     "DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i"
                     % (self.id, song_char_num))
 
-            #print 'saving to database song_num:', self.number, 'key_is_major:', self.key_is_major
             self.app.curs.execute(
                 "UPDATE songs SET number=?, title=?, subtitle=?, text=?, key_note_id=?, key_is_major=?, alt_key_note_id=? WHERE id=?",
                 (self.number, self.title, self.subtitle, self.getAllText(),
@@ -1582,7 +1581,7 @@ class App(QtWidgets.QApplication):
         # Make a list of all chord types:
         self.chord_type_names = []
         self.chord_type_prints = []
-        for chord_type_id, name, print_text in chord_types_list:
+        for _, name, print_text in chord_types_list:
             if print_text:
                 name = "%s - %s" % (print_text, name)
             self.chord_type_names.append(name)
@@ -2477,9 +2476,8 @@ class App(QtWidgets.QApplication):
                 song_ids = self.songs_model.getAllSongIds()
 
             try:
-                num_printed = self.printSongsToPrinter(song_ids, printer,
+                self.printSongsToPrinter(song_ids, printer,
                                                        "Printing...")
-                # In case of an IOError, num_printed will be 0.
             except Exception as err:
                 self.error("Error printing:\n\n%s " % traceback.format_exc())
 
@@ -2535,8 +2533,6 @@ class App(QtWidgets.QApplication):
                         curr_page = []
                 if curr_page:
                     table_of_contents_pages.append(curr_page)
-
-                #print 'num table of contents pages:', len(table_of_contents_pages)
 
                 painter.setFont(self.lyrics_font)
                 for lines in table_of_contents_pages:
@@ -2764,9 +2760,8 @@ class App(QtWidgets.QApplication):
                 # page size on export
                 printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
 
-            num_printed = self.printSongsToPrinter(song_ids, printer,
+            self.printSongsToPrinter(song_ids, printer,
                                                    "Exporting to PDF...")
-            # On IOError, num_printed will be 0.
 
         except Exception as err:
             self.restoreCursor()
@@ -3129,8 +3124,6 @@ class App(QtWidgets.QApplication):
 
         if self.current_song == None:
             return
-
-        song_id = self.current_song.id
 
         if new_key_index == 0:
             note_id = -1
@@ -3722,8 +3715,6 @@ class App(QtWidgets.QApplication):
                 self.current_song.addChord(new_chord)
             else:
                 self.current_song.replaceChord(orig_chord, new_chord)
-
-            #self.sendCurrentSongToDatabase()
 
             self.editor.viewport().update()
 
