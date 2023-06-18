@@ -956,49 +956,6 @@ class Song:
 
         self.updateSharpsOrFlats()
 
-    def sendToDatabase(self):
-        """
-        Save this song to the database.
-        """
-
-        self.app.setWaitCursor()
-        try:
-            chords_in_database = []
-            for row in self.app.curs.execute(
-                    "SELECT character_num FROM song_chord_link WHERE song_id=%i"
-                    % self.id):
-                chords_in_database.append(row[0])
-
-            for chord in self.iterateAllChords():
-                # Update existing chords
-                if chord.character_num in chords_in_database:
-                    self.app.curs.execute(
-                        "UPDATE song_chord_link SET note_id=?, chord_type_id=?, bass_note_id=?, marker=?, in_parentheses=? WHERE song_id=? AND character_num=?",
-                        (chord.note_id, chord.chord_type_id, chord.bass_note_id,
-                         chord.marker, chord.in_parentheses, chord.song_id,
-                         chord.character_num))
-                    chords_in_database.remove(chord.character_num)
-
-                else:
-                    # Add new chords
-                    self.app.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
-                            "VALUES (?, ?, ?, ?, ?, ?, ?)", (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
-
-            # Remove old chords
-            for song_char_num in chords_in_database:
-                self.app.curs.execute(
-                    "DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i"
-                    % (self.id, song_char_num))
-
-            self.app.curs.execute(
-                "UPDATE songs SET number=?, title=?, subtitle=?, text=?, key_note_id=?, key_is_major=?, alt_key_note_id=? WHERE id=?",
-                (self.number, self.title, self.subtitle, self.getAllText(),
-                 self.key_note_id, self.key_is_major, self.alt_key_note_id,
-                 self.id))
-            self.app.curs.commit()
-        finally:
-            self.app.restoreCursor()
-
     def updateSharpsOrFlats(self):
         """
         Determines whether this song prefers notes to be displayed with flats
@@ -1889,9 +1846,51 @@ class App(QtWidgets.QApplication):
         self._orig_closeEvent(event)
 
     def sendCurrentSongToDatabase(self):
-        if self.current_song:
+        """
+        Save the current song to the database.
+        """
+        if not self.current_song:
+            return
             # Update the current song in the database:
-            self.current_song.sendToDatabase()
+        song = self.current_song
+
+        self.setWaitCursor()
+        try:
+            chords_in_database = []
+            for row in self.curs.execute(
+                    "SELECT character_num FROM song_chord_link WHERE song_id=%i"
+                    % song.id):
+                chords_in_database.append(row[0])
+
+            for chord in song.iterateAllChords():
+                # Update existing chords
+                if chord.character_num in chords_in_database:
+                    self.curs.execute(
+                        "UPDATE song_chord_link SET note_id=?, chord_type_id=?, bass_note_id=?, marker=?, in_parentheses=? WHERE song_id=? AND character_num=?",
+                        (chord.note_id, chord.chord_type_id, chord.bass_note_id,
+                         chord.marker, chord.in_parentheses, chord.song_id,
+                         chord.character_num))
+                    chords_in_database.remove(chord.character_num)
+
+                else:
+                    # Add new chords
+                    self.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)", (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
+
+            # Remove old chords
+            for song_char_num in chords_in_database:
+                self.curs.execute(
+                    "DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i"
+                    % (song.id, song_char_num))
+
+            self.curs.execute(
+                "UPDATE songs SET number=?, title=?, subtitle=?, text=?, key_note_id=?, key_is_major=?, alt_key_note_id=? WHERE id=?",
+                (song.number, song.title, song.subtitle, song.getAllText(),
+                 song.key_note_id, song.key_is_major, song.alt_key_note_id,
+                 song.id))
+            self.curs.commit()
+        finally:
+            self.restoreCursor()
 
     def getSelectedChord(self):
         """
@@ -2252,7 +2251,7 @@ class App(QtWidgets.QApplication):
         self.setWaitCursor()
         try:
             self.current_song.transpose(steps)
-            self.current_song.sendToDatabase()
+            self.sendCurrentSongToDatabase()
             self.editor.viewport().update()
         finally:
             self.restoreCursor()
