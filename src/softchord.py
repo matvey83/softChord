@@ -426,7 +426,9 @@ class SongsProxyModel(QtCore.QSortFilterProxyModel):
     def lessThan(self, left, right):
         leftData = self.sourceModel().data(left)
         rightData = self.sourceModel().data(right)
-        return leftData < rightData
+        if leftData is not None and rightData is not None:
+            return leftData < rightData
+        return False
 
 
 class SongChord:
