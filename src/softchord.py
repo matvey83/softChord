@@ -1588,7 +1588,7 @@ class App(QtWidgets.QApplication):
 
         self.editor = CustomTextEdit(self)
         self.editor.undoAvailable.connect(self.updateEditMenu)
-        self.print_editor = self.editor  # FIXME
+        self.print_editor = CustomTextEdit(self)
 
         self.ui.lyric_editor_layout.addWidget(self.editor)
         self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
@@ -2261,6 +2261,8 @@ class App(QtWidgets.QApplication):
     def lyricsTextChanged(self):
         """
         Called when the song lyric text is modified by the user.
+        Removes all chords that were associated with any text that was deleted,
+        and adjusts positions of all chords that were affected by the change.
         """
 
         if self.ignore_song_text_changed:
@@ -2291,7 +2293,6 @@ class App(QtWidgets.QApplication):
                 except IndexError:
                     # Reached end-of-line of either string
                     break
-            num_preserved_begin_chars = i
 
             i = 0
             while True:
@@ -2305,7 +2306,6 @@ class App(QtWidgets.QApplication):
                 except IndexError:
                     # Reached end-of-line of either string
                     break
-            num_preserved_end_chars = i
 
             new_all_chords = []
             for chord in self.current_song.iterateAllChords():
@@ -2320,11 +2320,8 @@ class App(QtWidgets.QApplication):
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(
                     self.selected_char_num)
-        else:
-            # No previous text
-            new_all_chords = self.current_song._chords
+            self.current_song._chords = new_all_chords
 
-        self.current_song._chords = new_all_chords
         self.previous_song_text = song_text
 
         self.ignore_song_text_changed = False
