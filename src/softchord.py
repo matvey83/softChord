@@ -1118,7 +1118,8 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                 height = 100000  # Unlimited
 
                 paint_rect = QtCore.QRect(0, 0, width, height)
-                self.app.drawSongToRect(self.app.current_song, painter,
+                editor = self.app.editor
+                self.app.drawSongToRect(self.app.current_song, painter, editor,
                                         paint_rect)
 
             painter.end()
@@ -2481,8 +2482,9 @@ class App(QtWidgets.QApplication):
         
         Will display an error dialog on error.
         """
+        # TODO factor out duplication with exportToMultiplePdfs()
 
-        self.print_editor = self.createPrintEditor()
+        print_editor = self.createPrintEditor()
         progress = QtWidgets.QProgressDialog(progress_message, "Abort", 0,
                                              len(song_ids), self.win)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
@@ -2562,17 +2564,16 @@ class App(QtWidgets.QApplication):
                 song = Song(self, song_id)
 
                 # Set this song's document (will be reset later):
-                self.print_editor.setDocument(song.doc)
+                print_editor.setDocument(song.doc)
                 # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
 
-                scale_ratio = self.printSong(song, printer, painter, page_num)
+                scale_ratio = self.printSong(song, printer, painter, print_editor, page_num)
                 if scale_ratio < min_scale_ratio:
                     min_scale_ratio = scale_ratio
 
                 num_printed += 1
                 progress.setValue(num_printed)
 
-            self.print_editor.setDocument(self.empty_doc)
             painter.end()
 
             self.reportScaleRatio(min_scale_ratio, len(song_ids))
@@ -2585,11 +2586,10 @@ class App(QtWidgets.QApplication):
             raise
 
         progress.setValue(len(song_ids))
-        self.print_editor = None
 
         return num_printed
 
-    def printSong(self, song, printer, painter, page_num):
+    def printSong(self, song, printer, painter, editor, page_num):
         # NOTE: The song's document should already be in the editor for this to work!
 
         # Figure out what the margins should be:
@@ -2623,6 +2623,7 @@ class App(QtWidgets.QApplication):
                                           song_height)
                 scale_ratio = self.drawSongToRect(song,
                                                   painter,
+                                                  editor,
                                                   paint_rect,
                                                   exporting=True)
         else:
@@ -2635,6 +2636,7 @@ class App(QtWidgets.QApplication):
                                       song_height)
             scale_ratio = self.drawSongToRect(song,
                                               painter,
+                                              editor, 
                                               paint_rect,
                                               exporting=True)
 
@@ -2769,6 +2771,7 @@ class App(QtWidgets.QApplication):
         """
         Exports the selected songs, each to its own PDF file.
         """
+        # TODO factor out duplication with printSongsToPrinter()
 
         self.sendCurrentSongToDatabase()
 
@@ -2791,7 +2794,7 @@ class App(QtWidgets.QApplication):
             # User cancelled
             return
         
-        self.print_editor = self.createPrintEditor()
+        print_editor = self.createPrintEditor()
 
         progress = QtWidgets.QProgressDialog("Exporting to PDFs...", "Abort", 0,
                                              len(song_ids), self.win)
@@ -2809,7 +2812,7 @@ class App(QtWidgets.QApplication):
             song = Song(self, song_id)
 
             # Set this song's document (will be reset later):
-            self.print_editor.setDocument(song.doc)
+            print_editor.setDocument(song.doc)
             # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
 
             pdf_file = os.path.join(dir, song.title + ".pdf")
@@ -2844,7 +2847,7 @@ class App(QtWidgets.QApplication):
                     raise IOError("Failed to open the output file for writing")
 
                 # Always print the song as if to the first page, when exporting to multiple PDFs:
-                scale_ratio = self.printSong(song, printer, painter, 1)
+                scale_ratio = self.printSong(song, printer, painter, print_editor, 1)
                 if scale_ratio < min_scale_ratio:
                     min_scale_ratio = scale_ratio
 
@@ -2856,11 +2859,9 @@ class App(QtWidgets.QApplication):
                 raise
 
         progress.setValue(i + 1)  # Close the progress dialog
-        self.print_editor.setDocument(self.empty_doc)
 
         self.reportScaleRatio(min_scale_ratio, len(song_ids))
 
-        self.print_editor = None
 
     def reportScaleRatio(self, min_scale_ratio, num_songs):
 
@@ -3378,13 +3379,13 @@ class App(QtWidgets.QApplication):
         # FIXME restore chord_rect and font?
     
     def createPrintEditor(self):
-        self.print_editor = CustomTextEdit(self)
-        self.print_editor.setLineWrapMode(
+        print_editor = CustomTextEdit(self)
+        print_editor.setLineWrapMode(
             QtWidgets.QTextEdit.LineWrapMode.NoWrap)
-        self.print_editor.setFont(self.lyrics_font)
-        return self.print_editor
+        print_editor.setFont(self.lyrics_font)
+        return print_editor
 
-    def _drawSongToPainter(self, song, painter, header_list, exporting=False):
+    def _drawSongToPainter(self, song, painter, editor, exporting=False):
         """
         Draw the given song to the given painter.
         Always draws the main text and chords.
@@ -3393,11 +3394,6 @@ class App(QtWidgets.QApplication):
         """
 
         # NOTE: Everything here is unscaled (original font sizes, etc)
-
-        if exporting:
-            editor = self.print_editor
-        else:
-            editor = self.editor
 
         if not exporting:
             # On Windows, don't use the default dark blue, as it will not work correctly
@@ -3467,7 +3463,7 @@ class App(QtWidgets.QApplication):
             # Revert the scroll offset translation:
             painter.translate(scroll_x, scroll_y)
 
-    def drawSongToRect(self, song, output_painter, rect, exporting=False):
+    def drawSongToRect(self, song, output_painter, editor, rect, exporting=False):
         """
         Draws the current song text to the specified rect.
 
@@ -3565,7 +3561,7 @@ class App(QtWidgets.QApplication):
             output_painter.translate(0.0, lyrics_height)
 
         # Draw the song lyrics and chirds:
-        self._drawSongToPainter(song, output_painter, header_list, exporting)
+        self._drawSongToPainter(song, output_painter, editor, exporting)
 
         if header_list:
             output_painter.translate(0.0, -lyrics_height)
