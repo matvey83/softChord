@@ -1588,15 +1588,12 @@ class App(QtWidgets.QApplication):
 
         self.editor = CustomTextEdit(self)
         self.editor.undoAvailable.connect(self.updateEditMenu)
-        self.print_editor = CustomTextEdit(self)
 
         self.ui.lyric_editor_layout.addWidget(self.editor)
         self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
         self.ui.chord_scroll_area.hide()
 
         self.editor.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.NoWrap)
-        self.print_editor.setLineWrapMode(
-            QtWidgets.QTextEdit.LineWrapMode.NoWrap)
         self.editor.textChanged.connect(self.lyricsTextChanged)
 
         self.ui.transpose_up_button.clicked.connect(self.transposeUp)
@@ -1720,7 +1717,6 @@ class App(QtWidgets.QApplication):
         self.chords_color = QtGui.QColor(CHORDS_COLOR)
         self.white_color = QtGui.QColor("WHITE")
         self.editor.setFont(self.lyrics_font)
-        self.print_editor.setFont(self.lyrics_font)
 
         self._orig_closeEvent = self.win.closeEvent
         self.win.closeEvent = self.closeEvent
@@ -2428,7 +2424,7 @@ class App(QtWidgets.QApplication):
         self.lyrics_font.setPointSizeF(self.lyrics_font_size * self.zoom_factor)
         self.lyrics_font_metrics = QtGui.QFontMetricsF(self.lyrics_font)
         self.editor.setFont(self.lyrics_font)
-        self.print_editor.setFont(self.lyrics_font)
+
         if self.current_song:
             self.current_song.setDocMargins()
         self.editor.viewport().update()
@@ -2486,6 +2482,7 @@ class App(QtWidgets.QApplication):
         Will display an error dialog on error.
         """
 
+        self.print_editor = self.createPrintEditor()
         progress = QtWidgets.QProgressDialog(progress_message, "Abort", 0,
                                              len(song_ids), self.win)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
@@ -2588,6 +2585,7 @@ class App(QtWidgets.QApplication):
             raise
 
         progress.setValue(len(song_ids))
+        self.print_editor = None
 
         return num_printed
 
@@ -2792,6 +2790,8 @@ class App(QtWidgets.QApplication):
         if not dir:
             # User cancelled
             return
+        
+        self.print_editor = self.createPrintEditor()
 
         progress = QtWidgets.QProgressDialog("Exporting to PDFs...", "Abort", 0,
                                              len(song_ids), self.win)
@@ -2859,6 +2859,8 @@ class App(QtWidgets.QApplication):
         self.print_editor.setDocument(self.empty_doc)
 
         self.reportScaleRatio(min_scale_ratio, len(song_ids))
+
+        self.print_editor = None
 
     def reportScaleRatio(self, min_scale_ratio, num_songs):
 
@@ -3374,6 +3376,13 @@ class App(QtWidgets.QApplication):
             letter_left += let_width
 
         # FIXME restore chord_rect and font?
+    
+    def createPrintEditor(self):
+        self.print_editor = CustomTextEdit(self)
+        self.print_editor.setLineWrapMode(
+            QtWidgets.QTextEdit.LineWrapMode.NoWrap)
+        self.print_editor.setFont(self.lyrics_font)
+        return self.print_editor
 
     def _drawSongToPainter(self, song, painter, header_list, exporting=False):
         """
