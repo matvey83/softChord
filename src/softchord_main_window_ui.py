@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'softchord_main_window.ui'
+# Form implementation generated from reading ui file 'src/softchord_main_window.ui'
 #
 # Created by: PyQt6 UI code generator 6.4.2
 #
@@ -235,6 +235,8 @@ class Ui_MainWindow(object):
         self.actionSetID.setObjectName("actionSetID")
         self.actionCopySongText = QtGui.QAction(parent=MainWindow)
         self.actionCopySongText.setObjectName("actionCopySongText")
+        self.actionCopySongTextWithChords = QtGui.QAction(parent=MainWindow)
+        self.actionCopySongTextWithChords.setObjectName("actionCopySongTextWithChords")
         self.actionPasteAsNewSong = QtGui.QAction(parent=MainWindow)
         self.actionPasteAsNewSong.setObjectName("actionPasteAsNewSong")
         self.actionDeleteSongs = QtGui.QAction(parent=MainWindow)
@@ -308,6 +310,7 @@ class Ui_MainWindow(object):
         self.menuEdit.addAction(self.actionCopy)
         self.menuEdit.addAction(self.actionPaste)
         self.menuEdit.addAction(self.actionCopySongText)
+        self.menuEdit.addAction(self.actionCopySongTextWithChords)
         self.menuEdit.addAction(self.actionPasteAsNewSong)
         self.menuEdit.addAction(self.actionSelectAll)
         self.menuEdit.addSeparator()
@@ -425,6 +428,7 @@ class Ui_MainWindow(object):
         self.actionExportChordPro.setText(_translate("MainWindow", "Export To ChordPro..."))
         self.actionSetID.setText(_translate("MainWindow", "Set Database ID..."))
         self.actionCopySongText.setText(_translate("MainWindow", "Copy Song Text"))
+        self.actionCopySongTextWithChords.setText(_translate("MainWindow", "Copy Song Text (with chords)"))
         self.actionPasteAsNewSong.setText(_translate("MainWindow", "Paste As New Song"))
         self.actionDeleteSongs.setText(_translate("MainWindow", "Delete Selected songs"))
         self.actionExportSongPDF.setText(_translate("MainWindow", "Export to PDF..."))

@@ -845,10 +845,11 @@ class Song:
                 return chord
         raise ValueError("There is no chord for character %i" % song_char_num)
 
-    def getAsText(self):
+    def getAsText(self, include_chords=True):
         """
         Return a text string for this song. This text will have proper
-        formatting only if displayed with a mono-spaced (fixed-width) font.
+        formatting only if displayed with a mono-spaced (fixed-width) font
+        (important if include_chords is set to True).
         """
 
         song_text = ''
@@ -857,7 +858,7 @@ class Song:
         lines = self.getAllText().split("\n")
         for linenum, line_text in enumerate(lines):
 
-            if self.getLineHasChords(linenum):
+            if include_chords and self.getLineHasChords(linenum):
                 # Add the chords line above this line
 
                 line_chord_text_list = [u' '] * len(line_text)
@@ -905,6 +906,9 @@ class Song:
         # Remove the last end-of-line:
         if song_text[-1] == "\n":
             song_text = song_text[:-1]
+
+        # Fix the line endings that that they work on all OSes, including Windows NotePad:
+        song_text = song_text.replace('\n', '\r\n')
 
         return song_text
 
@@ -1651,6 +1655,7 @@ class App(QtWidgets.QApplication):
         self.ui.actionCopy.triggered.connect(self.copySelected)
         self.ui.actionPaste.triggered.connect(self.pasteSelected)
         self.ui.actionCopySongText.triggered.connect(self.copySongText)
+        self.ui.actionCopySongTextWithChords.triggered.connect(self.copySongTextWithChords)
         self.ui.actionExportClipboard.triggered.connect(self.copySongText)
 
         # FIXME we need only one way to import a song from the clipboard. Remove one of these actions:
@@ -2155,6 +2160,7 @@ class App(QtWidgets.QApplication):
         self.ui.actionExportSongToPdf.setEnabled(num_selected == 1)
         self.ui.actionExportChordPro.setEnabled(num_selected == 1)
         self.ui.actionCopySongText.setEnabled(num_selected == 1)
+        self.ui.actionCopySongTextWithChords.setEnabled(num_selected == 1)
         self.ui.actionExportClipboard.setEnabled(num_selected == 1)
 
         self.ui.actionPrint.setEnabled(songs_present)
@@ -2934,25 +2940,32 @@ class App(QtWidgets.QApplication):
 
     def copySongText(self):
         """
+        Copy the selected song's text to the clipboard. Chords are not included.
+        """
+
+        assert self.current_song is not None
+
+        self.setWaitCursor()
+        try:
+            song_text = self.current_song.getAsText(include_chords=False)
+            self.clipboard.setText(song_text)
+        finally:
+            self.restoreCursor()
+
+    def copySongTextWithChords(self):
+        """
         Copy the selected song's text to the clipboard.
         The chords are included (as separate lines above the lyrics)
         """
 
-        if not self.current_song:
-            self.warning("Please select a song first")
-            return
+        assert self.current_song is not None
 
         self.setWaitCursor()
-
-        song_text = self.current_song.getAsText()
-
-        # Fix the line endings that that they work on all OSes, including Windows NotePad:
-        song_text = song_text.replace('\n', '\r\n')
-        # FIXME is that needed?
-
-        self.clipboard.setText(song_text)
-
-        self.restoreCursor()
+        try:
+            song_text = self.current_song.getAsText()
+            self.clipboard.setText(song_text)
+        finally:
+            self.restoreCursor()
 
     def exportToText(self, text_file=None):
         """
@@ -2987,12 +3000,7 @@ class App(QtWidgets.QApplication):
                     for song_id in self.getSelectedSongIds():
                         # NOTE for now there will always be only one song exported.
                         song = Song(self, song_id)
-
                         song_text = song.getAsText()
-
-                        # Fix the line endings that that they work on all OSes, including Windows NotePad:
-                        song_text = song_text.replace('\n', '\r\n')
-
                         fh.write(song_text)
             finally:
                 self.restoreCursor()
