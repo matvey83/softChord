@@ -500,6 +500,7 @@ p, li { white-space: pre-wrap; }
     <addaction name="actionCopy"/>
     <addaction name="actionPaste"/>
     <addaction name="actionCopySongText"/>
+    <addaction name="actionCopySongTextWithChords"/>
     <addaction name="actionPasteAsNewSong"/>
     <addaction name="actionSelectAll"/>
     <addaction name="separator"/>
@@ -648,6 +649,11 @@ p, li { white-space: pre-wrap; }
   <action name="actionCopySongText">
    <property name="text">
     <string>Copy Song Text</string>
+   </property>
+  </action>
+  <action name="actionCopySongTextWithChords">
+   <property name="text">
+    <string>Copy Song Text (with chords)</string>
    </property>
   </action>
   <action name="actionPasteAsNewSong">
