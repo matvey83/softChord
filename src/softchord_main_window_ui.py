@@ -329,7 +329,7 @@ class Ui_MainWindow(object):
         self.clear_filter_button.setText(_translate("MainWindow", "x"))
         self.new_song_button.setText(_translate("MainWindow", "New Song"))
         self.delete_song_button.setText(_translate("MainWindow", "Delete selected"))
-        self.label.setText(_translate("MainWindow", "<html><head/><body><p><span style=\" font-weight:600;\">Selected song:</span></p></body></html>"))
+        self.label.setText(_translate("MainWindow", "Current song:"))
         self.label_6.setText(_translate("MainWindow", "Number:"))
         self.label_4.setText(_translate("MainWindow", "Title:"))
         self.label_5.setText(_translate("MainWindow", "Key:"))
