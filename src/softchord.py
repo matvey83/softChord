@@ -1329,6 +1329,18 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                 # We are not invoking a shortcut (Control on Windows, Command on Mac)
                 if self.app.processKeyPressed(key):
                     return
+            else:
+                # TODO instead of passing these to the UI (parent) perhaps there
+                # is a better way?
+                if key == Qt.Key.Key_C:
+                    self.app.ui.actionCopy.trigger()
+                    return
+                elif key == Qt.Key.Key_X:
+                    self.app.ui.actionCut.trigger()
+                    return
+                elif key == Qt.Key.Key_V:
+                    self.app.ui.actionPaste.trigger()
+                    return
 
         # Let the main window handle this event (required for undo/redo shortcuts):
         self.app.win.keyPressEvent(event)
@@ -2021,7 +2033,8 @@ class App(QtWidgets.QApplication):
 
         focus_widget = self.focusWidget()  # FIXME implement this properly
 
-        enable_paste = not self.clipboard.text()
+        enable_paste = False
+        text = self.clipboard.text()
 
         try:
             if self.current_song:
@@ -2031,16 +2044,22 @@ class App(QtWidgets.QApplication):
                     # FIXME We need to attach slots to QTextEdit.undoAvailable() and redoAvailable() signals
                     undo_possible = False
                     redo_possible = False
+                    enable_paste = bool(text)
                 else:
                     # In chord editor
                     undo_possible = self.undo_stack.canUndo()
                     redo_possible = self.undo_stack.canRedo()
                     # FIXME Enable paste only if CHORD text is selected:
+                    try:
+                        self.convertChordFromString(text)
+                    except ValueError:
+                        pass
+                    else:
+                        enable_paste = True
             else:
                 # Not currently editing a song:
                 undo_possible = self.undo_stack.canUndo()
                 redo_possible = self.undo_stack.canRedo()
-                enable_paste = True  # FIXME enable based on the focus widget
         except RuntimeError:
             # C++ QUndoStack has been deleted
             return
@@ -4102,7 +4121,7 @@ class App(QtWidgets.QApplication):
                     converted_chord = self.convertChordFromString(chord_text)
                 except ValueError as err:
                     tmp_warnings.append('WARNING: %s CHORD "%s"' %
-                                        (str(err), word))
+                                        (str(err), chord_text))
                 else:
                     chords_dict[char_num] = converted_chord
 
@@ -4139,6 +4158,8 @@ class App(QtWidgets.QApplication):
         """
         Convert the specified chord string to a note_id, chord_type_id, and a bass_note_id.
         """
+        if not chord_str:
+            raise ValueError('Empty string')
 
         chord_str = replace_russian_characeters(chord_str)
 
