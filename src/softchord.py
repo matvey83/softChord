@@ -596,6 +596,14 @@ class Song:
         for chord in self._chords:
             yield chord
 
+    def getChordAtPosition(self, char_num):
+        # Go in reverse order to make sure the most recently added or moved chord
+        # is given priority:
+        for chord in reversed(self._chords):
+            if chord.character_num == char_num:
+                return chord
+        return None
+
     def setAllText(self, all_text, all_chords):
         """
         Populates the QTextDocument and self._chords lists based on the specified
@@ -1910,12 +1918,11 @@ class App(QtWidgets.QApplication):
                 Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up,
                 Qt.Key.Key_Down
         ]:
-            # Move or transpose the selected chord
-            prev_chord = None
-            for iter_chord in self.current_song.iterateAllChords():
-                if iter_chord.character_num == self.selected_char_num:
-                    prev_chord = iter_chord
-                    break
+            # Move or transpose the selected chord; giving priority the to
+            # chord that was created last (likely because it was already moved),
+            # fixes an issue where chords would get "swapped" when one chord
+            # gets moved to a position of an existing chord.
+            prev_chord = self.current_song.getChordAtPosition(self.selected_char_num)
 
             if prev_chord:
                 # A chord is selected
