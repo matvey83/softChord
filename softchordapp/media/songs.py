@@ -185,7 +185,6 @@ class Song:
         # self.number
         # self.key_note_id
         # self.key_is_major
-        # self.alt_key_note_id
     
     
 
