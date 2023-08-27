@@ -524,7 +524,6 @@ class Song:
         self.prefer = PREFER_NEITHER
         self.key_note_id = -1  # Main key note
         self.key_is_major = -1  # Major or minor?
-        self.alt_key_note_id = -1  # Alternative key note
 
         self.updateSongFromDatabase()
         self.updateSharpsOrFlats()
@@ -537,7 +536,7 @@ class Song:
         # Read the song from the database:
         try:
             row = self.app.curs.execute(
-                "SELECT number, title, subtitle, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i"
+                "SELECT number, title, subtitle, text, key_note_id, key_is_major FROM songs WHERE id=%i"
                 % self.id).fetchone()
         except sqlite3.OperationalError:
             # Old formatted songbook file
@@ -546,12 +545,12 @@ class Song:
                 % self.id).fetchone()
             # Create this prop
             self.app.curs.execute(
-                "ALTER TABLE songs ADD alt_key_note_id INTEGER")
+                "ALTER TABLE songs ADD subtitle TEXT")
             self.app.curs.commit()
-            print("Table songs: created alt_key_note_id and subtitle columns")
+            print("Table songs: added 'subtitle' column")
             # Re-try once the missing columns have been added:
             row = self.app.curs.execute(
-                "SELECT number, title, subtitle, text, key_note_id, key_is_major, alt_key_note_id FROM songs WHERE id=%i"
+                "SELECT number, title, subtitle, text, key_note_id, key_is_major FROM songs WHERE id=%i"
                 % self.id).fetchone()
 
         self.number = row[0]
@@ -569,10 +568,6 @@ class Song:
         self.key_is_major = row[5]
         if self.key_is_major == None:
             self.key_is_major = -1
-
-        self.alt_key_note_id = row[6]
-        if self.alt_key_note_id == None:
-            self.alt_key_note_id = -1
 
         # Read the chords for this song form the database:
         song_chords = []
@@ -955,10 +950,6 @@ class Song:
 
         if self.key_note_id != -1:
             self.key_note_id = transpose_note(self.key_note_id, steps)
-
-        # NOTE: Do NOT transpose the alternative key, but clear it:
-        if self.alt_key_note_id != -1:
-            self.alt_key_note_id = -1
 
         self.updateSharpsOrFlats()
 
@@ -1615,8 +1606,6 @@ class App(QtWidgets.QApplication):
         self.ignore_song_key_changed = False
         self.ui.song_key_menu.currentIndexChanged.connect(
             self.currentSongKeyChanged)
-        self.ui.song_alt_key_menu.currentIndexChanged.connect(
-            self.currentSongAltKeyChanged)
 
         # Menu actions:
         self.ui.actionNewSongbook.triggered.connect(self.newSongbook)
@@ -1817,7 +1806,6 @@ class App(QtWidgets.QApplication):
     def populateSongKeyMenu(self):
         # Populate the song key pull-down menu:
         keys_list = ["None"]
-        alt_keys_list = ["NA"]
 
         if self.current_song:
             for note_id, (text, alt_text) in enumerate(self.notes_list):
@@ -1828,7 +1816,6 @@ class App(QtWidgets.QApplication):
 
                 keys_list.append(combined_text + u" minor")
                 keys_list.append(combined_text + u" Major")
-                alt_keys_list.append(combined_text)
 
         self.ignore_song_key_changed = True
         self.ui.song_key_menu.clear()
@@ -1836,14 +1823,9 @@ class App(QtWidgets.QApplication):
         self.ui.song_key_menu.setMaxVisibleItems(
             25)  # Show all keys (including "None")
 
-        self.ui.song_alt_key_menu.clear()
-        self.ui.song_alt_key_menu.addItems(alt_keys_list)
-        self.ui.song_alt_key_menu.setMaxVisibleItems(
-            13)  # Show all keys (including "None")
         self.ignore_song_key_changed = False
 
         self.ui.song_key_menu.setEnabled(bool(self.current_song))
-        self.ui.song_alt_key_menu.setEnabled(bool(self.current_song))
 
     def closeEvent(self, event):
         self.sendCurrentSongToDatabase()
@@ -1888,10 +1870,9 @@ class App(QtWidgets.QApplication):
                     % (song.id, song_char_num))
 
             self.curs.execute(
-                "UPDATE songs SET number=?, title=?, subtitle=?, text=?, key_note_id=?, key_is_major=?, alt_key_note_id=? WHERE id=?",
+                "UPDATE songs SET number=?, title=?, subtitle=?, text=?, key_note_id=?, key_is_major=? WHERE id=?",
                 (song.number, song.title, song.subtitle, song.getAllText(),
-                 song.key_note_id, song.key_is_major, song.alt_key_note_id,
-                 song.id))
+                 song.key_note_id, song.key_is_major, song.id))
             self.curs.commit()
         finally:
             self.restoreCursor()
@@ -2133,13 +2114,11 @@ class App(QtWidgets.QApplication):
             self.ui.song_title_ef.setText("")
             self.ui.song_num_ef.setText("")
             self.ui.song_key_menu.setCurrentIndex(0)  # "None" item
-            self.ui.song_alt_key_menu.setCurrentIndex(0)  # "None" item
 
         self.editor.setEnabled(self.current_song != None)
         self.ui.song_title_ef.setEnabled(self.current_song != None)
         self.ui.song_num_ef.setEnabled(self.current_song != None)
         self.ui.song_key_menu.setEnabled(self.current_song != None)
-        self.ui.song_alt_key_menu.setEnabled(self.current_song != None)
         self.ui.transpose_up_button.setEnabled(self.current_song != None)
         self.ui.transpose_down_button.setEnabled(self.current_song != None)
 
@@ -2204,7 +2183,6 @@ class App(QtWidgets.QApplication):
             self.current_song = None
             self.previous_song_text = None
             self.ui.song_key_menu.setCurrentIndex(0)  # "None" item
-            self.ui.song_alt_key_menu.setCurrentIndex(0)  # "None" item
             self.ui.song_num_ef.setText("")
 
             self.editor.setDocument(self.empty_doc)
@@ -2225,12 +2203,6 @@ class App(QtWidgets.QApplication):
                 self.ui.song_key_menu.setCurrentIndex(
                     self.current_song.key_note_id * 2 +
                     self.current_song.key_is_major + 1)
-
-            if self.current_song.alt_key_note_id == -1:
-                self.ui.song_alt_key_menu.setCurrentIndex(0)
-            else:
-                self.ui.song_alt_key_menu.setCurrentIndex(
-                    self.current_song.alt_key_note_id + 1)
 
             self.ui.song_title_ef.setText(self.current_song.title)
             self.ui.song_subtitle_ef.setText(self.current_song.subtitle)
@@ -3148,28 +3120,6 @@ class App(QtWidgets.QApplication):
             self.sendCurrentSongToDatabase()
             self.editor.viewport().update()
 
-    def currentSongAltKeyChanged(self, new_alt_key_index):
-        """
-        Called when the user modifies the selected song's key.
-        """
-
-        if self.ignore_song_key_changed:
-            return
-
-        if self.current_song == None:
-            return
-
-        if new_alt_key_index == 0:  # "None" menu item
-            alt_key_note_id = -1
-        else:
-            alt_key_note_id = (new_alt_key_index - 1)
-
-        if alt_key_note_id != self.current_song.alt_key_note_id:
-            self.current_song.alt_key_note_id = alt_key_note_id
-
-            self.sendCurrentSongToDatabase()
-            self.editor.viewport().update()
-
     def createNewSong(self):
         """
         Add a new song to the database and the songs table, and select it.
@@ -3533,12 +3483,6 @@ class App(QtWidgets.QApplication):
                 song_key_str = "Key: %s" % song._getNoteString(song.key_note_id)
                 if not song.key_is_major:
                     song_key_str += "m"
-
-                if song.alt_key_note_id != -1:
-                    alt_song_key_str = song._getNoteString(song.alt_key_note_id)
-                    if not song.key_is_major:
-                        alt_song_key_str += "m"
-                    song_key_str += " (%s)" % alt_song_key_str
 
                 header_list.append(song_key_str)
 
@@ -3998,7 +3942,7 @@ class App(QtWidgets.QApplication):
                                             global_song_chords)
 
     def _importSong(self, song_num, song_title, song_subtitle, song_text,
-                    key_note_id, key_is_major, alt_key_note_id):
+                    key_note_id, key_is_major):
         """
         Import the given song (except chords).
         Returns the ID assigned to the new song.
@@ -4012,9 +3956,9 @@ class App(QtWidgets.QApplication):
             song_id = row[0] + 1
 
         self.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text, key_note_id, key_is_major, alt_key_note_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO songs (id, number, title, subtitle, text, key_note_id, key_is_major) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (song_id, song_num, song_title, song_subtitle, song_text,
-             key_note_id, key_is_major, alt_key_note_id))
+             key_note_id, key_is_major))
 
         return song_id
 
@@ -4066,8 +4010,7 @@ class App(QtWidgets.QApplication):
                                    song_subtitle,
                                    song_text,
                                    key_note_id=-1,
-                                   key_is_major=-1,
-                                   alt_key_note_id=-1)
+                                   key_is_major=-1)
 
         # Add song's chords (if any):
         chord_id = None  # So that _importChord() assigned a new ID to the new chord
@@ -4295,13 +4238,12 @@ class App(QtWidgets.QApplication):
             chord_id = None  # So that _importChord() assigned a new ID to the new chord
 
             for row in curs2.execute(
-                    "SELECT number, title, subtitle, text, key_note_id, key_is_major, alt_key_note_id FROM songs ORDER BY id"
+                    "SELECT number, title, subtitle, text, key_note_id, key_is_major FROM songs ORDER BY id"
             ):
                 (song_num, song_title, song_subtitle, song_text, key_note_id,
-                 key_is_major, alt_key_note_id) = row
+                 key_is_major) = row
                 song_id = self._importSong(song_num, song_title, song_subtitle,
-                                           song_text, key_note_id, key_is_major,
-                                           alt_key_note_id)
+                                           song_text, key_note_id, key_is_major)
 
                 for row in curs2.execute(
                         "SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i"
@@ -4341,7 +4283,7 @@ class App(QtWidgets.QApplication):
                 "CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)"
             )
             self.curs.execute(
-                "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, key_is_major INTEGER, alt_key_note_id INTEGER)"
+                "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, key_is_major INTEGER)"
             )
             self.setCurrentSongbook(songbook_file)
 
