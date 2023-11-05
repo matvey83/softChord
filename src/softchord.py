@@ -41,19 +41,19 @@ CHORDS_COLOR = "BLUE"
 PREFER_SHARPS, PREFER_FLATS, PREFER_NEITHER = range(3)
 
 chord_types_list = [
-    (0, "Major", u""),
-    (1, "Minor", u"m"),
-    (2, "Suspended 4th", u"sus4"),
-    (3, "Major 7th", u"M7"),
-    (4, "Minor 7th", u"m7"),
-    (5, "Dominant 7th", u"7"),
-    (6, "Add 9", u"9"),
-    (7, "Augmented", u"aug"),
-    (8, "Major 6th", u"6"),
-    (9, "Minor 6th", u"m6"),
-    (10, "11th", u"11"),
-    (11, "Diminished", u"°"),
-    (12, "Diminished 7th", u"°7"),
+    (0, "Major", ""),
+    (1, "Minor", "m"),
+    (2, "Suspended 4th", "sus4"),
+    (3, "Major 7th", "M7"),
+    (4, "Minor 7th", "m7"),
+    (5, "Dominant 7th", "7"),
+    (6, "Add 9", "9"),
+    (7, "Augmented", "aug"),
+    (8, "Major 6th", "6"),
+    (9, "Minor 6th", "m6"),
+    (10, "11th", "11"),
+    (11, "Diminished", "°"),
+    (12, "Diminished 7th", "°7"),
 ]
 
 # Alternative text for chord types (for parsing text):
@@ -68,18 +68,18 @@ alternative_type_names = {
 }
 
 global_notes_list = [
-    (0, u"C", u"C"),
-    (1, u"C♯", u"D♭"),
-    (2, u"D", u"D"),
-    (3, u"D♯", u"E♭"),
-    (4, u"E", u"E"),
-    (5, u"F", u"F"),
-    (6, u"F♯", u"G♭"),
-    (7, u"G", u"G"),
-    (8, u"G♯", u"A♭"),
-    (9, u"A", u"A"),
-    (10, u"A♯", u"B♭"),
-    (11, u"B", u"B"),
+    (0, "C", "C"),
+    (1, "C♯", "D♭"),
+    (2, "D", "D"),
+    (3, "D♯", "E♭"),
+    (4, "E", "E"),
+    (5, "F", "F"),
+    (6, "F♯", "G♭"),
+    (7, "G", "G"),
+    (8, "G♯", "A♭"),
+    (9, "A", "A"),
+    (10, "A♯", "B♭"),
+    (11, "B", "B"),
 ]
 
 # File extensions that can be used for the ChordPro file format:
@@ -135,13 +135,13 @@ def replace_russian_characeters(text):
 
     # FIXME Use the built-in replace method instead
     for char in text:
-        if char == u'Е':  # Russian letter
+        if char == 'Е':  # Russian letter
             char = 'E'
-        if char == u'С':  # Russian letter
+        if char == 'С':  # Russian letter
             char = 'C'
-        if char == u'В':  # Russian letter
+        if char == 'В':  # Russian letter
             char = 'B'
-        if char == u'А':  # Russian letter
+        if char == 'А':  # Russian letter
             char = 'A'
         if char == 'H':  # European style (H instead of B)
             char = 'B'
@@ -447,7 +447,7 @@ class SongChord:
         self.chord_type_id = chord_type_id
         self.bass_note_id = bass_note_id
 
-        if marker == u"-1" or marker == None or marker == "None":
+        if marker == "-1" or marker == None or marker == "None":
             # FIXME the database should have only one of these in it
             marker = ""
         self.marker = marker
@@ -864,7 +864,7 @@ class Song:
             if include_chords and self.getLineHasChords(linenum):
                 # Add the chords line above this line
 
-                line_chord_text_list = [u' '] * len(line_text)
+                line_chord_text_list = [' '] * len(line_text)
 
                 # Figure out the lyric letter for the mouse location:
                 for line_char_num in range(len(line_text)):
@@ -901,10 +901,12 @@ class Song:
                             pos = i + chord_left
                             line_chord_text_list[pos] = chord_text[i]
 
-                line_chord_text = u''.join(line_chord_text_list).rstrip()
-                song_text += line_chord_text + u"\n"
+                line_chord_text = ''.join(line_chord_text_list).rstrip()
+                song_text += line_chord_text + "\n"
 
-            song_text += line_text + u"\n"
+            if not include_chords:
+                line_text = line_text.rstrip()
+            song_text += line_text + "\n"
 
         # Remove the last end-of-line:
         if song_text[-1] == "\n":
@@ -1834,8 +1836,8 @@ class App(QtWidgets.QApplication):
                 else:
                     combined_text = text
 
-                keys_list.append(combined_text + u" minor")
-                keys_list.append(combined_text + u" Major")
+                keys_list.append(combined_text + " minor")
+                keys_list.append(combined_text + " Major")
 
         self.ignore_song_key_changed = True
         self.ui.song_key_menu.clear()
@@ -3895,7 +3897,7 @@ class App(QtWidgets.QApplication):
                     modified_words.append((word, word_start, word_end))
 
             for word, word_start, word_end in modified_words:
-                if word == u'/':
+                if word == '/':
                     num_chords += 1
                     converted_chord = None
                 else:
@@ -4190,8 +4192,8 @@ class App(QtWidgets.QApplication):
         else:
             bass_str = None
 
-        if chord_str[0] in [u'A', u'B', u'C', u'D', u'E', u'F', u'G']:
-            if len(chord_str) > 1 and chord_str[1] in [u'#', u'b', u'♭', u'♯']:
+        if chord_str[0] in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
+            if len(chord_str) > 1 and chord_str[1] in ['#', 'b', '♭', '♯']:
                 note = chord_str[:2]
                 type = chord_str[2:]
             else:
@@ -4201,15 +4203,15 @@ class App(QtWidgets.QApplication):
             raise ValueError("First chord letter is not a note")
 
         if len(note) > 1:
-            if note[1] == u'#':
-                note = note[0] + u'♯'
-            elif note[1] == u'b':
-                note = note[0] + u'♭'
+            if note[1] == '#':
+                note = note[0] + '♯'
+            elif note[1] == 'b':
+                note = note[0] + '♭'
         if bass_str and len(bass_str) > 1:
-            if bass_str[1] == u'#':
-                bass_str = bass_str[0] + u'♯'
-            elif bass_str[1] == u'b':
-                bass_str = bass_str[0] + u'♭'
+            if bass_str[1] == '#':
+                bass_str = bass_str[0] + '♯'
+            elif bass_str[1] == 'b':
+                bass_str = bass_str[0] + '♭'
 
         note_id = self.note_text_id_dict[note]
         if bass_str != None:
