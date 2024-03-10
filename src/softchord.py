@@ -738,7 +738,12 @@ class Song:
         self.app.undo_stack.push(command)
 
     def _replaceChord(self, prev_chord, new_chord):
-        self._chords.remove(prev_chord)
+        try:
+            self._chords.remove(prev_chord)
+        except Exception as err:
+            print('ERROR: _replaceChord() chord not found:', prev_chord)
+            print(err)
+
         self._chords.append(new_chord)
         self.updateSharpsOrFlats()
 
