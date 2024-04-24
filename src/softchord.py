@@ -3929,10 +3929,20 @@ class App(QtWidgets.QApplication):
                     # Strip the EOF character (not always present):
                     line = line.rstrip()
 
+                    # Handle case where text is expected to be aligned in a
+                    # non-monofaced font (e.g. Times New Roman) by shifting
+                    # all chords closer together.
+
                     # Add spaces to the end of <line> if necessary:
-                    for line_char_num in prev_chords.keys():
-                        if line_char_num >= len(line):
-                            line += ' ' * (line_char_num - len(line) + 1)
+                    print('\nLINE:', line)
+                    print('CHORD POSITIONS:', prev_chords.keys())
+                    print('NUM CHARS:', len(line))
+                    last_chord_pos = max(prev_chords.keys())
+                    print('LAST CHAR POSNUM CHARS:', last_chord_pos)
+                    if last_chord_pos >= len(line):
+                        num_spaces = (last_chord_pos - len(line) + 1)
+                        line += ' ' * num_spaces
+                        print('   added %i spaces' % num_spaces)
                     song_lines.append((line, prev_chords))
                 else:
                     # The line before was NOT a chords line - no chords for this lyrics line
