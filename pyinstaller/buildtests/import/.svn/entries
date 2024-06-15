@@ -1,280 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/buildtests/import
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-test_relative_import3.spec
-file
-
-
-
-add
-
-test_onefile_zipimport.py
-file
-
-
-
-add
-
-test_relative_import.py
-file
-
-
-
-add
-
-test_eggs1.py
-file
-
-
-
-add
-
-test_relative_import.spec
-file
-
-
-
-add
-
-test_ctypes_cdll_c.py
-file
-
-
-
-add
-
-test_eggs1.spec
-file
-
-
-
-add
-
-test_ctypes_cdll_c.spec
-file
-
-
-
-add
-
-test_app_with_plugins.py
-file
-
-
-
-add
-
-error_during_import2.py
-file
-
-
-
-add
-
-test_app_with_plugins.spec
-file
-
-
-
-add
-
-test_c_extension.py
-file
-
-
-
-add
-
-test_onefile_c_extension.py
-file
-
-
-
-add
-
-test_hiddenimport.toc
-file
-
-
-
-add
-
-test_hiddenimport.py
-file
-
-
-
-add
-
-relimp3a
-dir
-
-
-
-add
-
-test_relative_import2.py
-file
-
-
-
-add
-
-relimp3b
-dir
-
-
-
-add
-
-test_hiddenimport.spec
-file
-
-
-
-add
-
-relimp3c
-dir
-
-
-
-add
-
-test_relative_import2.spec
-file
-
-
-
-add
-
-test_ctypes_cdll_c2.py
-file
-
-
-
-add
-
-test_error_during_import.py
-file
-
-
-
-add
-
-test_ctypes_cdll_c2.spec
-file
-
-
-
-add
-
-test_error_during_import.spec
-file
-
-
-
-add
-
-test_relative_import.toc
-file
-
-
-
-add
-
-relimp
-dir
-
-
-
-add
-
-static_plugin.py
-file
-
-
-
-add
-
-zipped.egg
-file
-
-
-
-add
-
-
-
-
-
-has-props
-has-prop-mods
-
-test_eggs2.py
-file
-
-
-
-add
-
-test_eggs2.spec
-file
-
-
-
-add
-
-unzipped.egg
-dir
-
-
-
-add
-
-test_onefile_zipimport2.py
-file
-
-
-
-add
-
-relimp2
-dir
-
-
-
-add
-
-test_relative_import3.py
-file
-
-
-
-add
-

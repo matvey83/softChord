@@ -1,91 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/PyInstaller/lib
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-unittest2
-dir
-
-
-
-add
-
-altgraph
-dir
-
-
-
-add
-
-README.rst
-file
-
-
-
-add
-
-__init__.py
-file
-
-
-
-add
-
-junitxml
-dir
-
-
-
-add
-
-six.py
-file
-
-
-
-add
-
-pefile.py
-file
-
-
-
-add
-
-__subprocess.py
-file
-
-
-
-add
-
-macholib
-dir
-
-
-
-add
-

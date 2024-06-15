@@ -1,70 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/examples
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-template.exe.manifest
-file
-
-
-
-add
-
-application_win2k3.exe.config
-file
-
-
-
-add
-
-assembly.manifest
-file
-
-
-
-add
-
-application.exe.manifest
-file
-
-
-
-add
-
-publisher.policy
-file
-
-
-
-add
-
-application_winxp.exe.config
-file
-
-
-
-add
-
