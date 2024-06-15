@@ -1,77 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/buildtests/eggs4testing
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-setup-zipped.py
-file
-
-
-
-add
-
-unzipped_egg
-dir
-
-
-
-add
-
-setup-unzipped.py
-file
-
-
-
-add
-
-.gitignore
-file
-
-
-
-add
-
-make.sh
-file
-
-
-
-add
-
-README.txt
-file
-
-
-
-add
-
-zipped_egg
-dir
-
-
-
-add
-

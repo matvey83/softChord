@@ -1,476 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/buildtests/basic
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-test_python_home.py
-file
-
-
-
-add
-
-test_nestedlaunch0.py
-file
-
-
-
-add
-
-test_absolute_ld_library_path.py
-file
-
-
-
-add
-
-ctypeslib.py
-file
-
-
-
-add
-
-test_6.spec
-file
-
-
-
-add
-
-test_8.py
-file
-
-
-
-add
-
-test_chdir_meipass.py
-file
-
-
-
-add
-
-pkg1
-dir
-
-
-
-add
-
-test_chdir_meipass.spec
-file
-
-
-
-add
-
-pkg2
-dir
-
-
-
-add
-
-test_f_option.py
-file
-
-
-
-add
-
-test_python_makefile.py
-file
-
-
-
-add
-
-hooks1
-dir
-
-
-
-add
-
-test_python_makefile.spec
-file
-
-
-
-add
-
-test_python_makefile_onefile.spec
-file
-
-
-
-add
-
-test_email.py
-file
-
-
-
-add
-
-test_module_attributes.py
-file
-
-
-
-add
-
-test_getfilesystemencoding.spec
-file
-
-
-
-add
-
-test_time.py
-file
-
-
-
-add
-
-test_time.spec
-file
-
-
-
-add
-
-test_encoders.py
-file
-
-
-
-add
-
-test_encoders.spec
-file
-
-
-
-add
-
-test_threading.spec
-file
-
-
-
-add
-
-test_ctypes.py
-file
-
-
-
-add
-
-test_celementtree.py
-file
-
-
-
-add
-
-test_helloworld.spec
-file
-
-
-
-add
-
-test_celementtree.spec
-file
-
-
-
-add
-
-test_filename.py
-file
-
-
-
-add
-
-test_filename.spec
-file
-
-
-
-add
-
-test_13.py
-file
-
-
-
-add
-
-test_pkg_structures.py
-file
-
-
-
-add
-
-test_pkg_structures.spec
-file
-
-
-
-add
-
-test_threading2.spec
-file
-
-
-
-add
-
-test_onefile_multiprocess.py
-file
-
-
-
-add
-
-test_nestedlaunch0.spec
-file
-
-
-
-add
-
-data7.py
-file
-
-
-
-add
-
-test_6.py
-file
-
-
-
-add
-
-test_email_oldstyle.py
-file
-
-
-
-add
-
-test_8.spec
-file
-
-
-
-add
-
-test_get_meipass2_value.py
-file
-
-
-
-add
-
-test_python_makefile_onefile.py
-file
-
-
-
-add
-
-test_f_option.spec
-file
-
-
-
-add
-
-test_get_meipass2_value.spec
-file
-
-
-
-add
-
-test_12.py
-file
-
-
-
-add
-
-test_12.spec
-file
-
-
-
-add
-
-test_getfilesystemencoding.py
-file
-
-
-
-add
-
-test_absolute_python_path.py
-file
-
-
-
-add
-
-test_module_attributes.spec
-file
-
-
-
-add
-
-test_pkg_structures-version.txt
-file
-
-
-
-add
-
-test_nestedlaunch1.py
-file
-
-
-
-add
-
-test_nestedlaunch1.spec
-file
-
-
-
-add
-
-data6.py
-file
-
-
-
-add
-
-test_site.py
-file
-
-
-
-add
-
-test_5.py
-file
-
-
-
-add
-
-test_threading.py
-file
-
-
-
-add
-
-test_site.spec
-file
-
-
-
-add
-
-test_pkg_structures.ico
-file
-
-
-
-add
-
-
-
-
-
-has-props
-has-prop-mods
-
-test_5.spec
-file
-
-
-
-add
-
-test_ctypes.spec
-file
-
-
-
-add
-
-test_helloworld.py
-file
-
-
-
-add
-
-ctypes
-dir
-
-
-
-add
-
-test_13.spec
-file
-
-
-
-add
-
-test_threading2.py
-file
-
-
-
-add
-

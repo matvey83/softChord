@@ -1,84 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/PyInstaller/utils
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-icon.py
-file
-
-
-
-add
-
-misc.py
-file
-
-
-
-add
-
-winutils.py
-file
-
-
-
-add
-
-__init__.py
-file
-
-
-
-add
-
-versioninfo.py
-file
-
-
-
-add
-
-git.py
-file
-
-
-
-add
-
-winmanifest.py
-file
-
-
-
-add
-
-winresource.py
-file
-
-
-
-add
-
