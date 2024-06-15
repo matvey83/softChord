@@ -23,6 +23,9 @@ coll = COLLECT( exe,
 
 import sys
 if sys.platform.startswith("darwin"):
-    #app = BUNDLE(exe, appname='softchord.py', version=1)
-    app = BUNDLE(exe, appname='softChord', version=1)
-               
+    app = BUNDLE(
+        exe,
+        name='softchord.app',
+        icon=None,
+        bundle_identifier=None,
+    )

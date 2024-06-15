@@ -21,12 +21,12 @@ How to compile the program on Windows:
 
 1) Install py2exe for the installed Python version and architecture.
 
-2) CD into the "softchord" directory.
+2) CD into the "softChord" directory.
 
 3) Run "python win_setup.py install"
 
 4) Run "python win_setup.py py2exe"
-   The compiled program will appear in "softchord\dist\"
+   The compiled program will appear in "softChord\dist\"
 
 NOTE: Only step 4 will need to be performed for subsequent builds.
 
@@ -36,18 +36,23 @@ NOTE: Only step 4 will need to be performed for subsequent builds.
 
 How to compile on Mac OS X:
 
-1) pip install pyinstaller
+1) CD into the "softChord" directory.
 
-2) CD into the "softchord" directory.
 
-3) Copy the newly installed "pyinstaller" directory into the softchord
-directory
+2) pip install pyinstaller
+   OR
+   python3 -m pip install pyinstaller
 
-4) python pyinstaller/pyinstaller.py src/softchord.py --onefile --windowed --noconfirm --name "softChord X.Y.Z"
+3) Locate `pyinstaller` or ensure that its in the PATH
 
-5) cp src/Info.plist dist/softChord\ 0.9.1.app/Contents/Info.plist 
+4) # pyinstaller src/softchord.py --onefile --windowed --noconfirm --name "softChord 0.10.0"
+   pyinstaller softchord.spec
 
-6) Copy the database into the dir dist/ directory
+
+5a) Update version numbers in src/Info.plist
+5b) cp src/Info.plist dist/softChord\ 0.10.0.app/Contents/Info.plist
+
+6) Copy the song database into the dir dist/ directory
 
 
 See:
