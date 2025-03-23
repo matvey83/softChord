@@ -3661,7 +3661,7 @@ class App(QtWidgets.QApplication):
             if y > chord_rect.top() and y < char_rect.top():
                 y = char_rect.top() + 1
 
-        cursor = self.editor.cursorForPosition(QtCore.QPoint(offset_x, y))
+        cursor = self.editor.cursorForPosition(QtCore.QPoint(int(offset_x), int(y)))
 
         # If at the start or end of line, make sure the cursor is actually over a character:
         at_start = cursor.atBlockStart()
