@@ -2642,9 +2642,8 @@ class App(QtWidgets.QApplication):
             song_height = height - top_margin - bottom_margin
             song_top = top_margin
             song_left = left_margin
-            # FIXME either use QRectF or use integers instead of floats
-            paint_rect = QtCore.QRect(song_left, song_top, song_width,
-                                      song_height)
+            paint_rect = QtCore.QRect(int(song_left), int(song_top), int(song_width),
+                                      int(song_height))
             scale_ratio = self.drawSongToRect(song,
                                               painter,
                                               editor, 
@@ -3540,7 +3539,7 @@ class App(QtWidgets.QApplication):
             y = 0.0
 
             # FIXME what if the title is too long?
-            header_rect = QtCore.QRect(x, y, 1000.0, lyrics_height)
+            header_rect = QtCore.QRect(int(x), int(y), 1000, int(lyrics_height))
             output_painter.drawText(header_rect, Qt.AlignmentFlag.AlignLeft, header_str)
 
             output_painter.translate(0.0, lyrics_height)
