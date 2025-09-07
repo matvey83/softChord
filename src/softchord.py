@@ -2630,8 +2630,7 @@ class App(QtWidgets.QApplication):
                 song_left = left_margin + x * width
 
                 # FIXME either use QRectF or use integers instead of floats
-                paint_rect = QtCore.QRect(song_left, song_top, song_width,
-                                          song_height)
+                paint_rect = QtCore.QRect(int(song_left), int(song_top), int(song_width), int(song_height))
                 scale_ratio = self.drawSongToRect(song,
                                                   painter,
                                                   editor,
@@ -2684,8 +2683,8 @@ class App(QtWidgets.QApplication):
                 song_top = top_margin + y * height
                 song_left = left_margin + x * width
 
-                paint_rect = QtCore.QRect(song_left, song_top, song_width,
-                                          song_height)
+                paint_rect = QtCore.QRect(int(song_left), int(song_top), int(song_width),
+                                          int(song_height))
                 self.drawTableOfContentsPageToRect(lines, painter, paint_rect)
         else:
             song_width = width - left_margin - right_margin
@@ -2733,7 +2732,7 @@ class App(QtWidgets.QApplication):
             else:
                 suggested_path = QtCore.QDir.home().path()
 
-            pdf_file = QtWidgets.QFileDialog.getSaveFileName(
+            pdf_file, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self.win,
                 "Save PDF file as:",
                 suggested_path,
@@ -3594,11 +3593,10 @@ class App(QtWidgets.QApplication):
                 remove_chars = len(s[-1]) + 1
                 song_name = song_name[:-remove_chars]
 
-            name_bounds_rect = painter.drawText(0, curr_height, max_width,
-                                                lyrics_height, Qt.AlignmentFlag.AlignLeft,
+            rect = QtCore.QRect(0, int(curr_height), int(max_width), int(lyrics_height))
+            name_bounds_rect = painter.drawText(rect, Qt.AlignmentFlag.AlignLeft,
                                                 song_name)
-            num_bounds_rect = painter.drawText(0, curr_height, max_width,
-                                               lyrics_height, Qt.AlignmentFlag.AlignRight,
+            num_bounds_rect = painter.drawText(rect, Qt.AlignmentFlag.AlignRight,
                                                str(song_num))
 
             dots_left = name_bounds_rect.right()
@@ -3612,8 +3610,8 @@ class App(QtWidgets.QApplication):
                 dots_str = ' ' + dots_str + ' '
 
                 # FIXME display dots a bit higher
-                painter.drawText(dots_left, curr_height, dots_width,
-                                 lyrics_height, Qt.AlignmentFlag.AlignLeft, dots_str)
+                rect = QtCore.QRect(int(dots_left), int(curr_height), int(dots_width), int(lyrics_height))
+                painter.drawText(rect, Qt.AlignmentFlag.AlignLeft, dots_str)
 
             curr_height += lyrics_height
 
