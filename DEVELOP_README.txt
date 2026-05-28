@@ -1,17 +1,31 @@
 
-How to run the program:
+How to run the program (Development Setup):
 
-1) Download the source files
+1) Download or clone the source files.
 
-2) Install Python (if not installed).
+2) Create and activate a Python virtual environment (recommended):
 
-3) Install the Qt SDK
+   python3 -m venv .venv
+   source .venv/bin/activate     # macOS / Linux
+   # .venv\Scripts\activate      # Windows
 
-4) Install PyQt for the above Python and Qt versions
+   Note: `.venv` is listed in `.gitignore`.
 
-NOTE: Make sure all of the above are for the same architecture (32-bit vs 64-bit).
+3) Install dependencies:
 
-5) CD into the "src" directory and run: "python softchord.py"
+   pip install -r requirements.txt
+
+   This will install PyQt6 (which includes the required Qt6 libraries).
+
+4) (Optional) If you want to keep dependencies reproducible, the project now uses
+   a virtual environment + requirements.txt instead of the old manual Qt SDK + PyQt
+   installation.
+
+5) Run the application:
+
+   cd src
+   python3 softchord.py
+
 
 
 
@@ -36,25 +50,28 @@ NOTE: Only step 4 will need to be performed for subsequent builds.
 
 How to compile on Mac OS X:
 
-1) CD into the "softChord" directory.
+1) Make sure your virtual environment is activated:
 
+   source .venv/bin/activate
 
-2) pip install pyinstaller
-   OR
-   python3 -m pip install pyinstaller
+2) Install PyInstaller inside the venv:
 
-3) Locate `pyinstaller` or ensure that its in the PATH
+   pip install pyinstaller
 
-4) # pyinstaller src/softchord.py --onefile --windowed --noconfirm --name "softChord 0.10.0"
+3) From the project root, run:
+
+   # pyinstaller src/softchord.py --onefile --windowed --noconfirm --name "softChord 0.10.0"
    pyinstaller softchord.spec
 
+4) After building, update version numbers if needed and copy the Info.plist:
 
-5a) Update version numbers in src/Info.plist
-5b) cp src/Info.plist dist/softChord\ 0.10.0.app/Contents/Info.plist
+   # Example (adjust the app name/version as needed):
+   cp src/Info.plist "dist/softChord 0.10.0.app/Contents/Info.plist"
 
-6) Copy the song database into the dir dist/ directory
+5) (Optional) Copy the song database(s) into the `dist/` directory if you want
+   them included with the built application.
 
 
-See:
+See also:
 http://tech.xster.net/tips/deploy-pyqt-applications-on-mac-os-x-with-pyinstaller/
 
