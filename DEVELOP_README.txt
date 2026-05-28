@@ -28,6 +28,16 @@ How to run the program (Development Setup):
 
 
 
+NOTE:
+All of the above steps are automated by running this script:
+
+./start_softChord.py
+
+OR (to load a song book as well):
+
+./start_softChord.py zvuki_neba.songbook &
+
+
 
 
 
