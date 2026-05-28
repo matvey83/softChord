@@ -2406,7 +2406,7 @@ class App(QtWidgets.QApplication):
         # Make a copy:
         new_font = QtGui.QFont(self.chords_font)
 
-        new_font, ok = QtGui.QFontDialog.getFont(new_font, self.win)
+        new_font, ok = QtWidgets.QFontDialog.getFont(new_font, self.win)
         if ok:
             self.chords_font_size = new_font.pointSizeF()
             self.chords_font = new_font
@@ -2420,7 +2420,7 @@ class App(QtWidgets.QApplication):
         # Make a copy:
         new_font = QtGui.QFont(self.lyrics_font)
 
-        new_font, ok = QtGui.QFontDialog.getFont(new_font, self.win)
+        new_font, ok = QtWidgets.QFontDialog.getFont(new_font, self.win)
         if ok:
             self.lyrics_font_size = new_font.pointSizeF()
             self.lyrics_font = new_font
@@ -2641,8 +2641,8 @@ class App(QtWidgets.QApplication):
             song_height = height - top_margin - bottom_margin
             song_top = top_margin
             song_left = left_margin
-            paint_rect = QtCore.QRect(int(song_left), int(song_top), int(song_width),
-                                      int(song_height))
+            paint_rect = QtCore.QRectF(song_left, song_top, song_width,
+                                      song_height)
             scale_ratio = self.drawSongToRect(song,
                                               painter,
                                               editor, 
@@ -2990,7 +2990,7 @@ class App(QtWidgets.QApplication):
             suggested_path = os.path.join(QtCore.QDir.home().path(),
                                           self.current_song.title + ".txt")
 
-            text_file = QtWidgets.QFileDialog.getSaveFileName(
+            text_file, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self.win,
                 "Save text file as:",
                 suggested_path,
@@ -3028,7 +3028,7 @@ class App(QtWidgets.QApplication):
             suggested_path = os.path.join(QtCore.QDir.home().path(),
                                           self.current_song.title + ".chordpro")
 
-            filename = QtWidgets.QFileDialog.getSaveFileName(
+            filename, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self.win,
                 "Save text file as:",
                 suggested_path,
@@ -3236,9 +3236,9 @@ class App(QtWidgets.QApplication):
         mbox = QtWidgets.QMessageBox(self.win)
         mbox.setText(msg)
         mbox.setWindowTitle(title)
-        mbox.setIcon(QtWidgets.QMessageBox.Question)
-        b1 = mbox.addButton(button1, QtWidgets.QMessageBox.ActionRole)
-        b2 = mbox.addButton(button2, QtWidgets.QMessageBox.RejectRole)
+        mbox.setIcon(QtWidgets.QMessageBox.Icon.Question)
+        b1 = mbox.addButton(button1, QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        b2 = mbox.addButton(button2, QtWidgets.QMessageBox.ButtonRole.RejectRole)
         mbox.exec()
         return (mbox.clickedButton() == b1)
 
@@ -3252,7 +3252,7 @@ class App(QtWidgets.QApplication):
 
         all_song_ids = self.songs_model.getAllSongIds()
 
-        new_id, ok = QtGui.QInputDialog.getInteger(
+        new_id, ok = QtWidgets.QInputDialog.getInt(
             self.win, "softChord", "Enter a new ID for this song:", curr_id, 1)
         if not ok or new_id == curr_id:
             # User cancelled or selected same ID
@@ -3538,7 +3538,7 @@ class App(QtWidgets.QApplication):
             y = 0.0
 
             # FIXME what if the title is too long?
-            header_rect = QtCore.QRect(int(x), int(y), 1000, int(lyrics_height))
+            header_rect = QtCore.QRectF(x, y, 1000.0, lyrics_height)
             output_painter.drawText(header_rect, Qt.AlignmentFlag.AlignLeft, header_str)
 
             output_painter.translate(0.0, lyrics_height)
@@ -3710,7 +3710,7 @@ class App(QtWidgets.QApplication):
         if not filename:
             filter_string = "ChordPro format (%s)" % ' '.join(
                 ['*' + ext for ext in chordpro_extensions])
-            chordpro_files = QtWidgets.QFileDialog.getOpenFileNames(
+            chordpro_files, _ = QtWidgets.QFileDialog.getOpenFileNames(
                 self.win,
                 "Select a ChordPro file to import",
                 QtCore.QDir.home().path(),  # initial dir
@@ -3765,7 +3765,7 @@ class App(QtWidgets.QApplication):
         """
         Lets the user select a text file to import.
         """
-        text_files = QtWidgets.QFileDialog.getOpenFileNames(
+        text_files, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self.win,
             "Select a text file to import",
             QtCore.QDir.home().path(),  # initial dir
@@ -4308,7 +4308,7 @@ class App(QtWidgets.QApplication):
             self.restoreCursor()
 
     def newSongbook(self):
-        songbook_file = QtWidgets.QFileDialog.getSaveFileName(
+        songbook_file, _ = QtWidgets.QFileDialog.getSaveFileName(
             self.win,
             "Save songbook as:",
             QtCore.QDir.home().path(),  # initial dir
@@ -4331,10 +4331,12 @@ class App(QtWidgets.QApplication):
             self.setCurrentSongbook(songbook_file)
 
     def openSongbook(self):
+        initial_dir = QtCore.QDir.home().path()
+
         songbook_file, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.win,
             "Select a songbook to open",
-            # QtCore.QDir.home().path(), # initial dir
+            initial_dir,
             "Songbook format (*.songbook)",
         )
         if songbook_file:
@@ -4360,7 +4362,7 @@ class App(QtWidgets.QApplication):
 
         new_songbook_file = None
         while True:
-            new_songbook_file = QtWidgets.QFileDialog.getSaveFileName(
+            new_songbook_file, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self.win,
                 "Save songbook as:",
                 suggested_path,
