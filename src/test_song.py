@@ -209,6 +209,13 @@ class MinimalTestApp:
         # Very rough stub
         return (QtCore.QRect(0, 0, 10, 10), QtCore.QRect(0, 0, 10, 10))
 
+    def __del__(self):
+        try:
+            if hasattr(self, 'curs') and self.curs:
+                self.curs.close()
+        except Exception:
+            pass
+
     # --- Stubs for common App dialog / warning methods used in songbook & import ops ---
     def warning(self, text):
         self._last_warning = text
