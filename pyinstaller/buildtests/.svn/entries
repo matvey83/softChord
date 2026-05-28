@@ -1,84 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/buildtests
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-basic
-dir
-
-
-
-add
-
-multipackage
-dir
-
-
-
-add
-
-eggs4testing
-dir
-
-
-
-add
-
-import
-dir
-
-
-
-add
-
-setupenv_windows.py
-file
-
-
-
-add
-
-libraries
-dir
-
-
-
-add
-
-interactive
-dir
-
-
-
-add
-
-runtests.py
-file
-
-
-
-add
-

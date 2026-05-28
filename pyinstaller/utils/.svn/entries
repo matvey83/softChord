@@ -1,77 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/utils
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-BinDepend.py
-file
-
-
-
-add
-
-Makespec.py
-file
-
-
-
-add
-
-Build.py
-file
-
-
-
-add
-
-Crypt.py
-file
-
-
-
-add
-
-GrabVersion.py
-file
-
-
-
-add
-
-ArchiveViewer.py
-file
-
-
-
-add
-
-MakeComServer.py
-file
-
-
-
-add
-

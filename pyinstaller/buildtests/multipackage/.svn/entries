@@ -1,217 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/buildtests/multipackage
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-test_multipackage1.spec
-file
-
-
-
-add
-
-multipackage4_B.toc
-file
-
-
-
-add
-
-multipackage1_B.py
-file
-
-
-
-add
-
-test_multipackage3.py
-file
-
-
-
-add
-
-multipackage5_B.toc
-file
-
-
-
-add
-
-multipackage2_B.py
-file
-
-
-
-add
-
-test_multipackage2.spec
-file
-
-
-
-add
-
-test_multipackage4.py
-file
-
-
-
-add
-
-multipackage5_C.toc
-file
-
-
-
-add
-
-multipackage3_B.py
-file
-
-
-
-add
-
-test_multipackage3.spec
-file
-
-
-
-add
-
-test_multipackage5.py
-file
-
-
-
-add
-
-multipackage4_B.py
-file
-
-
-
-add
-
-test_multipackage4.spec
-file
-
-
-
-add
-
-multipackage5_B.py
-file
-
-
-
-add
-
-test_multipackage5.spec
-file
-
-
-
-add
-
-multipackage5_C.py
-file
-
-
-
-add
-
-test_multipackage1.toc
-file
-
-
-
-add
-
-test_multipackage2.toc
-file
-
-
-
-add
-
-multipackage1_B.toc
-file
-
-
-
-add
-
-test_multipackage3.toc
-file
-
-
-
-add
-
-test_multipackage1.py
-file
-
-
-
-add
-
-multipackage2_B.toc
-file
-
-
-
-add
-
-test_multipackage4.toc
-file
-
-
-
-add
-
-multipackage3_B.toc
-file
-
-
-
-add
-
-test_multipackage2.py
-file
-
-
-
-add
-
-test_multipackage5.toc
-file
-
-
-
-add
-

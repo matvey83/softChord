@@ -2630,8 +2630,7 @@ class App(QtWidgets.QApplication):
                 song_left = left_margin + x * width
 
                 # FIXME either use QRectF or use integers instead of floats
-                paint_rect = QtCore.QRect(song_left, song_top, song_width,
-                                          song_height)
+                paint_rect = QtCore.QRect(int(song_left), int(song_top), int(song_width), int(song_height))
                 scale_ratio = self.drawSongToRect(song,
                                                   painter,
                                                   editor,
@@ -2684,8 +2683,8 @@ class App(QtWidgets.QApplication):
                 song_top = top_margin + y * height
                 song_left = left_margin + x * width
 
-                paint_rect = QtCore.QRect(song_left, song_top, song_width,
-                                          song_height)
+                paint_rect = QtCore.QRect(int(song_left), int(song_top), int(song_width),
+                                          int(song_height))
                 self.drawTableOfContentsPageToRect(lines, painter, paint_rect)
         else:
             song_width = width - left_margin - right_margin
@@ -3594,11 +3593,10 @@ class App(QtWidgets.QApplication):
                 remove_chars = len(s[-1]) + 1
                 song_name = song_name[:-remove_chars]
 
-            name_bounds_rect = painter.drawText(0, curr_height, max_width,
-                                                lyrics_height, Qt.AlignmentFlag.AlignLeft,
+            rect = QtCore.QRect(0, int(curr_height), int(max_width), int(lyrics_height))
+            name_bounds_rect = painter.drawText(rect, Qt.AlignmentFlag.AlignLeft,
                                                 song_name)
-            num_bounds_rect = painter.drawText(0, curr_height, max_width,
-                                               lyrics_height, Qt.AlignmentFlag.AlignRight,
+            num_bounds_rect = painter.drawText(rect, Qt.AlignmentFlag.AlignRight,
                                                str(song_num))
 
             dots_left = name_bounds_rect.right()
@@ -3612,8 +3610,8 @@ class App(QtWidgets.QApplication):
                 dots_str = ' ' + dots_str + ' '
 
                 # FIXME display dots a bit higher
-                painter.drawText(dots_left, curr_height, dots_width,
-                                 lyrics_height, Qt.AlignmentFlag.AlignLeft, dots_str)
+                rect = QtCore.QRect(int(dots_left), int(curr_height), int(dots_width), int(lyrics_height))
+                painter.drawText(rect, Qt.AlignmentFlag.AlignLeft, dots_str)
 
             curr_height += lyrics_height
 
@@ -3725,9 +3723,9 @@ class App(QtWidgets.QApplication):
             self.setWaitCursor()
             try:
                 for filename in chordpro_files:
-                    # "rU" makes sure that the line endings are handled properly:
-                    # file_text = codecs.open(filename.encode('utf-8'), 'rU', encoding='utf_8_sig').read()
-                    with codecs.open(filename, 'rU',
+                    # "rU" made sure line endings were handled properly (Python 2).
+                    # In Python 3 just use 'r' (universal newlines are default).
+                    with codecs.open(filename, 'r',
                                      encoding='utf_8_sig') as fh:
                         file_text = fh.read()
                     self.importSongFromChordProText(file_text)
@@ -3782,8 +3780,9 @@ class App(QtWidgets.QApplication):
             for filename in text_files:
                 song_title = os.path.splitext(os.path.basename(filename))[0]
 
-                # "rU" makes sure that the line endings are handled properly:
-                with open(filename, 'rU', encoding='utf_8_sig') as fh:
+                # "rU" made sure line endings were handled properly (Python 2).
+                # In Python 3 just use 'r' (universal newlines are default).
+                with open(filename, 'r', encoding='utf_8_sig') as fh:
                     text = fh.read()
                     try:
                         self.importSongFromText(text, song_title)

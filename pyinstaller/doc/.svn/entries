@@ -1,112 +1,0 @@
-10
-
-dir
-0
-https://softchord.svn.sourceforge.net/svnroot/softchord/pyinstaller/doc
-https://softchord.svn.sourceforge.net/svnroot/softchord
-add
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-be02edf8-907f-434d-9d52-e0ffb5e9bc3f
-
-Manual.html
-file
-
-
-
-add
-
-source
-dir
-
-
-
-add
-
-pyi-build.html
-file
-
-
-
-add
-
-LICENSE.GPL
-file
-
-
-
-add
-
-images
-dir
-
-
-
-add
-
-Manual.pdf
-file
-
-
-
-add
-
-pyi-makeCOMServer.html
-file
-
-
-
-add
-
-CHANGES.txt
-file
-
-
-
-add
-
-pyinstaller.html
-file
-
-
-
-add
-
-pyi-makespec.html
-file
-
-
-
-add
-
-KNOWNBUGS.txt
-file
-
-
-
-add
-
-stylesheets
-dir
-
-
-
-add
-
