@@ -3723,9 +3723,9 @@ class App(QtWidgets.QApplication):
             self.setWaitCursor()
             try:
                 for filename in chordpro_files:
-                    # "rU" makes sure that the line endings are handled properly:
-                    # file_text = codecs.open(filename.encode('utf-8'), 'rU', encoding='utf_8_sig').read()
-                    with codecs.open(filename, 'rU',
+                    # "rU" made sure line endings were handled properly (Python 2).
+                    # In Python 3 just use 'r' (universal newlines are default).
+                    with codecs.open(filename, 'r',
                                      encoding='utf_8_sig') as fh:
                         file_text = fh.read()
                     self.importSongFromChordProText(file_text)
@@ -3780,8 +3780,9 @@ class App(QtWidgets.QApplication):
             for filename in text_files:
                 song_title = os.path.splitext(os.path.basename(filename))[0]
 
-                # "rU" makes sure that the line endings are handled properly:
-                with open(filename, 'rU', encoding='utf_8_sig') as fh:
+                # "rU" made sure line endings were handled properly (Python 2).
+                # In Python 3 just use 'r' (universal newlines are default).
+                with open(filename, 'r', encoding='utf_8_sig') as fh:
                     text = fh.read()
                     try:
                         self.importSongFromText(text, song_title)
