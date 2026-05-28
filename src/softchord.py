@@ -4306,6 +4306,10 @@ class App(QtWidgets.QApplication):
             self.updateStates()
         finally:
             self.restoreCursor()
+            try:
+                curs2.close()
+            except Exception:
+                pass
 
     def newSongbook(self):
         songbook_file, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -4397,7 +4401,7 @@ class App(QtWidgets.QApplication):
         Append a user-selected songbook to the currently opened songbook.
         """
 
-        songbook_file = QtWidgets.QFileDialog.getOpenFileName(
+        songbook_file, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.win,
             "Select a songbook to append",
             QtCore.QDir.home().path(),  # initial dir
