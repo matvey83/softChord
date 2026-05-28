@@ -28,13 +28,13 @@
 <key>CFBundleShortVersionString</key>
 <string>0.0.0</string>
 <key>CFBundleExecutable</key>
-<string>MacOS/softChord 0.9.1</string>
+<string>MacOS/softChord 0.10.0</string>
 <key>CFBundleName</key>
-<string>softChord 0.9.1</string>
+<string>softChord 0.10.0</string>
 <key>CFBundleInfoDictionaryVersion</key>
 <string>6.0</string>
 <key>CFBundleDisplayName</key>
-<string>softChord 0.9.1</string>
+<string>softChord 0.10.0</string>
 <key>CFBundleIconFile</key>
 <string>icon-windowed.icns</string>
 <key>CFBundlePackageType</key>
