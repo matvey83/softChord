@@ -48,15 +48,40 @@ def create_venv():
     print(f"Virtual environment created at {VENV_DIR}")
 
 
+def ask_yes_no(prompt: str) -> bool:
+    """Ask a y/n question on stdin. Returns True for yes."""
+    try:
+        answer = input(f"{prompt} [y/n]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer in ("y", "yes")
+
+
 def install_requirements():
     if not REQUIREMENTS_FILE.exists():
         print("No requirements.txt found — skipping dependency installation.")
         return
 
     print_header("Installing dependencies")
+    # Use the venv pip directly (equivalent to: source .venv/bin/activate && pip install ...)
     cmd = [str(VENV_PIP), "install", "-r", str(REQUIREMENTS_FILE)]
     subprocess.check_call(cmd)
     print("Dependencies installed successfully.")
+
+
+def offer_install_requirements() -> bool:
+    """Ask permission, then install from requirements.txt. Returns True if install ran."""
+    activate_cmd = ".venv\\Scripts\\activate" if sys.platform == "win32" else "source .venv/bin/activate"
+    print("PyQt6 is not available in the virtual environment.")
+    print("This can usually be fixed by running:")
+    print(f"    {activate_cmd}")
+    print("    pip install -r requirements.txt")
+    if not ask_yes_no("Install dependencies from requirements.txt now?"):
+        print("Skipping dependency installation.")
+        return False
+    install_requirements()
+    return True
 
 
 def ensure_venv_and_deps():
@@ -72,13 +97,19 @@ def ensure_venv_and_deps():
             stderr=subprocess.DEVNULL,
         )
     except subprocess.CalledProcessError:
-        install_requirements()
+        if not offer_install_requirements():
+            sys.exit(1)
 
 
 def is_running_in_venv() -> bool:
-    """Return True if the current Python is the one from our .venv."""
+    """Return True if this interpreter is using the project's .venv.
+
+    Compare sys.prefix, not sys.executable. On Unix the venv python is a
+    symlink to the base interpreter, so Path.resolve() on the executable
+    cannot tell them apart.
+    """
     try:
-        return VENV_PYTHON.resolve() == Path(sys.executable).resolve()
+        return Path(sys.prefix).resolve() == VENV_DIR.resolve()
     except Exception:
         return False
 
@@ -99,15 +130,20 @@ def main():
 
     # --- We are now running inside the correct venv ---
 
-    # Final safety check
+    # Final safety check (e.g. already inside the venv, but deps were never installed)
     try:
         import PyQt6  # noqa: F401
-    except ImportError:
-        print("ERROR: PyQt6 is still not available even after venv setup.", file=sys.stderr)
-        print("Please try running the following manually:", file=sys.stderr)
-        print("    source .venv/bin/activate", file=sys.stderr)
-        print("    pip install -r requirements.txt", file=sys.stderr)
-        sys.exit(1)
+    except ImportError as e:
+        print(f"ERROR: Could not import PyQt6: {e}", file=sys.stderr)
+        print(f"  python: {sys.executable}", file=sys.stderr)
+        print(f"  prefix: {sys.prefix}", file=sys.stderr)
+        if not offer_install_requirements():
+            sys.exit(1)
+        try:
+            import PyQt6  # noqa: F401
+        except ImportError as e:
+            print(f"ERROR: PyQt6 is still not available after installing dependencies: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Build the command to run the real application
     cmd = [sys.executable, str(MAIN_SCRIPT)] + sys.argv[1:]
