@@ -93,7 +93,7 @@ Do not edit the generated `*_ui.py` files by hand.
 
 ## Packaging
 
-Standalone builds use [PyInstaller](https://pyinstaller.org/) 6 from `softchord.spec`. GitHub Actions (`.github/workflows/build.yml`) builds the macOS `.app` and Windows `.exe` on tagged releases, or on demand via **Actions → Build → Run workflow**.
+Standalone builds use [PyInstaller](https://pyinstaller.org/) 6 from `softchord.spec`. GitHub Actions (`.github/workflows/build.yml`) builds Apple Silicon and Intel macOS `.app` zips plus a Windows `.exe` on tagged releases, or on demand via **Actions → Build → Run workflow**.
 
 You can also build locally. Build **on the OS you want to ship** (a Mac cannot produce the Windows `.exe`, and vice versa).
 
@@ -116,10 +116,11 @@ pip install -r requirements-build.txt
 pyinstaller --noconfirm --clean softchord.spec
 ```
 
-| Platform | Output |
-|---|---|
-| macOS | `dist/softChord.app` (windowed app bundle) |
-| Windows | `dist/softChord.exe` (windowed single-file executable) |
+| Platform | Local output | CI release asset |
+|---|---|---|
+| macOS (Apple Silicon) | `dist/softChord.app` | `softChord-*-macos-arm64.zip` |
+| macOS (Intel) | `dist/softChord.app` | `softChord-*-macos-x86_64.zip` |
+| Windows | `dist/softChord.exe` | `softChord-*-windows.exe` |
 
 `.songbook` files are associated with the app:
 
