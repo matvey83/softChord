@@ -1,0 +1,81 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to upload builds to (e.g. v1.0.0). Leave empty to skip upload.
+        required: false
+        type: string
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            id: macos-arm64
+          - os: windows-latest
+            id: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ github.event.inputs.release_tag }}"
+          fi
+          if [ -z "$TAG" ]; then
+            VER="dev"
+          else
+            VER="${TAG#v}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: python build_softChord.py
+
+      - name: Package macOS zip
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent dist/softChord.app "dist/softChord-${{ steps.ver.outputs.ver }}-macos-arm64.zip"
+
+      - name: Rename Windows exe
+        if: runner.os == 'Windows'
+        shell: bash
+        run: mv dist/softChord.exe "dist/softChord-${{ steps.ver.outputs.ver }}-windows.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: softChord-${{ matrix.id }}
+          path: dist/softChord-${{ steps.ver.outputs.ver }}-*
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: steps.ver.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(dist/softChord-${{ steps.ver.outputs.ver }}-*)
+          gh release upload "${{ steps.ver.outputs.tag }}" "${files[@]}" --clobber
