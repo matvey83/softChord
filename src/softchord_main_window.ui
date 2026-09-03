@@ -151,25 +151,21 @@
            <number>5</number>
           </property>
           <item>
-           <widget class="QLabel" name="label_5">
-            <property name="text">
-             <string>Key:</string>
+           <widget class="QLabel" name="auto_detected_key_label">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="song_key_menu">
             <property name="minimumSize">
              <size>
-              <width>100</width>
+              <width>220</width>
               <height>0</height>
              </size>
             </property>
-            <property name="maximumSize">
-             <size>
-              <width>100</width>
-              <height>16777215</height>
-             </size>
+            <property name="text">
+             <string>Auto-detected key:</string>
             </property>
            </widget>
           </item>

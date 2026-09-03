@@ -37,6 +37,14 @@ from softchord import (
     PREFER_NEITHER,
     transpose_note,
     read_import_text_file,
+    best_detected_key,
+    detect_region_start_indices,
+    format_auto_detected_key_text,
+    auto_detected_key_labels,
+    score_key,
+    family_score,
+    SONGS_TABLE_SQL,
+    SONG_CHORD_LINK_TABLE_SQL,
 )
 
 # ---------------------------------------------------------------------------
@@ -131,29 +139,8 @@ class MinimalTestApp:
         self._setup_method_stubs()
 
     def _create_minimal_tables(self):
-        self.curs.execute("""
-            CREATE TABLE songs (
-                id INTEGER PRIMARY KEY,
-                number INTEGER,
-                title TEXT,
-                subtitle TEXT,
-                text TEXT,
-                key_note_id INTEGER,
-                key_is_major INTEGER
-            )
-        """)
-        self.curs.execute("""
-            CREATE TABLE song_chord_link (
-                id INTEGER PRIMARY KEY,
-                song_id INTEGER,
-                character_num INTEGER,
-                note_id INTEGER,
-                chord_type_id INTEGER,
-                bass_note_id INTEGER,
-                marker TEXT,
-                in_parentheses INTEGER
-            )
-        """)
+        self.curs.execute(SONGS_TABLE_SQL)
+        self.curs.execute(SONG_CHORD_LINK_TABLE_SQL)
         self.curs.commit()
 
     def _setup_method_stubs(self):
@@ -212,11 +199,9 @@ class MinimalTestApp:
         return (QtCore.QRect(0, 0, 10, 10), QtCore.QRect(0, 0, 10, 10))
 
     def __del__(self):
-        try:
-            if hasattr(self, 'curs') and self.curs:
-                self.curs.close()
-        except Exception:
-            pass
+        # Do not close the in-memory sqlite connection here. __del__ can run
+        # during GC while tests still hold the instance, wiping usable state.
+        pass
 
     # --- Stubs for common App dialog / warning methods used in songbook & import ops ---
     def warning(self, text):
@@ -243,21 +228,6 @@ class MinimalTestApp:
     # --- Minimal support for font + clipboard + printing tests ---
     def updateEditorFonts(self):
         pass
-
-    # Simple clipboard stub
-    class _FakeClipboard:
-
-        def __init__(self):
-            self.text = ""
-
-        def setText(self, t):
-            self.text = t
-
-        def text(self):
-            return self.text
-
-    def __init__(self):  # Re-open to add clipboard after original __init__
-        pass  # This won't work — better to add in the body below
 
 
 class _DummyUndoStack:
@@ -297,8 +267,8 @@ def create_test_song(app,
     """Helper: insert a minimal song into the test DB and return a Song instance."""
     app.curs.execute(
         """
-        INSERT INTO songs (id, number, title, subtitle, text, key_note_id, key_is_major)
-        VALUES (?, 1, ?, '', ?, -1, -1)
+        INSERT INTO songs (id, number, title, subtitle, text)
+        VALUES (?, 1, ?, '', ?)
     """, (song_id, title, text))
     app.curs.commit()
 
@@ -348,6 +318,13 @@ class TestSongChar(unittest.TestCase):
 
 
 class TestSong(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+        else:
+            cls.qapp = QtWidgets.QApplication.instance()
 
     def setUp(self):
         self.app = MinimalTestApp()
@@ -488,10 +465,6 @@ class TestSong(unittest.TestCase):
         self.assertIn("[2:C/E]", chordpro)
 
     def test_transpose_with_key_and_negative_steps(self):
-        # Set a key (C major = note 0)
-        self.song.key_note_id = 0
-        self.song.key_is_major = 1
-
         chord = SongChord(self.song, 0, 0, 0, -1, "", 0)  # C
         self.song._addChord(chord)
 
@@ -499,8 +472,6 @@ class TestSong(unittest.TestCase):
 
         chord_text = list(self.song.iterateAllChords())[0].getChordText()
         self.assertIn("B", chord_text)
-        # Key should also have moved
-        self.assertEqual(self.song.key_note_id, 11)  # B
 
     def test_transpose_multiple_chords(self):
         c = SongChord(self.song, 0, 0, 0, -1, "", 0)
@@ -572,8 +543,8 @@ class TestSongsTableModels(unittest.TestCase):
         # Insert some test songs directly into the DB
         self.app.curs.executemany(
             """
-            INSERT INTO songs (id, number, title, subtitle, text, key_note_id, key_is_major)
-            VALUES (?, ?, ?, '', 'lyrics here', -1, -1)
+            INSERT INTO songs (id, number, title, subtitle, text)
+            VALUES (?, ?, ?, '', 'lyrics here')
         """,
             [
                 (1, 10, "Amazing Grace"),
@@ -626,8 +597,8 @@ class TestSongsTableModels(unittest.TestCase):
     def test_table_model_update_from_database(self):
         # Add a new song directly to DB
         self.app.curs.execute("""
-            INSERT INTO songs (id, number, title, subtitle, text, key_note_id, key_is_major)
-            VALUES (5, 40, "New Song Added Later", '', '', -1, -1)
+            INSERT INTO songs (id, number, title, subtitle, text)
+            VALUES (5, 40, "New Song Added Later", '', '')
         """)
         self.app.curs.commit()
 
@@ -1505,9 +1476,7 @@ class TestMoreAppOperations(unittest.TestCase):
         conn.execute(
             "CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)"
         )
-        conn.execute(
-            "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, key_is_major INTEGER)"
-        )
+        conn.execute(SONGS_TABLE_SQL)
         conn.commit()
         conn.close()
         self.app.setCurrentSongbook(path)
@@ -1556,6 +1525,371 @@ class TestReadImportTextFile(unittest.TestCase):
             fh.write(text.encode("cp1250"))
         self.assertEqual(read_import_text_file(utf8_path), text)
         self.assertEqual(read_import_text_file(cp1250_path), text)
+
+
+class _Root:
+    """Minimal chord stand-in: (note_id, is_minor)."""
+
+    def __init__(self, char, note_id, chord_type_id=0):
+        self.character_num = char
+        self.note_id = note_id
+        self.chord_type_id = chord_type_id
+
+
+def _repeat_prog(prog, times, start_char=0, step=4):
+    chords = []
+    char = start_char
+    for _ in range(times):
+        for note, typ in prog:
+            chords.append(_Root(char, note, typ))
+            char += step
+    return chords
+
+
+class TestAutoDetectedKey(unittest.TestCase):
+    """Issue-style: spell accidentals from local key, including modulations."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+        else:
+            cls.qapp = QtWidgets.QApplication.instance()
+
+    A_PROG = [(9, 0), (4, 0), (6, 1), (2, 0)]  # A E F#m D
+    BB_PROG = [(10, 0), (5, 0), (7, 1), (3, 0)]  # Bb F Gm Eb
+
+    def test_a_major_region_uses_sharps(self):
+        chords = _repeat_prog(self.A_PROG, 3)
+        key = best_detected_key(chords)
+        self.assertEqual(key.label, "A")
+        self.assertEqual(key.prefer, PREFER_SHARPS)
+        app = MinimalTestApp()
+        song = create_test_song(app, text="x" * 80)
+        for i, ch in enumerate(chords):
+            song._addChord(SongChord(song, ch.character_num, ch.note_id,
+                                     ch.chord_type_id, -1, "", 0))
+        fsharp = [c for c in song.iterateAllChords() if c.note_id == 6][0]
+        self.assertIn("F♯", fsharp.getChordText())
+        self.assertNotIn("G♭", fsharp.getChordText())
+
+    def test_bb_major_region_uses_flats(self):
+        chords = _repeat_prog(self.BB_PROG, 3)
+        key = best_detected_key(chords)
+        self.assertEqual(key.label, "B♭")
+        self.assertEqual(key.prefer, PREFER_FLATS)
+        app = MinimalTestApp()
+        song = create_test_song(app, text="x" * 80)
+        for ch in chords:
+            song._addChord(SongChord(song, ch.character_num, ch.note_id,
+                                     ch.chord_type_id, -1, "", 0))
+        bb = [c for c in song.iterateAllChords() if c.note_id == 10][0]
+        eb = [c for c in song.iterateAllChords() if c.note_id == 3][0]
+        self.assertIn("B♭", bb.getChordText())
+        self.assertIn("E♭", eb.getChordText())
+
+    def test_modulation_splits_without_lyrics(self):
+        a_chords = _repeat_prog(self.A_PROG, 4, start_char=0)
+        bb_chords = _repeat_prog(self.BB_PROG, 4, start_char=200)
+        chords = a_chords + bb_chords
+        starts = detect_region_start_indices(chords)
+        self.assertGreaterEqual(len(starts), 2)
+        self.assertEqual(starts[0], 0)
+        # Second region should begin at or after the Bb block
+        self.assertGreaterEqual(starts[1], len(a_chords) - 1)
+
+        app = MinimalTestApp()
+        song = create_test_song(app, text="x" * 400)
+        for ch in chords:
+            song._addChord(SongChord(song, ch.character_num, ch.note_id,
+                                     ch.chord_type_id, -1, "", 0))
+        labels = format_auto_detected_key_text(song._regions)
+        self.assertEqual(labels, "Auto-detected key: A, B♭")
+        first_fsharp = [
+            c for c in song.iterateAllChords()
+            if c.note_id == 6 and c.character_num < 200
+        ][0]
+        first_bb = [
+            c for c in song.iterateAllChords()
+            if c.note_id == 10 and c.character_num >= 200
+        ][0]
+        self.assertIn("F♯", first_fsharp.getChordText())
+        self.assertIn("B♭", first_bb.getChordText())
+
+    def test_all_flats_no_false_split(self):
+        chords = _repeat_prog(self.BB_PROG, 6)
+        self.assertEqual(detect_region_start_indices(chords), [0])
+        self.assertEqual(best_detected_key(chords).prefer, PREFER_FLATS)
+
+    def test_relative_pair_is_one_key(self):
+        # F#m-centered but relative of A: F#m, C#m, D, A, E
+        prog = [(6, 1), (1, 1), (2, 0), (9, 0), (4, 0)]
+        chords = _repeat_prog(prog, 3)
+        key = best_detected_key(chords)
+        self.assertIn(key.label, ("A", "F♯m"))
+        self.assertEqual(key.prefer, PREFER_SHARPS)
+        self.assertEqual(detect_region_start_indices(chords), [0])
+
+    def test_am_to_bm_modulation(self):
+        """Am (no accidentals) then Bm (sharps) must split, not stay one key."""
+        am_prog = [(9, 1), (2, 1), (4, 0), (9, 1), (2, 1), (7, 0), (0, 0),
+                   (9, 1)]  # Am Dm E Am Dm G C Am
+        bm_prog = [(11, 1), (4, 1), (6, 0), (11, 1), (4, 1), (9, 0), (2, 0),
+                   (11, 1)]  # Bm Em F# Bm Em A D Bm
+        am_chords = _repeat_prog(am_prog, 2, start_char=0)
+        pivot = [_Root(400, 6, 0)]  # F#
+        bm_chords = _repeat_prog(bm_prog, 2, start_char=420)
+        chords = am_chords + pivot + bm_chords
+        self.assertEqual(best_detected_key(am_chords).label, "Am")
+        self.assertEqual(best_detected_key(bm_chords).label, "Bm")
+        starts = detect_region_start_indices(chords)
+        self.assertGreaterEqual(len(starts), 2)
+        # F# pivot belongs with the Bm half (V of Bm).
+        self.assertEqual(starts[1], len(am_chords))
+        app = MinimalTestApp()
+        song = create_test_song(app, text="x" * 600)
+        for ch in chords:
+            song._addChord(
+                SongChord(song, ch.character_num, ch.note_id, ch.chord_type_id,
+                          -1, "", 0))
+        self.assertEqual(format_auto_detected_key_text(song._regions),
+                         "Auto-detected key: Am, Bm")
+
+    def test_nebo_nebes_am_then_bm(self):
+        """«Поднимаю глаза…»: verse/chorus in Am, then F♯ modulation to Bm.
+
+        Equal Am/Dm (and Bm/Em) counts must not win as Dm then Em.
+        """
+        # Exact chord_type/root sequence from zvuki_neba song 178.
+        seq = [
+            (9, 1), (2, 1), (4, 0), (9, 1), (2, 1), (7, 0), (0, 0), (9, 1),
+            (2, 1), (7, 0), (0, 0), (9, 1), (2, 1), (4, 0), (9, 1), (2, 1),
+            (7, 0), (0, 0), (9, 1), (2, 1), (4, 0), (9, 1),
+            (6, 0),  # F♯ modulation
+            (11, 1), (4, 1), (6, 0), (11, 1), (4, 1), (9, 0), (2, 0), (11, 1),
+            (4, 1), (9, 0), (2, 0), (11, 1), (4, 1), (6, 0), (11, 1),
+            (4, 1), (9, 0), (2, 0), (11, 1), (4, 1), (6, 0), (11, 1),
+        ]
+        chords = [_Root(i * 10, n, t) for i, (n, t) in enumerate(seq)]
+        self.assertEqual(best_detected_key(chords[:22]).label, "Am")
+        self.assertEqual(best_detected_key(chords[22:]).label, "Bm")
+        starts = detect_region_start_indices(chords)
+        self.assertEqual(starts[:2], [0, 22])
+        app = MinimalTestApp()
+        song = create_test_song(app, text="x" * 500)
+        for ch in chords:
+            song._addChord(
+                SongChord(song, ch.character_num, ch.note_id, ch.chord_type_id,
+                          -1, "", 0))
+        self.assertEqual(format_auto_detected_key_text(song._regions),
+                         "Auto-detected key: Am, Bm")
+        fsharp = [
+            c for c in song.iterateAllChords()
+            if c.note_id == 6 and c.character_num >= 220
+        ][0]
+        self.assertIn("F♯", fsharp.getChordText())
+
+    def test_beliy_sneg_is_dm(self):
+        """«Белый снег…»: Dm with A/A7 cadences, not Gm (iv) or F."""
+        # Exact sequence from zvuki_neba song 222.
+        seq = [
+            (2, 1), (7, 1), (9, 0), (2, 1), (7, 1), (0, 0), (5, 0), (2, 1),
+            (7, 1), (0, 0), (5, 0), (10, 0), (7, 1), (9, 0), (2, 1),
+            (7, 1), (0, 0), (5, 0), (2, 1), (7, 1), (9, 0), (2, 1), (2, 0),
+            (7, 1), (0, 0), (5, 0), (2, 1), (7, 1), (9, 0), (10, 0), (9, 4),
+            (7, 4), (9, 5), (2, 1),
+        ]
+        chords = [_Root(i * 10, n, t) for i, (n, t) in enumerate(seq)]
+        key = best_detected_key(chords)
+        self.assertEqual(key.label, "Dm")
+        self.assertEqual(key.prefer, PREFER_FLATS)
+        self.assertEqual(detect_region_start_indices(chords), [0])
+        app = MinimalTestApp()
+        song = create_test_song(app, text="x" * 400)
+        for ch in chords:
+            song._addChord(
+                SongChord(song, ch.character_num, ch.note_id, ch.chord_type_id,
+                          -1, "", 0))
+        self.assertEqual(format_auto_detected_key_text(song._regions),
+                         "Auto-detected key: Dm")
+        bb = [c for c in song.iterateAllChords() if c.note_id == 10][0]
+        self.assertIn("B♭", bb.getChordText())
+        self.assertNotIn("A♯", bb.getChordText())
+
+    def test_bass_note_ignored_for_key(self):
+        """Slash bass must not count as a chord root for key detection."""
+        roots = [(2, 1), (7, 1), (9, 0), (2, 1)] * 3  # Dm Gm A Dm
+        plain = [_Root(i * 10, n, t) for i, (n, t) in enumerate(roots)]
+        with_bass = []
+        for i, (n, t) in enumerate(roots):
+            ch = _Root(i * 10, n, t)
+            # Descending bass line unrelated to the tonic: /C /B /Bb /Ab
+            ch.bass_note_id = [0, 11, 10, 8][i % 4]
+            with_bass.append(ch)
+        self.assertEqual(best_detected_key(plain).label, "Dm")
+        self.assertEqual(best_detected_key(with_bass).label, "Dm")
+        self.assertEqual(detect_region_start_indices(plain),
+                         detect_region_start_indices(with_bass))
+
+    def test_nagrady_slash_chords_single_region(self):
+        """«Все награды…»: inversions (Dm/C, G/B, A/C♯) must not split the key.
+
+        Verses mix C and Dm; a single region is enough. Dm is preferred if
+        the detector can tell, but C is acceptable.
+        """
+        # Roots/types from zvuki_neba song 175 (bass stored separately).
+        seq = [
+            (7, 0), (2, 1), (2, 1), (7, 0), (0, 0),
+            (2, 1), (2, 1), (7, 0), (0, 0),
+            (4, 1), (4, 1), (9, 0), (2, 0),
+            (7, 0), (0, 0), (9, 0), (0, 0),
+            (2, 1), (2, 1), (7, 0), (0, 0),
+            (2, 1), (2, 1), (7, 0), (0, 0),
+            (4, 1), (4, 1), (9, 0), (2, 0),
+            (7, 0), (0, 0), (9, 0), (0, 0),
+            (9, 1), (4, 1), (7, 0), (2, 0),
+            (9, 1), (4, 1), (0, 0),
+            (9, 1), (4, 1), (7, 0), (2, 0), (0, 0),
+            (4, 1), (9, 1), (2, 2), (2, 0), (0, 0),
+            (4, 1), (9, 1), (2, 2), (2, 0),
+            (4, 1), (9, 1), (2, 2), (2, 0),
+        ]
+        basses = {
+            2: 0, 3: 11, 6: 0, 7: 11, 10: 2, 11: 1, 13: 11, 15: 1,
+            18: 0, 19: 11, 22: 0, 23: 11, 26: 2, 27: 1, 29: 11, 31: 1,
+        }
+        chords = []
+        for i, (n, t) in enumerate(seq):
+            ch = _Root(i * 10, n, t)
+            ch.bass_note_id = basses.get(i, -1)
+            chords.append(ch)
+        starts = detect_region_start_indices(chords)
+        self.assertEqual(starts, [0])
+        self.assertIn(best_detected_key(chords).label, ("Dm", "C"))
+
+    def test_pivot_does_not_flatten_first_half(self):
+        a_chords = _repeat_prog(self.A_PROG, 4, start_char=0)
+        pivot = [_Root(190, 5, 0)]  # F
+        bb_chords = _repeat_prog(self.BB_PROG, 4, start_char=200)
+        chords = a_chords + pivot + bb_chords
+        app = MinimalTestApp()
+        song = create_test_song(app, text="x" * 400)
+        for ch in chords:
+            song._addChord(SongChord(song, ch.character_num, ch.note_id,
+                                     ch.chord_type_id, -1, "", 0))
+        first_fsharp = [
+            c for c in song.iterateAllChords()
+            if c.note_id == 6 and c.character_num < 190
+        ][0]
+        self.assertIn("F♯", first_fsharp.getChordText())
+
+    def test_legacy_stored_key_does_not_affect_spelling(self):
+        """Old songbooks may store Bb; A-major chords must still use sharps."""
+        app = MinimalTestApp()
+        app.curs.execute("DROP TABLE songs")
+        app.curs.execute(
+            "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, "
+            "text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, "
+            "key_is_major INTEGER)"
+        )
+        app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text, "
+            "key_note_id, key_is_major) VALUES (1, 1, 'x', '', ?, 10, 1)",
+            ("x" * 80,),
+        )
+        app.curs.commit()
+        song = Song(app, 1)
+        self.assertFalse(hasattr(song, "key_note_id"))
+        for i, (n, t) in enumerate(self.A_PROG * 3):
+            song._addChord(SongChord(song, i * 4, n, t, -1, "", 0))
+        fsharp = [c for c in song.iterateAllChords() if c.note_id == 6][0]
+        self.assertIn("F♯", fsharp.getChordText())
+        self.assertNotIn("G♭", fsharp.getChordText())
+
+
+class TestKeyScoring(unittest.TestCase):
+    """Unit tests for chord-to-key scoring (no GUI)."""
+
+    def test_major_v_beats_minor_v_for_am_vs_dm(self):
+        # Am and E major: harmonic V of Am, not of Dm.
+        chords = [(9, 1), (4, 0)] * 4
+        self.assertGreater(score_key(chords, 9, True), score_key(chords, 2, True))
+
+    def test_v_i_cadence_outweighs_reverse(self):
+        a_to_dm = [(9, 0), (2, 1)] * 3
+        dm_to_a = [(2, 1), (9, 0)] * 3
+        self.assertGreater(score_key(a_to_dm, 2, True),
+                           score_key(dm_to_a, 2, True))
+
+    def test_m7_counts_as_minor_tonic(self):
+        am7 = [(9, 4)] * 4
+        self.assertGreater(score_key(am7, 9, True), score_key(am7, 9, False))
+
+    def test_family_score_relative_pair(self):
+        chords = [(6, 1), (9, 0), (4, 0)] * 2  # F♯m A E → A family
+        self.assertGreater(family_score(chords, 9), family_score(chords, 10))
+
+    def test_auto_detected_key_labels_dedupes(self):
+        regions = [(0, PREFER_SHARPS, "A"), (10, PREFER_SHARPS, "A"),
+                   (20, PREFER_FLATS, "B♭")]
+        self.assertEqual(auto_detected_key_labels(regions), ["A", "B♭"])
+        self.assertEqual(format_auto_detected_key_text(regions),
+                         "Auto-detected key: A, B♭")
+
+
+class TestSongbookKeySchema(unittest.TestCase):
+    """New songbooks omit key columns; old files still open."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+        else:
+            cls.qapp = QtWidgets.QApplication.instance()
+
+    def test_new_schema_has_no_key_columns(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute(SONGS_TABLE_SQL)
+        names = [row[1] for row in conn.execute("PRAGMA table_info(songs)")]
+        self.assertNotIn("key_note_id", names)
+        self.assertNotIn("key_is_major", names)
+
+    def test_save_leaves_legacy_key_columns_untouched(self):
+        app = MinimalTestApp()
+        app.curs.execute("DROP TABLE songs")
+        app.curs.execute(
+            "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, "
+            "text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, "
+            "key_is_major INTEGER)"
+        )
+        app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text, "
+            "key_note_id, key_is_major) VALUES (1, 7, 'Old', 'note', 'hi', 10, 1)"
+        )
+        app.curs.commit()
+        song = Song(app, 1)
+        self.assertEqual(song.title, "Old")
+        app.curs.execute(
+            "UPDATE songs SET number=?, title=?, subtitle=?, text=? WHERE id=?",
+            (song.number, song.title, song.subtitle, song.getAllText(), song.id),
+        )
+        app.curs.commit()
+        stored = app.curs.execute(
+            "SELECT key_note_id, key_is_major FROM songs WHERE id=1"
+        ).fetchone()
+        self.assertEqual(stored, (10, 1))
+
+    def test_import_into_new_schema_does_not_require_key_columns(self):
+        app = MinimalTestApp()
+        song_id = app.curs.execute("SELECT MAX(id) FROM songs").fetchone()[0]
+        self.assertIsNone(song_id)
+        app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text) "
+            "VALUES (0, -1, '', '', '')"
+        )
+        app.curs.commit()
+        names = [row[1] for row in app.curs.execute("PRAGMA table_info(songs)")]
+        self.assertNotIn("key_note_id", names)
 
 
 if __name__ == "__main__":

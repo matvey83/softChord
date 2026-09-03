@@ -83,6 +83,200 @@ global_notes_list = [
     (11, "B", "B"),
 ]
 
+# Spellings used in the auto-detected key label (family-appropriate):
+_NOTE_NAMES_SHARP = [
+    "C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"
+]
+_NOTE_NAMES_FLAT = [
+    "C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"
+]
+_SHARP_MAJOR_TONICS = frozenset([7, 2, 9, 4, 11, 6])  # G D A E B F♯
+_FLAT_MAJOR_TONICS = frozenset([5, 10, 3, 8, 1])  # F B♭ E♭ A♭ D♭
+_MAJOR_SCALE = (0, 2, 4, 5, 7, 9, 11)
+_MINOR_SCALE = (0, 2, 3, 5, 7, 8, 10)
+# Minor, minor 7th, minor 6th (chord_types_list ids):
+_MINOR_CHORD_TYPE_IDS = frozenset([1, 4, 9])
+_REGION_MIN_LEFT = 5
+_REGION_MIN_RIGHT = 5
+_REGION_LOOKAHEAD = 8
+_REGION_SCORE_MARGIN = 1
+_REGION_SPLIT_GAIN = 4
+# Ignore a cut whose score gain is a small fraction of the one-key score
+# (avoids chopping one song into Dm/C/Em/D from local ii–V–I motion).
+_REGION_SPLIT_GAIN_RATIO = 0.2
+
+
+def _chord_root_is_minor(chord):
+    """Return (root_note_id, is_minor_quality). Slash bass (/C, /G, …) is ignored."""
+    if hasattr(chord, "note_id"):
+        return chord.note_id, chord.chord_type_id in _MINOR_CHORD_TYPE_IDS
+    typ = chord[1]
+    if isinstance(typ, bool):
+        return chord[0], typ
+    return chord[0], typ in _MINOR_CHORD_TYPE_IDS
+
+
+def prefer_from_major_tonic(maj_tonic):
+    if maj_tonic in _SHARP_MAJOR_TONICS:
+        return PREFER_SHARPS
+    if maj_tonic in _FLAT_MAJOR_TONICS:
+        return PREFER_FLATS
+    return PREFER_NEITHER
+
+
+def score_key(chords, tonic, is_minor):
+    """Higher is a better fit of these chord roots to tonic major/minor.
+
+    A major (or other non-minor) V scores higher than a minor v, so a
+    harmonic-minor cadence (E in Am, F♯ in Bm) beats the relative iv/v
+    reading (Dm for Am, Em for Bm). A V→I (or V7→I) pair is extra
+    evidence of the tonic, so Dm with A–Dm wins over Gm.
+    """
+    intervals = _MINOR_SCALE if is_minor else _MAJOR_SCALE
+    scale = set((tonic + step) % 12 for step in intervals)
+    dominant = (tonic + 7) % 12
+    parsed = [_chord_root_is_minor(chord) for chord in chords]
+    total = 0
+    n = len(parsed)
+    for i, (root, quality_minor) in enumerate(parsed):
+        if root == tonic:
+            total += 3
+            if quality_minor == is_minor:
+                total += 1
+        elif root == dominant:
+            # Minor v is a weak dominant; V / V7 is a cadence.
+            total += 1 if quality_minor else 2
+        elif root in scale:
+            total += 1
+        if i + 1 < n:
+            next_root, next_minor = parsed[i + 1]
+            if (root == dominant and not quality_minor
+                    and next_root == tonic and next_minor == is_minor):
+                total += 2
+    return total
+
+
+def family_score(chords, maj_tonic):
+    """Best of this major key and its relative minor."""
+    rel_minor = (maj_tonic - 3) % 12
+    return max(score_key(chords, maj_tonic, False),
+               score_key(chords, rel_minor, True))
+
+
+def key_label(tonic, is_minor, prefer):
+    names = _NOTE_NAMES_FLAT if prefer == PREFER_FLATS else _NOTE_NAMES_SHARP
+    text = names[tonic]
+    if is_minor:
+        text += "m"
+    return text
+
+
+class DetectedKey:
+    """One chosen key (relative major/minor already collapsed)."""
+
+    def __init__(self, tonic, is_minor, prefer, label, score, margin, maj_tonic):
+        self.tonic = tonic
+        self.is_minor = is_minor
+        self.prefer = prefer
+        self.label = label
+        self.score = score
+        self.margin = margin
+        self.maj_tonic = maj_tonic  # relative-major tonic (key signature)
+        self.confident = margin >= _REGION_SCORE_MARGIN
+
+
+def best_detected_key(chords):
+    """Best key for a chord list; relative major/minor is a single key."""
+    if not chords:
+        return None
+    ranked = []
+    for maj_tonic in range(12):
+        rel_minor = (maj_tonic - 3) % 12
+        s_maj = score_key(chords, maj_tonic, False)
+        s_min = score_key(chords, rel_minor, True)
+        if s_maj >= s_min:
+            tonic, is_minor, sc = maj_tonic, False, s_maj
+        else:
+            tonic, is_minor, sc = rel_minor, True, s_min
+        prefer = prefer_from_major_tonic(maj_tonic)
+        ranked.append((sc, maj_tonic, tonic, is_minor, prefer))
+    ranked.sort(reverse=True)
+    best = ranked[0]
+    second = ranked[1] if len(ranked) > 1 else (0, 0, 0, False, PREFER_NEITHER)
+    margin = best[0] - second[0]
+    sc, maj_tonic, tonic, is_minor, prefer = best
+    return DetectedKey(tonic, is_minor, prefer, key_label(tonic, is_minor, prefer),
+                       sc, margin, maj_tonic)
+
+
+def detect_region_start_indices(chords):
+    """Return chord-list indices where a new key region starts.
+
+    Recursively pick the cut that most improves key scores vs treating the
+    span as one key. Relative major/minor count as the same key.
+    """
+    def _splits(seq, offset):
+        n = len(seq)
+        if n < _REGION_MIN_LEFT + _REGION_MIN_RIGHT:
+            return [offset]
+        whole = best_detected_key(seq)
+        whole_score = whole.score if whole else 0
+        best_j = None
+        best_gain = 0
+        for j in range(_REGION_MIN_LEFT, n - _REGION_MIN_RIGHT + 1):
+            left_key = best_detected_key(seq[:j])
+            right_key = best_detected_key(seq[j:])
+            if left_key is None or right_key is None:
+                continue
+            if left_key.maj_tonic == right_key.maj_tonic:
+                continue
+            # Each side must fit its own signature better than the other's.
+            # (Global margin is not required: I–V–vi–IV can tie A with D
+            # while still clearly not being B♭.)
+            left_vs_right = left_key.score - family_score(seq[:j], right_key.maj_tonic)
+            right_vs_left = right_key.score - family_score(seq[j:], left_key.maj_tonic)
+            if left_vs_right < _REGION_SCORE_MARGIN:
+                continue
+            if right_vs_left < _REGION_SCORE_MARGIN:
+                continue
+            gain = left_key.score + right_key.score - whole_score
+            # Prefer a later cut on a gain tie so the old key keeps the
+            # last shared chord (e.g. D of A / I–V–vi–IV).
+            if gain > best_gain or (gain == best_gain and best_j is not None):
+                best_gain = gain
+                best_j = j
+        min_gain = _REGION_SPLIT_GAIN
+        if whole_score:
+            min_gain = max(min_gain, int(_REGION_SPLIT_GAIN_RATIO * whole_score))
+        if best_j is None or best_gain < min_gain:
+            return [offset]
+        return (_splits(seq[:best_j], offset) +
+                _splits(seq[best_j:], offset + best_j))
+
+    if not chords:
+        return []
+    return _splits(chords, 0)
+
+
+def auto_detected_key_labels(regions):
+    """Unique consecutive key labels from (start_char, prefer, label) regions."""
+    labels = []
+    for item in regions:
+        label = item[2]
+        if not label:
+            continue
+        if not labels or labels[-1] != label:
+            labels.append(label)
+    return labels
+
+
+def format_auto_detected_key_text(regions):
+    """Build the UI string from (start_char, prefer, label) regions."""
+    labels = auto_detected_key_labels(regions)
+    if not labels:
+        return "Auto-detected key:"
+    return "Auto-detected key: " + ", ".join(labels)
+
 # File extensions that can be used for the ChordPro file format:
 chordpro_extensions = [".pro", ".chopro", ".chordpro", ".cpm"]
 
@@ -98,6 +292,18 @@ else:
 import softchord_main_window_ui, softchord_chord_dialog_ui, softchord_pdf_dialog_ui
 
 SQLITE_HEADER = b"SQLite format 3\x00"
+
+# New songbooks do not store a user-selected key; old files may still have
+# key_note_id / key_is_major columns, which are ignored.
+SONGS_TABLE_SQL = (
+    "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, "
+    "title TEXT, subtitle TEXT)"
+)
+SONG_CHORD_LINK_TABLE_SQL = (
+    "CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, "
+    "character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, "
+    "bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)"
+)
 
 
 def _normalize_local_path(path):
@@ -534,7 +740,7 @@ class SongChord:
         Returns string of the chord.
         For example, "Fm" or "Bbsus4"
         """
-        note_text = self.song._getNoteString(self.note_id)
+        note_text = self.song._getNoteString(self.note_id, self.character_num)
 
         chord_type_text = self.app.chord_type_prints[self.chord_type_id]
 
@@ -547,7 +753,8 @@ class SongChord:
 
         # Add the bass note (if any):
         if self.bass_note_id != -1:  # Not NULL
-            bass_note_text = self.song._getNoteString(self.bass_note_id)
+            bass_note_text = self.song._getNoteString(self.bass_note_id,
+                                                      self.character_num)
             chord_str += "/%s" % bass_note_text
 
         # Add parentheses (if any):
@@ -586,8 +793,7 @@ class Song:
         self.number = -1
         self.title = ""
         self.prefer = PREFER_NEITHER
-        self.key_note_id = -1  # Main key note
-        self.key_is_major = -1  # Major or minor?
+        self._regions = []  # (start_char, prefer, key_label)
 
         self.updateSongFromDatabase()
         self.updateSharpsOrFlats()
@@ -597,15 +803,16 @@ class Song:
         Read this song from the database, and populate the instnces properties.
         """
 
-        # Read the song from the database:
+        # Read the song from the database. Legacy key_note_id / key_is_major
+        # columns are left unread (old songbooks still open).
         try:
             row = self.app.curs.execute(
-                "SELECT number, title, subtitle, text, key_note_id, key_is_major FROM songs WHERE id=%i"
+                "SELECT number, title, subtitle, text FROM songs WHERE id=%i"
                 % self.id).fetchone()
         except sqlite3.OperationalError:
             # Old formatted songbook file
             row = self.app.curs.execute(
-                "SELECT title, number, text, key_note_id, key_is_major FROM songs WHERE id=%i"
+                "SELECT title, number, text FROM songs WHERE id=%i"
                 % self.id).fetchone()
             # Create this prop
             self.app.curs.execute(
@@ -614,7 +821,7 @@ class Song:
             print("Table songs: added 'subtitle' column")
             # Re-try once the missing columns have been added:
             row = self.app.curs.execute(
-                "SELECT number, title, subtitle, text, key_note_id, key_is_major FROM songs WHERE id=%i"
+                "SELECT number, title, subtitle, text FROM songs WHERE id=%i"
                 % self.id).fetchone()
 
         self.number = row[0]
@@ -624,14 +831,6 @@ class Song:
             self.subtitle = ""
 
         all_text = row[3]
-
-        self.key_note_id = row[4]  # Can be None or -1
-        if self.key_note_id == None:
-            self.key_note_id = -1
-
-        self.key_is_major = row[5]
-        if self.key_is_major == None:
-            self.key_is_major = -1
 
         # Read the chords for this song form the database:
         song_chords = []
@@ -747,17 +946,30 @@ class Song:
 
         self.app.ignore_song_text_changed = False
 
-    def _getNoteString(self, note_id):
+    def _prefer_for_char(self, char_num):
+        prefer = self.prefer
+        for start_char, region_prefer, _label in self._regions:
+            if char_num >= start_char:
+                prefer = region_prefer
+            else:
+                break
+        return prefer
+
+    def _getNoteString(self, note_id, char_num=None):
         """
         Returns the specified note as a string, using sharps vs flats
-        as appropriate.
+        as appropriate for the local key region.
         """
 
         note_text, note_alt_text = self.app.notes_list[note_id]
+        if char_num is None:
+            prefer = self.prefer
+        else:
+            prefer = self._prefer_for_char(char_num)
 
-        if self.prefer == PREFER_SHARPS:
+        if prefer == PREFER_SHARPS:
             return note_text
-        elif self.prefer == PREFER_FLATS:
+        elif prefer == PREFER_FLATS:
             return note_alt_text
         else:
             if note_id in [1, 6]:
@@ -1027,31 +1239,34 @@ class Song:
         for chord in self.iterateAllChords():
             chord.transpose(steps)
 
-        if self.key_note_id != -1:
-            self.key_note_id = transpose_note(self.key_note_id, steps)
-
         self.updateSharpsOrFlats()
 
     def updateSharpsOrFlats(self):
         """
-        Determines whether this song prefers notes to be displayed with flats
-        or with sharps, and updates this song.
+        Infer key regions from chord structure and the accidental style of each.
         """
-
-        num_prefer_sharp = 0
-        num_prefer_flat = 0
-        for chord in self.iterateAllChords():
-            if chord.note_id in [1, 6]:  # C# or F#
-                num_prefer_sharp += 1
-            elif chord.note_id in [3, 10]:  # Eb or Bb
-                num_prefer_flat += 1
-
-        if num_prefer_sharp > num_prefer_flat:
-            self.prefer = PREFER_SHARPS
-        elif num_prefer_sharp < num_prefer_flat:
-            self.prefer = PREFER_FLATS
+        chords = list(self.iterateAllChords())
+        chords.sort(key=lambda c: c.character_num)
+        starts = detect_region_start_indices(chords)
+        self._regions = []
+        for k, idx in enumerate(starts):
+            end = starts[k + 1] if k + 1 < len(starts) else len(chords)
+            group = chords[idx:end]
+            detected = best_detected_key(group)
+            start_char = group[0].character_num if group else 0
+            if detected is None:
+                prefer, label = PREFER_NEITHER, ""
+            else:
+                prefer, label = detected.prefer, detected.label
+            self._regions.append((start_char, prefer, label))
+        if self._regions:
+            self.prefer = self._regions[0][1]
         else:
             self.prefer = PREFER_NEITHER
+        if getattr(self.app, "current_song", None) is self:
+            updater = getattr(self.app, "_updateAutoDetectedKeyLabel", None)
+            if updater:
+                updater()
 
     def removeTrailingSpaces(self):
         """
@@ -1439,8 +1654,9 @@ class ChordDialog(QtWidgets.QDialog):
         self.ui.setupUi(self)
 
         notes_list = []
+        char_num = getattr(self.app, "selected_char_num", None)
         for note_id in range(12):
-            note_str = self.app.current_song._getNoteString(note_id)
+            note_str = self.app.current_song._getNoteString(note_id, char_num)
             notes_list.append(note_str)
         self.ui.note_menu.addItems(notes_list)
         self.ui.note_menu.setMaxVisibleItems(12)  # Show all notes
@@ -1587,8 +1803,7 @@ class PdfDialog(QtWidgets.QDialog):
             pdf_options.print_song_num = self.ui.print_song_num_box.isChecked()
             pdf_options.print_song_title = self.ui.print_song_title_box.isChecked(
             )
-            pdf_options.print_song_key = self.ui.print_song_comment_box.isChecked(
-            )
+            pdf_options.print_song_key = self.ui.print_song_key_box.isChecked()
             pdf_options.print_song_comment = self.ui.print_song_comment_box.isChecked(
             )
 
@@ -1694,9 +1909,6 @@ class App(QtWidgets.QApplication):
 
         self.ui.song_num_ef.setValidator(
             QtGui.QIntValidator(0, 1000000000, self.win))
-        self.ignore_song_key_changed = False
-        self.ui.song_key_menu.currentIndexChanged.connect(
-            self.currentSongKeyChanged)
 
         # Menu actions:
         self.ui.actionNewSongbook.triggered.connect(self.newSongbook)
@@ -1807,7 +2019,7 @@ class App(QtWidgets.QApplication):
         self._orig_closeEvent = self.win.closeEvent
         self.win.closeEvent = self.closeEvent
 
-        self.populateSongKeyMenu()
+        self._updateAutoDetectedKeyLabel()
         self.setCurrentSongbook(None)
 
         self.songs_model.updateFromDatabase()
@@ -1898,29 +2110,18 @@ class App(QtWidgets.QApplication):
     def __del__(self):
         pass
 
-    def populateSongKeyMenu(self):
-        # Populate the song key pull-down menu:
-        keys_list = ["None"]
-
-        if self.current_song:
-            for note_id, (text, alt_text) in enumerate(self.notes_list):
-                if note_id in [3, 8, 10]:  # Eb, Ab, or Bb
-                    combined_text = alt_text
-                else:
-                    combined_text = text
-
-                keys_list.append(combined_text + " minor")
-                keys_list.append(combined_text + " Major")
-
-        self.ignore_song_key_changed = True
-        self.ui.song_key_menu.clear()
-        self.ui.song_key_menu.addItems(keys_list)
-        self.ui.song_key_menu.setMaxVisibleItems(
-            25)  # Show all keys (including "None")
-
-        self.ignore_song_key_changed = False
-
-        self.ui.song_key_menu.setEnabled(bool(self.current_song))
+    def _updateAutoDetectedKeyLabel(self):
+        label = getattr(self.ui, "auto_detected_key_label", None)
+        if label is None:
+            return
+        if self.current_song is None:
+            text = "Auto-detected key:"
+        else:
+            text = format_auto_detected_key_text(self.current_song._regions)
+        label.setText(text)
+        label.setToolTip(text)
+        # Notes field is expanding; keep the full "Am, Bm" string visible.
+        label.setMinimumWidth(label.fontMetrics().horizontalAdvance(text) + 12)
 
     def closeEvent(self, event):
         self.sendCurrentSongToDatabase()
@@ -1965,9 +2166,9 @@ class App(QtWidgets.QApplication):
                     % (song.id, song_char_num))
 
             self.curs.execute(
-                "UPDATE songs SET number=?, title=?, subtitle=?, text=?, key_note_id=?, key_is_major=? WHERE id=?",
+                "UPDATE songs SET number=?, title=?, subtitle=?, text=? WHERE id=?",
                 (song.number, song.title, song.subtitle, song.getAllText(),
-                 song.key_note_id, song.key_is_major, song.id))
+                 song.id))
             self.curs.commit()
         finally:
             self.restoreCursor()
@@ -2215,12 +2416,11 @@ class App(QtWidgets.QApplication):
         if self.current_song == None:
             self.ui.song_title_ef.setText("")
             self.ui.song_num_ef.setText("")
-            self.ui.song_key_menu.setCurrentIndex(0)  # "None" item
 
         self.editor.setEnabled(self.current_song != None)
         self.ui.song_title_ef.setEnabled(self.current_song != None)
         self.ui.song_num_ef.setEnabled(self.current_song != None)
-        self.ui.song_key_menu.setEnabled(self.current_song != None)
+        self._updateAutoDetectedKeyLabel()
         self.ui.transpose_up_button.setEnabled(self.current_song != None)
         self.ui.transpose_down_button.setEnabled(self.current_song != None)
 
@@ -2284,27 +2484,20 @@ class App(QtWidgets.QApplication):
         if song == None:
             self.current_song = None
             self.previous_song_text = None
-            self.ui.song_key_menu.setCurrentIndex(0)  # "None" item
             self.ui.song_num_ef.setText("")
 
             self.editor.setDocument(self.empty_doc)
             self.editor.verticalScrollBar().setValue(0)
+            self._updateAutoDetectedKeyLabel()
 
         else:
             self.current_song = song
-            self.populateSongKeyMenu()
+            self._updateAutoDetectedKeyLabel()
 
             if not self.ignore_song_text_changed:
                 song_text = self.current_song.getAllText()
                 self.ignore_song_text_changed = False
                 self.previous_song_text = song_text
-
-            if self.current_song.key_note_id == -1:
-                self.ui.song_key_menu.setCurrentIndex(0)
-            else:
-                self.ui.song_key_menu.setCurrentIndex(
-                    self.current_song.key_note_id * 2 +
-                    self.current_song.key_is_major + 1)
 
             self.ui.song_title_ef.setText(self.current_song.title)
             self.ui.song_subtitle_ef.setText(self.current_song.subtitle)
@@ -3195,31 +3388,6 @@ class App(QtWidgets.QApplication):
             finally:
                 self.restoreCursor()
 
-    def currentSongKeyChanged(self, new_key_index):
-        """
-        Called when the user modifies the selected song's key.
-        """
-
-        if self.ignore_song_key_changed:
-            return
-
-        if self.current_song == None:
-            return
-
-        if new_key_index == 0:
-            note_id = -1
-            is_major = -1
-        else:
-            note_id = (new_key_index - 1) // 2
-            is_major = (new_key_index - 1) % 2
-
-        if note_id != self.current_song.key_note_id or is_major != self.current_song.key_is_major:
-            self.current_song.key_note_id = note_id
-            self.current_song.key_is_major = is_major
-
-            self.sendCurrentSongToDatabase()
-            self.editor.viewport().update()
-
     def createNewSong(self):
         """
         Add a new song to the database and the songs table, and select it.
@@ -3578,13 +3746,10 @@ class App(QtWidgets.QApplication):
             if self.pdf_options.print_song_comment and song.subtitle:
                 header_list.append(song.subtitle)
 
-            if self.pdf_options.print_song_key and song.key_note_id != -1:
-                #print 'song num:', song.number, 'key_note_id:', song.key_note_id, 'is_major:', song.key_is_major
-                song_key_str = "Key: %s" % song._getNoteString(song.key_note_id)
-                if not song.key_is_major:
-                    song_key_str += "m"
-
-                header_list.append(song_key_str)
+            if self.pdf_options.print_song_key:
+                labels = auto_detected_key_labels(song._regions)
+                if labels:
+                    header_list.append("Key: " + ", ".join(labels))
 
             if self.pdf_options.print_song_title and song.title:
                 header_list.append(song.title)
@@ -4047,8 +4212,7 @@ class App(QtWidgets.QApplication):
                                             global_song_text,
                                             global_song_chords)
 
-    def _importSong(self, song_num, song_title, song_subtitle, song_text,
-                    key_note_id, key_is_major):
+    def _importSong(self, song_num, song_title, song_subtitle, song_text):
         """
         Import the given song (except chords).
         Returns the ID assigned to the new song.
@@ -4062,9 +4226,8 @@ class App(QtWidgets.QApplication):
             song_id = row[0] + 1
 
         self.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text, key_note_id, key_is_major) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (song_id, song_num, song_title, song_subtitle, song_text,
-             key_note_id, key_is_major))
+            "INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
+            (song_id, song_num, song_title, song_subtitle, song_text))
 
         return song_id
 
@@ -4111,12 +4274,8 @@ class App(QtWidgets.QApplication):
         song_chords (optional) should be a dict: key=song_char_num, values: (marker, note_id, type_id, bass_id, in_parentheses)
         """
 
-        song_id = self._importSong(song_num,
-                                   song_title,
-                                   song_subtitle,
-                                   song_text,
-                                   key_note_id=-1,
-                                   key_is_major=-1)
+        song_id = self._importSong(song_num, song_title, song_subtitle,
+                                   song_text)
 
         # Add song's chords (if any):
         chord_id = None  # So that _importChord() assigned a new ID to the new chord
@@ -4355,12 +4514,11 @@ class App(QtWidgets.QApplication):
             chord_id = None  # So that _importChord() assigned a new ID to the new chord
 
             for row in curs2.execute(
-                    "SELECT number, title, subtitle, text, key_note_id, key_is_major FROM songs ORDER BY id"
+                    "SELECT number, title, subtitle, text FROM songs ORDER BY id"
             ):
-                (song_num, song_title, song_subtitle, song_text, key_note_id,
-                 key_is_major) = row
+                (song_num, song_title, song_subtitle, song_text) = row
                 song_id = self._importSong(song_num, song_title, song_subtitle,
-                                           song_text, key_note_id, key_is_major)
+                                           song_text)
 
                 for row in curs2.execute(
                         "SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i"
@@ -4400,12 +4558,8 @@ class App(QtWidgets.QApplication):
             # Open an empty satabase:
             self.curs = sqlite3.connect(songbook_file)
 
-            self.curs.execute(
-                "CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)"
-            )
-            self.curs.execute(
-                "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, key_is_major INTEGER)"
-            )
+            self.curs.execute(SONG_CHORD_LINK_TABLE_SQL)
+            self.curs.execute(SONGS_TABLE_SQL)
             self.setCurrentSongbook(songbook_file)
 
     def openSongbook(self):
