@@ -16,6 +16,13 @@ info_plist = {
     "CFBundleVersion": "0.10.0",
     "NSHighResolutionCapable": True,
     "NSPrincipalClass": "NSApplication",
+    "LSSupportsOpeningDocumentsInPlace": True,
+    "NSDocumentsFolderUsageDescription":
+        "softChord needs access to your documents to open and save songbook files.",
+    "NSDesktopFolderUsageDescription":
+        "softChord needs access to the Desktop to open and save songbook files.",
+    "NSDownloadsFolderUsageDescription":
+        "softChord needs access to Downloads to open and save songbook files.",
     "CFBundleDocumentTypes": [
         {
             "CFBundleTypeName": "softChord songbook",
