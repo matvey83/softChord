@@ -93,7 +93,9 @@ Do not edit the generated `*_ui.py` files by hand.
 
 ## Packaging
 
-Standalone builds use [PyInstaller](https://pyinstaller.org/) 6 from `softchord.spec`. Build **on the OS you want to ship** (a Mac cannot produce the Windows `.exe`, and vice versa).
+Standalone builds use [PyInstaller](https://pyinstaller.org/) 6 from `softchord.spec`. GitHub Actions (`.github/workflows/build.yml`) builds the macOS `.app` and Windows `.exe` on tagged releases, or on demand via **Actions → Build → Run workflow**.
+
+You can also build locally. Build **on the OS you want to ship** (a Mac cannot produce the Windows `.exe`, and vice versa).
 
 ```bash
 ./build_softChord.py
