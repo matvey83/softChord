@@ -93,8 +93,37 @@ Do not edit the generated `*_ui.py` files by hand.
 
 ## Packaging
 
-Standalone app builds are not maintained for the PyQt6 port.
+Standalone builds use [PyInstaller](https://pyinstaller.org/) 6 from `softchord.spec`. Build **on the OS you want to ship** (a Mac cannot produce the Windows `.exe`, and vice versa).
 
-`mac_compile.py`, `mac_compile.command`, `softchord.spec`, and `win_setup.py` still assume older tooling (PyInstaller paths from the PyQt4 era, Qt 4 `qt_menu.nib`, and py2exe). They will not produce a working current build as written.
+```bash
+./build_softChord.py
+```
 
-Use `./start_softChord.py` to run the app.
+On Windows:
+
+```bat
+python build_softChord.py
+```
+
+The helper uses `.venv`, installs `requirements.txt` and `requirements-build.txt`, then runs PyInstaller. Equivalent manual steps:
+
+```bash
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+pip install -r requirements-build.txt
+pyinstaller --noconfirm --clean softchord.spec
+```
+
+| Platform | Output |
+|---|---|
+| macOS | `dist/softChord.app` (windowed app bundle) |
+| Windows | `dist/softChord.exe` (windowed single-file executable) |
+
+`.songbook` files are associated with the app:
+
+- **macOS:** the bundle `Info.plist` declares the type so Finder can open `.songbook` files with softChord.
+- **Windows:** the frozen exe registers the extension for the current user on launch (no installer or admin rights). Double-clicking a `.songbook` then starts this copy of `softChord.exe`.
+
+The Mac `.app` is ad-hoc signed by PyInstaller. To distribute to other Macs you still need a Developer ID signature, notarization (`xcrun notarytool`), and typically a DMG. The Windows `.exe` is unsigned; an Authenticode certificate reduces SmartScreen warnings.
+
+Do not commit `build/` or `dist/` (they are gitignored).

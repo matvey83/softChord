@@ -4411,10 +4411,71 @@ class App(QtWidgets.QApplication):
             self.appendSongbookFile(songbook_file)
 
 
+def _is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def register_songbook_file_association():
+    """Register *.songbook -> this executable in the current-user registry.
+
+    macOS associations come from the app bundle Info.plist. On Windows the
+    standalone exe has no installer, so we claim the extension at launch
+    (HKCU, no admin required) whenever the stored command path is stale.
+    """
+    if sys.platform != "win32" or not _is_frozen():
+        return
+
+    import winreg
+    import ctypes
+
+    exe = os.path.abspath(sys.executable)
+    command = '"%s" "%%1"' % exe
+    prog_id = "softChord.songbook"
+    open_key = r"Software\Classes\%s\shell\open\command" % prog_id
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, open_key) as key:
+            current, _ = winreg.QueryValueEx(key, None)
+        if current == command:
+            return
+    except OSError:
+        pass
+
+    try:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
+                              r"Software\Classes\.songbook") as key:
+            winreg.SetValueEx(key, None, 0, winreg.REG_SZ, prog_id)
+            winreg.SetValueEx(key, "Content Type", 0, winreg.REG_SZ,
+                              "application/x-softchord-songbook")
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
+                              r"Software\Classes\%s" % prog_id) as key:
+            winreg.SetValueEx(key, None, 0, winreg.REG_SZ,
+                              "softChord songbook")
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
+                              r"Software\Classes\%s\DefaultIcon" %
+                              prog_id) as key:
+            winreg.SetValueEx(key, None, 0, winreg.REG_SZ, "%s,0" % exe)
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, open_key) as key:
+            winreg.SetValueEx(key, None, 0, winreg.REG_SZ, command)
+
+        SHCNE_ASSOCCHANGED = 0x08000000
+        SHCNF_FLUSH = 0x1000
+        ctypes.windll.shell32.SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_FLUSH,
+                                             None, None)
+    except OSError:
+        # Association is convenience; never block the app from starting.
+        pass
+
+
 def main():
     """
     The main event loop. This function is also run by the Windows executable.
     """
+
+    register_songbook_file_association()
 
     app = App(sys.argv)
     app.setOverrideCursor(QtGui.QCursor(Qt.CursorShape.WaitCursor))

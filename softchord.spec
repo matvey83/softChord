@@ -1,31 +1,131 @@
-# -*- mode: python -*-
-a = Analysis([os.path.join(HOMEPATH,'support/_mountzlib.py'), os.path.join(HOMEPATH,'support/useUnicode.py'), 'src/softchord.py'],
-             pathex=['/Users/adzhigir/mac/softchord'])
-pyz = PYZ(a.pure)
-exe = EXE(pyz,
-          a.scripts,
-          exclude_binaries=1,
-          name=os.path.join('build/pyi.darwin/softchord', 'softchord'),
-          debug=False,
-          strip=False,
-          upx=True,
-          console=1 )
-coll = COLLECT( exe,
-               a.binaries + [('softchord_main_window.ui', 'src/softchord_main_window.ui', 'DATA')] +
-                            [('softchord_chord_dialog.ui', 'src/softchord_chord_dialog.ui', 'DATA')] +
-                            [('softchord_pdf_dialog.ui', 'src/softchord_pdf_dialog.ui', 'DATA')] +
-                            [('zvuki_neba.songbook', 'src/zvuki_neba.songbook', 'DATA')],
-               a.zipfiles,
-               a.datas,
-               strip=False,
-               upx=True,
-               name=os.path.join('dist', 'softchord'))
+# -*- mode: python ; coding: utf-8 -*-
+"""PyInstaller spec for softChord (macOS .app and Windows .exe)."""
 
 import sys
-if sys.platform.startswith("darwin"):
-    app = BUNDLE(
+
+# Document type used in the macOS Info.plist so Finder associates *.songbook.
+SONGBOOK_UTI = "com.matvey83.softchord.songbook"
+
+info_plist = {
+    "CFBundleName": "softChord",
+    "CFBundleDisplayName": "softChord",
+    "CFBundleGetInfoString": "softChord",
+    "CFBundleIdentifier": "com.matvey83.softchord",
+    "CFBundlePackageType": "APPL",
+    "CFBundleShortVersionString": "0.10.0",
+    "CFBundleVersion": "0.10.0",
+    "NSHighResolutionCapable": True,
+    "NSPrincipalClass": "NSApplication",
+    "CFBundleDocumentTypes": [
+        {
+            "CFBundleTypeName": "softChord songbook",
+            "CFBundleTypeRole": "Editor",
+            "LSHandlerRank": "Owner",
+            "LSItemContentTypes": [SONGBOOK_UTI],
+            "CFBundleTypeExtensions": ["songbook"],
+            "CFBundleTypeMIMETypes": ["application/x-softchord-songbook"],
+        },
+    ],
+    "UTExportedTypeDeclarations": [
+        {
+            "UTTypeIdentifier": SONGBOOK_UTI,
+            "UTTypeDescription": "softChord songbook",
+            "UTTypeConformsTo": ["public.data", "public.content"],
+            "UTTypeTagSpecification": {
+                "public.filename-extension": ["songbook"],
+                "public.mime-type": ["application/x-softchord-songbook"],
+            },
+        },
+    ],
+}
+
+a = Analysis(
+    ["src/softchord.py"],
+    pathex=["src"],
+    binaries=[],
+    datas=[],
+    hiddenimports=[
+        "softchord_main_window_ui",
+        "softchord_chord_dialog_ui",
+        "softchord_pdf_dialog_ui",
+        "PyQt6.QtPrintSupport",
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[
+        "PyQt6.QtWebEngineCore",
+        "PyQt6.QtWebEngineWidgets",
+        "PyQt6.QtWebEngineQuick",
+        "PyQt6.Qt3DCore",
+        "PyQt6.Qt3DRender",
+        "PyQt6.QtBluetooth",
+        "PyQt6.QtNfc",
+        "PyQt6.QtMultimedia",
+        "PyQt6.QtMultimediaWidgets",
+        "PyQt6.QtQml",
+        "PyQt6.QtQuick",
+        "PyQt6.QtQuickWidgets",
+        "tkinter",
+    ],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+if sys.platform == "darwin":
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name="softChord",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
+    coll = COLLECT(
         exe,
-        name='softchord.app',
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name="softChord",
+    )
+    app = BUNDLE(
+        coll,
+        name="softChord.app",
         icon=None,
-        bundle_identifier=None,
+        bundle_identifier="com.matvey83.softchord",
+        info_plist=info_plist,
+    )
+else:
+    # Windows (and Linux): single-file windowed executable.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.datas,
+        [],
+        name="softChord",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
     )
