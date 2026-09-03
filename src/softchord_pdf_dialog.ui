@@ -31,7 +31,7 @@
    <item>
     <widget class="QCheckBox" name="print_song_key_box">
      <property name="text">
-      <string>Print song key &amp; alternative key</string>
+      <string>Print auto-detected song key</string>
      </property>
     </widget>
    </item>
