@@ -22,6 +22,7 @@ import copy
 import shutil
 import platform
 import traceback
+import threading
 
 # FIXME Make this an option? Or save into the songbook file?
 PRINT_SONGBOOK = False
@@ -95,6 +96,52 @@ else:
 # pdf_dialog_ui_file = os.path.join(exec_dir, "softchord_pdf_dialog.ui")
 
 import softchord_main_window_ui, softchord_chord_dialog_ui, softchord_pdf_dialog_ui
+
+SQLITE_HEADER = b"SQLite format 3\x00"
+
+
+def _normalize_local_path(path):
+    """Turn a file: URL from macOS/Qt into a filesystem path."""
+    if not path:
+        return path
+    path = str(path)
+    if path.startswith("file:"):
+        local = QtCore.QUrl(path).toLocalFile()
+        if local:
+            return local
+    return path
+
+
+def connect_existing_songbook(filename):
+    """Open an existing songbook. Never create a new/empty database."""
+    filename = os.path.abspath(_normalize_local_path(filename))
+    if not os.path.isfile(filename):
+        raise FileNotFoundError("Songbook file not found:\n%s" % filename)
+    if os.path.getsize(filename) == 0:
+        raise ValueError(
+            "This file is empty and is not a valid songbook:\n%s" % filename)
+
+    with open(filename, "rb") as fh:
+        header = fh.read(16)
+    if header != SQLITE_HEADER:
+        raise ValueError(
+            "This file is not a valid softChord songbook:\n%s" % filename)
+
+    conn = sqlite3.connect(filename)
+    try:
+        tables = [
+            row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")
+        ]
+    except Exception:
+        conn.close()
+        raise
+    if "songs" not in tables:
+        conn.close()
+        raise ValueError(
+            "This file is not a valid softChord songbook (missing songs table):\n%s"
+            % filename)
+    return conn
 
 paper_sizes_list = [
     (PageSizeId.Letter, "Letter (8.5 x 11 inches, 216 x 279 mm)"),
@@ -1763,8 +1810,12 @@ class App(QtWidgets.QApplication):
     def event(self, event):
         if event.type() == QtGui.QFileOpenEvent:
             filename = event.file()
-            if filename.endswith(".songbook"):
-                self.setCurrentSongbook(filename)
+            if not filename:
+                url = event.url()
+                if url is not None and url.isLocalFile():
+                    filename = url.toLocalFile()
+            if filename and str(filename).endswith(".songbook"):
+                self.setCurrentSongbook(_normalize_local_path(filename))
             return True
         return super().event(event)
 
@@ -2101,7 +2152,8 @@ class App(QtWidgets.QApplication):
         """
 
         # Commit any changes in the current song:
-        self.curs.commit()
+        if self.curs is not None:
+            self.curs.commit()
 
         self.selected_char_num = None  # Remove the selection
         self.hover_char_num = None  # Remove the hover highlighting
@@ -4243,6 +4295,12 @@ class App(QtWidgets.QApplication):
         return (marker, note_id, type_id, bass_id, in_parentheses)
 
     def setCurrentSongbook(self, filename):
+        if filename is not None:
+            filename = _normalize_local_path(filename)
+            conn = connect_existing_songbook(filename)
+        else:
+            conn = None
+
         self.ui.songs_view.selectionModel().clearSelection()
         # Send the current song to database:
         self.setCurrentSong(None)
@@ -4250,19 +4308,22 @@ class App(QtWidgets.QApplication):
         # Nothing to undo; new database
         self.clearUndoStack()
 
+        previous_curs = self.curs
+        self.curs = conn
         self.current_songbook_filename = filename
-
         if filename is None:
-            self.curs = None
             self.win.setWindowTitle("softChord")
         else:
-            #self.info('Database: %s; exists: %s' % (songbook_file, os.path.isfile(filename)))
-            self.curs = sqlite3.connect(filename)
             songbook_name = os.path.splitext(os.path.basename(filename))[0]
             self.win.setWindowTitle("softChord - %s" % songbook_name)
 
         self.songs_model.updateFromDatabase()
         self.updateStates()
+        if previous_curs is not None and previous_curs is not self.curs:
+            try:
+                previous_curs.close()
+            except Exception:
+                pass
 
     def appendSongbookFile(self, filename):
         """
@@ -4276,7 +4337,7 @@ class App(QtWidgets.QApplication):
 
             self.ui.songs_view.selectionModel().clearSelection()
 
-            curs2 = sqlite3.connect(filename)
+            curs2 = connect_existing_songbook(filename)
 
             chord_id = None  # So that _importChord() assigned a new ID to the new chord
 
@@ -4336,7 +4397,6 @@ class App(QtWidgets.QApplication):
 
     def openSongbook(self):
         initial_dir = QtCore.QDir.home().path()
-
         songbook_file, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.win,
             "Select a songbook to open",
@@ -4415,6 +4475,95 @@ def _is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+# Prevent PyQt6 from abort()ing the process when a slot raises.
+# A custom sys.excepthook takes precedence over Qt's qFatal() path.
+_exception_dialog_open = False
+
+
+def _handle_unhandled_exception(exc_type, exc, tb):
+    """Log an exception and show a dialog. Do not re-raise (that aborts in PyQt6)."""
+    global _exception_dialog_open
+    if exc_type is None:
+        return
+    if issubclass(exc_type, (KeyboardInterrupt, SystemExit)):
+        sys.__excepthook__(exc_type, exc, tb)
+        return
+
+    traceback.print_exception(exc_type, exc, tb)
+
+    app = QtWidgets.QApplication.instance()
+    if app is None or _exception_dialog_open:
+        return
+
+    if isinstance(exc, (ValueError, FileNotFoundError, sqlite3.Error)):
+        message = str(exc)
+    else:
+        message = "An unexpected error occurred:\n\n%s: %s" % (
+            exc_type.__name__, exc)
+
+    _exception_dialog_open = True
+    try:
+        parent = None
+        if isinstance(app, App) and getattr(app, "win", None) is not None:
+            parent = app.win
+        QtWidgets.QMessageBox.critical(parent, "softChord error", message)
+    except Exception:
+        pass
+    finally:
+        _exception_dialog_open = False
+
+
+def _install_exception_hooks():
+    """Install process-wide hooks so Qt slots/events don't terminate the app."""
+    sys.excepthook = _handle_unhandled_exception
+
+    def _thread_hook(args):
+        _handle_unhandled_exception(args.exc_type, args.exc_value,
+                                    args.exc_traceback)
+
+    threading.excepthook = _thread_hook
+
+    def _unraisable_hook(unraisable):
+        _handle_unhandled_exception(unraisable.exc_type, unraisable.exc_value,
+                                    unraisable.exc_traceback)
+
+    sys.unraisablehook = _unraisable_hook
+
+
+def _configure_frozen_stdio():
+    """Windowed frozen apps start with stdout/stderr set to None.
+
+    Any print() in a Qt slot then raises AttributeError, and PyQt6 aborts the
+    process. Attach them to a log file (or devnull) before creating the GUI.
+    """
+    if not _is_frozen():
+        return
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    log_fp = None
+    try:
+        if sys.platform == "darwin":
+            log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs")
+        elif sys.platform == "win32":
+            log_dir = os.path.join(
+                os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+                "softChord")
+        else:
+            log_dir = os.path.expanduser("~")
+        os.makedirs(log_dir, exist_ok=True)
+        log_fp = open(os.path.join(log_dir, "softChord.log"),
+                      "a",
+                      encoding="utf-8",
+                      errors="replace",
+                      buffering=1)
+    except Exception:
+        log_fp = open(os.devnull, "w")
+    if sys.stdout is None:
+        sys.stdout = log_fp
+    if sys.stderr is None:
+        sys.stderr = log_fp
+
+
 def register_songbook_file_association():
     """Register *.songbook -> this executable in the current-user registry.
 
@@ -4475,6 +4624,8 @@ def main():
     The main event loop. This function is also run by the Windows executable.
     """
 
+    _configure_frozen_stdio()
+    _install_exception_hooks()
     register_songbook_file_association()
 
     app = App(sys.argv)
