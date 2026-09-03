@@ -57,8 +57,11 @@ def main():
         if not VENV_PYTHON.exists():
             print("ERROR: Could not find venv python.", file=sys.stderr)
             sys.exit(1)
-        os.execv(str(VENV_PYTHON),
-                 [str(VENV_PYTHON), str(__file__)] + sys.argv[1:])
+        # Use subprocess, not os.execv: on Windows execv spawns a child and
+        # exits immediately, which makes GitHub Actions think the step is done.
+        raise SystemExit(
+            subprocess.call(
+                [str(VENV_PYTHON), str(__file__)] + sys.argv[1:]))
 
     pip_install(REQUIREMENTS_FILE)
     pip_install(BUILD_REQUIREMENTS_FILE)
