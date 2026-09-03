@@ -23,8 +23,13 @@ jobs:
         include:
           - os: macos-14
             id: macos-arm64
+            artifact: macos-arm64
+          - os: macos-15-intel
+            id: macos-x86_64
+            artifact: macos-x86_64
           - os: windows-latest
             id: windows
+            artifact: windows
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -54,9 +59,13 @@ jobs:
       - name: Build
         run: python build_softChord.py
 
+      - name: Verify macOS architecture
+        if: runner.os == 'macOS'
+        run: file dist/softChord.app/Contents/MacOS/softChord
+
       - name: Package macOS zip
         if: runner.os == 'macOS'
-        run: ditto -c -k --keepParent dist/softChord.app "dist/softChord-${{ steps.ver.outputs.ver }}-macos-arm64.zip"
+        run: ditto -c -k --keepParent dist/softChord.app "dist/softChord-${{ steps.ver.outputs.ver }}-${{ matrix.artifact }}.zip"
 
       - name: Rename Windows exe
         if: runner.os == 'Windows'
