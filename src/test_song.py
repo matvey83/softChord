@@ -16,6 +16,7 @@ import unittest
 import sqlite3
 import copy
 import os
+import tempfile
 
 from PyQt6 import QtCore, QtGui, QtWidgets, QtPrintSupport
 from PyQt6.QtCore import Qt
@@ -35,6 +36,7 @@ from softchord import (
     PREFER_FLATS,
     PREFER_NEITHER,
     transpose_note,
+    read_import_text_file,
 )
 
 # ---------------------------------------------------------------------------
@@ -1495,6 +1497,65 @@ class TestMoreAppOperations(unittest.TestCase):
         result = self.app.getSelectedChord()
         self.assertIsNotNone(result)
         self.assertEqual(result.character_num, 0)
+
+    def _open_empty_temp_songbook(self):
+        td = tempfile.mkdtemp()
+        path = os.path.join(td, "t.songbook")
+        conn = sqlite3.connect(path)
+        conn.execute(
+            "CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)"
+        )
+        conn.execute(
+            "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, key_is_major INTEGER)"
+        )
+        conn.commit()
+        conn.close()
+        self.app.setCurrentSongbook(path)
+        return td
+
+    def test_import_chordpro_and_text_with_non_ascii_filenames(self):
+        """Issue #1: import files whose names have spaces and non-ASCII letters."""
+        td = self._open_empty_temp_songbook()
+        chordpro_path = os.path.join(td, "Bláznova ukolébavka.chordpro")
+        text_path = os.path.join(td, "Bláznova ukolébavka.txt")
+        with open(chordpro_path, "w", encoding="utf-8") as fh:
+            fh.write("{title:Bláznova ukolébavka}\n[C]Ahoj [G]světe\n")
+        with open(text_path, "w", encoding="utf-8") as fh:
+            fh.write("Bláznova ukolébavka\nAhoj světe\n")
+
+        self.app.importFromChordPro(chordpro_path)
+        self.app.importTextFiles([text_path])
+        self.assertEqual(self.app.songs_model.rowCount(), 2)
+
+    def test_import_cp1250_encoded_files(self):
+        """Issue #1: Czech Windows-1250 files that are not valid UTF-8."""
+        td = self._open_empty_temp_songbook()
+        chordpro_path = os.path.join(td, "Bláznova ukolébavka cp1250.chordpro")
+        text_path = os.path.join(td, "Bláznova ukolébavka cp1250.txt")
+        with open(chordpro_path, "wb") as fh:
+            fh.write("{title:Bláznova ukolébavka}\n[C]Ahoj [G]světe\n".encode(
+                "cp1250"))
+        with open(text_path, "wb") as fh:
+            fh.write("Bláznova ukolébavka\nAhoj světe\n".encode("cp1250"))
+
+        self.app.importFromChordPro(chordpro_path)
+        self.app.importTextFiles([text_path])
+        self.assertEqual(self.app.songs_model.rowCount(), 2)
+
+
+class TestReadImportTextFile(unittest.TestCase):
+
+    def test_utf8_and_cp1250(self):
+        td = tempfile.mkdtemp()
+        utf8_path = os.path.join(td, "utf8.txt")
+        cp1250_path = os.path.join(td, "cp1250.txt")
+        text = "Bláznova ukolébavka"
+        with open(utf8_path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        with open(cp1250_path, "wb") as fh:
+            fh.write(text.encode("cp1250"))
+        self.assertEqual(read_import_text_file(utf8_path), text)
+        self.assertEqual(read_import_text_file(cp1250_path), text)
 
 
 if __name__ == "__main__":
