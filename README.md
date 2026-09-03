@@ -41,7 +41,7 @@ To open a songbook at launch:
 
 `start_softChord.py` creates a `.venv` virtual environment if needed, installs dependencies from `requirements.txt`, and starts the app. It asks before installing packages.
 
-Older pre-built binaries (0.9.x, last updated 2011–2013) are still on [SourceForge](https://sourceforge.net/projects/softchord/). Current development is on GitHub; run from source as above.
+macOS builds are on [GitHub Releases](https://github.com/matvey83/softChord/releases). Older 0.9.x binaries (2011–2013) remain on [SourceForge](https://sourceforge.net/projects/softchord/).
 
 ## Development
 
