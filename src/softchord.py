@@ -112,6 +112,23 @@ def _normalize_local_path(path):
     return path
 
 
+def read_import_text_file(filename):
+    """Read a lyrics/ChordPro file as Unicode.
+
+    Prefer UTF-8 (with optional BOM). Fall back to common 8-bit encodings so
+    files saved on Windows in a local code page still import. Latin-1 is last
+    because it never fails.
+    """
+    with open(filename, "rb") as fh:
+        raw = fh.read()
+    for encoding in ("utf-8-sig", "cp1250", "cp1252", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
 def connect_existing_songbook(filename):
     """Open an existing songbook. Never create a new/empty database."""
     filename = os.path.abspath(_normalize_local_path(filename))
@@ -3775,12 +3792,13 @@ class App(QtWidgets.QApplication):
             self.setWaitCursor()
             try:
                 for filename in chordpro_files:
-                    # "rU" made sure line endings were handled properly (Python 2).
-                    # In Python 3 just use 'r' (universal newlines are default).
-                    with codecs.open(filename, 'r',
-                                     encoding='utf_8_sig') as fh:
-                        file_text = fh.read()
-                    self.importSongFromChordProText(file_text)
+                    try:
+                        file_text = read_import_text_file(filename)
+                        self.importSongFromChordProText(file_text)
+                    except Exception:
+                        self.error("Error importing %s:\n\n%s" %
+                                   (filename, traceback.format_exc()))
+                        break
             finally:
                 self.restoreCursor()
 
@@ -3831,18 +3849,13 @@ class App(QtWidgets.QApplication):
         try:
             for filename in text_files:
                 song_title = os.path.splitext(os.path.basename(filename))[0]
-
-                # "rU" made sure line endings were handled properly (Python 2).
-                # In Python 3 just use 'r' (universal newlines are default).
-                with open(filename, 'r', encoding='utf_8_sig') as fh:
-                    text = fh.read()
-                    try:
-                        self.importSongFromText(text, song_title)
-                    except Exception as err:
-                        self.restoreCursor()
-                        self.error("Error parsing the text:\n\n%s " %
-                                   traceback.format_exc())
-                        break
+                try:
+                    text = read_import_text_file(filename)
+                    self.importSongFromText(text, song_title)
+                except Exception:
+                    self.error("Error importing %s:\n\n%s" %
+                               (filename, traceback.format_exc()))
+                    break
         finally:
             self.restoreCursor()
 
