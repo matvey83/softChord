@@ -1882,6 +1882,12 @@ class App(QtWidgets.QApplication):
             QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.ui.songs_view.selectionModel().selectionChanged.connect(
             self.songsSelectionChangedCallback)
+        # Policy goes on the view: Qt forwards viewport context-menu events
+        # here, with positions still in viewport coordinates.
+        self.ui.songs_view.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ui.songs_view.customContextMenuRequested.connect(
+            self.showSongsContextMenu)
 
         self.ui.song_filter_ef.textEdited.connect(self.songFilterEdited)
         self.ui.clear_filter_button.clicked.connect(self.clearFilterClicked)
@@ -3417,6 +3423,63 @@ class App(QtWidgets.QApplication):
         self.setCurrentSong(song)
 
         self.lyricEditorSelected()
+
+    def showSongsContextMenu(self, pos):
+        """
+        Show the songs table context menu at a viewport position.
+        """
+        view = self.ui.songs_view
+        menu = self.buildSongsContextMenu(view.indexAt(pos))
+        if menu is None:
+            return
+        if menu.exec(view.viewport().mapToGlobal(pos)) is not None:
+            self.deleteSongsFromContextMenu()
+
+    def buildSongsContextMenu(self, index):
+        """
+        Build the songs table context menu for a view row.
+
+        When the clicked song is not already selected, select it first
+        (this covers a right-click with nothing selected). One selected
+        song is labeled "Delete"; several are labeled "Delete...".
+        Returns None if index is not a song row.
+        """
+        if not index.isValid():
+            return None
+
+        view = self.ui.songs_view
+        selected_rows = {
+            row_index.row()
+            for row_index in view.selectionModel().selectedRows()
+        }
+        if index.row() not in selected_rows:
+            view.selectRow(index.row())
+
+        num_selected = len(view.selectionModel().selectedRows())
+        if num_selected < 1:
+            return None
+
+        menu = QtWidgets.QMenu(view)
+        if num_selected == 1:
+            menu.addAction("Delete")
+        else:
+            menu.addAction("Delete...")
+        return menu
+
+    def deleteSongsFromContextMenu(self):
+        """
+        Delete the songs targeted by the songs table context menu.
+
+        A single song is deleted immediately. Several songs require
+        confirmation ("Delete N songs?").
+        """
+        num_selected = len(self.getSelectedSongIds())
+        if num_selected > 1:
+            if not self.question(
+                    "Delete %d songs?" % num_selected, button1="Delete"):
+                return
+        if num_selected > 0:
+            self.deleteSelectedSongs()
 
     def deleteSelectedSongs(self):
         """
