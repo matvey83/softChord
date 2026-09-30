@@ -1010,6 +1010,27 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.app.processKeyPressed(Qt.Key.Key_M)
         self.assertEqual(chord.chord_type_id, 0)  # Back to Major
 
+    def test_process_key_pressed_m_returns_true_when_toggled(self):
+        td = tempfile.mkdtemp()
+        path = os.path.join(td, "t.songbook")
+        conn = sqlite3.connect(path)
+        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
+        conn.execute(SONGS_TABLE_SQL)
+        conn.commit()
+        conn.close()
+        self.app.setCurrentSongbook(path)
+        song = create_test_song(self.app, song_id=0, text="Test")
+        self.app.current_song = song
+        self.app.selected_char_num = 0
+        self.app.previous_song_text = "Test"
+        self.app.processKeyPressed(Qt.Key.Key_C)
+
+        result = self.app.processKeyPressed(Qt.Key.Key_M)
+
+        self.assertTrue(result)
+        chord = song.getChordAtPosition(0)
+        self.assertEqual(chord.chord_type_id, 1)
+
     def test_process_key_pressed_arrow_move_chord(self):
         """Left/Right arrows should move the selected chord."""
         song = create_test_song(self.app, song_id=10002, text="0123456789")

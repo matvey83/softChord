@@ -1060,7 +1060,8 @@ class App(SongbookIO, QtWidgets.QApplication):
                 else:
                     new_chord.chord_type_id = 0
                 self.current_song.replaceChord(prev_chord, new_chord)
-            return
+                return True
+            return False
 
         # Determine if a note key was pressed:
         key_note_dict = {
