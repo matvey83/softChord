@@ -43,6 +43,9 @@ from softchord import (
     auto_detected_key_labels,
     score_key,
     family_score,
+    prefer_from_major_tonic,
+    key_label,
+    replace_russian_characeters,
     SONGS_TABLE_SQL,
     SONG_CHORD_LINK_TABLE_SQL,
 )
@@ -1833,6 +1836,120 @@ class TestKeyScoring(unittest.TestCase):
         self.assertEqual(auto_detected_key_labels(regions), ["A", "B♭"])
         self.assertEqual(format_auto_detected_key_text(regions),
                          "Auto-detected key: A, B♭")
+
+    def test_empty_input(self):
+        self.assertIsNone(best_detected_key([]))
+        self.assertEqual(detect_region_start_indices([]), [])
+        self.assertEqual(auto_detected_key_labels([]), [])
+        self.assertEqual(format_auto_detected_key_text([]),
+                         "Auto-detected key:")
+        self.assertEqual(auto_detected_key_labels([(0, PREFER_SHARPS, "")]),
+                         [])
+
+    def test_prefer_from_major_tonic(self):
+        self.assertEqual(prefer_from_major_tonic(0), PREFER_NEITHER)  # C
+        self.assertEqual(prefer_from_major_tonic(7), PREFER_SHARPS)  # G
+        self.assertEqual(prefer_from_major_tonic(5), PREFER_FLATS)  # F
+
+    def test_key_label(self):
+        self.assertEqual(key_label(9, False, PREFER_SHARPS), "A")
+        self.assertEqual(key_label(9, True, PREFER_SHARPS), "Am")
+        self.assertEqual(key_label(10, False, PREFER_FLATS), "B♭")
+        self.assertEqual(key_label(10, False, PREFER_SHARPS), "A♯")
+
+
+class TestTransposeNote(unittest.TestCase):
+    """transpose_note wraps a chromatic note id into 0..11."""
+
+    def test_up_and_down(self):
+        self.assertEqual(transpose_note(0, 2), 2)  # C -> D
+        self.assertEqual(transpose_note(2, -2), 0)
+
+    def test_wraps_octave(self):
+        self.assertEqual(transpose_note(11, 1), 0)  # B -> C
+        self.assertEqual(transpose_note(0, -1), 11)  # C -> B
+        self.assertEqual(transpose_note(0, 12), 0)
+        self.assertEqual(transpose_note(0, -12), 0)
+
+
+class TestReplaceRussianCharacters(unittest.TestCase):
+    """Look-alike letters used when pasting chords from Russian sheets."""
+
+    def test_cyrillic_and_european_h(self):
+        self.assertEqual(replace_russian_characeters("Е"), "E")
+        self.assertEqual(replace_russian_characeters("С"), "C")
+        self.assertEqual(replace_russian_characeters("В"), "B")
+        self.assertEqual(replace_russian_characeters("А"), "A")
+        self.assertEqual(replace_russian_characeters("H"), "B")
+        self.assertEqual(replace_russian_characeters("Н"), "B")
+
+    def test_leaves_ascii_notes_alone(self):
+        self.assertEqual(replace_russian_characeters("Am"), "Am")
+        self.assertEqual(replace_russian_characeters("C#"), "C#")
+
+
+class _ChordParseApp:
+    """Duck-typed stand-in with the dicts convertChordFromString reads."""
+
+    def __init__(self):
+        self.note_text_id_dict = {}
+        for note_id, text, alt_text in softchord.global_notes_list:
+            self.note_text_id_dict[text] = note_id
+            self.note_text_id_dict[alt_text] = note_id
+        self.chord_type_texts_dict = {}
+        for type_id, (_i, _name, print_text) in enumerate(
+                softchord.chord_types_list):
+            self.chord_type_texts_dict[print_text] = type_id
+            for alt, official in softchord.alternative_type_names.items():
+                if print_text == official:
+                    self.chord_type_texts_dict[alt] = type_id
+
+
+class TestConvertChordFromString(unittest.TestCase):
+    """Parse pasted chord tokens into (marker, note, type, bass, parens)."""
+
+    def setUp(self):
+        self.parser = _ChordParseApp()
+
+    def convert(self, text):
+        return softchord.App.convertChordFromString(self.parser, text)
+
+    def test_major_minor_and_seventh(self):
+        self.assertEqual(self.convert("C"), (None, 0, 0, -1, False))
+        self.assertEqual(self.convert("Am"), (None, 9, 1, -1, False))
+        self.assertEqual(self.convert("G7"), (None, 7, 5, -1, False))
+
+    def test_accidentals_and_aliases(self):
+        self.assertEqual(self.convert("F#m"), self.convert("F♯m"))
+        self.assertEqual(self.convert("Bb"), self.convert("B♭"))
+        self.assertEqual(self.convert("F#m"), (None, 6, 1, -1, False))
+        self.assertEqual(self.convert("Csus"), self.convert("Csus4"))
+        self.assertEqual(self.convert("Cmaj7"), (None, 0, 3, -1, False))
+
+    def test_bass_marker_and_parentheses(self):
+        self.assertEqual(self.convert("C/E"), (None, 0, 0, 4, False))
+        self.assertEqual(self.convert("1:C"), ("1", 0, 0, -1, False))
+        self.assertEqual(self.convert("(Am)"), (None, 9, 1, -1, True))
+        self.assertEqual(self.convert("(1:G7/B)"), ("1", 7, 5, 11, True))
+
+    def test_russian_lookalikes(self):
+        self.assertEqual(self.convert("Нm"), (None, 11, 1, -1, False))  # Bm
+        self.assertEqual(self.convert("С"), (None, 0, 0, -1, False))  # C
+
+    def test_invalid_chords_raise_value_error(self):
+        for text, fragment in (
+            ("", "Empty string"),
+            ("X", "First chord letter is not a note"),
+            ("C:", "nothing after a colon"),
+            ("/E", "before the bass slash"),
+            ("C/", "after the bass slash"),
+            ("Cxyz", "Unkown chord type"),
+            ("C/Z", "Unrecognized bass note string"),
+        ):
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError) as ctx:
+                    self.convert(text)
+                self.assertIn(fragment, str(ctx.exception))
 
 
 class TestSongbookKeySchema(unittest.TestCase):
