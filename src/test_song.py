@@ -1648,6 +1648,85 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.importTextFiles([text_path])
         self.assertEqual(self.app.songs_model.rowCount(), 2)
 
+    def test_paste_as_new_song_requires_open_songbook(self):
+        self.app.closeSongbook()
+        warnings = []
+        self.app.warning = lambda text: warnings.append(text)
+        self.app.clipboard.setText("Title\nLyrics")
+        self.app.pasteAsNewSong()
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("song book", warnings[0].lower())
+
+    def test_import_song_from_text_uses_first_line_as_title(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromText("1. Amazing grace\nHow sweet the sound")
+        title, number, text = self.app.curs.execute(
+            "SELECT title, number, text FROM songs").fetchone()
+        self.assertEqual(title, "Amazing grace")
+        self.assertEqual(number, -1)
+        self.assertIn("How sweet the sound", text)
+
+    def test_import_chordpro_stores_title_number_and_chords(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromChordProText(
+            "# comment\n{t:Hello}\n{subtitle:12}\n[C]Hi [G]there\n")
+        title, number, text = self.app.curs.execute(
+            "SELECT title, number, text FROM songs").fetchone()
+        self.assertEqual(title, "Hello")
+        self.assertEqual(number, 12)
+        self.assertIn("Hi", text)
+        notes = [
+            row[0] for row in self.app.curs.execute(
+                "SELECT note_id FROM song_chord_link ORDER BY character_num")
+        ]
+        self.assertEqual(notes, [0, 7])  # C, G
+
+    def test_export_text_and_chordpro(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromChordProText("{title:Export Me}\n[C]Hello\n")
+        self.app.ui.songs_view.selectRow(0)
+        td = tempfile.mkdtemp()
+        text_path = os.path.join(td, "out.txt")
+        chordpro_path = os.path.join(td, "out.chordpro")
+        self.app.exportToText(text_path)
+        self.app.exportToChordPro(chordpro_path)
+        with open(text_path, encoding="utf-8-sig") as fh:
+            exported_text = fh.read()
+        with open(chordpro_path, encoding="utf-8-sig") as fh:
+            exported_chordpro = fh.read()
+        self.assertIn("Hello", exported_text)
+        self.assertIn("{title:Export Me}", exported_chordpro)
+        self.assertIn("[C]", exported_chordpro)
+
+    def test_export_text_requires_one_selected_song(self):
+        self._open_empty_temp_songbook()
+        errors = []
+        self.app.error = lambda text: errors.append(text)
+        self.app.exportToText(os.path.join(tempfile.mkdtemp(), "out.txt"))
+        self.assertEqual(len(errors), 1)
+        self.assertIn("No songs are selected", errors[0])
+
+    def test_append_songbook_copies_songs(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromText("Keep me\nAlready here")
+        source_dir = tempfile.mkdtemp()
+        source_path = os.path.join(source_dir, "source.songbook")
+        conn = sqlite3.connect(source_path)
+        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
+        conn.execute(SONGS_TABLE_SQL)
+        conn.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text) "
+            "VALUES (0, 5, 'Appended', 'sub', 'New lyrics')")
+        conn.commit()
+        conn.close()
+
+        self.app.appendSongbookFile(source_path)
+        rows = list(self.app.curs.execute(
+            "SELECT title, number, subtitle, text FROM songs ORDER BY id"))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0][0], "Keep me")
+        self.assertEqual(rows[1], ("Appended", 5, "sub", "New lyrics"))
+
 
 class TestReadImportTextFile(unittest.TestCase):
 
@@ -1662,6 +1741,69 @@ class TestReadImportTextFile(unittest.TestCase):
             fh.write(text.encode("cp1250"))
         self.assertEqual(read_import_text_file(utf8_path), text)
         self.assertEqual(read_import_text_file(cp1250_path), text)
+
+
+class TestConnectExistingSongbook(unittest.TestCase):
+    """connect_existing_songbook rejects junk files and opens real songbooks."""
+
+    def _write_songbook(self, path, with_songs_table=True):
+        conn = sqlite3.connect(path)
+        if with_songs_table:
+            conn.execute(SONG_CHORD_LINK_TABLE_SQL)
+            conn.execute(SONGS_TABLE_SQL)
+            conn.execute(
+                "INSERT INTO songs (id, number, title, subtitle, text) "
+                "VALUES (0, 1, 'One', '', 'lyrics')")
+        else:
+            conn.execute("CREATE TABLE other (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+    def test_opens_valid_songbook(self):
+        path = os.path.join(tempfile.mkdtemp(), "ok.songbook")
+        self._write_songbook(path)
+        conn = softchord.connect_existing_songbook(path)
+        try:
+            title = conn.execute("SELECT title FROM songs").fetchone()[0]
+            self.assertEqual(title, "One")
+        finally:
+            conn.close()
+
+    def test_missing_file(self):
+        with self.assertRaises(FileNotFoundError):
+            softchord.connect_existing_songbook(
+                os.path.join(tempfile.mkdtemp(), "missing.songbook"))
+
+    def test_empty_file(self):
+        path = os.path.join(tempfile.mkdtemp(), "empty.songbook")
+        open(path, "wb").close()
+        with self.assertRaises(ValueError) as ctx:
+            softchord.connect_existing_songbook(path)
+        self.assertIn("empty", str(ctx.exception).lower())
+
+    def test_not_sqlite(self):
+        path = os.path.join(tempfile.mkdtemp(), "junk.songbook")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("not a database")
+        with self.assertRaises(ValueError) as ctx:
+            softchord.connect_existing_songbook(path)
+        self.assertIn("not a valid", str(ctx.exception).lower())
+
+    def test_sqlite_without_songs_table(self):
+        path = os.path.join(tempfile.mkdtemp(), "other.songbook")
+        self._write_songbook(path, with_songs_table=False)
+        with self.assertRaises(ValueError) as ctx:
+            softchord.connect_existing_songbook(path)
+        self.assertIn("missing songs table", str(ctx.exception).lower())
+
+    def test_normalize_local_path(self):
+        self.assertEqual(softchord._normalize_local_path(""), "")
+        self.assertEqual(softchord._normalize_local_path(None), None)
+        path = "/tmp/foo.songbook"
+        url = QtCore.QUrl.fromLocalFile(path).toString()
+        self.assertTrue(url.startswith("file:"))
+        self.assertEqual(softchord._normalize_local_path(url), path)
+        self.assertEqual(softchord._normalize_local_path(path), path)
 
 
 class _Root:

@@ -54,6 +54,7 @@ a = Analysis(
     hiddenimports=[
         "softchord_chords",
         "softchord_song",
+        "softchord_io",
         "softchord_main_window_ui",
         "softchord_chord_dialog_ui",
         "softchord_pdf_dialog_ui",
