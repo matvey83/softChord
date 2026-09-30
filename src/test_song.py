@@ -1576,6 +1576,36 @@ class TestMoreAppOperations(unittest.TestCase):
         finally:
             QtWidgets.QFileDialog.getSaveFileName = original_get_save
 
+    def test_new_songbook_opens_a_single_connection(self):
+        self._open_empty_temp_songbook()
+        path = os.path.join(tempfile.mkdtemp(), "brand_new.songbook")
+        original_get_save = QtWidgets.QFileDialog.getSaveFileName
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+            lambda *a, **k: (path, ""))
+        original_connect = sqlite3.connect
+        created = []
+
+        def tracking_connect(*args, **kwargs):
+            conn = original_connect(*args, **kwargs)
+            created.append(conn)
+            return conn
+
+        sqlite3.connect = tracking_connect
+        try:
+            self.app.newSongbook()
+        finally:
+            sqlite3.connect = original_connect
+            QtWidgets.QFileDialog.getSaveFileName = original_get_save
+
+        self.assertEqual(len(created), 1)
+        self.assertIs(created[0], self.app.curs)
+        tables = [
+            row[0] for row in self.app.curs.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")
+        ]
+        self.assertIn("songs", tables)
+        self.assertIn("song_chord_link", tables)
+
     def test_save_songbook_error_text_and_format_filter(self):
         self._open_empty_temp_songbook()
         captured = {}

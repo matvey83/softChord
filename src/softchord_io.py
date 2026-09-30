@@ -739,10 +739,11 @@ class SongbookIO:
         return convert_chord_from_string(chord_str, self.note_text_id_dict,
                                          self.chord_type_texts_dict)
 
-    def setCurrentSongbook(self, filename):
+    def setCurrentSongbook(self, filename, conn=None):
         if filename is not None:
             filename = _normalize_local_path(filename)
-            conn = connect_existing_songbook(filename)
+            if conn is None:
+                conn = connect_existing_songbook(filename)
         else:
             conn = None
 
@@ -834,12 +835,12 @@ class SongbookIO:
             if os.path.isfile(songbook_file):
                 os.remove(songbook_file)
 
-            # Open an empty satabase:
-            self.curs = sqlite3.connect(songbook_file)
-
-            self.curs.execute(SONG_CHORD_LINK_TABLE_SQL)
-            self.curs.execute(SONGS_TABLE_SQL)
-            self.setCurrentSongbook(songbook_file)
+            # Open an empty database once, then reuse that connection.
+            conn = sqlite3.connect(songbook_file)
+            conn.execute(SONG_CHORD_LINK_TABLE_SQL)
+            conn.execute(SONGS_TABLE_SQL)
+            conn.commit()
+            self.setCurrentSongbook(songbook_file, conn=conn)
 
     def openSongbook(self):
         initial_dir = QtCore.QDir.home().path()
