@@ -296,6 +296,14 @@ def parse_chord_over_lyrics(lines, convert_chord, metrics):
             pending_line = None
             pending_entries = None
 
+    # A chord line at the end of the file has no lyrics under it.
+    # Keep it as its own line so the chords are not dropped.
+    if pending_entries:
+        raw_pairs.append(
+            (pending_line, pending_line.rstrip(), pending_entries))
+    elif pending_line is not None:
+        raw_pairs.append((None, pending_line, []))
+
     proportional = text_is_proportionally_spaced(
         [(chord_line, lyric) for chord_line, lyric, entries in raw_pairs
          if entries], metrics)
