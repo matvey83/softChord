@@ -543,6 +543,9 @@ class SongbookIO:
                 # In case all of the title got stripped
                 song_title = "Unknown"
 
+        if not song_title:
+            song_title = "Unknown"
+
         # Make a global-reference text and chords dict:
         global_song_text = ""
         global_song_chords = {}  # key: position in the global_song_text
@@ -667,9 +670,10 @@ class SongbookIO:
                 elif custom_string.startswith('t:'):
                     song_title = custom_string[2:]
                     continue
-                if custom_string.startswith('subtitle:'):
+                if (custom_string.startswith('subtitle:')
+                        or custom_string.startswith('st:')):
                     # If the subtitle is a number, treat it as a song number:
-                    tmp_subtitle = custom_string[9:]
+                    tmp_subtitle = custom_string.split(':', 1)[1]
                     try:
                         song_num = int(tmp_subtitle)
                     except:

@@ -280,6 +280,37 @@ def create_test_song(app,
     return song
 
 
+def open_empty_temp_songbook(app):
+    """Open a throwaway songbook so tests do not write zvuki_neba.songbook."""
+    td = tempfile.mkdtemp()
+    path = os.path.join(td, "t.songbook")
+    conn = sqlite3.connect(path)
+    conn.execute(SONG_CHORD_LINK_TABLE_SQL)
+    conn.execute(SONGS_TABLE_SQL)
+    conn.commit()
+    conn.close()
+    app.setCurrentSongbook(path)
+    return td
+
+
+def insert_and_select_song(app,
+                           song_id=0,
+                           title="Test Song",
+                           text="Amazing grace\nHow sweet the sound",
+                           with_chord=False):
+    app.curs.execute(
+        "INSERT INTO songs (id, number, title, subtitle, text) "
+        "VALUES (?, 1, ?, '', ?)", (song_id, title, text))
+    if with_chord:
+        app.curs.execute(
+            "INSERT INTO song_chord_link (id, song_id, character_num, "
+            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (0, ?, 0, 0, 0, -1, '', 0)", (song_id,))
+    app.curs.commit()
+    app.songs_model.updateFromDatabase()
+    app.ui.songs_view.selectRow(0)
+
+
 # ---------------------------------------------------------------------------
 # Tests for SongChord and SongChar (basic)
 # ---------------------------------------------------------------------------
@@ -949,12 +980,7 @@ class TestAppCoreFunctionality(unittest.TestCase):
         # Create a real App and immediately open a songbook so .curs is valid
         self.app = softchord.App([])
         self.app.win = QtWidgets.QWidget()
-
-        # Use the real songbook so the App has a working database connection
-        songbook_path = os.path.join(os.path.dirname(__file__), "..",
-                                     "zvuki_neba.songbook")
-        songbook_path = os.path.abspath(songbook_path)
-        self.app.setCurrentSongbook(songbook_path)
+        open_empty_temp_songbook(self.app)
 
     def test_process_key_pressed_add_new_chord(self):
         """Pressing a note key (e.g. 'C') on a selected position should add a chord."""
@@ -1001,24 +1027,20 @@ class TestAppCoreFunctionality(unittest.TestCase):
 
         self.app.processKeyPressed(Qt.Key.Key_C)  # Add C major
 
-        chord = list(song.iterateAllChords())[0]
+        chord = song.getChordAtPosition(0)
         self.assertEqual(chord.chord_type_id, 0)  # Major
 
-        self.app.processKeyPressed(Qt.Key.Key_M)
+        result = self.app.processKeyPressed(Qt.Key.Key_M)
+        self.assertTrue(result)
+        chord = song.getChordAtPosition(0)
         self.assertEqual(chord.chord_type_id, 1)  # Minor
 
-        self.app.processKeyPressed(Qt.Key.Key_M)
+        result = self.app.processKeyPressed(Qt.Key.Key_M)
+        self.assertTrue(result)
+        chord = song.getChordAtPosition(0)
         self.assertEqual(chord.chord_type_id, 0)  # Back to Major
 
     def test_process_key_pressed_m_returns_true_when_toggled(self):
-        td = tempfile.mkdtemp()
-        path = os.path.join(td, "t.songbook")
-        conn = sqlite3.connect(path)
-        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
-        conn.execute(SONGS_TABLE_SQL)
-        conn.commit()
-        conn.close()
-        self.app.setCurrentSongbook(path)
         song = create_test_song(self.app, song_id=0, text="Test")
         self.app.current_song = song
         self.app.selected_char_num = 0
@@ -1031,6 +1053,13 @@ class TestAppCoreFunctionality(unittest.TestCase):
         chord = song.getChordAtPosition(0)
         self.assertEqual(chord.chord_type_id, 1)
 
+    def test_process_key_pressed_m_returns_false_without_chord(self):
+        song = create_test_song(self.app, song_id=0, text="Test")
+        self.app.current_song = song
+        self.app.selected_char_num = 0
+        result = self.app.processKeyPressed(Qt.Key.Key_M)
+        self.assertFalse(result)
+
     def test_process_key_pressed_arrow_move_chord(self):
         """Left/Right arrows should move the selected chord."""
         song = create_test_song(self.app, song_id=10002, text="0123456789")
@@ -1039,14 +1068,14 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.app.previous_song_text = "0123456789"
 
         self.app.processKeyPressed(Qt.Key.Key_C)
-        chord = list(song.iterateAllChords())[0]
-        self.assertEqual(chord.character_num, 3)
+        self.assertEqual(song.getChordAtPosition(3).character_num, 3)
 
         self.app.processKeyPressed(Qt.Key.Key_Right)
-        self.assertEqual(chord.character_num, 4)
+        self.assertIsNone(song.getChordAtPosition(3))
+        self.assertEqual(song.getChordAtPosition(4).character_num, 4)
 
         self.app.processKeyPressed(Qt.Key.Key_Left)
-        self.assertEqual(chord.character_num, 3)
+        self.assertEqual(song.getChordAtPosition(3).character_num, 3)
 
     def test_process_key_pressed_arrow_transpose(self):
         """Up/Down arrows should transpose the selected chord."""
@@ -1056,14 +1085,13 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.app.previous_song_text = "Test"
 
         self.app.processKeyPressed(Qt.Key.Key_C)
-        chord = list(song.iterateAllChords())[0]
-        self.assertEqual(chord.note_id, 0)
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
 
         self.app.processKeyPressed(Qt.Key.Key_Up)  # C -> C#
-        self.assertEqual(chord.note_id, 1)
+        self.assertEqual(song.getChordAtPosition(0).note_id, 1)
 
         self.app.processKeyPressed(Qt.Key.Key_Down)  # C# -> C
-        self.assertEqual(chord.note_id, 0)
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -1086,18 +1114,10 @@ class TestAppHitTesting(unittest.TestCase):
             cls.qapp = QtWidgets.QApplication.instance()
 
     def setUp(self):
-        # Real App + real songbook gives us proper editor + font metrics
         self.app = softchord.App([])
         self.app.win = QtWidgets.QWidget()
-
-        songbook_path = os.path.join(os.path.dirname(__file__), "..",
-                                     "zvuki_neba.songbook")
-        songbook_path = os.path.abspath(songbook_path)
-        self.app.setCurrentSongbook(songbook_path)
-
-        # Select first song and give it a current song for hit testing
-        if self.app.songs_model.rowCount() > 0:
-            self.app.ui.songs_view.selectRow(0)
+        open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, with_chord=True)
 
     def test_determine_clicked_letter_basic(self):
         """Basic smoke test that determineClickedLetter returns something sensible."""
@@ -1145,15 +1165,8 @@ class TestChordDialogEditing(unittest.TestCase):
     def setUp(self):
         self.app = softchord.App([])
         self.app.win = QtWidgets.QWidget()
-
-        # Use real songbook so current_song and note lookup work
-        songbook_path = os.path.join(os.path.dirname(__file__), "..",
-                                     "zvuki_neba.songbook")
-        songbook_path = os.path.abspath(songbook_path)
-        self.app.setCurrentSongbook(songbook_path)
-
-        if self.app.songs_model.rowCount() > 0:
-            self.app.ui.songs_view.selectRow(0)
+        open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, with_chord=True)
 
     def test_process_song_char_edit_add_new_chord(self):
         """Calling processSongCharEdit on a position with no chord should add one after 'OK'."""
@@ -1273,14 +1286,8 @@ class TestAppRendering(unittest.TestCase):
     def setUp(self):
         self.app = softchord.App([])
         self.app.win = QtWidgets.QWidget()
-
-        songbook_path = os.path.join(os.path.dirname(__file__), "..",
-                                     "zvuki_neba.songbook")
-        songbook_path = os.path.abspath(songbook_path)
-        self.app.setCurrentSongbook(songbook_path)
-
-        if self.app.songs_model.rowCount() > 0:
-            self.app.ui.songs_view.selectRow(0)
+        open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, with_chord=True)
 
     def test_get_chord_width(self):
         """getChordWidth should return a reasonable positive width."""
@@ -1376,14 +1383,8 @@ class TestPrintingPdfFontClipboard(unittest.TestCase):
         self.app = softchord.App([])
         self.app.win = QtWidgets.QWidget()
 
-        # Use real songbook for a valid current_song and models
-        songbook_path = os.path.join(os.path.dirname(__file__), "..",
-                                     "zvuki_neba.songbook")
-        songbook_path = os.path.abspath(songbook_path)
-        self.app.setCurrentSongbook(songbook_path)
-
-        if self.app.songs_model.rowCount() > 0:
-            self.app.ui.songs_view.selectRow(0)
+        open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, with_chord=True)
 
     # --- Printing helpers ---
     def test_get_printable_height(self):
@@ -1480,14 +1481,8 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
     def setUp(self):
         self.app = softchord.App([])
         self.app.win = QtWidgets.QWidget()
-
-        songbook_path = os.path.join(os.path.dirname(__file__), "..",
-                                     "zvuki_neba.songbook")
-        songbook_path = os.path.abspath(songbook_path)
-        self.app.setCurrentSongbook(songbook_path)
-
-        if self.app.songs_model.rowCount() > 0:
-            self.app.ui.songs_view.selectRow(0)
+        open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, with_chord=True)
 
     # --- Song metadata editing (title, subtitle, number, key) ---
     def test_current_song_title_edited_updates_model_and_db(self):
@@ -1568,14 +1563,7 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.error = lambda text: None
         self.app.question = lambda *a, **k: True
 
-        # Open a real songbook so curs and models are valid
-        songbook_path = os.path.join(os.path.dirname(__file__), "..",
-                                     "zvuki_neba.songbook")
-        songbook_path = os.path.abspath(songbook_path)
-        self.app.setCurrentSongbook(songbook_path)
-
-        if self.app.songs_model.rowCount() > 0:
-            self.app.ui.songs_view.selectRow(0)
+        open_empty_temp_songbook(self.app)
 
     # --- Songbook file operations (dialogs heavily mocked) ---
     def test_new_songbook_creates_tables(self):
@@ -1763,17 +1751,7 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(result.character_num, 0)
 
     def _open_empty_temp_songbook(self):
-        td = tempfile.mkdtemp()
-        path = os.path.join(td, "t.songbook")
-        conn = sqlite3.connect(path)
-        conn.execute(
-            "CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)"
-        )
-        conn.execute(SONGS_TABLE_SQL)
-        conn.commit()
-        conn.close()
-        self.app.setCurrentSongbook(path)
-        return td
+        return open_empty_temp_songbook(self.app)
 
     def test_import_chordpro_and_text_with_non_ascii_filenames(self):
         """Issue #1: import files whose names have spaces and non-ASCII letters."""
@@ -1858,6 +1836,66 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(title, "Hello")
         self.assertEqual(number, -1)
         self.assertEqual(subtitle, "Some note")
+
+    def test_import_chordpro_st_alias_stores_subtitle(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromChordProText(
+            "{title:Hello}\n{st:From the alias}\n[C]Hi\n")
+        title, subtitle = self.app.curs.execute(
+            "SELECT title, subtitle FROM songs").fetchone()
+        self.assertEqual(title, "Hello")
+        self.assertEqual(subtitle, "From the alias")
+
+    def test_import_empty_text_uses_unknown_title(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromText("")
+        title = self.app.curs.execute("SELECT title FROM songs").fetchone()[0]
+        self.assertEqual(title, "Unknown")
+        self.assertEqual(self.app.songs_model.rowCount(), 1)
+
+    def test_lyrics_text_changed_shifts_chords_after_insert(self):
+        self._open_empty_temp_songbook()
+        song = create_test_song(self.app, song_id=0, text="Hello")
+        self.app.current_song = song
+        self.app.editor.setDocument(song.doc)
+        song._addChord(SongChord(song, 0, 0, 0, -1, "", 0))
+        self.app.ignore_song_text_changed = True
+        self.app.editor.setPlainText("xHello")
+        self.app.ignore_song_text_changed = False
+        self.app.previous_song_text = "Hello"
+
+        self.app.lyricsTextChanged()
+
+        self.assertIsNone(song.getChordAtPosition(0))
+        self.assertEqual(song.getChordAtPosition(1).note_id, 0)
+
+    def test_lyrics_text_changed_drops_chord_on_deleted_char(self):
+        self._open_empty_temp_songbook()
+        song = create_test_song(self.app, song_id=0, text="Hello")
+        self.app.current_song = song
+        self.app.editor.setDocument(song.doc)
+        song._addChord(SongChord(song, 0, 0, 0, -1, "", 0))
+        self.app.ignore_song_text_changed = True
+        self.app.editor.setPlainText("ello")
+        self.app.ignore_song_text_changed = False
+        self.app.previous_song_text = "Hello"
+
+        self.app.lyricsTextChanged()
+
+        self.assertEqual(list(song.iterateAllChords()), [])
+
+    def test_save_songbook_copy_opens_new_file(self):
+        self._open_empty_temp_songbook()
+        dest = os.path.join(tempfile.mkdtemp(), "copied.songbook")
+        original_get_save = QtWidgets.QFileDialog.getSaveFileName
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+            lambda *a, **k: (dest, ""))
+        try:
+            self.app.saveSongbook()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original_get_save
+        self.assertEqual(self.app.current_songbook_filename, dest)
+        self.assertTrue(os.path.isfile(dest))
 
     def test_export_text_and_chordpro(self):
         self._open_empty_temp_songbook()
