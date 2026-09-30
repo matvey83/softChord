@@ -1426,23 +1426,6 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.renumberAllSongs()
         self.assertTrue(True)  # If we reach here, basic path worked
 
-    # --- Set song database ID (dialog mocked) ---
-    def test_set_song_database_id_mocked(self):
-        if not self.app.current_song:
-            self.skipTest("No current song after setup")
-
-        # Mock QInputDialog to return a new ID
-        original_get_int = QtGui.QInputDialog.getInteger
-        QtGui.QInputDialog.getInteger = staticmethod(lambda *a, **k:
-                                                     (9999, True))
-
-        try:
-            self.app.setSongDatabaseId()
-            # We mainly verify it doesn't crash on the dialog path.
-            # A real collision warning may be logged via the (mocked) error method.
-        finally:
-            QtGui.QInputDialog.getInteger = original_get_int
-
     # --- Paste as new song ---
     def test_paste_as_new_song(self):
         self.app.clipboard.setText("Pasted Song Title\nSome lyrics")

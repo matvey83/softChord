@@ -1934,7 +1934,6 @@ class App(QtWidgets.QApplication):
         self.ui.actionDeleteSong.triggered.connect(self.deleteSelectedSongs)
         self.ui.actionRenumberSongs.triggered.connect(self.renumberAllSongs)
 
-        self.ui.actionSetID.triggered.connect(self.setSongDatabaseId)
         self.ui.actionExportSinglePdf.triggered.connect(self.exportToSinglePdf)
         self.ui.actionExportSongToPdf.triggered.connect(self.exportToSinglePdf)
         self.ui.actionExportMultiplePdfs.triggered.connect(
@@ -2434,7 +2433,6 @@ class App(QtWidgets.QApplication):
         self.ui.actionDeleteSongs.setEnabled(num_selected > 0)
         self.ui.actionRemoveTrailingSpaces.setEnabled(num_selected > 0)
         self.ui.actionDeleteSong.setEnabled(num_selected == 1)
-        self.ui.actionSetID.setEnabled(num_selected == 1)
 
         songs_present = self.songs_model.rowCount() > 0
 
@@ -3541,37 +3539,6 @@ class App(QtWidgets.QApplication):
         b2 = mbox.addButton(button2, QtWidgets.QMessageBox.ButtonRole.RejectRole)
         mbox.exec()
         return (mbox.clickedButton() == b1)
-
-    def setSongDatabaseId(self):
-        """
-        Give the selected song a new song ID in the database.
-        """
-
-        curr_id = self.current_song.id
-        next_id = None
-
-        all_song_ids = self.songs_model.getAllSongIds()
-
-        new_id, ok = QtWidgets.QInputDialog.getInt(
-            self.win, "softChord", "Enter a new ID for this song:", curr_id, 1)
-        if not ok or new_id == curr_id:
-            # User cancelled or selected same ID
-            return
-
-        if new_id in all_song_ids:
-            song = Song(self, new_id)
-            self.error("The ID %i is already used by song #%s (%s)" %
-                       (new_id, song.number, song.title))
-            return
-
-        self.curs.execute('UPDATE songs SET id=? WHERE id=?', (new_id, curr_id))
-        self.curs.execute(
-            "UPDATE song_chord_link SET song_id=? WHERE song_id=?",
-            (new_id, curr_id))
-        self.curs.commit()
-
-        # Update the song table from database:
-        self.songs_model.updateFromDatabase()
 
     def getCharRects(self, editor, song_char_num, chord=None):
         cursor = editor.textCursor()
