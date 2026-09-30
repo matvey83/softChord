@@ -1681,6 +1681,16 @@ class TestMoreAppOperations(unittest.TestCase):
         ]
         self.assertEqual(notes, [0, 7])  # C, G
 
+    def test_import_chordpro_stores_non_numeric_subtitle(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromChordProText(
+            "{title:Hello}\n{subtitle:Some note}\n[C]Hi\n")
+        title, number, subtitle = self.app.curs.execute(
+            "SELECT title, number, subtitle FROM songs").fetchone()
+        self.assertEqual(title, "Hello")
+        self.assertEqual(number, -1)
+        self.assertEqual(subtitle, "Some note")
+
     def test_export_text_and_chordpro(self):
         self._open_empty_temp_songbook()
         self.app.importSongFromChordProText("{title:Export Me}\n[C]Hello\n")

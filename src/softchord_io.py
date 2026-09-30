@@ -662,8 +662,7 @@ class SongbookIO:
                         song_num = int(tmp_subtitle)
                     except:
                         song_subtitle = tmp_subtitle
-                    else:
-                        continue
+                    continue
 
                 tmp_warnings.append('WARNING: line ignored: "%s"' % line)
                 continue
@@ -724,7 +723,7 @@ class SongbookIO:
             except:
                 pass
 
-        self._importSongFromLyricsAndChords(song_num, song_title, "",
+        self._importSongFromLyricsAndChords(song_num, song_title, song_subtitle,
                                             global_song_text,
                                             global_song_chords)
 
