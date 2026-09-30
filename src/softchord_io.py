@@ -782,23 +782,29 @@ class SongbookIO:
 
             chord_id = None  # So that _importChord() assigned a new ID to the new chord
 
-            for row in curs2.execute(
-                    "SELECT number, title, subtitle, text FROM songs ORDER BY id"
-            ):
-                (song_num, song_title, song_subtitle, song_text) = row
-                song_id = self._importSong(song_num, song_title, song_subtitle,
-                                           song_text)
+            # Materialize the source songs first: nested executes on the same
+            # sqlite3 cursor reset the outer iterator.
+            source_songs = list(
+                curs2.execute(
+                    "SELECT id, number, title, subtitle, text FROM songs ORDER BY id"
+                ))
+            for (src_song_id, song_num, song_title, song_subtitle,
+                 song_text) in source_songs:
+                dest_song_id = self._importSong(song_num, song_title,
+                                                song_subtitle, song_text)
 
-                for row in curs2.execute(
-                        "SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i"
-                        % song_id):
-                    (id, song_char_num, note_id, chord_type_id, bass_note_id,
-                     marker, in_parentheses) = row
-
-                    chord_id = self._importChord(song_id, song_char_num,
+                source_chords = list(
+                    curs2.execute(
+                        "SELECT character_num, note_id, chord_type_id, "
+                        "bass_note_id, marker, in_parentheses "
+                        "FROM song_chord_link WHERE song_id=?",
+                        (src_song_id,)))
+                for (song_char_num, note_id, chord_type_id, bass_note_id,
+                     marker, in_parentheses) in source_chords:
+                    chord_id = self._importChord(dest_song_id, song_char_num,
                                                  note_id, chord_type_id,
                                                  bass_note_id, marker,
-                                                 id_parentheses, chord_id)
+                                                 in_parentheses, chord_id)
                     chord_id += 1  # Increment the ID for the next chord.
 
             self.curs.commit()

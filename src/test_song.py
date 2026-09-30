@@ -1727,6 +1727,42 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(rows[0][0], "Keep me")
         self.assertEqual(rows[1], ("Appended", 5, "sub", "New lyrics"))
 
+    def test_append_songbook_copies_chords_onto_new_song_ids(self):
+        """Appending must copy chords by source song id onto new dest ids."""
+        self._open_empty_temp_songbook()
+        self.app.importSongFromText("Keep me\nAlready here")
+        source_path = os.path.join(tempfile.mkdtemp(), "source.songbook")
+        conn = sqlite3.connect(source_path)
+        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
+        conn.execute(SONGS_TABLE_SQL)
+        conn.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text) "
+            "VALUES (0, 1, 'First', '', 'Hello'), "
+            "(1, 2, 'Second', '', 'World')")
+        conn.execute(
+            "INSERT INTO song_chord_link (id, song_id, character_num, "
+            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (0, 0, 0, 0, 0, -1, '', 0), "
+            "(1, 1, 0, 7, 0, -1, '', 1)")
+        conn.commit()
+        conn.close()
+
+        self.app.appendSongbookFile(source_path)
+
+        dest_songs = list(
+            self.app.curs.execute("SELECT id, title FROM songs ORDER BY id"))
+        self.assertEqual([row[1] for row in dest_songs],
+                         ["Keep me", "First", "Second"])
+        dest_ids = {title: song_id for song_id, title in dest_songs}
+        chords = list(
+            self.app.curs.execute(
+                "SELECT song_id, character_num, note_id, in_parentheses "
+                "FROM song_chord_link ORDER BY song_id"))
+        self.assertEqual(chords, [
+            (dest_ids["First"], 0, 0, 0),
+            (dest_ids["Second"], 0, 7, 1),
+        ])
+
 
 class TestReadImportTextFile(unittest.TestCase):
 
