@@ -566,6 +566,49 @@ class TestSong(unittest.TestCase):
         ).fetchone()[0]
         self.assertEqual(char_num, 3)
 
+    def test_remove_trailing_spaces_deletes_chords_on_trimmed_spaces(self):
+        # "Hi  \nGo": C sits on the second trailing space (char 3).
+        text = "Hi  \nGo"
+        song = create_test_song(self.app, song_id=9, text=text)
+        self.app.curs.execute(
+            "INSERT INTO song_chord_link (id, song_id, character_num, "
+            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (1, 9, 3, 0, 0, -1, '', 0)")
+        self.app.curs.commit()
+        song = Song(self.app, 9)
+
+        song.removeTrailingSpaces()
+
+        stored = self.app.curs.execute(
+            "SELECT text FROM songs WHERE id=9").fetchone()[0]
+        self.assertEqual(stored, "Hi\nGo")
+        remaining = list(self.app.curs.execute(
+            "SELECT character_num FROM song_chord_link WHERE song_id=9"))
+        self.assertEqual(remaining, [])
+
+    def test_remove_trailing_spaces_updates_in_memory_song(self):
+        # G at char 5 (kept); C at char 3 (trailing space, dropped).
+        text = "Hi  \nGo"
+        song = create_test_song(self.app, song_id=10, text=text)
+        self.app.curs.execute(
+            "INSERT INTO song_chord_link (id, song_id, character_num, "
+            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (1, 10, 5, 7, 0, -1, '', 0), "
+            "(2, 10, 3, 0, 0, -1, '', 0)")
+        self.app.curs.commit()
+        song = Song(self.app, 10)
+        self.app.current_song = song
+
+        song.removeTrailingSpaces()
+
+        self.assertEqual(song.getAllText(), "Hi\nGo")
+        chords = sorted(c.character_num for c in song.iterateAllChords())
+        self.assertEqual(chords, [3])
+        db_chars = sorted(
+            row[0] for row in self.app.curs.execute(
+                "SELECT character_num FROM song_chord_link WHERE song_id=10"))
+        self.assertEqual(db_chars, [3])
+
     def test_loads_legacy_schema_without_subtitle(self):
         app = MinimalTestApp()
         app.curs.execute("DROP TABLE songs")
@@ -1784,6 +1827,42 @@ class TestMoreAppOperations(unittest.TestCase):
             (dest_ids["First"], 0, 0, 0),
             (dest_ids["Second"], 0, 7, 1),
         ])
+
+    def test_remove_trailing_spaces_updates_current_song(self):
+        self._open_empty_temp_songbook()
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text) "
+            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo')")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.ui.songs_view.selectRow(0)
+
+        self.assertIsNotNone(self.app.current_song)
+        self.assertEqual(self.app.current_song.getAllText(), "Hi  \nGo")
+
+        self.app.removeTrailingSpaces()
+
+        self.assertEqual(self.app.current_song.getAllText(), "Hi\nGo")
+        self.assertEqual(self.app.editor.toPlainText(), "Hi\nGo")
+        stored = self.app.curs.execute("SELECT text FROM songs").fetchone()[0]
+        self.assertEqual(stored, "Hi\nGo")
+
+    def test_remove_trailing_spaces_keeps_unsaved_lyric_edits(self):
+        self._open_empty_temp_songbook()
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text) "
+            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo')")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.ui.songs_view.selectRow(0)
+        self.app.current_song.doc.setPlainText("xHi  \nGo")
+        self.app.previous_song_text = "xHi  \nGo"
+
+        self.app.removeTrailingSpaces()
+
+        self.assertEqual(self.app.current_song.getAllText(), "xHi\nGo")
+        stored = self.app.curs.execute("SELECT text FROM songs").fetchone()[0]
+        self.assertEqual(stored, "xHi\nGo")
 
 
 class TestReadImportTextFile(unittest.TestCase):
