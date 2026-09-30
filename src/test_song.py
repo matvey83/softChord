@@ -2996,6 +2996,19 @@ class TestChordOverLyricPlacement(unittest.TestCase):
         self.assertEqual(lyric[indexes[0]], "H")
         self.assertEqual(lyric[indexes[1]], "o")
 
+    def test_trailing_chord_line_is_kept(self):
+        text = "C  G\nHello\nAm"
+        lines, _proportional = self._parse(text)
+        self.assertEqual(len(lines), 2)
+        hello, hello_chords = lines[0]
+        self.assertEqual(hello, "Hello")
+        self.assertEqual(len(hello_chords), 2)
+        last_lyric, last_chords = lines[1]
+        self.assertIn("Am", last_lyric)
+        self.assertEqual(len(last_chords), 1)
+        note_id = list(last_chords.values())[0][1]
+        self.assertEqual(note_id, 9)  # A
+
     def test_two_chords_do_not_share_a_letter(self):
         placed = softchord.assign_chord_anchors(
             "CD", "AB", [(0, 0, "C"), (0, 0, "D")],
