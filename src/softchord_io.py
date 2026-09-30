@@ -876,7 +876,7 @@ class SongbookIO:
                 self.win,
                 "Save songbook as:",
                 suggested_path,
-                "Songbook foramt (*.songbook)",
+                "Songbook format (*.songbook)",
             )
             if not new_songbook_file:
                 break
@@ -895,8 +895,9 @@ class SongbookIO:
                                 new_songbook_file)
             except Exception as err:
                 self.error(
-                    "Could save the songbook to a new location.\n\nException: %s"
+                    "Could not save the songbook to a new location.\n\nException: %s"
                     % err)
+                return
 
             self.setCurrentSongbook(new_songbook_file)
 

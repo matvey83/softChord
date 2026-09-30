@@ -16,6 +16,7 @@ import unittest
 import sqlite3
 import copy
 import os
+import shutil
 import tempfile
 
 from PyQt6 import QtCore, QtGui, QtWidgets, QtPrintSupport
@@ -1574,6 +1575,67 @@ class TestMoreAppOperations(unittest.TestCase):
             self.assertIn("song_chord_link", tables)
         finally:
             QtWidgets.QFileDialog.getSaveFileName = original_get_save
+
+    def test_save_songbook_error_text_and_format_filter(self):
+        self._open_empty_temp_songbook()
+        captured = {}
+        original_get_save = QtWidgets.QFileDialog.getSaveFileName
+
+        def fake_get_save(*args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return ("/tmp/new_place.songbook", "")
+
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(fake_get_save)
+        errors = []
+        self.app.error = lambda text: errors.append(text)
+        original_copy = shutil.copyfile
+
+        def boom(src, dst):
+            raise OSError("disk full")
+
+        shutil.copyfile = boom
+        original_set = self.app.setCurrentSongbook
+        self.app.setCurrentSongbook = lambda filename: None
+        try:
+            self.app.saveSongbook()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original_get_save
+            shutil.copyfile = original_copy
+            self.app.setCurrentSongbook = original_set
+
+        filter_text = " ".join(str(a) for a in captured["args"])
+        self.assertIn("Songbook format", filter_text)
+        self.assertNotIn("foramt", filter_text)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Could not save", errors[0])
+        self.assertNotIn("Could save the", errors[0])
+
+    def test_save_songbook_failed_copy_keeps_current_songbook(self):
+        self._open_empty_temp_songbook()
+        original_path = self.app.current_songbook_filename
+        dest = os.path.join(tempfile.mkdtemp(), "new.songbook")
+        original_get_save = QtWidgets.QFileDialog.getSaveFileName
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+            lambda *a, **k: (dest, ""))
+        errors = []
+        self.app.error = lambda text: errors.append(text)
+        original_copy = shutil.copyfile
+
+        def boom(src, dst):
+            raise OSError("disk full")
+
+        shutil.copyfile = boom
+        try:
+            self.app.saveSongbook()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original_get_save
+            shutil.copyfile = original_copy
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Could not save", errors[0])
+        self.assertEqual(self.app.current_songbook_filename, original_path)
+        self.assertFalse(os.path.exists(dest))
 
     def test_close_songbook_clears_state(self):
         # Setup a fake current song
