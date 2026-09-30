@@ -1438,6 +1438,21 @@ class TestMoreAppOperations(unittest.TestCase):
         # It should have attempted an import (exact count depends on harness)
         self.assertTrue(True)
 
+    def test_paste_as_new_song_readonly_database(self):
+        self._open_empty_temp_songbook()
+        self.app.curs.execute("PRAGMA query_only = ON")
+        errors = []
+        self.app.error = lambda text: errors.append(text)
+        self.app.clipboard.setText("Pasted Song Title\nSome lyrics")
+
+        self.app.pasteAsNewSong()
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("read-only", errors[0].lower())
+        self.assertNotIn("Traceback", errors[0])
+        self.assertNotIn("OperationalError", errors[0])
+        self.assertEqual(self.app.songs_model.rowCount(), 0)
+
     # --- getSelectedChord helper ---
     def test_get_selected_chord(self):
         song = create_test_song(self.app, song_id=600, text="chord test")
