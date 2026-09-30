@@ -4027,6 +4027,16 @@ class App(QtWidgets.QApplication):
         text = self.clipboard.text()
         try:
             self.importSongFromText(text)
+        except sqlite3.OperationalError as err:
+            self.restoreCursor()
+            if "readonly" in str(err).lower():
+                self.error(
+                    "Cannot paste as a new song because this songbook is read-only.\n\n"
+                    "Use File → Save Songbook As... to save a writable copy, then paste again."
+                )
+            else:
+                self.error("Error parsing the text:\n\n%s " %
+                           traceback.format_exc())
         except Exception as err:
             self.restoreCursor()
             self.error("Error parsing the text:\n\n%s " %
