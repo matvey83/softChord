@@ -1,6 +1,5 @@
 """Songbook files and song import/export."""
 
-import codecs
 import os
 import shutil
 import sqlite3
@@ -349,7 +348,7 @@ class SongbookIO:
         if text_file:
             self.setWaitCursor()
             try:
-                with codecs.open(text_file, 'w', encoding='utf_8_sig') as fh:
+                with open(text_file, 'w', encoding='utf-8-sig') as fh:
                     for song_id in self.getSelectedSongIds():
                         # NOTE for now there will always be only one song exported.
                         song = Song(self, song_id)
@@ -390,7 +389,7 @@ class SongbookIO:
         if filename:
             self.setWaitCursor()
             try:
-                with codecs.open(filename, 'w', encoding='utf_8_sig') as fh:
+                with open(filename, 'w', encoding='utf-8-sig') as fh:
                     for song_id in self.getSelectedSongIds():
                         # NOTE for now there will always be only one song exported.
                         song = Song(self, song_id)
