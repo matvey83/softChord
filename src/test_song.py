@@ -286,6 +286,13 @@ def create_test_song(app,
 
 class TestSongChord(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+        else:
+            cls.qapp = QtWidgets.QApplication.instance()
+
     def setUp(self):
         self.app = MinimalTestApp()
 
@@ -304,6 +311,25 @@ class TestSongChord(unittest.TestCase):
 
         chord2 = SongChord(song, 0, 0, 5, -1, "", 0)  # C7
         self.assertIn("7", chord2.getChordText())
+
+    def test_null_marker_and_parentheses_normalize(self):
+        song = create_test_song(self.app, song_id=102, text="x")
+        for marker in (None, "-1", "None"):
+            chord = SongChord(song, 0, 0, 0, -1, marker, None)
+            self.assertEqual(chord.marker, "")
+            self.assertEqual(chord.in_parentheses, 0)
+
+    def test_get_chord_text_includes_parentheses(self):
+        song = create_test_song(self.app, song_id=103, text="x")
+        chord = SongChord(song, 0, 0, 0, -1, "", 1)
+        self.assertEqual(chord.getChordText(), "(C)")
+
+    def test_transpose_moves_bass_note(self):
+        song = create_test_song(self.app, song_id=104, text="x")
+        chord = SongChord(song, 0, 0, 0, 4, "", 0)  # C/E
+        chord.transpose(2)
+        self.assertEqual(chord.note_id, 2)  # D
+        self.assertEqual(chord.bass_note_id, 6)  # F#
 
 
 class TestSongChar(unittest.TestCase):
@@ -410,10 +436,9 @@ class TestSong(unittest.TestCase):
         chord = SongChord(self.song, 0, 0, 0, -1, "", 1)  # (C)
         self.song._addChord(chord)
 
-        # Currently getChordText does not show parentheses in output
-        # but the flag should be stored
         stored_chord = list(self.song.iterateAllChords())[0]
         self.assertEqual(stored_chord.in_parentheses, 1)
+        self.assertEqual(stored_chord.getChordText(), "(C)")
 
     def test_copy_chord(self):
         original = SongChord(self.song, 5, 2, 1, -1, "", 0)  # D minor at pos 5
@@ -497,6 +522,71 @@ class TestSong(unittest.TestCase):
         self.assertNotIn("C", plain.split("\n")[0])  # No chord line
         self.assertIn("Test line one", plain)
 
+    def test_line_and_song_char_conversion(self):
+        # "Test line one" is 13 chars; newline at 13; line 2 starts at 14.
+        self.assertEqual(self.song.songCharToLineChar(0), (0, 0))
+        self.assertEqual(self.song.songCharToLineChar(12), (0, 12))
+        self.assertEqual(self.song.songCharToLineChar(14), (1, 0))
+        self.assertEqual(self.song.lineCharToSongChar(0, 0), 0)
+        self.assertEqual(self.song.lineCharToSongChar(1, 0), 14)
+        self.assertEqual(self.song.lineCharToSongChar(1, 3), 17)
+
+    def test_get_line_has_chords(self):
+        self.assertFalse(self.song.getLineHasChords(0))
+        self.song._addChord(SongChord(self.song, 0, 0, 0, -1, "", 0))
+        self.assertTrue(self.song.getLineHasChords(0))
+        self.assertFalse(self.song.getLineHasChords(1))
+
+    def test_get_note_string_follows_prefer(self):
+        self.song._regions = [(0, PREFER_SHARPS, "A")]
+        self.song.prefer = PREFER_SHARPS
+        self.assertEqual(self.song._getNoteString(1, 0), "C♯")
+        self.song._regions = [(0, PREFER_FLATS, "B♭")]
+        self.song.prefer = PREFER_FLATS
+        self.assertEqual(self.song._getNoteString(1, 0), "D♭")
+
+    def test_remove_trailing_spaces_remaps_chords_in_database(self):
+        # "Hi  \nGo": trailing spaces on line 1; G is at song char 5.
+        text = "Hi  \nGo"
+        song = create_test_song(self.app, song_id=8, text=text)
+        self.app.curs.execute(
+            "INSERT INTO song_chord_link (id, song_id, character_num, "
+            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (1, 8, 5, 7, 0, -1, '', 0)")
+        self.app.curs.commit()
+        song = Song(self.app, 8)
+
+        song.removeTrailingSpaces()
+
+        stored = self.app.curs.execute(
+            "SELECT text FROM songs WHERE id=8").fetchone()[0]
+        self.assertEqual(stored, "Hi\nGo")
+        char_num = self.app.curs.execute(
+            "SELECT character_num FROM song_chord_link WHERE song_id=8"
+        ).fetchone()[0]
+        self.assertEqual(char_num, 3)
+
+    def test_loads_legacy_schema_without_subtitle(self):
+        app = MinimalTestApp()
+        app.curs.execute("DROP TABLE songs")
+        app.curs.execute(
+            "CREATE TABLE songs (id INTEGER PRIMARY KEY, title TEXT, "
+            "number INTEGER, text TEXT)")
+        app.curs.execute(
+            "INSERT INTO songs (id, title, number, text) "
+            "VALUES (1, 'Old', 3, 'hi')")
+        app.curs.commit()
+
+        song = Song(app, 1)
+        self.assertEqual(song.title, "Old")
+        self.assertEqual(song.number, 3)
+        self.assertEqual(song.subtitle, "")
+        self.assertEqual(song.getAllText(), "hi")
+        columns = [
+            row[1] for row in app.curs.execute("PRAGMA table_info(songs)")
+        ]
+        self.assertIn("subtitle", columns)
+
 
 # ---------------------------------------------------------------------------
 # Basic tests for table row and undo commands
@@ -514,6 +604,13 @@ class TestSongsTableRow(unittest.TestCase):
 
 class TestUndoCommands(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+        else:
+            cls.qapp = QtWidgets.QApplication.instance()
+
     def setUp(self):
         self.app = MinimalTestApp()
         self.song = create_test_song(self.app, text="Chord test line")
@@ -523,6 +620,8 @@ class TestUndoCommands(unittest.TestCase):
         cmd = AddChordCommand(self.song, chord)
         cmd.redo()
         self.assertIn(chord, list(self.song.iterateAllChords()))
+        cmd.undo()
+        self.assertNotIn(chord, list(self.song.iterateAllChords()))
 
     def test_delete_chord_command(self):
         chord = SongChord(self.song, 0, 0, 0, -1, "", 0)
@@ -531,6 +630,22 @@ class TestUndoCommands(unittest.TestCase):
         cmd = DeleteChordCommand(self.song, chord)
         cmd.redo()
         self.assertNotIn(chord, list(self.song.iterateAllChords()))
+        cmd.undo()
+        self.assertIn(chord, list(self.song.iterateAllChords()))
+
+    def test_replace_chord_command(self):
+        prev = SongChord(self.song, 0, 0, 0, -1, "", 0)  # C
+        self.song._addChord(prev)
+        new = SongChord(self.song, 0, 7, 0, -1, "", 0)  # G
+
+        cmd = ReplaceChordCommand(self.song, prev, new)
+        cmd.redo()
+        chords = list(self.song.iterateAllChords())
+        self.assertEqual(chords, [new])
+
+        cmd.undo()
+        chords = list(self.song.iterateAllChords())
+        self.assertEqual(chords, [prev])
 
 
 # ---------------------------------------------------------------------------
@@ -639,6 +754,27 @@ class TestSongsTableModels(unittest.TestCase):
         self.app.filter_string = "VISION"
         self.assertTrue(
             self.proxy_model.filterAcceptsRow(3, QtCore.QModelIndex()))
+
+    def test_table_model_missing_id_raises(self):
+        with self.assertRaises(ValueError):
+            self.table_model.getTitleAndNumFromId(99)
+        with self.assertRaises(ValueError):
+            self.table_model.getSongsRow(type("FakeSong", (), {"id": 99})())
+
+    def test_table_model_set_row(self):
+        self.table_model.setRow(0, SongsTableRow(1, 11, "Renamed"))
+        self.assertEqual(self.table_model.data(self.table_model.index(0, 0)),
+                         11)
+        self.assertEqual(self.table_model.data(self.table_model.index(0, 1)),
+                         "Renamed")
+
+    def test_proxy_less_than(self):
+        ten = self.table_model.index(0, 0)
+        twenty = self.table_model.index(1, 0)
+        untitled = self.table_model.index(2, 0)  # number -1 → None
+        self.assertTrue(self.proxy_model.lessThan(ten, twenty))
+        self.assertFalse(self.proxy_model.lessThan(twenty, ten))
+        self.assertFalse(self.proxy_model.lessThan(untitled, ten))
 
 
 # ---------------------------------------------------------------------------
