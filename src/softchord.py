@@ -1813,6 +1813,230 @@ class PdfDialog(QtWidgets.QDialog):
             return False
 
 
+def _chord_tokens(line):
+    """Words on a chord line, with glued chord names split apart.
+
+    Returns (text, start, end) with end inclusive. Text has look-alike
+    Cyrillic letters normalized the same way as chord parsing.
+    """
+    words = []
+    current_word = ""
+    current_word_start = None
+    for i, char in enumerate(line):
+        if not current_word:
+            if char.isspace():
+                continue
+            current_word = char
+            current_word_start = i
+        elif not char.isspace():
+            current_word += char
+        else:
+            words.append((current_word, current_word_start, i - 1))
+            current_word = ""
+            current_word_start = None
+    if current_word:
+        words.append((current_word, current_word_start, len(line) - 1))
+
+    notes = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+    tokens = []
+    for word, word_start, word_end in words:
+        word = replace_russian_characeters(word)
+        num_notes = 0
+        for char in word:
+            if char in notes:
+                num_notes += 1
+            elif char == '/':
+                num_notes -= 1
+        if num_notes <= 1:
+            tokens.append((word, word_start, word_end))
+            continue
+        # "AmC" and similar were typed without a separating space.
+        chord_starts = [word_start]
+        char_pos = word_start
+        for char in word[1:]:
+            char_pos += 1
+            if char in notes:
+                chord_starts.append(char_pos)
+        for i, chord_start in enumerate(chord_starts):
+            try:
+                chord_end = chord_starts[i + 1] - 1
+            except IndexError:
+                chord_end = word_end
+            chord_text = word[chord_start - word_start:chord_end - word_start +
+                              1]
+            tokens.append((chord_text, chord_start, chord_end))
+    return tokens
+
+
+def _classify_chord_line(line, convert_chord):
+    """Return (is_chord_line, entries, warnings).
+
+    entries are (text, start, end, converted_chord) for tokens that parse
+    as chords. A line is a chord line when more tokens are chords than not.
+    """
+    num_chords = 0
+    num_non_chords = 0
+    entries = []
+    warnings = []
+    for word, start, end in _chord_tokens(line):
+        if word == '/':
+            num_chords += 1
+            continue
+        try:
+            converted = convert_chord(word)
+        except ValueError as err:
+            warnings.append('  WARNING: %s; chord: "%s"' % (err, word))
+            num_non_chords += 1
+        else:
+            num_chords += 1
+            entries.append((word, start, end, converted))
+    return (num_chords > num_non_chords), entries, warnings
+
+
+def _median(values):
+    values = sorted(values)
+    mid = len(values) // 2
+    if len(values) % 2:
+        return values[mid]
+    return (values[mid - 1] + values[mid]) / 2.0
+
+
+def text_is_proportionally_spaced(pairs, metrics):
+    """Whether chord lines were aligned visually in a proportional font.
+
+    Monospaced sheets use about one column per lyric character, so the
+    chord line is not much longer than the lyric. Proportionally spaced
+    sheets insert extra spaces (spaces are narrower than letters) and the
+    two lines end up a similar width in the lyrics font.
+    pairs are (chord_line, lyric_line).
+    """
+    length_ratios = []
+    width_ratios = []
+    for chord_line, lyric_line in pairs:
+        chord = chord_line.rstrip()
+        lyric = lyric_line.rstrip()
+        if not chord or not lyric:
+            continue
+        lyric_width = metrics.horizontalAdvance(lyric)
+        if lyric_width <= 0:
+            continue
+        length_ratios.append(len(chord) / float(len(lyric)))
+        width_ratios.append(metrics.horizontalAdvance(chord) / lyric_width)
+    if not length_ratios:
+        return False
+    return (_median(length_ratios) > 1.2 and
+            0.8 <= _median(width_ratios) <= 1.2)
+
+
+def _char_x_center(text, index, metrics):
+    left = metrics.horizontalAdvance(text[:index])
+    right = metrics.horizontalAdvance(text[:index + 1])
+    return (left + right) / 2.0
+
+
+def _nearest_nonspace(text, index):
+    indices = [i for i, char in enumerate(text) if not char.isspace()]
+    if not indices:
+        return None
+    if index < 0:
+        index = 0
+    elif index >= len(text):
+        index = len(text) - 1
+    # Equal distance prefers the character to the right.
+    return min(indices, key=lambda i: (abs(i - index), 0 if i >= index else 1))
+
+
+def _next_free_nonspace(text, index, used):
+    indices = [
+        i for i, char in enumerate(text)
+        if not char.isspace() and i not in used
+    ]
+    right = [i for i in indices if i > index]
+    if right:
+        return min(right)
+    left = [i for i in indices if i < index]
+    if left:
+        return max(left)
+    return None
+
+
+def assign_chord_anchors(chord_line, lyric_line, tokens, metrics,
+                         proportional):
+    """Map chord tokens onto lyric character indexes.
+
+    tokens are (start, end, payload) with end inclusive. In a proportional
+    sheet the anchor is the visual center of the chord name. In a monospaced
+    sheet it is the first letter. Indexes always fall on a non-space
+    character, and two chords never share one. The lyric is not extended.
+    """
+    nonspace = [i for i, char in enumerate(lyric_line) if not char.isspace()]
+    if not nonspace:
+        return []
+    if proportional:
+        centers = [
+            _char_x_center(lyric_line, i, metrics) for i in range(len(lyric_line))
+        ]
+    used = set()
+    placed = []
+    for start, end, payload in tokens:
+        if proportional:
+            left = metrics.horizontalAdvance(chord_line[:start])
+            right = metrics.horizontalAdvance(chord_line[:end + 1])
+            center = (left + right) / 2.0
+            index = min(nonspace, key=lambda i: (abs(centers[i] - center), -i))
+        else:
+            index = _nearest_nonspace(lyric_line, start)
+        if index in used:
+            index = _next_free_nonspace(lyric_line, index, used)
+        if index is None:
+            continue
+        used.add(index)
+        placed.append((index, payload))
+    return placed
+
+
+def parse_chord_over_lyrics(lines, convert_chord, metrics):
+    """Pair chord lines with the lyric line under them and place the chords.
+
+    Returns (song_lines, proportional). song_lines items are
+    (lyric_text, {character_index: converted_chord}). Lyric text is the
+    source line, without spaces added to make room for a chord.
+    """
+    pending_line = None
+    pending_entries = None
+    raw_pairs = []
+    for line in lines:
+        is_chord, entries, warnings = _classify_chord_line(line, convert_chord)
+        if is_chord:
+            for warning in warnings:
+                print(warning)
+            pending_line = line
+            pending_entries = entries
+        else:
+            if pending_entries:
+                raw_pairs.append((pending_line, line.rstrip(), pending_entries))
+            else:
+                raw_pairs.append((None, line, []))
+            pending_line = None
+            pending_entries = None
+
+    proportional = text_is_proportionally_spaced(
+        [(chord_line, lyric) for chord_line, lyric, entries in raw_pairs
+         if entries], metrics)
+
+    song_lines = []
+    for chord_line, lyric, entries in raw_pairs:
+        if not entries:
+            song_lines.append((lyric, {}))
+            continue
+        tokens = [(start, end, converted)
+                  for _text, start, end, converted in entries]
+        placed = assign_chord_anchors(chord_line, lyric, tokens, metrics,
+                                      proportional)
+        song_lines.append((lyric, {index: chord for index, chord in placed}))
+    return song_lines, proportional
+
+
 class App(QtWidgets.QApplication):
     """
     The main application class.
@@ -4095,135 +4319,8 @@ class App(QtWidgets.QApplication):
         except:
             pass
 
-        song_lines = []  # each item is a tuple of line text and chord list.
-
-        prev_chords = {}
-        for line in song_text:
-            #line = line[:-1]
-
-            # Attempt to convert the line to chords:
-            num_chords = 0
-            num_non_chords = 0
-
-            tmp_chords = {}  # Key: line_char_num, value: converted chord
-            tmp_warnings = []
-
-            char_num = 0
-
-            # Make a list of words:
-            words = []
-            current_word = ""
-            current_word_start = None
-            for i, char in enumerate(line):
-                if not current_word:
-                    # Previous char was a white space
-                    if char.isspace():
-                        continue
-                    else:
-                        # Found a word:
-                        current_word = char
-                        current_word_start = i
-                        on_break = False
-                else:
-                    # Previous char was part of a word
-                    if not char.isspace():
-                        # Still on the same word
-                        current_word += char
-                    else:
-                        on_break = True
-                        words.append((current_word, current_word_start, i - 1))
-                        current_word = None
-
-            if current_word:
-                words.append((current_word, current_word_start, i))
-
-            # Try to break up words that contain multiple chords:
-            NOTES = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
-            modified_words = []
-            for word, word_start, word_end in words:
-                word = replace_russian_characeters(word)
-
-                num_notes = 0
-                for char in word:
-                    if char in NOTES:
-                        num_notes += 1
-                    elif char == '/':
-                        num_notes -= 1
-
-                if num_notes > 1:
-                    # Try to break up the word:
-                    chord_starts = [word_start]
-
-                    char_pos = word_start
-                    for char in word[1:]:
-                        char_pos += 1  # Start with second char
-                        if char in NOTES:
-                            chord_starts.append(char_pos)
-
-                    # FIXME This will not handle parenthesis and markers properly
-
-                    for i, chord_start in enumerate(chord_starts):
-                        try:
-                            chord_end = chord_starts[i + 1] - 1
-                        except IndexError:
-                            chord_end = word_end
-
-                        chord_text = word[chord_start - word_start:chord_end -
-                                          word_start + 1]
-
-                        modified_words.append(
-                            (chord_text, chord_start, chord_end))
-
-                else:
-                    modified_words.append((word, word_start, word_end))
-
-            for word, word_start, word_end in modified_words:
-                if word == '/':
-                    num_chords += 1
-                    converted_chord = None
-                else:
-                    try:
-                        converted_chord = self.convertChordFromString(word)
-                    except ValueError as err:
-                        tmp_warnings.append('  WARNING: %s; chord: "%s"' %
-                                            (str(err), word))
-                        num_non_chords += 1
-                    else:
-                        chord_middle_char = (word_start + word_end) // 2
-                        num_chords += 1
-                        tmp_chords[chord_middle_char] = converted_chord
-                        char_num += 6
-
-            if num_chords > num_non_chords:
-                # This is a chords line
-                prev_chords = tmp_chords
-                for warning_str in tmp_warnings:
-                    print(warning_str)
-            else:
-                # This is a lyrics line
-                if prev_chords:
-                    # Strip the EOF character (not always present):
-                    line = line.rstrip()
-
-                    # Handle case where text is expected to be aligned in a
-                    # non-monofaced font (e.g. Times New Roman) by shifting
-                    # all chords closer together.
-
-                    # Add spaces to the end of <line> if necessary:
-                    print('\nLINE:', line)
-                    print('CHORD POSITIONS:', prev_chords.keys())
-                    print('NUM CHARS:', len(line))
-                    last_chord_pos = max(prev_chords.keys())
-                    print('LAST CHAR POSNUM CHARS:', last_chord_pos)
-                    if last_chord_pos >= len(line):
-                        num_spaces = (last_chord_pos - len(line) + 1)
-                        line += ' ' * num_spaces
-                        print('   added %i spaces' % num_spaces)
-                    song_lines.append((line, prev_chords))
-                else:
-                    # The line before was NOT a chords line - no chords for this lyrics line
-                    song_lines.append((line, {}))
-                prev_chords = []
+        song_lines, _proportional = parse_chord_over_lyrics(
+            song_text, self.convertChordFromString, self.lyrics_font_metrics)
 
         # If the title is not specified, set it to the first line of lyrics:
         if song_title == None and song_lines:
