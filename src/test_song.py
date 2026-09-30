@@ -2089,5 +2089,296 @@ class TestEditorModeMenu(unittest.TestCase):
         self.assertFalse(self.app.editor.lyric_editor_mode)
 
 
+# Chord-sheet round trips.
+#
+# Each example is text you paste (monospaced or proportional) and the
+# monospaced text Copy Song Text (with chords) should produce. Chord names
+# may sit one column to either side of the sample. To add an example, append
+# another ("name", source, expected) entry. Keep the song text flush left
+# inside the quotes so the spaces stay exact.
+
+KOSARI_TEXT = """\
+                     Cm                                     Fm
+Косари на лугу размахалися острыми косами,
+                             Cm                      G                               Cm
+Что им Божий цветок, им бы закончить работу свою.
+                                Fm                                           Cm
+Я на милость Твою уповаю, Спаситель мой, Господи,
+                          G                                                             Cm
+На милость, на милость, лишь только на милость Твою.
+"""
+
+KOSARI_MONOSPACED = """\
+            Cm                     Fm
+Косари на лугу размахалися острыми косами,
+                Cm             G              Cm
+Что им Божий цветок, им бы закончить работу свою.
+                  Fm                        Cm
+Я на милость Твою уповаю, Спаситель мой, Господи,
+               G                                 Cm
+На милость, на милость, лишь только на милость Твою.
+"""
+
+ZHATVA_TEXT = """\
+     E
+1. “Жатва есть кончина века” – 
+B                                    E
+  Так Господь сказал.
+/
+  И всегда у человека 
+B                                    E
+  В жизни есть финал.
+                A                      B
+Пр: Небо для меня открыто,
+G#m               C#m
+Я  навек спасен.
+A                E
+Иисус моя защита,
+B                        E
+Я Им утвержден.
+(2 раза)
+"""
+
+ZHATVA_MONOSPACED = """\
+   E
+1. “Жатва есть кончина века” –
+  B                E
+  Так Господь сказал.
+  И всегда у человека 
+  B                E
+  В жизни есть финал.
+         A            B
+Пр: Небо для меня открыто,
+  G♯m       C♯m
+Я  навек спасен.
+A         E
+Иисус моя защита,
+B            E
+Я Им утвержден.
+(2 раза)
+"""
+
+# name, pasted text, monospaced copy-with-chords text
+CHORD_SHEET_ROUND_TRIPS = [
+    ("kosari", KOSARI_TEXT, KOSARI_MONOSPACED),
+    ("zhatva", ZHATVA_TEXT, ZHATVA_MONOSPACED),
+]
+
+
+def _sheet_lines(text):
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if text.endswith("\n"):
+        text = text[:-1]
+    return text.split("\n")
+
+
+def _line_tokens(line):
+    tokens = []
+    current = ""
+    start = None
+    for index, char in enumerate(line.rstrip()):
+        if char.isspace():
+            if current:
+                tokens.append((current, start))
+                current = ""
+                start = None
+        else:
+            if start is None:
+                start = index
+            current += char
+    if current:
+        tokens.append((current, start))
+    return tokens
+
+
+def _is_chord_name(text):
+    if not text or text[0] not in "ABCDEFG":
+        return False
+    rest = text[1:]
+    if rest[:1] in "#b♯♭":
+        rest = rest[1:]
+    return rest == "" or rest.isalnum()
+
+
+def _is_chord_line(line):
+    tokens = _line_tokens(line)
+    return bool(tokens) and all(_is_chord_name(name) for name, _start in tokens)
+
+
+def _word_at(text, index):
+    start = index
+    while start > 0 and not text[start - 1].isspace():
+        start -= 1
+    end = index + 1
+    while end < len(text) and not text[end].isspace():
+        end += 1
+    return text[start:end]
+
+
+class TestChordOverLyricPlacement(unittest.TestCase):
+    """Chord-over-lyric paste maps chords onto letters without padding."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = softchord.App([])
+        cls._td = tempfile.TemporaryDirectory()
+        path = os.path.join(cls._td.name, "songs.songbook")
+        conn = sqlite3.connect(path)
+        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
+        conn.execute(SONGS_TABLE_SQL)
+        conn.commit()
+        conn.close()
+        cls.app.setCurrentSongbook(path)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.closeSongbook()
+        cls.app.win.close()
+        cls._td.cleanup()
+
+    def setUp(self):
+        self.app.ui.songs_view.clearSelection()
+        self.app.clearUndoStack()
+        self.app.curs.execute("DELETE FROM song_chord_link")
+        self.app.curs.execute("DELETE FROM songs")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+
+    def _parse(self, text):
+        # Same trailing-newline handling as importSongFromText.
+        lines = text.split("\n")
+        if lines and lines[-1] == "":
+            lines.pop(-1)
+        return softchord.parse_chord_over_lyrics(
+            lines, self.app.convertChordFromString,
+            self.app.lyrics_font_metrics)
+
+    def test_kosari_is_proportional_and_chords_sit_on_words(self):
+        lines, proportional = self._parse(KOSARI_TEXT)
+        self.assertTrue(proportional)
+        lyrics = [lyric for lyric, _chords in lines]
+        self.assertEqual(lyrics, [
+            "Косари на лугу размахалися острыми косами,",
+            "Что им Божий цветок, им бы закончить работу свою.",
+            "Я на милость Твою уповаю, Спаситель мой, Господи,",
+            "На милость, на милость, лишь только на милость Твою.",
+        ])
+        for lyric, chords in lines:
+            for index in chords:
+                self.assertFalse(lyric[index].isspace())
+                self.assertGreaterEqual(index, 0)
+                self.assertLess(index, len(lyric))
+
+        words = [[_word_at(lyric, index) for index in sorted(chords)]
+                 for lyric, chords in lines]
+        self.assertEqual(words[0], ["лугу", "косами,"])
+        self.assertEqual(words[1], ["цветок,", "закончить", "свою."])
+        self.assertEqual(words[2], ["уповаю,", "Господи,"])
+        self.assertEqual(words[3][1], "Твою.")
+        second_milost = lyrics[3].find("милость", lyrics[3].find("милость") + 1)
+        g_index = sorted(lines[3][1])[0]
+        self.assertTrue(second_milost <= g_index < second_milost + len("милость"))
+
+    def test_monospaced_sheet_uses_chord_start_column(self):
+        text = "Cm        G\nКосари на лугу"
+        lines, proportional = self._parse(text)
+        self.assertFalse(proportional)
+        lyric, chords = lines[0]
+        self.assertEqual(lyric, "Косари на лугу")
+        # "Cm" starts on column 0 ("К"); "G" starts on column 10 ("л").
+        self.assertEqual(sorted(chords), [0, 10])
+        self.assertEqual(lyric[0], "К")
+        self.assertEqual(lyric[10], "л")
+
+    def test_long_monospaced_chord_line_is_not_padded(self):
+        # Character length is much greater, but the spaces are not a
+        # proportional visual alignment (the chord line is wider, not similar).
+        text = "C" + (" " * 20) + "G\nHello"
+        lines, proportional = self._parse(text)
+        self.assertFalse(proportional)
+        lyric, chords = lines[0]
+        self.assertEqual(lyric, "Hello")
+        self.assertNotIn(" ", lyric)
+        indexes = sorted(chords)
+        self.assertEqual(lyric[indexes[0]], "H")
+        self.assertEqual(lyric[indexes[1]], "o")
+
+    def test_two_chords_do_not_share_a_letter(self):
+        placed = softchord.assign_chord_anchors(
+            "CD", "AB", [(0, 0, "C"), (0, 0, "D")],
+            self.app.lyrics_font_metrics, False)
+        self.assertEqual([index for index, _payload in placed], [0, 1])
+
+    def test_import_keeps_lyric_text_and_positions(self):
+        self.app.importSongFromText(KOSARI_TEXT, "Kosari")
+        song = self.app.current_song
+        lines, _proportional = self._parse(KOSARI_TEXT)
+        expected_text = "".join(lyric + "\n" for lyric, _chords in lines)
+        self.assertEqual(song.getAllText(), expected_text)
+        self.assertFalse(any(line.endswith(" ") for line in expected_text.split("\n")))
+
+        expected = {}
+        offset = 0
+        for lyric, chords in lines:
+            for index, chord in chords.items():
+                _marker, note_id, type_id, _bass, _paren = chord
+                expected[offset + index] = (note_id, type_id)
+            offset += len(lyric) + 1
+        actual = {
+            chord.character_num: (chord.note_id, chord.chord_type_id)
+            for chord in song.iterateAllChords()
+        }
+        self.assertEqual(actual, expected)
+
+    def test_round_trip_examples_match_monospaced_copy(self):
+        """Paste each example and compare Copy Song Text (with chords).
+
+        Chord columns may differ by one character. Edit the source and
+        expected strings above to change or add an example.
+        """
+        for name, source, expected in CHORD_SHEET_ROUND_TRIPS:
+            with self.subTest(name=name):
+                self.app.importSongFromText(source, name)
+                self.app.copySongTextWithChords()
+                self._assert_monospaced_similar(
+                    self.app.clipboard.text(), expected, name)
+
+    def _assert_monospaced_similar(self, got, expected, name):
+        got_lines = _sheet_lines(got)
+        expected_lines = _sheet_lines(expected)
+        self.assertEqual(
+            len(got_lines), len(expected_lines),
+            "%s: line count\n got %r\n expected %r" %
+            (name, got_lines, expected_lines))
+        for line_num, (got_line, expected_line) in enumerate(
+                zip(got_lines, expected_lines)):
+            where = "%s line %d" % (name, line_num + 1)
+            if _is_chord_line(got_line) or _is_chord_line(expected_line):
+                self.assertTrue(
+                    _is_chord_line(got_line) and _is_chord_line(expected_line),
+                    "%s: chord line mismatch\n got %r\n expected %r" %
+                    (where, got_line, expected_line))
+                got_tokens = _line_tokens(got_line)
+                expected_tokens = _line_tokens(expected_line)
+                self.assertEqual(
+                    [token for token, _start in got_tokens],
+                    [token for token, _start in expected_tokens],
+                    "%s chords\n got %r\n expected %r" %
+                    (where, got_line, expected_line))
+                for (got_name, got_col), (expected_name, expected_col) in zip(
+                        got_tokens, expected_tokens):
+                    self.assertLessEqual(
+                        abs(got_col - expected_col), 1,
+                        "%s chord %s is in column %d, expected %d (±1)\n"
+                        " got %r\n expected %r" %
+                        (where, got_name, got_col, expected_col, got_line,
+                         expected_line))
+            else:
+                self.assertEqual(
+                    got_line.rstrip(), expected_line.rstrip(),
+                    "%s lyrics\n got %r\n expected %r" %
+                    (where, got_line, expected_line))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
