@@ -1771,6 +1771,46 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("No songs are selected", errors[0])
 
+    def _count_wait_cursor_calls(self, func, *args):
+        waits = []
+        restores = []
+        orig_wait = self.app.setWaitCursor
+        orig_restore = self.app.restoreCursor
+
+        def wait():
+            waits.append(1)
+            orig_wait()
+
+        def restore():
+            restores.append(1)
+            orig_restore()
+
+        self.app.setWaitCursor = wait
+        self.app.restoreCursor = restore
+        try:
+            func(*args)
+        finally:
+            self.app.setWaitCursor = orig_wait
+            self.app.restoreCursor = orig_restore
+        return waits, restores
+
+    def test_export_restores_cursor_when_selection_is_invalid(self):
+        self._open_empty_temp_songbook()
+        errors = []
+        self.app.error = lambda text: errors.append(text)
+        out = os.path.join(tempfile.mkdtemp(), "out.txt")
+
+        waits, restores = self._count_wait_cursor_calls(
+            self.app.exportToText, out)
+        self.assertGreaterEqual(len(waits), 1)
+        self.assertEqual(len(waits), len(restores))
+
+        waits, restores = self._count_wait_cursor_calls(
+            self.app.exportToChordPro, out)
+        self.assertGreaterEqual(len(waits), 1)
+        self.assertEqual(len(waits), len(restores))
+        self.assertEqual(len(errors), 2)
+
     def test_append_songbook_copies_songs(self):
         self._open_empty_temp_songbook()
         self.app.importSongFromText("Keep me\nAlready here")
