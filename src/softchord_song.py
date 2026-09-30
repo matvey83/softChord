@@ -854,11 +854,6 @@ class Song:
 
         original_text = self.getAllText()
 
-        # Make a list of characters that have chords associtated with them, so that we don't delete them by accident:
-        chars_used_for_chords = []
-        for chord in self.iterateAllChords():
-            chars_used_for_chords.append(chord.character_num)
-
         all_song_delete_positions = []
 
         # Make a list of characters that are to be deleted:
@@ -873,7 +868,7 @@ class Song:
                 # Another new line (or new line at end of song)
                 continue
             else:
-                if char == " " and not char_num in chars_used_for_chords:
+                if char == " ":
                     all_song_delete_positions.append(char_num)
                 else:
                     wait_for_next_line = True
@@ -889,26 +884,35 @@ class Song:
                 renumber_map[char_num] = char_num - num_deleted_chars
                 modified_text += char
 
-        # Renumber the chords based on the renumber_map:
+        # Renumber surviving chords; drop any that sat on trimmed spaces.
         new_all_chords = []
+        updates = []
         for chord in self.iterateAllChords():
+            old_char_num = chord.character_num
             try:
-                chord.new_character_num = renumber_map[chord.character_num]
+                new_char_num = renumber_map[old_char_num]
             except KeyError:
+                self.app.curs.execute(
+                    "DELETE FROM song_chord_link WHERE song_id=? AND character_num=?",
+                    (self.id, old_char_num))
                 continue
-            else:
-                new_all_chords.append(chord)
+            if new_char_num != old_char_num:
+                updates.append((new_char_num, old_char_num))
+            chord.character_num = new_char_num
+            new_all_chords.append(chord)
 
-        # Update the database:
-
-        for chord in new_all_chords:
+        # Update from right to left so new positions do not collide with
+        # chords that have not been moved yet.
+        for new_char_num, old_char_num in sorted(updates,
+                                                key=lambda item: item[1],
+                                                reverse=True):
             self.app.curs.execute(
                 "UPDATE song_chord_link SET character_num=? WHERE song_id=? AND character_num=?",
-                (chord.new_character_num, chord.song_id, chord.character_num))
+                (new_char_num, self.id, old_char_num))
 
         self.app.curs.execute("UPDATE songs SET text=? WHERE id=?",
                               (modified_text, self.id))
 
         self.app.curs.commit()
 
-        # FIXME THIS WILL NOT WORK ON THE SONG THAT IS CURRENTLY EDITED!
+        self.setAllText(modified_text, new_all_chords)

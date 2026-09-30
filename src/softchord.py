@@ -2213,13 +2213,23 @@ class App(SongbookIO, QtWidgets.QApplication):
 
     def removeTrailingSpaces(self):
 
-        # FIXME Save the current song to database?
+        self.sendCurrentSongToDatabase()
 
-        for song_id in self.getSelectedSongIds():
+        selected = self.getSelectedSongIds()
+        for song_id in selected:
             song = Song(self, song_id)
             song.removeTrailingSpaces()
 
-        # FIXME Update the current song from database
+        if self.current_song and self.current_song.id in selected:
+            # Reload without sending the stale editor document back to the DB.
+            self.ignore_song_text_changed = True
+            try:
+                self.current_song.updateSongFromDatabase()
+                self.editor.setDocument(self.current_song.doc)
+                self.previous_song_text = self.current_song.getAllText()
+            finally:
+                self.ignore_song_text_changed = False
+            self._updateAutoDetectedKeyLabel()
 
     def renumberAllSongs(self):
         """
