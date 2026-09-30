@@ -1666,6 +1666,18 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(number, -1)
         self.assertIn("How sweet the sound", text)
 
+    def test_import_song_from_text_strips_chorus_and_pripev_prefixes(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromText("Chorus Amazing grace\nHow sweet the sound")
+        title = self.app.curs.execute("SELECT title FROM songs").fetchone()[0]
+        self.assertEqual(title, "Amazing grace")
+
+        self.app.curs.execute("DELETE FROM songs")
+        self.app.curs.commit()
+        self.app.importSongFromText("Припев Amazing grace\nHow sweet the sound")
+        title = self.app.curs.execute("SELECT title FROM songs").fetchone()[0]
+        self.assertEqual(title, "Amazing grace")
+
     def test_import_chordpro_stores_title_number_and_chords(self):
         self._open_empty_temp_songbook()
         self.app.importSongFromChordProText(

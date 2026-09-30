@@ -518,8 +518,7 @@ class SongbookIO:
             song_title = song_lines[0][0].strip()
             # Strip "1." (if present):
             for find_str in [
-                    "1", "Пр.", "Припев"
-                    "Chorus", "Куплет", ".", ":", ")"
+                    "1", "Припев", "Пр.", "Chorus", "Куплет", ".", ":", ")"
             ]:
                 if song_title.startswith(find_str):
                     song_title = song_title[len(find_str):].strip()
