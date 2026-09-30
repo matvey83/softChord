@@ -1892,5 +1892,157 @@ class TestSongbookKeySchema(unittest.TestCase):
         self.assertNotIn("key_note_id", names)
 
 
+class TestSongsContextMenu(unittest.TestCase):
+    """Right-click Delete on the songs table."""
+
+    @classmethod
+    def setUpClass(cls):
+        # One App for the class. App is a QApplication, and constructing
+        # another per test crashes the interpreter at shutdown.
+        cls.app = softchord.App([])
+        cls._td = tempfile.TemporaryDirectory()
+        path = os.path.join(cls._td.name, "songs.songbook")
+        conn = sqlite3.connect(path)
+        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
+        conn.execute(SONGS_TABLE_SQL)
+        conn.commit()
+        conn.close()
+        cls.app.setCurrentSongbook(path)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.closeSongbook()
+        cls.app.win.close()
+        cls._td.cleanup()
+
+    def setUp(self):
+        self.questions = []
+        self.question_buttons = []
+        self.accept_delete = True
+
+        def question(msg,
+                     button1="OK",
+                     button2="Cancel",
+                     title="softChord - Question"):
+            self.questions.append(msg)
+            self.question_buttons.append(button1)
+            return self.accept_delete
+
+        self.app.question = question
+        self.app.clearUndoStack()
+        self.app.ui.songs_view.clearSelection()
+        self.app.curs.execute("DELETE FROM song_chord_link")
+        self.app.curs.execute("DELETE FROM songs")
+        for number, title in ((1, "One"), (2, "Two"), (3, "Three")):
+            self.app.curs.execute(
+                "INSERT INTO songs (id, number, title, subtitle, text) "
+                "VALUES (?, ?, ?, '', '')", (number, number, title))
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.ui.songs_view.clearSelection()
+
+    def _proxy_index(self, song_number):
+        model = self.app.songs_model
+        for row in range(model.rowCount()):
+            if model.getRow(row).number == song_number:
+                source = model.index(row, 0)
+                return self.app.songs_proxy_model.mapFromSource(source)
+        self.fail("missing song %s" % song_number)
+
+    def _select_numbers(self, numbers):
+        selection = self.app.ui.songs_view.selectionModel()
+        selection.clearSelection()
+        flags = (QtCore.QItemSelectionModel.SelectionFlag.Select
+                 | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+        for number in numbers:
+            selection.select(self._proxy_index(number), flags)
+
+    def _song_ids(self):
+        return set(self.app.songs_model.getAllSongIds())
+
+    def test_context_menu_policy_is_custom(self):
+        self.assertEqual(self.app.ui.songs_view.contextMenuPolicy(),
+                         Qt.ContextMenuPolicy.CustomContextMenu)
+
+    def test_no_selection_selects_clicked_song_and_deletes_without_confirm(self):
+        menu = self.app.buildSongsContextMenu(self._proxy_index(2))
+        self.assertEqual([action.text() for action in menu.actions()],
+                         ["Delete"])
+        self.assertEqual(self.app.getSelectedSongIds(), [2])
+
+        self.accept_delete = False
+        self.app.deleteSongsFromContextMenu()
+        self.assertEqual(self.questions, [])
+        self.assertEqual(self._song_ids(), {1, 3})
+
+    def test_one_selected_song_deletes_without_confirm(self):
+        self._select_numbers([1])
+        menu = self.app.buildSongsContextMenu(self._proxy_index(1))
+        self.assertEqual(menu.actions()[0].text(), "Delete")
+        self.assertEqual(self.app.getSelectedSongIds(), [1])
+
+        self.app.deleteSongsFromContextMenu()
+        self.assertEqual(self.questions, [])
+        self.assertEqual(self._song_ids(), {2, 3})
+
+    def test_right_click_outside_selection_selects_that_song(self):
+        self._select_numbers([1, 2])
+        menu = self.app.buildSongsContextMenu(self._proxy_index(3))
+        self.assertEqual(menu.actions()[0].text(), "Delete")
+        self.assertEqual(self.app.getSelectedSongIds(), [3])
+
+    def test_multiple_songs_confirm_then_delete(self):
+        self._select_numbers([1, 3])
+        menu = self.app.buildSongsContextMenu(self._proxy_index(1))
+        self.assertEqual(menu.actions()[0].text(), "Delete...")
+        self.assertEqual(set(self.app.getSelectedSongIds()), {1, 3})
+
+        self.app.deleteSongsFromContextMenu()
+        self.assertEqual(self.questions, ["Delete 2 songs?"])
+        self.assertEqual(self.question_buttons, ["Delete"])
+        self.assertEqual(self._song_ids(), {2})
+
+    def test_multiple_songs_cancel_keeps_them(self):
+        self._select_numbers([1, 2, 3])
+        menu = self.app.buildSongsContextMenu(self._proxy_index(2))
+        self.assertEqual(menu.actions()[0].text(), "Delete...")
+
+        self.accept_delete = False
+        self.app.deleteSongsFromContextMenu()
+        self.assertEqual(self.questions, ["Delete 3 songs?"])
+        self.assertEqual(self.question_buttons, ["Delete"])
+        self.assertEqual(self._song_ids(), {1, 2, 3})
+
+    def test_invalid_index_has_no_menu(self):
+        self.assertIsNone(self.app.buildSongsContextMenu(QtCore.QModelIndex()))
+
+    def test_context_menu_event_deletes_clicked_song(self):
+        view = self.app.ui.songs_view
+        self.app.win.resize(1000, 700)
+        QtWidgets.QApplication.processEvents()
+        index = self._proxy_index(2)
+        rect = view.visualRect(index)
+        self.assertFalse(rect.isEmpty())
+
+        def fake_exec(menu, *args, **kwargs):
+            fake_exec.labels = [action.text() for action in menu.actions()]
+            return menu.actions()[0]
+
+        orig_exec = QtWidgets.QMenu.exec
+        QtWidgets.QMenu.exec = fake_exec
+        try:
+            global_pos = view.viewport().mapToGlobal(rect.center())
+            event = QtGui.QContextMenuEvent(
+                QtGui.QContextMenuEvent.Reason.Mouse, rect.center(),
+                global_pos)
+            QtWidgets.QApplication.sendEvent(view.viewport(), event)
+        finally:
+            QtWidgets.QMenu.exec = orig_exec
+
+        self.assertEqual(fake_exec.labels, ["Delete"])
+        self.assertEqual(self.questions, [])
+        self.assertEqual(self._song_ids(), {1, 3})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
