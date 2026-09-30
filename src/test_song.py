@@ -1855,6 +1855,35 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertIn("{title:Export Me}", exported_chordpro)
         self.assertIn("[C]", exported_chordpro)
 
+    def test_export_writes_with_builtin_utf8_sig_open(self):
+        self._open_empty_temp_songbook()
+        self.app.importSongFromChordProText("{title:Export Me}\n[C]Hello\n")
+        self.app.ui.songs_view.selectRow(0)
+        td = tempfile.mkdtemp()
+        text_path = os.path.join(td, "out.txt")
+        chordpro_path = os.path.join(td, "out.chordpro")
+        import builtins
+        real_open = builtins.open
+        opened = []
+
+        def tracking_open(*args, **kwargs):
+            opened.append((args, kwargs))
+            return real_open(*args, **kwargs)
+
+        builtins.open = tracking_open
+        try:
+            self.app.exportToText(text_path)
+            self.app.exportToChordPro(chordpro_path)
+        finally:
+            builtins.open = real_open
+
+        encodings = {}
+        for args, kwargs in opened:
+            if args and args[0] in (text_path, chordpro_path):
+                encodings[args[0]] = kwargs.get("encoding")
+        self.assertEqual(encodings.get(text_path), "utf-8-sig")
+        self.assertEqual(encodings.get(chordpro_path), "utf-8-sig")
+
     def test_export_text_requires_one_selected_song(self):
         self._open_empty_temp_songbook()
         errors = []
