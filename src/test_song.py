@@ -2027,5 +2027,52 @@ class TestSongsContextMenu(unittest.TestCase):
         self.assertEqual(self._song_ids(), {1, 3})
 
 
+class TestEditorModeMenu(unittest.TestCase):
+    """Edit menu check marks stay in sync with the editor mode buttons."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = softchord.App([])
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.win.close()
+
+    def test_chord_mode_is_checked_at_startup(self):
+        self.app.chordEditorSelected()
+        self.assertTrue(self.app.ui.actionChordEditorMode.isCheckable())
+        self.assertTrue(self.app.ui.actionLyricEditorMode.isCheckable())
+        self.assertTrue(self.app.ui.actionChordEditorMode.isChecked())
+        self.assertFalse(self.app.ui.actionLyricEditorMode.isChecked())
+        self.assertTrue(self.app.ui.chord_editor_button.isDown())
+        self.assertFalse(self.app.ui.lyric_editor_button.isDown())
+        self.assertFalse(self.app.editor.lyric_editor_mode)
+
+    def test_menu_and_buttons_follow_the_active_mode(self):
+        self.app.ui.actionLyricEditorMode.trigger()
+        self.assertTrue(self.app.ui.actionLyricEditorMode.isChecked())
+        self.assertFalse(self.app.ui.actionChordEditorMode.isChecked())
+        self.assertTrue(self.app.ui.lyric_editor_button.isDown())
+        self.assertFalse(self.app.ui.chord_editor_button.isDown())
+        self.assertTrue(self.app.editor.lyric_editor_mode)
+
+        self.app.ui.chord_editor_button.click()
+        self.assertTrue(self.app.ui.actionChordEditorMode.isChecked())
+        self.assertFalse(self.app.ui.actionLyricEditorMode.isChecked())
+        self.assertTrue(self.app.ui.chord_editor_button.isDown())
+        self.assertFalse(self.app.ui.lyric_editor_button.isDown())
+        self.assertFalse(self.app.editor.lyric_editor_mode)
+
+        self.app.ui.lyric_editor_button.click()
+        self.assertTrue(self.app.ui.actionLyricEditorMode.isChecked())
+        self.assertFalse(self.app.ui.actionChordEditorMode.isChecked())
+        self.assertTrue(self.app.editor.lyric_editor_mode)
+
+        self.app.ui.actionChordEditorMode.trigger()
+        self.assertTrue(self.app.ui.actionChordEditorMode.isChecked())
+        self.assertTrue(self.app.ui.chord_editor_button.isDown())
+        self.assertFalse(self.app.editor.lyric_editor_mode)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
