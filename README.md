@@ -47,6 +47,8 @@ macOS builds are on [GitHub Releases](https://github.com/matvey83/softChord/rele
 
 ## Development
 
+Tests and manual runs use a temporary copy of a songbook rather than a repository `.songbook`; see `AGENTS.md`.
+
 ### Manual setup
 
 The launcher above is enough for most work. To set up the venv by hand:
