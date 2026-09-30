@@ -421,7 +421,6 @@ p, li { white-space: pre-wrap; }
     <property name="title">
      <string>Song</string>
     </property>
-    <addaction name="actionSetID"/>
     <addaction name="actionDeleteSong"/>
     <addaction name="separator"/>
     <addaction name="actionExportText"/>
@@ -612,11 +611,6 @@ p, li { white-space: pre-wrap; }
   <action name="actionExportChordPro">
    <property name="text">
     <string>Export To ChordPro...</string>
-   </property>
-  </action>
-  <action name="actionSetID">
-   <property name="text">
-    <string>Set Database ID...</string>
    </property>
   </action>
   <action name="actionCopySongText">
