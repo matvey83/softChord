@@ -5,6 +5,7 @@ python3 softchord_test.py
 """
 import unittest
 import os
+import shutil
 import sys
 import tempfile
 
@@ -31,18 +32,24 @@ class SoftChordEditorTest(unittest.TestCase):
         cls.app.error = lambda text: None
         cls.app.question = lambda *args, **kwargs: True   # auto-accept (for renumber etc.)
 
-        # Open the real songbook from the project root
-        songbook_path = os.path.join(os.path.dirname(__file__), "..", "zvuki_neba.songbook")
-        songbook_path = os.path.abspath(songbook_path)
+        # Copy the sample songbook so tests do not write the original file.
+        src = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "zvuki_neba.songbook"))
+        cls._td = tempfile.TemporaryDirectory()
+        songbook_path = os.path.join(cls._td.name, "zvuki_neba.songbook")
+        shutil.copyfile(src, songbook_path)
         cls.app.setCurrentSongbook(songbook_path)
 
     @classmethod
     def tearDownClass(cls):
         # Clean up the App
         if hasattr(cls, 'app'):
+            cls.app.closeSongbook()
             cls.app.quit()
         if hasattr(cls, 'qapp'):
             cls.qapp.quit()
+        if hasattr(cls, '_td'):
+            cls._td.cleanup()
 
     def setUp(self):
         self.app = self.__class__.app
