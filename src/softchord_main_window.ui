@@ -722,6 +722,9 @@ p, li { white-space: pre-wrap; }
    </property>
   </action>
   <action name="actionChordEditorMode">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Chord Editor Mode</string>
    </property>
@@ -730,6 +733,9 @@ p, li { white-space: pre-wrap; }
    </property>
   </action>
   <action name="actionLyricEditorMode">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Lyric Editor Mode</string>
    </property>

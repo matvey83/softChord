@@ -1963,6 +1963,10 @@ class App(QtWidgets.QApplication):
             self.chordEditorSelected)
         self.ui.actionLyricEditorMode.triggered.connect(
             self.lyricEditorSelected)
+        self.editor_mode_action_group = QtGui.QActionGroup(self.win)
+        self.editor_mode_action_group.setExclusive(True)
+        self.editor_mode_action_group.addAction(self.ui.actionChordEditorMode)
+        self.editor_mode_action_group.addAction(self.ui.actionLyricEditorMode)
 
         self.ui.actionZoomIn.triggered.connect(self.zoomIn)
         self.ui.actionZoomOut.triggered.connect(self.zoomOut)
@@ -2087,6 +2091,8 @@ class App(QtWidgets.QApplication):
 
         self.ui.lyric_editor_button.setDown(True)
         self.ui.chord_editor_button.setDown(False)
+        self.ui.actionLyricEditorMode.setChecked(True)
+        self.ui.actionChordEditorMode.setChecked(False)
 
         self.editor.viewport().setCursor(Qt.CursorShape.IBeamCursor)
 
@@ -2103,6 +2109,8 @@ class App(QtWidgets.QApplication):
 
         self.ui.lyric_editor_button.setDown(False)
         self.ui.chord_editor_button.setDown(True)
+        self.ui.actionLyricEditorMode.setChecked(False)
+        self.ui.actionChordEditorMode.setChecked(True)
 
         self.ui.lyrics_editor_label.hide()
         self.ui.chords_editor_label.show()
