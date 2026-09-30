@@ -326,12 +326,15 @@ class SongbookIO:
 
         self.setWaitCursor(
         )  # For some reason, without this line, the selection is not updated yet when running softchord_test.py
-        if not self.getSelectedSongIds():
-            self.error("No songs are selected")
-            return
-        elif len(self.getSelectedSongIds()) > 1:
-            self.error("More than one song is selected.")
-            return
+        try:
+            if not self.getSelectedSongIds():
+                self.error("No songs are selected")
+                return
+            elif len(self.getSelectedSongIds()) > 1:
+                self.error("More than one song is selected.")
+                return
+        finally:
+            self.restoreCursor()
 
         if not text_file:
             suggested_path = os.path.join(QtCore.QDir.home().path(),
@@ -364,12 +367,15 @@ class SongbookIO:
 
         self.setWaitCursor(
         )  # For some reason, without this line, the selection is not updated yet when running softchord_test.py
-        if not self.getSelectedSongIds():
-            self.error("No songs are selected")
-            return
-        elif len(self.getSelectedSongIds()) > 1:
-            self.error("More than one song is selected.")
-            return
+        try:
+            if not self.getSelectedSongIds():
+                self.error("No songs are selected")
+                return
+            elif len(self.getSelectedSongIds()) > 1:
+                self.error("More than one song is selected.")
+                return
+        finally:
+            self.restoreCursor()
 
         if not filename:
             suggested_path = os.path.join(QtCore.QDir.home().path(),
