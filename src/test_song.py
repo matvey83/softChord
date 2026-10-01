@@ -24,6 +24,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
 
 import softchord
+from softchord_layout import SongLayout
 from softchord import (
     Song,
     SongChord,
@@ -1375,6 +1376,48 @@ class TestAppRendering(unittest.TestCase):
 
         painter.end()
         # Success = no crash
+
+    def test_editor_and_export_share_one_chord_layout(self):
+        """Screen chords and exported chords come from SongLayout."""
+        song = self.app.current_song
+        chord = next(song.iterateAllChords())
+        layout = SongLayout.place(self.app.editor, [chord],
+                                  self.app.getHeightsWithChords,
+                                  self.app.getChordWidth,
+                                  lambda item: item.getChordText())
+        char_rect, chord_rect = self.app.getCharRects(
+            self.app.editor, chord.character_num, chord)
+        placed = layout.placed[0]
+        self.assertEqual(placed.char_rect, char_rect)
+        self.assertEqual(placed.chord_rect, chord_rect)
+        middle = (char_rect.left() + char_rect.right()) // 2
+        self.assertEqual(
+            placed.chord_rect.left(),
+            middle - self.app.getChordWidth(chord.getChordText()) / 2.0)
+
+        calls = []
+        original = SongLayout.place
+
+        def place(*args, **kwargs):
+            calls.append(args[0])
+            return original(*args, **kwargs)
+
+        SongLayout.place = staticmethod(place)
+        image = QtGui.QImage(400, 300, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtCore.Qt.GlobalColor.white)
+        painter = QtGui.QPainter(image)
+        try:
+            self.app.editor.paintChordLayer(painter)
+            self.app.drawSongToRect(song, painter, self.app.editor,
+                                    QtCore.QRectF(0, 0, 400, 300),
+                                    exporting=True)
+        finally:
+            painter.end()
+            SongLayout.place = staticmethod(original)
+
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertIs(calls[0], self.app.editor)
+        self.assertIs(calls[1], self.app.editor)
 
     def test_draw_song_to_rect_exporting_headers(self):
         """When exporting=True, song number/title/key should be considered in layout."""
