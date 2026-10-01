@@ -16,6 +16,17 @@ from softchord_chords import (
 )
 
 
+def document_owner(owner):
+    """Return the songbook session when given the QApplication shell.
+
+    A stand-in used by tests has no session and is returned unchanged.
+    """
+    session = getattr(owner, "session", None)
+    if session is not None and session is not owner and hasattr(session, "curs"):
+        return session
+    return owner
+
+
 class AddChordCommand(QtGui.QUndoCommand):
 
     def __init__(self, song, chord):
@@ -61,14 +72,14 @@ class ReplaceChordCommand(QtGui.QUndoCommand):
 
 class DeleteSongsCommand(QtGui.QUndoCommand):
 
-    def __init__(self, app, song_ids):
+    def __init__(self, owner, song_ids):
         QtGui.QUndoCommand.__init__(self)
 
-        self.app = app
+        self.session = document_owner(owner)
         self.songs = []
         for song_id in song_ids:
             # Load the song from the database:
-            song = Song(app, song_id)
+            song = Song(self.session, song_id)
             self.songs.append(song)
 
     def undo(self):
@@ -76,10 +87,10 @@ class DeleteSongsCommand(QtGui.QUndoCommand):
         Re-add the deleted song to the database.
         """
 
-        self.app.setWaitCursor()
+        self.session.setWaitCursor()
         try:
             # Get the next available song_chord_link ID:
-            row = self.app.curs.execute(
+            row = self.session.curs.execute(
                 "SELECT MAX(id) from song_chord_link").fetchone()
             if row[0] == None:
                 chord_id = 0
@@ -88,49 +99,49 @@ class DeleteSongsCommand(QtGui.QUndoCommand):
 
             for song in self.songs:
                 song_text = song.getAllText()
-                self.app.curs.execute(
+                self.session.curs.execute(
                     "INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
                     (song.id, song.number, song.title, song.subtitle,
                      song_text))
 
                 # Re-add all the chords:
                 for chord in song.iterateAllChords():
-                    self.app.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
+                    self.session.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
                                 "VALUES (?, ?, ?, ?, ?, ?, ?)", (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
                     chord_id += 1  # Increment the ID for the next chord.
 
             # Commit database changes:
-            self.app.curs.commit()
+            self.session.curs.commit()
 
             # Update the song table from database:
-            self.app.songs_model.updateFromDatabase()
+            self.session.songs_model.updateFromDatabase()
 
         finally:
-            self.app.restoreCursor()
+            self.session.restoreCursor()
 
     def redo(self):
         """
         Delete the song form the database again
         """
 
-        self.app.setWaitCursor()
+        self.session.setWaitCursor()
         try:
             for song in self.songs:
                 # Delete this song:
-                self.app.curs.execute("DELETE FROM songs WHERE id=%i" % song.id)
+                self.session.curs.execute("DELETE FROM songs WHERE id=%i" % song.id)
 
                 # Delete all associated chords:
-                self.app.curs.execute(
+                self.session.curs.execute(
                     "DELETE FROM song_chord_link WHERE song_id=%i" % song.id)
 
             # Commit database changes:
-            self.app.curs.commit()
+            self.session.curs.commit()
 
             # Update the song table from database:
-            self.app.songs_model.updateFromDatabase()
+            self.session.songs_model.updateFromDatabase()
 
         finally:
-            self.app.restoreCursor()
+            self.session.restoreCursor()
 
 
 
@@ -147,9 +158,9 @@ class SongsTableModel(QtCore.QAbstractTableModel):
     Class for storing table information.
     """
 
-    def __init__(self, app):
+    def __init__(self, owner):
         QtCore.QAbstractTableModel.__init__(self)
-        self.app = app
+        self.session = document_owner(owner)
         self._data = []
         self.header_list = ["Number", "Title"]
         self.updateFromDatabase()
@@ -161,9 +172,9 @@ class SongsTableModel(QtCore.QAbstractTableModel):
         self.layoutAboutToBeChanged.emit()
 
         self._data = []
-        if self.app.curs:
+        if self.session.curs:
             # A songbook is currently open
-            for row in self.app.curs.execute(
+            for row in self.session.curs.execute(
                     "SELECT id, number, title FROM songs ORDER BY id"):
                 rowobj = SongsTableRow(row[0], row[1], row[2])
                 self._data.append(rowobj)
@@ -247,14 +258,14 @@ class SongsProxyModel(QtCore.QSortFilterProxyModel):
     Proxy model that allows showing/hiding rows in the songs table.
     """
 
-    def __init__(self, app):
-        self.app = app
-        super().__init__(app.win)
+    def __init__(self, owner):
+        self.session = document_owner(owner)
+        super().__init__(self.session.win)
 
     def filterAcceptsRow(self, sourceRow, sourceParent):
         model = self.sourceModel()
 
-        filter_string = self.app.filter_string
+        filter_string = self.session.filter_string
 
         if not filter_string:
             return True
@@ -365,8 +376,8 @@ class Song:
     Stores information for a particular song.
     """
 
-    def __init__(self, app, song_id):
-        self.app = app
+    def __init__(self, owner, song_id):
+        self.session = document_owner(owner)
         self.id = song_id
         self._chords = []
         self.number = -1
@@ -377,6 +388,11 @@ class Song:
         self.updateSongFromDatabase()
         self.updateSharpsOrFlats()
 
+    @property
+    def app(self):
+        """Owner used by chord text. This is the session, not QApplication."""
+        return self.session
+
     def updateSongFromDatabase(self):
         """
         Read this song from the database, and populate the instnces properties.
@@ -385,21 +401,21 @@ class Song:
         # Read the song from the database. Legacy key_note_id / key_is_major
         # columns are left unread (old songbooks still open).
         try:
-            row = self.app.curs.execute(
+            row = self.session.curs.execute(
                 "SELECT number, title, subtitle, text FROM songs WHERE id=%i"
                 % self.id).fetchone()
         except sqlite3.OperationalError:
             # Old formatted songbook file
-            row = self.app.curs.execute(
+            row = self.session.curs.execute(
                 "SELECT title, number, text FROM songs WHERE id=%i"
                 % self.id).fetchone()
             # Create this prop
-            self.app.curs.execute(
+            self.session.curs.execute(
                 "ALTER TABLE songs ADD subtitle TEXT")
-            self.app.curs.commit()
+            self.session.curs.commit()
             print("Table songs: added 'subtitle' column")
             # Re-try once the missing columns have been added:
-            row = self.app.curs.execute(
+            row = self.session.curs.execute(
                 "SELECT number, title, subtitle, text FROM songs WHERE id=%i"
                 % self.id).fetchone()
 
@@ -413,7 +429,7 @@ class Song:
 
         # Read the chords for this song form the database:
         song_chords = []
-        for row in self.app.curs.execute(
+        for row in self.session.curs.execute(
                 "SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i"
                 % self.id):
             # id = row[0]
@@ -428,7 +444,7 @@ class Song:
             song_chords.append(chord)
 
         self.doc = QtGui.QTextDocument()
-        self.doc.setDefaultFont(self.app.lyrics_font)
+        self.doc.setDefaultFont(self.session.lyrics_font)
 
         self.setAllText(all_text, song_chords)
 
@@ -461,14 +477,14 @@ class Song:
     def setDocMargins(self):
 
         # Required to avoid circular calls:
-        self.app.ignore_song_text_changed = True
+        self.session.ignore_song_text_changed = True
 
         # Determine which chars have chords:
         chords_by_char = {}
         for chord in self._chords:
             chords_by_char[chord.character_num] = True
 
-        chords_height, lyrics_height, line_height = self.app.getHeightsWithChords(
+        chords_height, lyrics_height, line_height = self.session.getHeightsWithChords(
         )
         with_chords_top_margin = line_height - lyrics_height
 
@@ -481,18 +497,18 @@ class Song:
         root_frame = self.doc.rootFrame()
         frame_format = root_frame.frameFormat()
         frame_format.setTopMargin(with_chords_top_margin +
-                                  self.app.doc_editor_offset)
+                                  self.session.doc_editor_offset)
         root_frame.setFrameFormat(frame_format)
 
         block = self.doc.begin()
 
         with_chords_format = block.blockFormat()
         with_chords_format.setTopMargin(with_chords_top_margin)
-        with_chords_format.setLeftMargin(self.app.doc_editor_offset)
+        with_chords_format.setLeftMargin(self.session.doc_editor_offset)
 
         without_chords_format = block.blockFormat()
         without_chords_format.setTopMargin(0.0)
-        without_chords_format.setLeftMargin(self.app.doc_editor_offset)
+        without_chords_format.setLeftMargin(self.session.doc_editor_offset)
 
         linenum = -1
         line_start_char = 0
@@ -523,7 +539,7 @@ class Song:
             line_start_char += len(
                 line_text) + 1  # Add the eof-of-line character
 
-        self.app.ignore_song_text_changed = False
+        self.session.ignore_song_text_changed = False
 
     def _prefer_for_char(self, char_num):
         prefer = self.prefer
@@ -540,7 +556,7 @@ class Song:
         as appropriate for the local key region.
         """
 
-        note_text, note_alt_text = self.app.notes_list[note_id]
+        note_text, note_alt_text = self.session.notes_list[note_id]
         if char_num is None:
             prefer = self.prefer
         else:
@@ -559,22 +575,22 @@ class Song:
                 return note_alt_text
 
     def addChord(self, chord):
-        self.app.undo_stack.push(AddChordCommand(self, chord))
+        self.session.undo_stack.push(AddChordCommand(self, chord))
 
     def _addChord(self, chord):
         self._chords.append(chord)
         self.updateSharpsOrFlats()
 
         # This is important for undo/redo to move the selection:
-        self.app.selected_char_num = chord.character_num
+        self.session.selected_char_num = chord.character_num
 
         # Update the margin of the document in case the chord was moved to a new line:
         self.setDocMargins()
 
-        self.app.editor.viewport().update()
+        self.session.editor.viewport().update()
 
     def deleteChord(self, chord):
-        self.app.undo_stack.push(DeleteChordCommand(self, chord))
+        self.session.undo_stack.push(DeleteChordCommand(self, chord))
 
     def _deleteChord(self, chord):
         self._chords.remove(chord)
@@ -586,11 +602,11 @@ class Song:
         # Update the margin of the document in case the chord was moved to a new line:
         self.setDocMargins()
 
-        self.app.editor.viewport().update()
+        self.session.editor.viewport().update()
 
     def replaceChord(self, prev_chord, new_chord):
         command = ReplaceChordCommand(self, prev_chord, new_chord)
-        self.app.undo_stack.push(command)
+        self.session.undo_stack.push(command)
 
     def _replaceChord(self, prev_chord, new_chord):
         try:
@@ -603,12 +619,12 @@ class Song:
         self.updateSharpsOrFlats()
 
         # This is important for undo/redo to move the selection:
-        self.app.selected_char_num = new_chord.character_num
+        self.session.selected_char_num = new_chord.character_num
 
         # Update the margin of the document in case the chord was moved to a new line:
         self.setDocMargins()
 
-        self.app.editor.viewport().update()
+        self.session.editor.viewport().update()
 
     def copyChord(self, chord, new_song_char_num):
         """
@@ -658,9 +674,9 @@ class Song:
         """
 
         if self.getLineHasChords(linenum):
-            return self.app.getHeightsWithChords()
+            return self.session.getHeightsWithChords()
         else:
-            return self.app.getHeightsWithoutChords()
+            return self.session.getHeightsWithoutChords()
 
     def songCharToLineChar(self, song_char_num):
         """
@@ -842,8 +858,8 @@ class Song:
             self.prefer = self._regions[0][1]
         else:
             self.prefer = PREFER_NEITHER
-        if getattr(self.app, "current_song", None) is self:
-            updater = getattr(self.app, "_updateAutoDetectedKeyLabel", None)
+        if getattr(self.session, "current_song", None) is self:
+            updater = getattr(self.session, "_updateAutoDetectedKeyLabel", None)
             if updater:
                 updater()
 
@@ -892,7 +908,7 @@ class Song:
             try:
                 new_char_num = renumber_map[old_char_num]
             except KeyError:
-                self.app.curs.execute(
+                self.session.curs.execute(
                     "DELETE FROM song_chord_link WHERE song_id=? AND character_num=?",
                     (self.id, old_char_num))
                 continue
@@ -906,13 +922,13 @@ class Song:
         for new_char_num, old_char_num in sorted(updates,
                                                 key=lambda item: item[1],
                                                 reverse=True):
-            self.app.curs.execute(
+            self.session.curs.execute(
                 "UPDATE song_chord_link SET character_num=? WHERE song_id=? AND character_num=?",
                 (new_char_num, self.id, old_char_num))
 
-        self.app.curs.execute("UPDATE songs SET text=? WHERE id=?",
+        self.session.curs.execute("UPDATE songs SET text=? WHERE id=?",
                               (modified_text, self.id))
 
-        self.app.curs.commit()
+        self.session.curs.commit()
 
         self.setAllText(modified_text, new_all_chords)
