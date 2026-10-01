@@ -1412,7 +1412,7 @@ class TestPrintingPdfFontClipboard(unittest.TestCase):
     # --- Font change methods (mock the Qt dialog) ---
     def test_change_fonts_do_not_crash_with_mocked_dialog(self):
         """Calling the font change methods should not blow up when we mock the dialog."""
-        original_get_font = QtGui.QFontDialog.getFont
+        original_get_font = QtWidgets.QFontDialog.getFont
 
         # Mock: always "accept" and return a slightly modified font
         def fake_get_font(font, parent=None):
@@ -1420,14 +1420,14 @@ class TestPrintingPdfFontClipboard(unittest.TestCase):
             new_font.setPointSize(14)
             return new_font, True
 
-        QtGui.QFontDialog.getFont = staticmethod(fake_get_font)
+        QtWidgets.QFontDialog.getFont = staticmethod(fake_get_font)
 
         try:
             self.app.changeLyricsFont()
             self.app.changeChordFont()
             # If we reach here, the methods executed their "OK" paths
         finally:
-            QtGui.QFontDialog.getFont = original_get_font
+            QtWidgets.QFontDialog.getFont = original_get_font
 
     # --- Chord clipboard operations ---
     def test_copy_selected_chord(self):
@@ -3004,6 +3004,12 @@ class TestChordOverLyricPlacement(unittest.TestCase):
         return softchord.parse_chord_over_lyrics(
             lines, self.app.convertChordFromString,
             self.app.lyrics_font_metrics)
+
+    def test_song_is_held_by_the_session(self):
+        song = create_test_song(self.app, song_id=1, text="Hello")
+        self.assertIs(song.session, self.app.session)
+        self.assertNotIsInstance(song.session, QtWidgets.QApplication)
+        self.assertIs(self.app.editor.app, self.app.session)
 
     def test_kosari_is_proportional_and_chords_sit_on_words(self):
         lines, proportional = self._parse(KOSARI_TEXT)
