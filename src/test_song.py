@@ -76,7 +76,9 @@ class MinimalTestApp:
     """
 
     def __init__(self):
+        self.store = softchord.SongbookStore()
         self.curs = sqlite3.connect(":memory:")
+        self.store.use(self.curs)
         self._create_minimal_tables()
 
         # Support for SongsTableModel / SongsProxyModel
@@ -641,6 +643,30 @@ class TestSong(unittest.TestCase):
                 "SELECT character_num FROM song_chord_link WHERE song_id=10"))
         self.assertEqual(db_chars, [3])
 
+    def test_song_reads_and_writes_through_the_store(self):
+        loaded = []
+        saved = []
+        real_load = self.app.store.load_song
+        real_save = self.app.store.update_song_text
+
+        def load_song(song_id):
+            loaded.append(song_id)
+            return real_load(song_id)
+
+        def update_song_text(song_id, text):
+            saved.append((song_id, text))
+            return real_save(song_id, text)
+
+        self.app.store.load_song = load_song
+        self.app.store.update_song_text = update_song_text
+        song = create_test_song(self.app, song_id=11, text="Hi  ")
+        song.removeTrailingSpaces()
+        self.assertEqual(loaded, [11])
+        self.assertEqual(saved, [(11, "Hi")])
+        stored = self.app.curs.execute(
+            "SELECT text FROM songs WHERE id=11").fetchone()[0]
+        self.assertEqual(stored, "Hi")
+
     def test_loads_legacy_schema_without_subtitle(self):
         app = MinimalTestApp()
         app.curs.execute("DROP TABLE songs")
@@ -750,6 +776,19 @@ class TestSongsTableModels(unittest.TestCase):
         self.table_model = softchord.SongsTableModel(self.app)
         self.proxy_model = softchord.SongsProxyModel(self.app)
         self.proxy_model.setSourceModel(self.table_model)
+
+    def test_table_lists_songs_through_the_store(self):
+        seen = []
+        real = self.app.store.list_song_rows
+
+        def list_song_rows():
+            seen.append(True)
+            return real()
+
+        self.app.store.list_song_rows = list_song_rows
+        self.table_model.updateFromDatabase()
+        self.assertEqual(seen, [True])
+        self.assertEqual(self.table_model.rowCount(), 4)
 
     def test_table_model_basic_population(self):
         self.assertEqual(self.table_model.rowCount(), 4)
@@ -1502,6 +1541,90 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
         rowobj = self.app.songs_model.getRow(row_num)
         self.assertEqual(rowobj.title, new_title)
 
+    def test_title_edit_on_readonly_songbook_reverts_and_explains(self):
+        previous = self.app.current_song.title
+        self.app.curs.execute("PRAGMA query_only = ON")
+        errors = []
+        self.app.error = lambda text: errors.append(text)
+
+        self.app.currentSongTitleEdited("Nope")
+
+        self.assertEqual(self.app.current_song.title, previous)
+        self.assertEqual(self.app.ui.song_title_ef.text(), previous)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("read-only", errors[0].lower())
+        self.assertIn("Save Songbook As", errors[0])
+        self.assertNotIn("Traceback", errors[0])
+        self.assertNotIn("OperationalError", errors[0])
+        saved = self.app.curs.execute("SELECT title FROM songs").fetchone()[0]
+        self.assertEqual(saved, previous)
+
+        self.app.currentSongTitleEdited("Still nope")
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(self.app.current_song.title, previous)
+
+    def test_title_edit_reopens_a_replaced_songbook_file(self):
+        path = self.app.current_songbook_filename
+        replaced = path + ".replaced"
+        os.rename(path, replaced)
+        shutil.copy(replaced, path)
+        errors = []
+        self.app.error = lambda text: errors.append(text)
+
+        self.app.currentSongTitleEdited("After replace")
+
+        self.assertEqual(errors, [])
+        self.assertEqual(self.app.current_song.title, "After replace")
+        saved = self.app.curs.execute(
+            "SELECT title FROM songs WHERE id=?",
+            (self.app.current_song.id,)).fetchone()[0]
+        self.assertEqual(saved, "After replace")
+        old = sqlite3.connect(replaced)
+        try:
+            old_title = old.execute("SELECT title FROM songs").fetchone()[0]
+        finally:
+            old.close()
+        self.assertEqual(old_title, "Test Song")
+
+    def test_save_readonly_songbook_opens_a_writable_copy(self):
+        self.app.curs.execute("PRAGMA query_only = ON")
+        dest = os.path.join(tempfile.mkdtemp(), "copy.songbook")
+        original_get_save = QtWidgets.QFileDialog.getSaveFileName
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+            lambda *a, **k: (dest, ""))
+        try:
+            self.app.saveSongbook()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original_get_save
+
+        self.assertEqual(os.path.abspath(self.app.current_songbook_filename),
+                         os.path.abspath(dest))
+        self.app.curs.execute("UPDATE songs SET title=? WHERE id=0",
+                              ("Saved",))
+        self.app.curs.commit()
+        saved = self.app.curs.execute(
+            "SELECT title FROM songs WHERE id=0").fetchone()[0]
+        self.assertEqual(saved, "Saved")
+
+    def test_switching_songs_on_readonly_songbook_does_not_raise(self):
+        # A chord that exists only in memory forces INSERT, the same write
+        # that crashed when the selection changed on a read-only songbook.
+        song = self.app.current_song
+        song._addChord(SongChord(song, 5, 2, 0, -1, "", 0))
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text) "
+            "VALUES (1, 2, 'Other', '', 'line')")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.curs.execute("PRAGMA query_only = ON")
+
+        self.app.setCurrentSong(Song(self.app, 1))
+        self.assertEqual(self.app.current_song.id, 1)
+
+        # The selection callback commits, then flushes again. Neither may raise.
+        self.app.songsSelectionChangedCallback()
+        self.assertIsNotNone(self.app.current_song)
+
     def test_subtitle_edited(self):
         if not self.app.current_song:
             self.skipTest("No current song")
@@ -1790,6 +1913,20 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.pasteAsNewSong()
         self.assertEqual(len(warnings), 1)
         self.assertIn("song book", warnings[0].lower())
+
+    def test_import_writes_the_song_through_the_store(self):
+        inserted = []
+        real = self.app.store.insert_song
+
+        def insert_song(*args):
+            inserted.append(args)
+            return real(*args)
+
+        self.app.store.insert_song = insert_song
+        self.app.importSongFromText("Hello\nthere")
+        self.assertEqual(len(inserted), 1)
+        self.assertEqual(inserted[0][0], 0)
+        self.assertEqual(inserted[0][2], "Hello")
 
     def test_import_song_from_text_uses_first_line_as_title(self):
         self._open_empty_temp_songbook()

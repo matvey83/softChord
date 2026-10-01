@@ -10,9 +10,9 @@ from PyQt6.QtGui import QPageSize
 
 PageSizeId = QPageSize.PageSizeId
 import sys, os
-import sqlite3
 import copy
 import platform
+import sqlite3
 import traceback
 
 from softchord_chords import (
@@ -46,6 +46,11 @@ from softchord_song import (
     SongChord,
     SongChar,
     Song,
+)
+from softchord_store import (
+    SongbookStore,
+    database_file_was_replaced,
+    readonly_database_error,
 )
 from softchord_io import (
     SQLITE_HEADER,
@@ -606,8 +611,21 @@ class SongbookSession(SongbookIO, QtCore.QObject):
     attribute access so existing callers can keep using the shell.
     """
 
+    @property
+    def curs(self):
+        """Open connection. Callers that still inspect the file use this.
+
+        Songs, undo, and import go through the store instead of executing SQL.
+        """
+        return self.store.connection
+
+    @curs.setter
+    def curs(self, connection):
+        self.store.use(connection)
+
     def __init__(self):
         super().__init__()
+        self._readonly_songbook_reported = False
         self.doc_editor_offset = 0  # FIXME
 
         self.win = QtWidgets.QMainWindow()
@@ -616,7 +634,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.on_windows = platform.system() == "Windows"
 
-        self.curs = None
+        self.store = SongbookStore()
         self.current_song = None
         self.empty_doc = QtGui.QTextDocument()
 
@@ -915,6 +933,65 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.sendCurrentSongToDatabase()
         self._orig_closeEvent(event)
 
+    def _rollback_songbook(self):
+        conn = self.store.connection
+        if conn is None:
+            return
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+
+    def _reopen_songbook_connection(self):
+        """Open the same path again. A replaced file leaves the old connection read-only."""
+        filename = self.current_songbook_filename
+        if not filename:
+            return False
+        try:
+            conn = connect_existing_songbook(filename)
+        except (OSError, ValueError, sqlite3.Error):
+            return False
+        previous = self.store.connection
+        self.store.use(conn)
+        if previous is not None and previous is not conn:
+            try:
+                previous.close()
+            except sqlite3.Error:
+                pass
+        return True
+
+    def _report_readonly_songbook(self):
+        if self._readonly_songbook_reported:
+            return
+        self._readonly_songbook_reported = True
+        self.error(
+            "Cannot modify this songbook because it is read-only.\n\n"
+            "Use File → Save Songbook As... to save a writable copy.")
+
+    def _run_songbook_write(self, write, report=True):
+        """Run write() and commit. Return False when the file cannot be modified.
+
+        Switching songs still calls this to flush. That failure is not reported:
+        viewing a read-only songbook must not raise, and the edit that was just
+        refused already explains why.
+        """
+        for attempt in (1, 2):
+            try:
+                write()
+                self.store.commit()
+                return True
+            except sqlite3.OperationalError as err:
+                self._rollback_songbook()
+                if (database_file_was_replaced(err) and attempt == 1
+                        and self._reopen_songbook_connection()):
+                    continue
+                if readonly_database_error(err):
+                    if report:
+                        self._report_readonly_songbook()
+                    return False
+                raise
+        return False
+
     def sendCurrentSongToDatabase(self):
         """
         Save the current song to the database.
@@ -924,40 +1001,37 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             # Update the current song in the database:
         song = self.current_song
 
-        self.setWaitCursor()
-        try:
-            chords_in_database = []
-            for row in self.curs.execute(
-                    "SELECT character_num FROM song_chord_link WHERE song_id=%i"
-                    % song.id):
-                chords_in_database.append(row[0])
+        def write():
+            chords_in_database = self.store.chord_positions(song.id)
 
             for chord in song.iterateAllChords():
                 # Update existing chords
                 if chord.character_num in chords_in_database:
-                    self.curs.execute(
-                        "UPDATE song_chord_link SET note_id=?, chord_type_id=?, bass_note_id=?, marker=?, in_parentheses=? WHERE song_id=? AND character_num=?",
-                        (chord.note_id, chord.chord_type_id, chord.bass_note_id,
-                         chord.marker, chord.in_parentheses, chord.song_id,
-                         chord.character_num))
+                    self.store.update_chord(chord.song_id, chord.character_num,
+                                            chord.note_id, chord.chord_type_id,
+                                            chord.bass_note_id, chord.marker,
+                                            chord.in_parentheses)
                     chords_in_database.remove(chord.character_num)
 
                 else:
                     # Add new chords
-                    self.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
-                            "VALUES (?, ?, ?, ?, ?, ?, ?)", (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
+                    self.store.insert_chord(chord.song_id, chord.character_num,
+                                            chord.note_id, chord.chord_type_id,
+                                            chord.bass_note_id, chord.marker,
+                                            chord.in_parentheses)
 
             # Remove old chords
             for song_char_num in chords_in_database:
-                self.curs.execute(
-                    "DELETE FROM song_chord_link WHERE song_id=%i AND character_num=%i"
-                    % (song.id, song_char_num))
+                self.store.delete_chord(song.id, song_char_num)
 
-            self.curs.execute(
-                "UPDATE songs SET number=?, title=?, subtitle=?, text=? WHERE id=?",
-                (song.number, song.title, song.subtitle, song.getAllText(),
-                 song.id))
-            self.curs.commit()
+            self.store.update_song(song.id, song.number, song.title,
+                                   song.subtitle, song.getAllText())
+
+        self.setWaitCursor()
+        try:
+            # Do not report here. Song switches flush even when nothing changed,
+            # and a read-only file must stay browsable.
+            self._run_songbook_write(write, report=False)
         finally:
             self.restoreCursor()
 
@@ -1163,8 +1237,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
 
         # Commit any changes in the current song:
-        if self.curs is not None:
-            self.curs.commit()
+        if self.store.is_open:
+            self.store.commit()
 
         self.selected_char_num = None  # Remove the selection
         self.hover_char_num = None  # Remove the hover highlighting
@@ -1242,7 +1316,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.actionSelectAll.setEnabled(False)
 
         # Whether there is an open songbook:
-        songbook_open = (self.curs != None)
+        songbook_open = self.store.is_open
         self.ui.actionImportText.setEnabled(songbook_open)
 
         self.ui.new_song_button.setEnabled(songbook_open)
@@ -2030,12 +2104,18 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         if self.current_song:
             new_title = new_title.strip()  # Remove any EOL characters, etc.
+            previous_title = self.current_song.title
             self.current_song.title = new_title
             self.setWaitCursor()
             try:
-                self.curs.execute('UPDATE songs SET title=? WHERE id=?',
-                                  (new_title, self.current_song.id))
-                self.curs.commit()
+                saved = self._run_songbook_write(
+                    lambda: self.store.update_song_title(
+                        self.current_song.id, new_title))
+                if not saved:
+                    self.current_song.title = previous_title
+                    self.ui.song_title_ef.setText(
+                        "" if previous_title is None else previous_title)
+                    return
 
                 row_num = self.songs_model.getSongsRow(self.current_song)
                 rowobj = self.songs_model.getRow(row_num)
@@ -2055,12 +2135,18 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if not self.current_song:
             raise ValueError("No current song")
 
+        previous_subtitle = self.current_song.subtitle
         self.current_song.subtitle = new_note_str
         self.setWaitCursor()
         try:
-            self.curs.execute('UPDATE songs SET subtitle=? WHERE id=?',
-                              (new_note_str, self.current_song.id))
-            self.curs.commit()
+            saved = self._run_songbook_write(
+                lambda: self.store.update_song_subtitle(
+                    self.current_song.id, new_note_str))
+            if not saved:
+                self.current_song.subtitle = previous_subtitle
+                self.ui.song_subtitle_ef.setText(
+                    "" if previous_subtitle is None else previous_subtitle)
+                return
 
             row_num = self.songs_model.getSongsRow(self.current_song)
             rowobj = self.songs_model.getRow(row_num)
@@ -2080,10 +2166,18 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             except:
                 self.error("Invalid song number")
             else:
+                previous_num = self.current_song.number
                 self.current_song.number = new_num
-                self.curs.execute('UPDATE songs SET number=%i WHERE id=%i' %
-                                  (new_num, self.current_song.id))
-                self.curs.commit()
+                saved = self._run_songbook_write(
+                    lambda: self.store.update_song_number(
+                        self.current_song.id, new_num))
+                if not saved:
+                    self.current_song.number = previous_num
+                    if previous_num == -1:
+                        self.ui.song_num_ef.setText("")
+                    else:
+                        self.ui.song_num_ef.setText(str(previous_num))
+                    return
 
                 # Save the selection:
                 selected_row_num = self.songs_model.getSongsRow(
@@ -2104,16 +2198,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         Add a new song to the database and the songs table, and select it.
         """
 
-        row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
-        if row[0] == None:
-            song_id = 0
-        else:
-            song_id = row[0] + 1
-
-        out = self.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
-            (song_id, -1, "", "", ""))
-        self.curs.commit()
+        song_id = self.store.next_song_id()
+        if not self._run_songbook_write(lambda: self.store.insert_song(
+                song_id, -1, "", "", "")):
+            return
 
         # Update the song table from database:
         self.songs_model.updateFromDatabase()
@@ -2231,10 +2319,12 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         all_song_ids = self.songs_model.getAllSongIds()
 
-        for song_num, song_id in enumerate(all_song_ids, start=1):
-            self.curs.execute('UPDATE songs SET number=? WHERE id=?',
-                              (song_num, song_id))
-        self.curs.commit()
+        def write():
+            for song_num, song_id in enumerate(all_song_ids, start=1):
+                self.store.update_song_number(song_id, song_num)
+
+        if not self._run_songbook_write(write):
+            return
 
         # Update the song table from database:
         self.songs_model.updateFromDatabase()
