@@ -746,6 +746,8 @@ class SongbookIO:
 
         previous_curs = self.store.connection
         self.store.use(conn)
+        self.store.path = filename
+        self.store._connect = connect_existing_songbook if filename else None
         self.current_songbook_filename = filename
         if filename is None:
             self.win.setWindowTitle("softChord")

@@ -926,22 +926,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             pass
 
     def _reopen_songbook_connection(self):
-        """Open the same path again. A replaced file leaves the old connection read-only."""
-        filename = self.current_songbook_filename
-        if not filename:
-            return False
-        try:
-            conn = connect_existing_songbook(filename)
-        except (OSError, ValueError, sqlite3.Error):
-            return False
-        previous = self.store.connection
-        self.store.use(conn)
-        if previous is not None and previous is not conn:
-            try:
-                previous.close()
-            except sqlite3.Error:
-                pass
-        return True
+        """Open the same path again. A replaced file leaves the old connection stale."""
+        return self.store.reopen()
 
     def _report_readonly_songbook(self):
         if self._readonly_songbook_reported:
