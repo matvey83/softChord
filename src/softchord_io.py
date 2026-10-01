@@ -9,23 +9,16 @@ from PyQt6 import QtCore, QtWidgets
 
 from softchord_chords import convert_chord_from_string, replace_russian_characeters
 from softchord_song import Song
+from softchord_store import (
+    SONGS_TABLE_SQL,
+    SONG_CHORD_LINK_TABLE_SQL,
+    SongbookStore,
+)
 
 # File extensions that can be used for the ChordPro file format:
 chordpro_extensions = [".pro", ".chopro", ".chordpro", ".cpm"]
 
 SQLITE_HEADER = b"SQLite format 3\x00"
-
-# New songbooks do not store a user-selected key; old files may still have
-# key_note_id / key_is_major columns, which are ignored.
-SONGS_TABLE_SQL = (
-    "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, "
-    "title TEXT, subtitle TEXT)"
-)
-SONG_CHORD_LINK_TABLE_SQL = (
-    "CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, "
-    "character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, "
-    "bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)"
-)
 
 
 def _normalize_local_path(path):
@@ -569,16 +562,9 @@ class SongbookIO:
         NOTE: curs.commit() MUST be called afterwards.
         """
 
-        row = self.curs.execute("SELECT MAX(id) from songs").fetchone()
-        if row[0] == None:
-            song_id = 0
-        else:
-            song_id = row[0] + 1
-
-        self.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
-            (song_id, song_num, song_title, song_subtitle, song_text))
-
+        song_id = self.store.next_song_id()
+        self.store.insert_song(song_id, song_num, song_title, song_subtitle,
+                               song_text)
         return song_id
 
     def _importChord(self,
@@ -597,20 +583,13 @@ class SongbookIO:
         """
 
         if chord_id == None:
-            # Get the next available ID:
-            row = self.curs.execute(
-                "SELECT MAX(id) from song_chord_link").fetchone()
-            if row[0] == None:
-                chord_id = 0
-            else:
-                chord_id = row[0] + 1
+            chord_id = self.store.next_chord_id()
 
         if not marker:
             marker = ""
         in_parentheses = int(in_parentheses)
-        self.curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
-
+        self.store.insert_chord(song_id, song_char_num, note_id, type_id,
+                                bass_id, marker, in_parentheses, chord_id)
         return chord_id
 
     def _importSongFromLyricsAndChords(self,
@@ -638,7 +617,7 @@ class SongbookIO:
                                              in_parentheses, chord_id)
                 chord_id += 1  # Increment the ID for the next chord.
 
-        self.curs.commit()
+        self.store.commit()
 
         # Update the song table from database:
         self.songs_model.updateFromDatabase()
@@ -765,8 +744,8 @@ class SongbookIO:
         # Nothing to undo; new database
         self.clearUndoStack()
 
-        previous_curs = self.curs
-        self.curs = conn
+        previous_curs = self.store.connection
+        self.store.use(conn)
         self.current_songbook_filename = filename
         if filename is None:
             self.win.setWindowTitle("softChord")
@@ -776,11 +755,13 @@ class SongbookIO:
 
         self.songs_model.updateFromDatabase()
         self.updateStates()
-        if previous_curs is not None and previous_curs is not self.curs:
+        if previous_curs is not None and previous_curs is not self.store.connection:
             try:
                 previous_curs.close()
             except Exception:
                 pass
+        # A different file gets its own explanation if it cannot be modified.
+        self._readonly_songbook_reported = False
 
     def appendSongbookFile(self, filename):
         """
@@ -798,23 +779,11 @@ class SongbookIO:
 
             chord_id = None  # So that _importChord() assigned a new ID to the new chord
 
-            # Materialize the source songs first: nested executes on the same
-            # sqlite3 cursor reset the outer iterator.
-            source_songs = list(
-                curs2.execute(
-                    "SELECT id, number, title, subtitle, text FROM songs ORDER BY id"
-                ))
-            for (src_song_id, song_num, song_title, song_subtitle,
-                 song_text) in source_songs:
+            for (_src_song_id, song_num, song_title, song_subtitle,
+                 song_text), source_chords in SongbookStore.read_songs(curs2):
                 dest_song_id = self._importSong(song_num, song_title,
                                                 song_subtitle, song_text)
 
-                source_chords = list(
-                    curs2.execute(
-                        "SELECT character_num, note_id, chord_type_id, "
-                        "bass_note_id, marker, in_parentheses "
-                        "FROM song_chord_link WHERE song_id=?",
-                        (src_song_id,)))
                 for (song_char_num, note_id, chord_type_id, bass_note_id,
                      marker, in_parentheses) in source_chords:
                     chord_id = self._importChord(dest_song_id, song_char_num,
@@ -823,7 +792,7 @@ class SongbookIO:
                                                  in_parentheses, chord_id)
                     chord_id += 1  # Increment the ID for the next chord.
 
-            self.curs.commit()
+            self.store.commit()
 
             self.songs_model.updateFromDatabase()
             self.updateStates()
@@ -847,10 +816,7 @@ class SongbookIO:
                 os.remove(songbook_file)
 
             # Open an empty database once, then reuse that connection.
-            conn = sqlite3.connect(songbook_file)
-            conn.execute(SONG_CHORD_LINK_TABLE_SQL)
-            conn.execute(SONGS_TABLE_SQL)
-            conn.commit()
+            conn = SongbookStore.create_file(songbook_file)
             self.setCurrentSongbook(songbook_file, conn=conn)
 
     def openSongbook(self):

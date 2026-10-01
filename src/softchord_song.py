@@ -1,7 +1,6 @@
 """Song model, table models, and undo commands."""
 
 import copy
-import sqlite3
 
 from PyQt6 import QtCore, QtGui
 from PyQt6.QtCore import Qt
@@ -14,8 +13,6 @@ from softchord_chords import (
     detect_region_start_indices,
     transpose_note,
 )
-
-
 def document_owner(owner):
     """Return the songbook session when given the QApplication shell.
 
@@ -89,29 +86,19 @@ class DeleteSongsCommand(QtGui.QUndoCommand):
 
         self.session.setWaitCursor()
         try:
-            # Get the next available song_chord_link ID:
-            row = self.session.curs.execute(
-                "SELECT MAX(id) from song_chord_link").fetchone()
-            if row[0] == None:
-                chord_id = 0
-            else:
-                chord_id = row[0] + 1
-
             for song in self.songs:
                 song_text = song.getAllText()
-                self.session.curs.execute(
-                    "INSERT INTO songs (id, number, title, subtitle, text) VALUES (?, ?, ?, ?, ?)",
-                    (song.id, song.number, song.title, song.subtitle,
-                     song_text))
+                self.session.store.insert_song(song.id, song.number, song.title,
+                                               song.subtitle, song_text)
 
                 # Re-add all the chords:
                 for chord in song.iterateAllChords():
-                    self.session.curs.execute("INSERT INTO song_chord_link (song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) " + \
-                                "VALUES (?, ?, ?, ?, ?, ?, ?)", (chord.song_id, chord.character_num, chord.note_id, chord.chord_type_id, chord.bass_note_id, chord.marker, chord.in_parentheses))
-                    chord_id += 1  # Increment the ID for the next chord.
+                    self.session.store.insert_chord(
+                        chord.song_id, chord.character_num, chord.note_id,
+                        chord.chord_type_id, chord.bass_note_id, chord.marker,
+                        chord.in_parentheses)
 
-            # Commit database changes:
-            self.session.curs.commit()
+            self.session.store.commit()
 
             # Update the song table from database:
             self.session.songs_model.updateFromDatabase()
@@ -127,15 +114,9 @@ class DeleteSongsCommand(QtGui.QUndoCommand):
         self.session.setWaitCursor()
         try:
             for song in self.songs:
-                # Delete this song:
-                self.session.curs.execute("DELETE FROM songs WHERE id=%i" % song.id)
+                self.session.store.delete_song(song.id)
 
-                # Delete all associated chords:
-                self.session.curs.execute(
-                    "DELETE FROM song_chord_link WHERE song_id=%i" % song.id)
-
-            # Commit database changes:
-            self.session.curs.commit()
+            self.session.store.commit()
 
             # Update the song table from database:
             self.session.songs_model.updateFromDatabase()
@@ -172,12 +153,9 @@ class SongsTableModel(QtCore.QAbstractTableModel):
         self.layoutAboutToBeChanged.emit()
 
         self._data = []
-        if self.session.curs:
-            # A songbook is currently open
-            for row in self.session.curs.execute(
-                    "SELECT id, number, title FROM songs ORDER BY id"):
-                rowobj = SongsTableRow(row[0], row[1], row[2])
-                self._data.append(rowobj)
+        if self.session.store.is_open:
+            for song_id, number, title in self.session.store.list_song_rows():
+                self._data.append(SongsTableRow(song_id, number, title))
 
         self.layoutChanged.emit()  # Forces the view to redraw
 
@@ -398,55 +376,26 @@ class Song:
         Read this song from the database, and populate the instnces properties.
         """
 
-        # Read the song from the database. Legacy key_note_id / key_is_major
-        # columns are left unread (old songbooks still open).
-        try:
-            row = self.session.curs.execute(
-                "SELECT number, title, subtitle, text FROM songs WHERE id=%i"
-                % self.id).fetchone()
-        except sqlite3.OperationalError:
-            # Old formatted songbook file
-            row = self.session.curs.execute(
-                "SELECT title, number, text FROM songs WHERE id=%i"
-                % self.id).fetchone()
-            # Create this prop
-            self.session.curs.execute(
-                "ALTER TABLE songs ADD subtitle TEXT")
-            self.session.curs.commit()
-            print("Table songs: added 'subtitle' column")
-            # Re-try once the missing columns have been added:
-            row = self.session.curs.execute(
-                "SELECT number, title, subtitle, text FROM songs WHERE id=%i"
-                % self.id).fetchone()
+        # Legacy key_note_id / key_is_major columns are left unread.
+        record = self.session.store.load_song(self.id)
 
-        self.number = row[0]
-        self.title = row[1]
-        self.subtitle = row[2]
+        self.number = record.number
+        self.title = record.title
+        self.subtitle = record.subtitle
         if self.subtitle == None:
             self.subtitle = ""
 
-        all_text = row[3]
-
-        # Read the chords for this song form the database:
         song_chords = []
-        for row in self.session.curs.execute(
-                "SELECT id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses FROM song_chord_link WHERE song_id=%i"
-                % self.id):
-            # id = row[0]
-            song_char_num = row[1]
-            note_id = row[2]
-            chord_type_id = row[3]
-            bass_note_id = row[4]
-            marker = row[5]
-            in_parentheses = row[6]
-            chord = SongChord(self, song_char_num, note_id, chord_type_id,
-                              bass_note_id, marker, in_parentheses)
-            song_chords.append(chord)
+        for link in record.chords:
+            song_chords.append(
+                SongChord(self, link.character_num, link.note_id,
+                          link.chord_type_id, link.bass_note_id, link.marker,
+                          link.in_parentheses))
 
         self.doc = QtGui.QTextDocument()
         self.doc.setDefaultFont(self.session.lyrics_font)
 
-        self.setAllText(all_text, song_chords)
+        self.setAllText(record.text, song_chords)
 
         self.updateSharpsOrFlats()
 
@@ -908,9 +857,7 @@ class Song:
             try:
                 new_char_num = renumber_map[old_char_num]
             except KeyError:
-                self.session.curs.execute(
-                    "DELETE FROM song_chord_link WHERE song_id=? AND character_num=?",
-                    (self.id, old_char_num))
+                self.session.store.delete_chord(self.id, old_char_num)
                 continue
             if new_char_num != old_char_num:
                 updates.append((new_char_num, old_char_num))
@@ -922,13 +869,9 @@ class Song:
         for new_char_num, old_char_num in sorted(updates,
                                                 key=lambda item: item[1],
                                                 reverse=True):
-            self.session.curs.execute(
-                "UPDATE song_chord_link SET character_num=? WHERE song_id=? AND character_num=?",
-                (new_char_num, self.id, old_char_num))
+            self.session.store.move_chord(self.id, old_char_num, new_char_num)
 
-        self.session.curs.execute("UPDATE songs SET text=? WHERE id=?",
-                              (modified_text, self.id))
-
-        self.session.curs.commit()
+        self.session.store.update_song_text(self.id, modified_text)
+        self.session.store.commit()
 
         self.setAllText(modified_text, new_all_chords)

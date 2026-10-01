@@ -58,6 +58,7 @@ from softchord_io import (
     parse_chord_over_lyrics,
     assign_chord_anchors,
     SongbookIO,
+    SongbookStore,
 )
 from softchord_session import (
     ChordDialog,
