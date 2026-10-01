@@ -52,6 +52,7 @@ from softchord_store import (
     database_file_was_replaced,
     readonly_database_error,
 )
+from softchord_layout import SongLayout, character_and_chord_boxes
 from softchord_io import (
     SQLITE_HEADER,
     SONGS_TABLE_SQL,
@@ -156,36 +157,7 @@ class CustomTextEdit(QtWidgets.QTextEdit):
             if self.app.current_song:
                 painter = QtGui.QPainter()
                 painter.begin(self.viewport())
-
-                painter.setFont(self.app.chords_font)
-                painter.setPen(self.app.chords_color)
-
-                song = self.app.current_song
-
-                cursor = self.textCursor()
-                for chord in song.iterateAllChords():
-                    # Obviously this line has chords:
-                    chords_height, lyrics_height, line_height = self.app.getHeightsWithChords(
-                    )
-
-                    cursor.setPosition(chord.character_num)
-                    left_rect = self.cursorRect(cursor)
-                    cursor.setPosition(chord.character_num + 1)
-                    right_rect = self.cursorRect(cursor)
-
-                    chord_text = chord.getChordText()
-
-                    # Average of left and right
-                    chord_middle = (left_rect.left() + right_rect.right()) // 2
-                    chord_width = self.app.getChordWidth(chord_text)
-                    chord_left = chord_middle - (chord_width / 2.0)
-                    chord_top = left_rect.bottom() - line_height
-
-                    chord_rect = QtCore.QRectF(chord_left, chord_top,
-                                               chord_width, chords_height)
-
-                    self.app.drawChord(painter, chord_rect, chord_text)
-
+                self.paintChordLayer(painter)
                 painter.end()
 
         else:
@@ -202,6 +174,17 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                                         paint_rect)
 
             painter.end()
+
+    def paintChordLayer(self, painter):
+        """Draw chords for the current song using the shared song layout."""
+        painter.setFont(self.app.chords_font)
+        painter.setPen(self.app.chords_color)
+        layout = SongLayout.place(
+            self, self.app.current_song.iterateAllChords(),
+            self.app.getHeightsWithChords, self.app.getChordWidth,
+            lambda chord: chord.getChordText())
+        for placed in layout.placed:
+            self.app.drawChord(painter, placed.chord_rect, placed.chord_text)
 
     def leaveEvent(self, event):
         """
@@ -2348,8 +2331,6 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         return (mbox.clickedButton() == b1)
 
     def getCharRects(self, editor, song_char_num, chord=None):
-        cursor = editor.textCursor()
-
         if chord != None:
             has_chord = True
         else:
@@ -2360,41 +2341,19 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                     break
 
         if has_chord:
-            chords_height, lyrics_height, line_height = self.getHeightsWithChords(
+            chords_height, _lyrics_height, line_height = self.getHeightsWithChords(
             )
-        else:
-            chords_height, lyrics_height, line_height = self.getHeightsWithoutChords(
-            )
-
-        # Find the bounding rect for this character:
-        cursor.setPosition(song_char_num)
-        left_rect = editor.cursorRect(cursor)
-        cursor.setPosition(song_char_num + 1)
-        right_rect = editor.cursorRect(cursor)
-
-        char_left = left_rect.left()
-        char_right = right_rect.right()
-
-        char_width = right_rect.right() - left_rect.left()
-        char_height = left_rect.bottom() - left_rect.top()
-        char_rect = QtCore.QRectF(left_rect.left(), left_rect.top(), char_width,
-                                  char_height)
-
-        if has_chord:
-            chord_top = left_rect.bottom() - line_height
             chord_text = chord.getChordText()
-            chord_middle = (char_left +
-                            char_right) // 2  # Average of left and right
-            chord_width = self.chords_font_metrics.horizontalAdvance(chord_text)
-
             chord_width = self.getChordWidth(chord_text)
-            chord_left = chord_middle - (chord_width / 2.0)
-            chord_rect = QtCore.QRectF(chord_left, chord_top, chord_width,
-                                       chords_height)
         else:
-            chord_rect = None
+            chords_height, _lyrics_height, line_height = self.getHeightsWithoutChords(
+            )
+            chord_text = None
+            chord_width = 0
 
-        return char_rect, chord_rect
+        return character_and_chord_boxes(editor, song_char_num, chord_text,
+                                         chords_height, line_height,
+                                         chord_width)
 
     def getChordWidth(self, chord_text):
 
@@ -2487,12 +2446,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 if chord_rect:
                     painter.fillRect(chord_rect, selection_brush)
 
-        for chord in song._chords:
-            char_rect, chord_rect = self.getCharRects(editor,
-                                                      chord.character_num,
-                                                      chord)
-
-            chord_text = chord.getChordText()
+        layout = SongLayout.place(editor, song._chords,
+                                  self.getHeightsWithChords, self.getChordWidth,
+                                  lambda chord: chord.getChordText())
+        for placed in layout.placed:
             painter.setFont(self.chords_font)
 
             # On Windows, selected text is drawn in white:
@@ -2501,8 +2458,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             #else:
             painter.setPen(self.chords_color)
 
-            if chord_rect:
-                self.drawChord(painter, chord_rect, chord_text)
+            if placed.chord_rect:
+                self.drawChord(painter, placed.chord_rect, placed.chord_text)
             else:
                 print('no chord rect!')
 
