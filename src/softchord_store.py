@@ -59,6 +59,8 @@ class SongbookStore:
 
     def __init__(self, connection=None):
         self.connection = connection
+        self.path = None
+        self._connect = None
 
     @property
     def is_open(self):
@@ -72,6 +74,39 @@ class SongbookStore:
         if self.connection is None:
             raise RuntimeError("No songbook is open")
         return self.connection
+
+    def reopen(self):
+        """Open the same path again.
+
+        SQLite keeps the original file handle. If that file is replaced, later
+        writes fail with "readonly" even though the file now on disk is writable.
+        """
+        if not self.path or self._connect is None:
+            return False
+        try:
+            conn = self._connect(self.path)
+        except (OSError, ValueError, sqlite3.Error):
+            return False
+        previous = self.connection
+        self.connection = conn
+        if previous is not None and previous is not conn:
+            try:
+                previous.rollback()
+            except sqlite3.Error:
+                pass
+            try:
+                previous.close()
+            except sqlite3.Error:
+                pass
+        return True
+
+    def _execute(self, sql, params=()):
+        try:
+            return self._conn().execute(sql, params)
+        except sqlite3.OperationalError as err:
+            if not database_file_was_replaced(err) or not self.reopen():
+                raise
+            return self._conn().execute(sql, params)
 
     def commit(self):
         self._conn().commit()
@@ -109,8 +144,8 @@ class SongbookStore:
             row = conn.execute(
                 "SELECT title, number, text FROM songs WHERE id=%i" %
                 song_id).fetchone()
-            conn.execute("ALTER TABLE songs ADD subtitle TEXT")
-            conn.commit()
+            self._execute("ALTER TABLE songs ADD subtitle TEXT")
+            self.commit()
             print("Table songs: added 'subtitle' column")
             row = conn.execute(
                 "SELECT number, title, subtitle, text FROM songs WHERE id=%i" %
@@ -134,36 +169,35 @@ class SongbookStore:
         return row[0] + 1
 
     def insert_song(self, song_id, number, title, subtitle, text):
-        self._conn().execute(
+        self._execute(
             "INSERT INTO songs (id, number, title, subtitle, text) "
             "VALUES (?, ?, ?, ?, ?)",
             (song_id, number, title, subtitle, text))
 
     def update_song_title(self, song_id, title):
-        self._conn().execute("UPDATE songs SET title=? WHERE id=?",
+        self._execute("UPDATE songs SET title=? WHERE id=?",
                              (title, song_id))
 
     def update_song_subtitle(self, song_id, subtitle):
-        self._conn().execute("UPDATE songs SET subtitle=? WHERE id=?",
+        self._execute("UPDATE songs SET subtitle=? WHERE id=?",
                              (subtitle, song_id))
 
     def update_song_number(self, song_id, number):
-        self._conn().execute("UPDATE songs SET number=? WHERE id=?",
+        self._execute("UPDATE songs SET number=? WHERE id=?",
                              (number, song_id))
 
     def update_song_text(self, song_id, text):
-        self._conn().execute("UPDATE songs SET text=? WHERE id=?",
+        self._execute("UPDATE songs SET text=? WHERE id=?",
                              (text, song_id))
 
     def update_song(self, song_id, number, title, subtitle, text):
-        self._conn().execute(
+        self._execute(
             "UPDATE songs SET number=?, title=?, subtitle=?, text=? WHERE id=?",
             (number, title, subtitle, text, song_id))
 
     def delete_song(self, song_id):
-        conn = self._conn()
-        conn.execute("DELETE FROM songs WHERE id=%i" % song_id)
-        conn.execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
+        self._execute("DELETE FROM songs WHERE id=%i" % song_id)
+        self._execute("DELETE FROM song_chord_link WHERE song_id=%i" % song_id)
 
     def next_chord_id(self):
         """Next chord-link id. The first chord in an empty songbook is 0."""
@@ -183,16 +217,15 @@ class SongbookStore:
                      in_parentheses,
                      chord_id=None):
         """Insert a chord link. Omit chord_id to let SQLite assign the row id."""
-        conn = self._conn()
         if chord_id is None:
-            conn.execute(
+            self._execute(
                 "INSERT INTO song_chord_link (song_id, character_num, note_id, "
                 "chord_type_id, bass_note_id, marker, in_parentheses) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (song_id, character_num, note_id, chord_type_id, bass_note_id,
                  marker, in_parentheses))
             return None
-        conn.execute(
+        self._execute(
             "INSERT INTO song_chord_link (id, song_id, character_num, note_id, "
             "chord_type_id, bass_note_id, marker, in_parentheses) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -209,7 +242,7 @@ class SongbookStore:
 
     def update_chord(self, song_id, character_num, note_id, chord_type_id,
                      bass_note_id, marker, in_parentheses):
-        self._conn().execute(
+        self._execute(
             "UPDATE song_chord_link SET note_id=?, chord_type_id=?, "
             "bass_note_id=?, marker=?, in_parentheses=? "
             "WHERE song_id=? AND character_num=?",
@@ -217,12 +250,12 @@ class SongbookStore:
              song_id, character_num))
 
     def delete_chord(self, song_id, character_num):
-        self._conn().execute(
+        self._execute(
             "DELETE FROM song_chord_link WHERE song_id=? AND character_num=?",
             (song_id, character_num))
 
     def move_chord(self, song_id, old_character_num, new_character_num):
-        self._conn().execute(
+        self._execute(
             "UPDATE song_chord_link SET character_num=? "
             "WHERE song_id=? AND character_num=?",
             (new_character_num, song_id, old_character_num))

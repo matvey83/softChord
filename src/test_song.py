@@ -1629,6 +1629,26 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
             old.close()
         self.assertEqual(old_title, "Test Song")
 
+    def test_store_write_saves_to_the_replaced_songbook_file(self):
+        path = self.app.current_songbook_filename
+        song_id = self.app.current_song.id
+        replaced = path + ".replaced"
+        os.rename(path, replaced)
+        shutil.copy(replaced, path)
+
+        self.app.store.update_song_title(song_id, "Saved on the new file")
+        self.app.store.commit()
+
+        saved = self.app.curs.execute(
+            "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0]
+        self.assertEqual(saved, "Saved on the new file")
+        old = sqlite3.connect(replaced)
+        try:
+            old_title = old.execute("SELECT title FROM songs").fetchone()[0]
+        finally:
+            old.close()
+        self.assertEqual(old_title, "Test Song")
+
     def test_save_readonly_songbook_opens_a_writable_copy(self):
         self.app.curs.execute("PRAGMA query_only = ON")
         dest = os.path.join(tempfile.mkdtemp(), "copy.songbook")
