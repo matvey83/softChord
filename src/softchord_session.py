@@ -419,12 +419,19 @@ class ChordDialog(QtWidgets.QDialog):
     Dialog for allowing the user to set the chord note & type.
     """
 
+    # Native macOS line edits ignore a background color unless a border is set.
+    _INVALID_CHORD_STYLE = "QLineEdit { background-color: red; border: 1px solid red; }"
+
     def __init__(self, app):
         super().__init__(app.win)
 
         self.app = app
         self.ui = softchord_chord_dialog_ui.Ui_Dialog()
         self.ui.setupUi(self)
+        self._edited_chord = None
+        # Set while copying one side onto the other, so the two stay in step
+        # without rewriting the text the user is still typing.
+        self._updating_chord = False
 
         notes_list = []
         char_num = getattr(self.app, "selected_char_num", None)
@@ -440,12 +447,87 @@ class ChordDialog(QtWidgets.QDialog):
         self.ui.bass_menu.addItems(["None"] + notes_list)
         self.ui.bass_menu.setMaxVisibleItems(12)  # Show all notes
 
-    def display(self, chord):
+        # Chord text sits to the right of "Chord for selected letter:".
+        chord_text = QtWidgets.QLineEdit(self)
+        chord_text.setObjectName("chord_text_ef")
+        header = QtWidgets.QHBoxLayout()
+        self.ui.verticalLayout.removeWidget(self.ui.label)
+        header.addWidget(self.ui.label)
+        header.addWidget(chord_text, 1)
+        self.ui.verticalLayout.insertLayout(0, header)
+        self.ui.chord_text_ef = chord_text
+        self.setTabOrder(chord_text, self.ui.note_menu)
+
+        self.ui.note_menu.currentIndexChanged.connect(self._onChordEdited)
+        self.ui.chord_type_menu.currentIndexChanged.connect(self._onChordEdited)
+        self.ui.bass_menu.currentIndexChanged.connect(self._onChordEdited)
+        self.ui.marker_ef.textChanged.connect(self._onChordEdited)
+        self.ui.in_parentheses_box.toggled.connect(self._onChordEdited)
+        chord_text.textChanged.connect(self._onChordTextChanged)
+
+    def _onChordEdited(self, *args):
+        if self._updating_chord:
+            return
+        self._updateChordText()
+
+    def _onChordTextChanged(self, text):
+        if self._updating_chord or self._edited_chord is None:
+            return
+        try:
+            parsed = self.app.convertChordFromString(text)
+        except (ValueError, KeyError, IndexError):
+            self._setChordTextInvalid(True)
+            return
+
+        self._setChordTextInvalid(False)
+        marker, note_id, type_id, bass_id, in_parentheses = parsed
+        # Hold the menus still so this edit is not immediately replaced
+        # with the normalized spelling.
+        self._updating_chord = True
+        try:
+            self.ui.note_menu.setCurrentIndex(note_id)
+            self.ui.chord_type_menu.setCurrentIndex(type_id)
+            self.ui.bass_menu.setCurrentIndex(bass_id + 1)
+            self.ui.marker_ef.setText(marker or "")
+            self.ui.in_parentheses_box.setChecked(bool(in_parentheses))
+        finally:
+            self._updating_chord = False
+
+    def _setChordTextInvalid(self, invalid):
+        style = self._INVALID_CHORD_STYLE if invalid else ""
+        self.ui.chord_text_ef.setStyleSheet(style)
+
+    def _updateChordText(self):
+        if self._edited_chord is None:
+            return
+        text = self._chordTextFromControls()
+        edit = self.ui.chord_text_ef
+        self._updating_chord = True
+        try:
+            if edit.text() != text:
+                edit.setText(text)
+            self._setChordTextInvalid(False)
+        finally:
+            self._updating_chord = False
+
+    def _chordTextFromControls(self):
         """
-        Display the chord-editing dialog box.
-        Modify the passed chord if OK is pressed.
-        Returns False if user pressed Cancel.
+        Chord text for the current controls, spelled the same way as the song.
         """
+        chord = self._edited_chord
+        preview = SongChord(chord.song, chord.character_num,
+                            self.ui.note_menu.currentIndex(),
+                            self.ui.chord_type_menu.currentIndex(),
+                            self.ui.bass_menu.currentIndex() - 1,
+                            self.ui.marker_ef.text(),
+                            self.ui.in_parentheses_box.isChecked())
+        return preview.getChordText()
+
+    def _loadChord(self, chord):
+        """
+        Fill the controls from this chord and refresh the chord text.
+        """
+        self._edited_chord = chord
 
         note_id = chord.note_id
         chord_type_id = chord.chord_type_id
@@ -466,6 +548,21 @@ class ChordDialog(QtWidgets.QDialog):
         self.ui.marker_ef.setText(marker)
 
         self.ui.in_parentheses_box.setChecked(in_parentheses)
+        self._updateChordText()
+
+    def display(self, chord):
+        """
+        Display the chord-editing dialog box.
+        Modify the passed chord if OK is pressed.
+        Returns False if user pressed Cancel.
+        """
+
+        self._loadChord(chord)
+
+        # Focus the chord text and select it so typing replaces the chord.
+        edit = self.ui.chord_text_ef
+        edit.setFocus()
+        edit.selectAll()
 
         self.show()
         self.raise_()
