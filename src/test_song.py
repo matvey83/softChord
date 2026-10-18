@@ -1302,6 +1302,95 @@ class TestChordDialogEditing(unittest.TestCase):
         finally:
             softchord.ChordDialog.display = original_display
 
+    def test_chord_text_matches_rendered_chord(self):
+        """The chord field shows the same text the song draws."""
+        chord = list(self.app.current_song.iterateAllChords())[0]
+        dialog = softchord.ChordDialog(self.app)
+        dialog._loadChord(chord)
+        edit = dialog.ui.chord_text_ef
+        self.assertEqual(edit.text(), chord.getChordText())
+
+        # F# m7 / G, with a verse marker and parentheses.
+        dialog.ui.note_menu.setCurrentIndex(6)
+        dialog.ui.chord_type_menu.setCurrentIndex(4)
+        dialog.ui.bass_menu.setCurrentIndex(8)
+        dialog.ui.marker_ef.setText("2")
+        dialog.ui.in_parentheses_box.setChecked(True)
+
+        expected = SongChord(chord.song, chord.character_num, 6, 4, 7, "2",
+                             True)
+        self.assertEqual(edit.text(), expected.getChordText())
+        self.assertEqual(
+            edit.text(), "(2:%sm7/G)" %
+            chord.song._getNoteString(6, chord.character_num))
+        self.assertEqual(edit.styleSheet(), "")
+        dialog.close()
+
+    def test_chord_text_updates_selection(self):
+        """Typing a chord fills the marker, note, type, bass, and parentheses."""
+        chord = list(self.app.current_song.iterateAllChords())[0]
+        dialog = softchord.ChordDialog(self.app)
+        dialog._loadChord(chord)
+        edit = dialog.ui.chord_text_ef
+
+        edit.setText("2:F#m7/G")
+        self.assertEqual(dialog.ui.marker_ef.text(), "2")
+        self.assertEqual(dialog.ui.note_menu.currentIndex(), 6)
+        self.assertEqual(dialog.ui.chord_type_menu.currentIndex(), 4)
+        self.assertEqual(dialog.ui.bass_menu.currentIndex(), 8)
+        self.assertFalse(dialog.ui.in_parentheses_box.isChecked())
+        self.assertEqual(edit.styleSheet(), "")
+
+        edit.setText("(Am)")
+        self.assertEqual(dialog.ui.marker_ef.text(), "")
+        self.assertEqual(dialog.ui.note_menu.currentIndex(), 9)
+        self.assertEqual(dialog.ui.chord_type_menu.currentIndex(), 1)
+        self.assertEqual(dialog.ui.bass_menu.currentIndex(), 0)
+        self.assertTrue(dialog.ui.in_parentheses_box.isChecked())
+        dialog.close()
+
+    def test_invalid_chord_text_is_red_and_keeps_selection(self):
+        """A chord the parser rejects turns the field red and leaves the menus."""
+        chord = list(self.app.current_song.iterateAllChords())[0]
+        dialog = softchord.ChordDialog(self.app)
+        dialog._loadChord(chord)
+        edit = dialog.ui.chord_text_ef
+        edit.setText("2:F#m7/G")
+
+        kept = (dialog.ui.marker_ef.text(), dialog.ui.note_menu.currentIndex(),
+                dialog.ui.chord_type_menu.currentIndex(),
+                dialog.ui.bass_menu.currentIndex(),
+                dialog.ui.in_parentheses_box.isChecked())
+        edit.setText("nope")
+        self.assertIn("red", edit.styleSheet())
+        self.assertEqual(
+            kept,
+            (dialog.ui.marker_ef.text(), dialog.ui.note_menu.currentIndex(),
+             dialog.ui.chord_type_menu.currentIndex(),
+             dialog.ui.bass_menu.currentIndex(),
+             dialog.ui.in_parentheses_box.isChecked()))
+
+        dialog.ui.chord_type_menu.setCurrentIndex(0)
+        self.assertEqual(edit.styleSheet(), "")
+        note = chord.song._getNoteString(6, chord.character_num)
+        self.assertEqual(edit.text(), "2:%s/G" % note)
+        dialog.close()
+
+    def test_chord_text_is_selected_when_dialog_opens(self):
+        """Opening the dialog focuses the chord field with its text selected."""
+        chord = list(self.app.current_song.iterateAllChords())[0]
+        dialog = softchord.ChordDialog(self.app)
+
+        def check_and_close():
+            edit = dialog.ui.chord_text_ef
+            self.assertIs(dialog.focusWidget(), edit)
+            self.assertTrue(edit.text())
+            self.assertEqual(edit.selectedText(), edit.text())
+            dialog.reject()
+
+        QtCore.QTimer.singleShot(0, check_and_close)
+        self.assertFalse(dialog.display(chord))
+
 
 # ---------------------------------------------------------------------------
 # Tests for Rendering / Drawing core functionality
