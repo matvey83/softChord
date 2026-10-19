@@ -349,6 +349,31 @@ class SongChar:
         self.chord_right = chord_right
 
 
+def place_chord_on_line(cells, anchor, chord_text):
+    """Write one chord into a monospace lyric line, centered on anchor.
+
+    cells is one character per lyric column. An even-length name is shifted
+    so the anchor letter sits just left of the name's middle. The name is
+    moved inward when it would hang off either end of the line.
+    """
+    chord_len = len(chord_text)
+    chord_left = anchor - (chord_len // 2)
+    if not (chord_len % 2):
+        chord_left += 1
+    chord_right = chord_left + chord_len
+
+    while chord_left < 0:
+        chord_left += 1
+        chord_right += 1
+
+    while chord_right >= len(cells):
+        chord_right -= 1
+        chord_left -= 1
+
+    for i, char in enumerate(chord_text):
+        cells[i + chord_left] = char
+
+
 class Song:
     """
     Stores information for a particular song.
@@ -687,47 +712,15 @@ class Song:
         for linenum, line_text in enumerate(lines):
 
             if include_chords and self.getLineHasChords(linenum):
-                # Add the chords line above this line
-
-                line_chord_text_list = [' '] * len(line_text)
-
-                # Figure out the lyric letter for the mouse location:
-                for line_char_num in range(len(line_text)):
-                    # Figure out if a chord is attached to this letter:
-                    for chord in self.iterateAllChords():
-                        chord_song_char_num = chord.character_num
-                        chord_linenum, line_char_num = self.songCharToLineChar(
-                            chord_song_char_num)
-
-                        if chord_linenum != linenum:
-                            continue
-
-                        chord_text = chord.getChordText()
-
-                        chord_len = len(chord_text)
-                        chord_left = line_char_num - (chord_len // 2)
-                        if not (chord_len % 2):  # Even number of characters:
-                            # Offset the chord so that the chord-letter is closer to the middle of the chord text
-                            chord_left += 1
-                        chord_right = chord_left + chord_len
-
-                        # Make sure that the chord does not go beyond the start-of-line:
-                        while chord_left < 0:
-                            chord_left += 1
-                            chord_right += 1
-
-                        # Make sure that the chord does not go beyond the end-of-line:
-                        while chord_right >= len(line_chord_text_list):
-                            chord_right -= 1
-                            chord_left -= 1
-
-                        # For each letter in the chord text:
-                        for i in range(len(chord_text)):
-                            pos = i + chord_left
-                            line_chord_text_list[pos] = chord_text[i]
-
-                line_chord_text = ''.join(line_chord_text_list).rstrip()
-                song_text += line_chord_text + "\n"
+                # One column per lyric letter. Later chords overwrite earlier ones.
+                cells = [' '] * len(line_text)
+                for chord in self.iterateAllChords():
+                    chord_linenum, anchor = self.songCharToLineChar(
+                        chord.character_num)
+                    if chord_linenum != linenum:
+                        continue
+                    place_chord_on_line(cells, anchor, chord.getChordText())
+                song_text += ''.join(cells).rstrip() + "\n"
 
             if not include_chords:
                 line_text = line_text.rstrip()

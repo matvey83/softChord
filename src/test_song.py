@@ -25,6 +25,21 @@ from PyQt6.QtTest import QTest
 
 import softchord
 from softchord_layout import SongLayout
+from softchord_io import (
+    _chord_tokens,
+    _classify_chord_line,
+    _median,
+    _nearest_nonspace,
+    _next_free_nonspace,
+    assign_chord_anchors,
+    text_is_proportionally_spaced,
+)
+from softchord_song import place_chord_on_line
+from softchord_store import (
+    SongbookStore,
+    database_file_was_replaced,
+    readonly_database_error,
+)
 from softchord import (
     Song,
     SongChord,
@@ -367,6 +382,29 @@ class TestSongChord(unittest.TestCase):
         self.assertEqual(chord.bass_note_id, 6)  # F#
 
 
+class TestPlaceChordOnLine(unittest.TestCase):
+    """Monospace chord row used by Copy Song Text."""
+
+    def test_odd_name_is_centered_on_the_anchor(self):
+        cells = [" "] * 8
+        place_chord_on_line(cells, 4, "C")
+        self.assertEqual("".join(cells), "    C   ")
+
+    def test_two_letter_name_starts_on_the_anchor(self):
+        cells = [" "] * 8
+        place_chord_on_line(cells, 4, "Am")
+        self.assertEqual("".join(cells), "    Am  ")
+
+    def test_name_is_shifted_to_stay_on_the_line(self):
+        cells = [" "] * 4
+        place_chord_on_line(cells, 0, "(C)")
+        self.assertEqual("".join(cells), "(C) ")
+
+        cells = [" "] * 8
+        place_chord_on_line(cells, 7, "G7")
+        self.assertEqual("".join(cells), "     G7 ")
+
+
 class TestSongChar(unittest.TestCase):
 
     def test_basic(self):
@@ -520,6 +558,19 @@ class TestSong(unittest.TestCase):
         self.assertIn("G", lines[0])
         self.assertIn("Test line one", lines[1])
 
+    def test_get_as_text_places_each_chord_on_its_letter(self):
+        # "Test line one": C on column 0, Am (even length) starts on column 5.
+        self.song._addChord(SongChord(self.song, 0, 0, 0, -1, "", 0))
+        self.song._addChord(SongChord(self.song, 5, 9, 1, -1, "", 0))
+        # G on the last letter is shifted left so the name stays on the line.
+        self.song._addChord(SongChord(self.song, 14 + 12, 7, 0, -1, "", 0))
+
+        lines = self.song.getAsText().split("\r\n")
+        self.assertEqual(lines[0], "C    Am")
+        self.assertEqual(lines[1], "Test line one")
+        self.assertEqual(lines[2], " " * 11 + "G")
+        self.assertEqual(lines[3], "Test line two")
+
     def test_get_as_chordpro_with_bass_and_marker(self):
         chord = SongChord(self.song, 0, 0, 0, 4, "2", 0)  # 2:C/E
         self.song._addChord(chord)
@@ -565,6 +616,19 @@ class TestSong(unittest.TestCase):
         self.assertEqual(self.song.lineCharToSongChar(0, 0), 0)
         self.assertEqual(self.song.lineCharToSongChar(1, 0), 14)
         self.assertEqual(self.song.lineCharToSongChar(1, 3), 17)
+        with self.assertRaises(RuntimeError):
+            self.song.songCharToLineChar(999)
+        with self.assertRaises(RuntimeError):
+            self.song.lineCharToSongChar(9, 0)
+
+    def test_line_heights_follow_whether_the_line_has_chords(self):
+        self.assertEqual(self.song.getLineHeights(0),
+                         self.app.getHeightsWithoutChords())
+        self.song._addChord(SongChord(self.song, 0, 0, 0, -1, "", 0))
+        self.assertEqual(self.song.getLineHeights(0),
+                         self.app.getHeightsWithChords())
+        self.assertEqual(self.song.getLineHeights(1),
+                         self.app.getHeightsWithoutChords())
 
     def test_get_line_has_chords(self):
         self.assertFalse(self.song.getLineHasChords(0))
@@ -2874,6 +2938,208 @@ class TestConvertChordFromString(unittest.TestCase):
                 with self.assertRaises(ValueError) as ctx:
                     self.convert(text)
                 self.assertIn(fragment, str(ctx.exception))
+
+
+class _CharWidth:
+    """Font stand-in. Spaces can be narrower than letters."""
+
+    def __init__(self, space=1.0):
+        self.space = space
+
+    def horizontalAdvance(self, text):
+        return float(sum(self.space if char.isspace() else 1.0
+                         for char in text))
+
+
+class TestChordLineTokens(unittest.TestCase):
+    """Splitting a chord line into names, before they are placed on lyrics."""
+
+    def setUp(self):
+        self.parser = _ChordParseApp()
+
+    def convert(self, text):
+        return softchord.App.convertChordFromString(self.parser, text)
+
+    def test_spaced_names_keep_their_columns(self):
+        self.assertEqual(_chord_tokens("  Am  C"), [("Am", 2, 3), ("C", 6, 6)])
+
+    def test_glued_names_are_split_on_note_letters(self):
+        self.assertEqual(_chord_tokens("AmC"), [("Am", 0, 1), ("C", 2, 2)])
+
+    def test_slash_chord_stays_one_token(self):
+        self.assertEqual(_chord_tokens("C/E"), [("C/E", 0, 2)])
+
+    def test_cyrillic_lookalikes_are_normalized(self):
+        self.assertEqual(_chord_tokens("Сm"), [("Cm", 0, 1)])
+
+    def test_line_is_chords_only_when_chords_outnumber_other_words(self):
+        is_chord, entries, warnings = _classify_chord_line(
+            "C G", self.convert)
+        self.assertTrue(is_chord)
+        self.assertEqual([entry[0] for entry in entries], ["C", "G"])
+        self.assertEqual(warnings, [])
+
+        is_chord, entries, warnings = _classify_chord_line(
+            "Hello C", self.convert)
+        self.assertFalse(is_chord)
+        self.assertEqual([entry[0] for entry in entries], ["C"])
+        self.assertEqual(len(warnings), 1)
+
+    def test_bare_slash_counts_as_a_chord_but_is_not_parsed(self):
+        is_chord, entries, _warnings = _classify_chord_line(
+            "C / G", self.convert)
+        self.assertTrue(is_chord)
+        self.assertEqual([entry[0] for entry in entries], ["C", "G"])
+
+    def test_median_odd_and_even_counts(self):
+        self.assertEqual(_median([2, 9, 4]), 4)
+        self.assertEqual(_median([1, 2, 3, 4]), 2.5)
+
+    def test_nearest_nonspace_prefers_the_right_on_a_tie(self):
+        self.assertEqual(_nearest_nonspace("a b", 1), 2)
+        self.assertEqual(_nearest_nonspace("a b", 0), 0)
+        self.assertIsNone(_nearest_nonspace("   ", 1))
+        self.assertEqual(_nearest_nonspace("ab", 10), 1)
+
+    def test_next_free_letter_looks_right_then_left(self):
+        self.assertEqual(_next_free_nonspace("abc", 0, {0}), 1)
+        self.assertEqual(_next_free_nonspace("abc", 2, {1, 2}), 0)
+        self.assertIsNone(_next_free_nonspace("a a", 1, {0, 2}))
+
+    def test_proportional_sheet_is_long_in_characters_but_not_in_width(self):
+        # Twelve narrow spaces make the chord line much longer than "Hello"
+        # while the two lines have the same visual width.
+        pairs = [("C" + (" " * 12) + "G", "Hello")]
+        self.assertTrue(
+            text_is_proportionally_spaced(pairs, _CharWidth(space=0.25)))
+        self.assertFalse(text_is_proportionally_spaced(pairs, _CharWidth()))
+        self.assertFalse(text_is_proportionally_spaced([], _CharWidth()))
+
+    def test_empty_lyric_gets_no_anchors(self):
+        self.assertEqual(
+            assign_chord_anchors("C", "   ", [(0, 0, "C")], _CharWidth(),
+                                 False), [])
+
+
+class _MovedDatabase(sqlite3.OperationalError):
+    sqlite_errorname = "SQLITE_READONLY_DBMOVED"
+
+
+class _FakeConnection:
+    """Connection whose first write looks like a replaced songbook file."""
+
+    def __init__(self, fail):
+        self.fail = fail
+        self.closed = False
+        self.rolled_back = False
+
+    def execute(self, sql, params=()):
+        if self.fail:
+            self.fail = False
+            raise _MovedDatabase("attempt to write a readonly database")
+        return ("ok", sql, params)
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
+        self.closed = True
+
+
+class TestSongbookStoreErrors(unittest.TestCase):
+    """Which SQLite errors mean 'reopen the file' rather than 'give up'."""
+
+    def test_readonly_message(self):
+        readonly = sqlite3.OperationalError(
+            "attempt to write a readonly database")
+        self.assertTrue(readonly_database_error(readonly))
+        self.assertFalse(
+            readonly_database_error(sqlite3.OperationalError("no such table")))
+        self.assertFalse(readonly_database_error(ValueError("readonly")))
+
+    def test_replaced_file_is_recognized_by_sqlite_name(self):
+        self.assertTrue(database_file_was_replaced(_MovedDatabase("moved")))
+        self.assertFalse(
+            database_file_was_replaced(
+                sqlite3.OperationalError("attempt to write a readonly database")))
+
+    def test_write_reopens_when_the_file_was_replaced(self):
+        old = _FakeConnection(fail=True)
+        new = _FakeConnection(fail=False)
+        store = SongbookStore(old)
+        store.path = "/tmp/book.songbook"
+        store._connect = lambda path: new
+
+        result = store._execute("UPDATE songs SET title=?", ("A",))
+
+        self.assertEqual(result, ("ok", "UPDATE songs SET title=?", ("A",)))
+        self.assertIs(store.connection, new)
+        self.assertTrue(old.rolled_back)
+        self.assertTrue(old.closed)
+
+    def test_reopen_failure_keeps_the_original_error(self):
+        old = _FakeConnection(fail=True)
+        store = SongbookStore(old)
+        store.path = "/tmp/book.songbook"
+
+        def cannot_open(path):
+            raise OSError("gone")
+
+        store._connect = cannot_open
+        with self.assertRaises(_MovedDatabase):
+            store._execute("UPDATE songs SET title=?", ("A",))
+        self.assertIs(store.connection, old)
+        self.assertFalse(old.closed)
+
+    def test_reopen_without_a_path_does_nothing(self):
+        store = SongbookStore()
+        self.assertFalse(store.reopen())
+
+
+class TestSongbookStoreEdits(unittest.TestCase):
+    """Song and chord rows, without going through the editor."""
+
+    def setUp(self):
+        self.td = tempfile.mkdtemp()
+        self.path = os.path.join(self.td, "t.songbook")
+        self.store = SongbookStore(SongbookStore.create_file(self.path))
+        self.store.path = self.path
+
+    def tearDown(self):
+        if self.store.connection is not None:
+            self.store.connection.close()
+        shutil.rmtree(self.td)
+
+    def test_ids_start_at_zero_and_then_follow_the_max(self):
+        self.assertEqual(self.store.next_song_id(), 0)
+        self.assertEqual(self.store.next_chord_id(), 0)
+        self.store.insert_song(0, 1, "One", "", "Hello")
+        self.store.insert_chord(0, 0, 0, 0, -1, "", 0, chord_id=3)
+        self.store.commit()
+        self.assertEqual(self.store.next_song_id(), 1)
+        self.assertEqual(self.store.next_chord_id(), 4)
+
+    def test_move_and_delete_song(self):
+        self.store.insert_song(0, 1, "One", "sub", "Hello")
+        self.store.insert_chord(0, 2, 0, 0, -1, "", 0, chord_id=0)
+        self.store.move_chord(0, 2, 4)
+        self.store.commit()
+        self.assertEqual(self.store.chord_positions(0), [4])
+
+        song = self.store.load_song(0)
+        self.assertEqual(song.title, "One")
+        self.assertEqual(song.chords[0].character_num, 4)
+
+        self.store.delete_song(0)
+        self.store.commit()
+        self.assertEqual(self.store.list_song_rows(), [])
+        self.assertEqual(self.store.chord_positions(0), [])
+
+    def test_closed_store_lists_nothing_and_refuses_queries(self):
+        closed = SongbookStore()
+        self.assertEqual(closed.list_song_rows(), [])
+        with self.assertRaises(RuntimeError):
+            closed.next_song_id()
 
 
 class TestSongbookKeySchema(unittest.TestCase):
