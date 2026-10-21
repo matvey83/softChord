@@ -17,6 +17,8 @@ import sqlite3
 import copy
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 
 from PyQt6 import QtCore, QtGui, QtWidgets, QtPrintSupport
@@ -297,6 +299,42 @@ def create_test_song(app,
 
     song = Song(app, song_id)
     return song
+
+
+# The suite shares one App. Another QApplication crashes when the process exits.
+_test_app = None
+_test_app_fonts = None
+
+
+def test_app():
+    """One App for the process. Later calls put back methods and fonts a test replaced."""
+    global _test_app, _test_app_fonts
+    if _test_app is None:
+        _test_app = softchord.App([])
+        session = _test_app.session
+        _test_app_fonts = (
+            QtGui.QFont(session.lyrics_font),
+            session.lyrics_font_size,
+            QtGui.QFont(session.chords_font),
+            session.chords_font_size,
+            QtGui.QFont(session.symbols_font),
+        )
+        return _test_app
+
+    session = _test_app.session
+    for name in list(session.__dict__):
+        if callable(getattr(type(session), name, None)):
+            del session.__dict__[name]
+    lyrics, lyrics_size, chords, chords_size, symbols = _test_app_fonts
+    session.lyrics_font = QtGui.QFont(lyrics)
+    session.lyrics_font_size = lyrics_size
+    session.chords_font = QtGui.QFont(chords)
+    session.chords_font_size = chords_size
+    session.symbols_font = QtGui.QFont(symbols)
+    session.updateEditorFonts()
+    if session.editor.lyric_editor_mode:
+        session.chordEditorSelected()
+    return _test_app
 
 
 def open_empty_temp_songbook(app):
@@ -1082,9 +1120,8 @@ class TestAppCoreFunctionality(unittest.TestCase):
             cls.qapp = QtWidgets.QApplication.instance()
 
     def setUp(self):
-        # Create a real App and immediately open a songbook so .curs is valid
-        self.app = softchord.App([])
-        self.app.win = QtWidgets.QWidget()
+        # Open a songbook so .curs is valid
+        self.app = test_app()
         open_empty_temp_songbook(self.app)
 
     def test_process_key_pressed_add_new_chord(self):
@@ -1219,8 +1256,7 @@ class TestAppHitTesting(unittest.TestCase):
             cls.qapp = QtWidgets.QApplication.instance()
 
     def setUp(self):
-        self.app = softchord.App([])
-        self.app.win = QtWidgets.QWidget()
+        self.app = test_app()
         open_empty_temp_songbook(self.app)
         insert_and_select_song(self.app, with_chord=True)
 
@@ -1268,8 +1304,7 @@ class TestChordDialogEditing(unittest.TestCase):
             cls.qapp = QtWidgets.QApplication.instance()
 
     def setUp(self):
-        self.app = softchord.App([])
-        self.app.win = QtWidgets.QWidget()
+        self.app = test_app()
         open_empty_temp_songbook(self.app)
         insert_and_select_song(self.app, with_chord=True)
 
@@ -1478,8 +1513,7 @@ class TestAppRendering(unittest.TestCase):
             cls.qapp = QtWidgets.QApplication.instance()
 
     def setUp(self):
-        self.app = softchord.App([])
-        self.app.win = QtWidgets.QWidget()
+        self.app = test_app()
         open_empty_temp_songbook(self.app)
         insert_and_select_song(self.app, with_chord=True)
 
@@ -1616,8 +1650,7 @@ class TestPrintingPdfFontClipboard(unittest.TestCase):
             cls.qapp = QtWidgets.QApplication.instance()
 
     def setUp(self):
-        self.app = softchord.App([])
-        self.app.win = QtWidgets.QWidget()
+        self.app = test_app()
 
         open_empty_temp_songbook(self.app)
         insert_and_select_song(self.app, with_chord=True)
@@ -1795,8 +1828,7 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
             cls.qapp = QtWidgets.QApplication.instance()
 
     def setUp(self):
-        self.app = softchord.App([])
-        self.app.win = QtWidgets.QWidget()
+        self.app = test_app()
         open_empty_temp_songbook(self.app)
         insert_and_select_song(self.app, with_chord=True)
 
@@ -1974,8 +2006,7 @@ class TestMoreAppOperations(unittest.TestCase):
 
     def setUp(self):
         # Use a real App (with mocked dialogs) so curs, models, etc. are properly initialized
-        self.app = softchord.App([])
-        self.app.win = QtWidgets.QWidget()
+        self.app = test_app()
 
         # Mock all dialog methods so nothing blocks
         self.app.info = lambda text: None
@@ -3283,9 +3314,7 @@ class TestSongsContextMenu(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # One App for the class. App is a QApplication, and constructing
-        # another per test crashes the interpreter at shutdown.
-        cls.app = softchord.App([])
+        cls.app = test_app()
         cls._td = tempfile.TemporaryDirectory()
         path = os.path.join(cls._td.name, "songs.songbook")
         conn = sqlite3.connect(path)
@@ -3298,7 +3327,6 @@ class TestSongsContextMenu(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.app.closeSongbook()
-        cls.app.win.close()
         cls._td.cleanup()
 
     def setUp(self):
@@ -3435,11 +3463,7 @@ class TestEditorModeMenu(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.app = softchord.App([])
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.app.win.close()
+        cls.app = test_app()
 
     def test_chord_mode_is_checked_at_startup(self):
         self.app.chordEditorSelected()
@@ -3608,7 +3632,7 @@ class TestChordOverLyricPlacement(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.app = softchord.App([])
+        cls.app = test_app()
         cls._td = tempfile.TemporaryDirectory()
         path = os.path.join(cls._td.name, "songs.songbook")
         conn = sqlite3.connect(path)
@@ -3621,7 +3645,6 @@ class TestChordOverLyricPlacement(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.app.closeSongbook()
-        cls.app.win.close()
         cls._td.cleanup()
 
     def setUp(self):
@@ -3785,6 +3808,30 @@ class TestChordOverLyricPlacement(unittest.TestCase):
                     got_line.rstrip(), expected_line.rstrip(),
                     "%s lyrics\n got %r\n expected %r" %
                     (where, got_line, expected_line))
+
+
+class TestAppShutdown(unittest.TestCase):
+    """A second App() is refused, and the process still exits."""
+
+    def test_second_app_is_refused_and_the_process_exits(self):
+        script = (
+            "import softchord\n"
+            "softchord.App([])\n"
+            "try:\n"
+            "    softchord.App([])\n"
+            "except RuntimeError:\n"
+            "    print('ok')\n"
+            "else:\n"
+            "    raise SystemExit('second app was constructed')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-u", "-c", script],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ok", result.stdout)
 
 
 if __name__ == "__main__":
