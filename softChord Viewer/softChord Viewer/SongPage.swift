@@ -32,10 +32,9 @@ struct SongPage: View {
                     .foregroundStyle(.red)
                     .padding()
             } else {
-                ScrollView([.horizontal, .vertical]) {
-                    SongSheetCanvas(lines: lines)
-                }
-                .background(Color.white)
+                SongZoomCanvas(lines: lines)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(Color.white)
             }
         }
         .navigationTitle(title)
@@ -57,51 +56,181 @@ struct SongPage: View {
     }
 }
 
-private struct SongSheetCanvas: UIViewRepresentable {
+private struct SongZoomCanvas: UIViewRepresentable {
     var lines: [SongSheetLine]
 
-    func makeUIView(context: Context) -> SongSheetUIView {
-        let view = SongSheetUIView()
-        view.backgroundColor = .white
-        view.isOpaque = true
-        view.setContentHuggingPriority(.required, for: .horizontal)
-        view.setContentHuggingPriority(.required, for: .vertical)
-        view.setContentCompressionResistancePriority(.required, for: .horizontal)
-        view.setContentCompressionResistancePriority(.required, for: .vertical)
-        view.lines = lines
+    func makeUIView(context: Context) -> SongZoomScrollView {
+        let view = SongZoomScrollView()
+        view.setLines(lines)
         return view
     }
 
-    func updateUIView(_ view: SongSheetUIView, context: Context) {
-        view.lines = lines
+    func updateUIView(_ view: SongZoomScrollView, context: Context) {
+        view.setLines(lines)
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: SongSheetUIView, context: Context) -> CGSize? {
-        uiView.intrinsicContentSize
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: SongZoomScrollView, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else {
+            return nil
+        }
+        return CGSize(width: width, height: height)
+    }
+}
+
+/// Scrolls the sheet from the top-left and zooms with a two-finger pinch.
+private final class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    private let sheet = SongSheetUIView()
+    private var loadedLines: [SongSheetLine] = []
+    private var songSize: CGSize = .zero
+    private var zoom: CGFloat = 1
+    private var baseZoom: CGFloat = 1
+    private var lockToOrigin = true
+    private var isLockingOrigin = false
+    private var isPositioningSheet = false
+
+    private let minimumSheetZoom: CGFloat = 0.25
+    private let maximumSheetZoom: CGFloat = 4
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        delegate = self
+        backgroundColor = .white
+        contentInsetAdjustmentBehavior = .never
+        isMultipleTouchEnabled = true
+        // The sheet stays on screen and is redrawn at the pinch scale. Scaling
+        // its layer instead leaves a gray line on the right edge at zoom
+        // levels where that edge falls between pixels.
+        sheet.backgroundColor = .white
+        sheet.isOpaque = true
+        sheet.clipsToBounds = true
+        sheet.isUserInteractionEnabled = false
+        addSubview(sheet)
+
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(onPinch(_:)))
+        pinch.delegate = self
+        addGestureRecognizer(pinch)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: UIView.noIntrinsicMetric)
+    }
+
+    func setLines(_ lines: [SongSheetLine]) {
+        guard lines != loadedLines else {
+            return
+        }
+        loadedLines = lines
+        sheet.lines = lines
+        songSize = sheet.songSize
+        zoom = 1
+        lockToOrigin = true
+        updateContentSize()
+        setContentOffset(.zero, animated: false)
+        positionSheet()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.width > 0, bounds.height > 0 else {
+            return
+        }
+        if lockToOrigin, !isLockingOrigin {
+            isLockingOrigin = true
+            zoom = 1
+            updateContentSize()
+            if contentOffset != .zero {
+                setContentOffset(.zero, animated: false)
+            }
+            isLockingOrigin = false
+        }
+        positionSheet()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        lockToOrigin = false
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer is UIPinchGestureRecognizer
+            || otherGestureRecognizer is UIPinchGestureRecognizer
+    }
+
+    @objc private func onPinch(_ gesture: UIPinchGestureRecognizer) {
+        if gesture.state == .began {
+            lockToOrigin = false
+            baseZoom = zoom
+        }
+        guard gesture.state == .began || gesture.state == .changed else {
+            return
+        }
+        // The sheet is pinned to the visible area, so this point is the
+        // finger position on screen. Keep that song point under the fingers.
+        let anchor = gesture.location(in: sheet)
+        let songX = (contentOffset.x + anchor.x) / zoom
+        let songY = (contentOffset.y + anchor.y) / zoom
+        zoom = min(max(baseZoom * gesture.scale, minimumSheetZoom), maximumSheetZoom)
+        updateContentSize()
+        contentOffset = CGPoint(x: songX * zoom - anchor.x, y: songY * zoom - anchor.y)
+        positionSheet()
+    }
+
+    private func updateContentSize() {
+        contentSize = CGSize(width: songSize.width * zoom, height: songSize.height * zoom)
+    }
+
+    private func positionSheet() {
+        guard !isPositioningSheet, bounds.width > 0, bounds.height > 0 else {
+            return
+        }
+        isPositioningSheet = true
+        sheet.contentOrigin = contentOffset
+        sheet.zoom = zoom
+        sheet.frame = CGRect(origin: contentOffset, size: bounds.size)
+        sheet.setNeedsDisplay()
+        isPositioningSheet = false
     }
 }
 
 private final class SongSheetUIView: UIView {
+    var contentOrigin: CGPoint = .zero
+    var zoom: CGFloat = 1
+
     var lines: [SongSheetLine] = [] {
         didSet {
             drawing = SongSheetLayout.drawing(for: lines)
-            invalidateIntrinsicContentSize()
             setNeedsDisplay()
         }
     }
 
     private var drawing = SongSheetLayout.drawing(for: [])
 
-    override var intrinsicContentSize: CGSize {
+    var songSize: CGSize {
         drawing.size
     }
 
     override func draw(_ rect: CGRect) {
+        UIColor.white.setFill()
+        UIRectFill(bounds)
+        let scale = zoom
+        let origin = contentOrigin
         for glyph in drawing.glyphs {
-            let font = UIFont(descriptor: CTFontCopyFontDescriptor(glyph.font) as UIFontDescriptor, size: CTFontGetSize(glyph.font))
-            let top = glyph.baseline - font.ascender
+            let font = UIFont(
+                descriptor: CTFontCopyFontDescriptor(glyph.font) as UIFontDescriptor,
+                size: CTFontGetSize(glyph.font) * scale)
+            let x = glyph.x * scale - origin.x
+            let top = glyph.baseline * scale - font.ascender - origin.y
+            if top > bounds.height || top + font.lineHeight < 0 || x > bounds.width {
+                continue
+            }
             (glyph.text as NSString).draw(
-                at: CGPoint(x: glyph.x, y: top),
+                at: CGPoint(x: x, y: top),
                 withAttributes: [
                     .font: font,
                     .foregroundColor: UIColor(cgColor: glyph.color),
