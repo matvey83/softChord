@@ -24,6 +24,21 @@ struct softChord_ViewerTests {
         #expect(plain == "Test line one\r\nTest line two")
     }
 
+    @Test func sheetAnchorsChordsOnTheirLetters() {
+        let chords = [
+            SongChord(characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false),
+            SongChord(characterNum: 5, noteId: 9, chordTypeId: 1, bassNoteId: -1, marker: "", inParentheses: false),
+            SongChord(characterNum: 26, noteId: 7, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false),
+        ]
+        let lines = SongText.sheet(text: "Test line one\nTest line two", chords: chords)
+        #expect(lines.map(\.lyric) == ["Test line one", "Test line two"])
+        #expect(lines[0].chords == [
+            SongSheetChord(anchor: 0, text: "C"),
+            SongSheetChord(anchor: 5, text: "Am"),
+        ])
+        #expect(lines[1].chords == [SongSheetChord(anchor: 12, text: "G")])
+    }
+
     @Test func chordTextKeepsMarkerBassAndParentheses() {
         let chord = SongChord(
             characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: 4, marker: "1", inParentheses: true)
