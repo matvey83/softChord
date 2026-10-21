@@ -132,10 +132,6 @@ _SESSION_FIELDS = (
 )
 
 
-# Destroying a QApplication while its widgets still exist crashes Qt, and a
-# later test often constructs another App before the previous one is collectable.
-# Keep each shell alive until process exit, matching the previous lifetime.
-_kept_apps = []
 
 
 class App(QtWidgets.QApplication):
@@ -144,12 +140,20 @@ class App(QtWidgets.QApplication):
     on SongbookSession. Attribute access is forwarded so callers can keep
     using the application object.
     """
+    # Destroying a QApplication while its widgets still exist crashes Qt, and a
+    # later test often constructs another App before the previous one is collectable.
+    # Keep the shell alive until process exit. A second App() raises, because
+    # two QApplications crash while the process is exiting.
+    _singleton = None
 
     def __init__(self, args):
+        if App._singleton is not None:
+            raise RuntimeError("softChord is already running")
         super().__init__(args)
         self.session = SongbookSession()
         self.focusChanged.connect(self.session.updateEditMenu)
-        _kept_apps.append(self)
+        # On the class, so a later App() sees it and this shell is not collected.
+        App._singleton = self
 
     def event(self, event):
         if event.type() == QtGui.QFileOpenEvent:
