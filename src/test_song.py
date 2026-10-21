@@ -34,6 +34,7 @@ from softchord_io import (
     assign_chord_anchors,
     text_is_proportionally_spaced,
 )
+from softchord_session import fit_scale_ratio, scale_message, song_target_size
 from softchord_song import place_chord_on_line
 from softchord_store import (
     SongbookStore,
@@ -1643,6 +1644,86 @@ class TestPrintingPdfFontClipboard(unittest.TestCase):
         self.assertEqual(opts.left_margin, 0.5)
         self.assertFalse(opts.print_4_per_page)
         self.assertTrue(opts.print_song_num)
+
+    def test_fit_scale_ratio_shrinks_only_when_the_song_is_larger(self):
+        self.assertEqual(fit_scale_ratio(200, 100, 100, 100, 1.0), 0.5)
+        self.assertEqual(fit_scale_ratio(80, 40, 100, 100, 1.0), 1.0)
+        # On-screen size already includes zoom, so a 2x view of a fitting song stays 100%.
+        self.assertEqual(fit_scale_ratio(160, 80, 100, 100, 2.0), 1.0)
+
+    def test_song_target_size_uses_one_quarter_for_four_copies(self):
+        width, height = song_target_size(1224, 1584, 36.0, 36.0, 36.0, 36.0,
+                                         True)
+        self.assertEqual(width, int(1224 // 2 - 36.0 - 36.0))
+        self.assertEqual(height, int(1584 // 2 - 36.0 - 36.0))
+        plain_width, plain_height = song_target_size(612, 792, 36.0, 36.0,
+                                                     36.0, 36.0, False)
+        self.assertEqual(plain_width, 612 - 72.0)
+        self.assertEqual(plain_height, 792 - 72.0)
+
+    def test_scale_message_for_fit_and_shrink(self):
+        self.assertEqual(scale_message(1.0), "The song fits the page at 100%.")
+        self.assertEqual(scale_message(0.918),
+                         "The song will be scaled to 91.8% to fit the page.")
+        self.assertEqual(scale_message(None),
+                         "The page is too small to fit this song.")
+
+    def test_single_song_scale_is_shown_in_the_export_dialog(self):
+        dialog = softchord.PdfDialog(self.app)
+        self.assertTrue(dialog.ui.scale_label.isHidden())
+
+        dialog.showSongScale(self.app.current_song)
+        self.assertFalse(dialog.ui.scale_label.isHidden())
+        self.assertEqual(dialog.ui.scale_label.text(),
+                         "The song fits the page at 100%.")
+
+        dialog.ui.page_width_ef.setText("1")
+        dialog.ui.page_height_ef.setText("1")
+        dialog.ui.left_margin_ef.setText("0")
+        dialog.ui.right_margin_ef.setText("0")
+        dialog.ui.top_margin_ef.setText("0")
+        dialog.ui.bottom_margin_ef.setText("0")
+        self.assertIn("scaled to", dialog.ui.scale_label.text())
+        self.assertNotIn("100%", dialog.ui.scale_label.text())
+
+        dialog.ui.page_width_ef.setText("")
+        self.assertEqual(dialog.ui.scale_label.text(),
+                         "Enter the page size to see the scale.")
+
+        dialog.ui.page_width_ef.setText("1")
+        dialog.ui.left_margin_ef.setText("2")
+        dialog.ui.right_margin_ef.setText("2")
+        self.assertEqual(dialog.ui.scale_label.text(),
+                         "The page is too small to fit this song.")
+
+    def test_drawn_export_scale_matches_the_dialog_formula(self):
+        image = QtGui.QImage(40, 40, QtGui.QImage.Format.Format_ARGB32)
+        painter = QtGui.QPainter(image)
+        rect = QtCore.QRectF(0, 0, 40, 40)
+        try:
+            drawn = self.app.drawSongToRect(self.app.current_song, painter,
+                                            self.app.editor, rect,
+                                            exporting=True)
+        finally:
+            painter.end()
+        content = self.app.current_song.doc.documentLayout().frameBoundingRect(
+            self.app.current_song.doc.rootFrame())
+        expected = fit_scale_ratio(content.right(), content.bottom(),
+                                   rect.width(), rect.height(),
+                                   self.app.zoom_factor)
+        self.assertEqual(drawn, expected)
+        self.assertLess(drawn, 1.0)
+
+    def test_one_song_does_not_pop_up_the_scale_after_export(self):
+        shown = []
+        self.app.info = lambda text: shown.append(text)
+        self.app.reportScaleRatio(0.918, 1)
+        self.app.reportScaleRatio(1.0, 4)
+        self.assertEqual(shown, [])
+        self.app.reportScaleRatio(0.918, 4)
+        self.assertEqual(
+            shown,
+            ["Some songs were scaled down up to 91.8% to fit the page."])
 
     # --- Font change methods (mock the Qt dialog) ---
     def test_change_fonts_do_not_crash_with_mocked_dialog(self):
