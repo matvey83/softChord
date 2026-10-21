@@ -12,6 +12,7 @@ struct ContentView: View {
     private let songs: [SongTitle]
     private let errorMessage: String?
     @State private var copyError: String?
+    @State private var viewedSong: SongTitle?
 
     init(songs: [SongTitle]? = nil) {
         if let songs {
@@ -29,31 +30,40 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
-            if let errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
-                    .padding()
-            } else {
-                List(songs) { song in
-                    Text(song.title)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .contextMenu {
-                            Button("Copy song text") {
-                                copy(song, includeChords: false)
+        NavigationStack {
+            Group {
+                if let errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .padding()
+                } else {
+                    List(songs) { song in
+                        Text(song.title)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .contextMenu {
+                                Button("View") {
+                                    viewedSong = song
+                                }
+                                Button("Copy song text") {
+                                    copy(song, includeChords: false)
+                                }
+                                Button("Copy song text with chords") {
+                                    copy(song, includeChords: true)
+                                }
                             }
-                            Button("Copy song text with chords") {
-                                copy(song, includeChords: true)
-                            }
-                        }
+                    }
                 }
             }
-        }
-        .alert("Could not copy the song", isPresented: copyErrorIsPresented) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(copyError ?? "")
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $viewedSong) { song in
+                SongPage(song: song)
+            }
+            .alert("Could not copy the song", isPresented: copyErrorIsPresented) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(copyError ?? "")
+            }
         }
     }
 

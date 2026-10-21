@@ -14,6 +14,16 @@ struct SongChord: Equatable {
     var inParentheses: Bool
 }
 
+nonisolated struct SongSheetChord: Equatable {
+    var anchor: Int
+    var text: String
+}
+
+nonisolated struct SongSheetLine: Equatable {
+    var lyric: String
+    var chords: [SongSheetChord]
+}
+
 /// Lyrics, or lyrics with a chord line above each line that has chords.
 /// Names and columns match the editor's Copy Song Text commands.
 enum SongText {
@@ -47,6 +57,24 @@ enum SongText {
             song.removeLast()
         }
         return song.replacingOccurrences(of: "\n", with: "\r\n")
+    }
+
+    /// One lyric line, with each chord named and anchored on a letter.
+    nonisolated static func sheet(text: String, chords: [SongChord]) -> [SongSheetLine] {
+        let lines = text.components(separatedBy: "\n").map { Array($0.unicodeScalars) }
+        let spelling = regions(for: chords)
+        return lines.enumerated().map { lineNum, line in
+            var placed: [SongSheetChord] = []
+            for chord in chords {
+                guard let (chordLine, anchor) = lineAndColumn(chord.characterNum, lines: lines),
+                      chordLine == lineNum else {
+                    continue
+                }
+                let prefer = prefer(for: chord.characterNum, regions: spelling)
+                placed.append(SongSheetChord(anchor: anchor, text: chordText(chord, prefer: prefer)))
+            }
+            return SongSheetLine(lyric: String(String.UnicodeScalarView(line)), chords: placed)
+        }
     }
 
     private nonisolated static let sharpNames = [
