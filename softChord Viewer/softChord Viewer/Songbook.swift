@@ -11,6 +11,12 @@ nonisolated struct SongTitle: Identifiable, Equatable, Hashable {
     let title: String
 }
 
+/// Lyrics and chords for one song, as stored. Transpose uses a copy of this.
+nonisolated struct SongSource: Equatable {
+    var text: String
+    var chords: [SongChord]
+}
+
 enum SongbookError: Error, Equatable, CustomStringConvertible {
     case missingFile
     case openFailed(String)
@@ -84,6 +90,21 @@ enum Songbook {
         try withDatabase(url) { db in
             let body = try loadBody(id: id, db: db)
             return SongText.sheet(text: body.text, chords: body.chords)
+        }
+    }
+
+    /// The stored lyrics and chords. Callers that transpose keep the result in memory.
+    nonisolated static func source(id: Int) throws -> SongSource {
+        guard let url = Bundle.main.url(forResource: "zvuki_neba", withExtension: "songbook") else {
+            throw SongbookError.missingFile
+        }
+        return try source(id: id, in: url)
+    }
+
+    nonisolated static func source(id: Int, in url: URL) throws -> SongSource {
+        try withDatabase(url) { db in
+            let body = try loadBody(id: id, db: db)
+            return SongSource(text: body.text, chords: body.chords)
         }
     }
 

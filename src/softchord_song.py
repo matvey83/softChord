@@ -13,6 +13,8 @@ from softchord_chords import (
     detect_region_start_indices,
     transpose_note,
 )
+from softchord_text import format_song_text, place_chord_on_line
+
 def document_owner(owner):
     """Return the songbook session when given the QApplication shell.
 
@@ -295,18 +297,19 @@ class SongChord:
         self.in_parentheses = in_parentheses
 
     def transpose(self, steps):
-        """
-        Transpose this chord the specified number of steps up.
-        <steps> can be negative.
+        """Move this chord up by the given number of half steps.
+
+        steps can be negative. Mirror: softchord_chords.swift transposeNote,
+        which SongTranspose.shifted calls for every chord.
         """
         self.note_id = transpose_note(self.note_id, steps)
         if self.bass_note_id != -1:
             self.bass_note_id = transpose_note(self.bass_note_id, steps)
 
     def getChordText(self):
-        """
-        Returns string of the chord.
-        For example, "Fm" or "Bbsus4"
+        """Return this chord as text, for example "Fm" or "Bbsus4".
+
+        Mirror: softchord_chords.swift SoftchordChords.chordText.
         """
         note_text = self.song._getNoteString(self.note_id, self.character_num)
 
@@ -347,31 +350,6 @@ class SongChar:
         self.has_chord = bool(chord_right)
         self.chord_left = chord_left
         self.chord_right = chord_right
-
-
-def place_chord_on_line(cells, anchor, chord_text):
-    """Write one chord into a monospace lyric line, centered on anchor.
-
-    cells is one character per lyric column. An even-length name is shifted
-    so the anchor letter sits just left of the name's middle. The name is
-    moved inward when it would hang off either end of the line.
-    """
-    chord_len = len(chord_text)
-    chord_left = anchor - (chord_len // 2)
-    if not (chord_len % 2):
-        chord_left += 1
-    chord_right = chord_left + chord_len
-
-    while chord_left < 0:
-        chord_left += 1
-        chord_right += 1
-
-    while chord_right >= len(cells):
-        chord_right -= 1
-        chord_left -= 1
-
-    for i, char in enumerate(chord_text):
-        cells[i + chord_left] = char
 
 
 class Song:
@@ -653,11 +631,9 @@ class Song:
             return self.session.getHeightsWithoutChords()
 
     def songCharToLineChar(self, song_char_num):
-        """
-        Given a character's global position in the song, return the
-        character's line and line position.
+        """Return (line number, column) for a character in the song.
 
-        Returns a tuple of (linenum, char_num)
+        Mirror: softchord_text.swift SongText.lineAndColumn.
         """
 
         line_global_start = 0
@@ -699,41 +675,25 @@ class Song:
         raise ValueError("There is no chord for character %i" % song_char_num)
 
     def getAsText(self, include_chords=True):
-        """
-        Return a text string for this song. This text will have proper
-        formatting only if displayed with a mono-spaced (fixed-width) font
-        (important if include_chords is set to True).
-        """
+        """Return this song as clipboard text.
 
-        song_text = ''
+        Chord lines line up in a monospace font. Mirror: softchord_text.swift
+        SongText.render.
+        """
         self.updateSharpsOrFlats()
-
         lines = self.getAllText().split("\n")
-        for linenum, line_text in enumerate(lines):
 
-            if include_chords and self.getLineHasChords(linenum):
-                # One column per lyric letter. Later chords overwrite earlier ones.
-                cells = [' '] * len(line_text)
-                for chord in self.iterateAllChords():
-                    chord_linenum, anchor = self.songCharToLineChar(
-                        chord.character_num)
-                    if chord_linenum != linenum:
-                        continue
-                    place_chord_on_line(cells, anchor, chord.getChordText())
-                song_text += ''.join(cells).rstrip() + "\n"
+        def chords_on_line(linenum):
+            found = []
+            for chord in self.iterateAllChords():
+                chord_linenum, anchor = self.songCharToLineChar(
+                    chord.character_num)
+                if chord_linenum == linenum:
+                    found.append((anchor, chord.getChordText()))
+            return found
 
-            if not include_chords:
-                line_text = line_text.rstrip()
-            song_text += line_text + "\n"
-
-        # Remove the last end-of-line:
-        if song_text[-1] == "\n":
-            song_text = song_text[:-1]
-
-        # Fix the line endings that that they work on all OSes, including Windows NotePad:
-        song_text = song_text.replace('\n', '\r\n')
-
-        return song_text
+        return format_song_text(
+            lines, include_chords, self.getLineHasChords, chords_on_line)
 
     def getAsChordProText(self):
         """
@@ -773,14 +733,21 @@ class Song:
         return converted_text
 
     def transpose(self, steps):
+        """Move every chord up by the given number of half steps.
+
+        steps can be negative. The new chords are saved with the song.
+        Mirror: softchord_chords.swift SongTranspose.shifted, which keeps
+        the shifted chords in memory only.
+        """
         for chord in self.iterateAllChords():
             chord.transpose(steps)
 
         self.updateSharpsOrFlats()
 
     def updateSharpsOrFlats(self):
-        """
-        Infer key regions from chord structure and the accidental style of each.
+        """Infer key regions and the accidental style of each.
+
+        Mirror: softchord_text.swift SongText.regions.
         """
         chords = list(self.iterateAllChords())
         chords.sort(key=lambda c: c.character_num)

@@ -1,22 +1,28 @@
 """SQLite songbook: open, migrate, load, and save songs and chord links.
 
 Song, undo, and import talk to this store. They do not run SQL themselves.
+New tables come from songbook.sql, which the iOS tests use as well.
 """
 
 import sqlite3
+from pathlib import Path
+
+
+def _create_statement(table_name):
+    """The CREATE TABLE statement for table_name from songbook.sql."""
+    text = Path(__file__).with_name("songbook.sql").read_text(encoding="utf-8")
+    marker = "CREATE TABLE %s" % table_name
+    for part in text.split(";"):
+        statement = part.strip()
+        if marker in statement:
+            return statement
+    raise RuntimeError("songbook.sql has no CREATE TABLE for %s" % table_name)
 
 
 # New songbooks do not store a user-selected key; old files may still have
-# key_note_id / key_is_major columns, which are ignored.
-SONGS_TABLE_SQL = (
-    "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT, "
-    "title TEXT, subtitle TEXT)"
-)
-SONG_CHORD_LINK_TABLE_SQL = (
-    "CREATE TABLE song_chord_link(id INTEGER PRIMARY KEY, song_id INTEGER, "
-    "character_num INTEGER, note_id INTEGER, chord_type_id INTEGER, "
-    "bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER)"
-)
+# key_note_id / key_is_major columns, which songbook.sql documents as ignored.
+SONGS_TABLE_SQL = _create_statement("songs")
+SONG_CHORD_LINK_TABLE_SQL = _create_statement("song_chord_link")
 
 
 def readonly_database_error(err):

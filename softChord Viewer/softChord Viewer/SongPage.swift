@@ -8,20 +8,28 @@ import UIKit
 
 struct SongPage: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var steps = 0
 
     let title: String
-    private let lines: [SongSheetLine]
+    private let source: SongSource?
     private let errorMessage: String?
 
     init(song: SongTitle) {
         title = song.title
         do {
-            lines = try Songbook.sheet(id: song.id)
+            source = try Songbook.source(id: song.id)
             errorMessage = nil
         } catch {
-            lines = []
+            source = nil
             errorMessage = String(describing: error)
         }
+    }
+
+    private var lines: [SongSheetLine] {
+        guard let source else {
+            return []
+        }
+        return SongText.sheet(text: source.text, chords: SongTranspose.shifted(source.chords, by: steps))
     }
 
     var body: some View {
@@ -36,7 +44,6 @@ struct SongPage: View {
                     .background(Color.white)
             }
         }
-        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
@@ -51,7 +58,37 @@ struct SongPage: View {
                     }
                 }
             }
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    if source != nil {
+                        transposeButton("Down", by: -1)
+                        transposeButton("Up", by: 1)
+                    }
+                }
+            }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if steps != 0 {
+                Text("Changes do not persist")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color.white)
+            }
+        }
+    }
+
+    private func transposeButton(_ name: String, by delta: Int) -> some View {
+        Button(name) {
+            steps += delta
+        }
+        .font(.caption)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
     }
 }
 
@@ -122,13 +159,24 @@ private final class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGe
         guard lines != loadedLines else {
             return
         }
+        // Replacing chords while the song is open keeps the pinch zoom in place.
+        let hadSong = !loadedLines.isEmpty
+        let keptZoom = zoom
+        let keptOffset = contentOffset
         loadedLines = lines
         sheet.lines = lines
         songSize = sheet.songSize
-        zoom = 1
-        lockToOrigin = true
-        updateContentSize()
-        setContentOffset(.zero, animated: false)
+        if hadSong {
+            zoom = keptZoom
+            lockToOrigin = false
+            updateContentSize()
+            contentOffset = keptOffset
+        } else {
+            zoom = 1
+            lockToOrigin = true
+            updateContentSize()
+            setContentOffset(.zero, animated: false)
+        }
         positionSheet()
     }
 
