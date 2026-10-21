@@ -2,6 +2,8 @@
 
 Qt lays out the lyric characters. This module centers each chord on its
 anchor character. On-screen painting and PDF/print both use that result.
+
+Paired with softChord Viewer/softChord Viewer/softchord_layout.swift.
 """
 
 from PyQt6 import QtCore
@@ -49,6 +51,9 @@ def character_and_chord_boxes(editor, song_char_num, chord_text, chords_height,
 
     chord_text is None when the character has no chord. Cursor positions
     come from the editor so the boxes match the text Qt is drawing.
+
+    Mirror: softchord_layout.swift SongSheetLayout.drawing, which centers
+    each chord on the same anchor with Core Text advances.
     """
     cursor = editor.textCursor()
     cursor.setPosition(song_char_num)

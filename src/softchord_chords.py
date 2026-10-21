@@ -1,4 +1,9 @@
-"""Chord names, transpose, and auto-detected key (no Qt)."""
+"""Chord names, transpose, and auto-detected key (no Qt).
+
+Paired with softChord Viewer/softChord Viewer/softchord_chords.swift.
+Shared functions stay in this order: prefer_from_major_tonic, score_key,
+family_score, best_detected_key, detect_region_start_indices, transpose_note.
+"""
 
 PREFER_SHARPS, PREFER_FLATS, PREFER_NEITHER = range(3)
 
@@ -78,6 +83,10 @@ def _chord_root_is_minor(chord):
 
 
 def prefer_from_major_tonic(maj_tonic):
+    """Sharps, flats, or neither for this major key.
+
+    Mirror: softchord_chords.swift SoftchordChords.preferFromMajorTonic.
+    """
     if maj_tonic in _SHARP_MAJOR_TONICS:
         return PREFER_SHARPS
     if maj_tonic in _FLAT_MAJOR_TONICS:
@@ -92,6 +101,8 @@ def score_key(chords, tonic, is_minor):
     harmonic-minor cadence (E in Am, F♯ in Bm) beats the relative iv/v
     reading (Dm for Am, Em for Bm). A V→I (or V7→I) pair is extra
     evidence of the tonic, so Dm with A–Dm wins over Gm.
+
+    Mirror: softchord_chords.swift SoftchordChords.scoreKey.
     """
     intervals = _MINOR_SCALE if is_minor else _MAJOR_SCALE
     scale = set((tonic + step) % 12 for step in intervals)
@@ -118,7 +129,10 @@ def score_key(chords, tonic, is_minor):
 
 
 def family_score(chords, maj_tonic):
-    """Best of this major key and its relative minor."""
+    """Best of this major key and its relative minor.
+
+    Mirror: softchord_chords.swift SoftchordChords.familyScore.
+    """
     rel_minor = (maj_tonic - 3) % 12
     return max(score_key(chords, maj_tonic, False),
                score_key(chords, rel_minor, True))
@@ -147,7 +161,10 @@ class DetectedKey:
 
 
 def best_detected_key(chords):
-    """Best key for a chord list; relative major/minor is a single key."""
+    """Best key for a chord list; relative major/minor is a single key.
+
+    Mirror: softchord_chords.swift SoftchordChords.bestDetectedKey.
+    """
     if not chords:
         return None
     ranked = []
@@ -175,6 +192,8 @@ def detect_region_start_indices(chords):
 
     Recursively pick the cut that most improves key scores vs treating the
     span as one key. Relative major/minor count as the same key.
+
+    Mirror: softchord_chords.swift SoftchordChords.detectRegionStartIndices.
     """
     def _splits(seq, offset):
         n = len(seq)
@@ -262,9 +281,10 @@ def replace_russian_characeters(text):
 
 
 def transpose_note(note_id, steps):
-    """
-    Transpose the given note ID up by <steps>.
-    Returns the transposed note ID.
+    """Move a note id up by the given number of half steps.
+
+    steps can be negative. One call wraps a single octave.
+    Mirror: softchord_chords.swift SoftchordChords.transposeNote.
     """
     note_id += steps
 

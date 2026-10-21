@@ -1,13 +1,16 @@
 //
-//  SongSheetLayout.swift
+//  softchord_layout.swift
 //  softChord Viewer
 //
+//  Paired with src/softchord_layout.py.
 
 import CoreGraphics
 import CoreText
 import Foundation
 
 /// Positions lyrics and chords the way the editor and the PDF export paint them.
+/// Mirror: softchord_layout.py character_and_chord_boxes. Core Text measures the
+/// letters here. Qt cursor rectangles measure them on the desktop.
 enum SongSheetLayout {
     struct Glyph {
         var text: String

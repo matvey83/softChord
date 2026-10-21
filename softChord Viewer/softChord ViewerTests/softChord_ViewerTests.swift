@@ -91,6 +91,45 @@ struct softChord_ViewerTests {
 
 }
 
+struct SongTransposeTests {
+    @Test func halfStepUpMovesRootAndBass() {
+        let chord = SongChord(
+            characterNum: 4, noteId: 0, chordTypeId: 1, bassNoteId: 7, marker: "2", inParentheses: true)
+        let up = SongTranspose.shifted([chord], by: 1)
+        #expect(up == [
+            SongChord(
+                characterNum: 4, noteId: 1, chordTypeId: 1, bassNoteId: 8, marker: "2", inParentheses: true),
+        ])
+    }
+
+    @Test func halfStepDownWrapsCToBAndLeavesAMissingBass() {
+        let chord = SongChord(
+            characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false)
+        let down = SongTranspose.shifted([chord], by: -1)
+        #expect(down[0].noteId == 11)
+        #expect(down[0].bassNoteId == -1)
+    }
+
+    @Test func anOctaveOfHalfStepsIsTheOriginalChord() {
+        let chord = SongChord(
+            characterNum: 2, noteId: 5, chordTypeId: 4, bassNoteId: 9, marker: "", inParentheses: false)
+        #expect(SongTranspose.shifted([chord], by: 12) == [chord])
+        #expect(SongTranspose.shifted([chord], by: -12) == [chord])
+        #expect(SongTranspose.shifted([chord], by: 0) == [chord])
+    }
+
+    @Test func transposedChordsSpellTheNewKey() {
+        let chords = progression([(9, 0), (4, 0), (6, 1), (2, 0)], times: 3)
+        let rendered = SongText.render(
+            text: String(repeating: "x", count: 80),
+            chords: SongTranspose.shifted(chords, by: 1),
+            includeChords: true)
+        #expect(rendered.contains("B♭"))
+        #expect(rendered.contains("E♭"))
+        #expect(!rendered.contains("A♯"))
+    }
+}
+
 struct SongFilterTests {
     @Test func blankFilterKeepsEverySong() {
         let songs = sampleSongs
@@ -180,6 +219,13 @@ struct SongbookReadTests {
         #expect(marked == "(1:C/E)\r\nHello world")
 
         let sheet = try Songbook.sheet(id: 1, in: url)
+        let source = try Songbook.source(id: 2, in: url)
+        #expect(source.text == "Hello world")
+        #expect(source.chords == [
+            SongChord(
+                characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: 4, marker: "1", inParentheses: true),
+        ])
+
         #expect(sheet == [SongSheetLine(lyric: "Hello", chords: [SongSheetChord(anchor: 0, text: "C")])])
 
         #expect(throws: SongbookError.songNotFound) {
@@ -240,6 +286,15 @@ private func pixels(of image: UIImage) -> [SIMD3<UInt8>] {
     return colors
 }
 
+private func songbookSchema() throws -> String {
+    let url = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("src/songbook.sql")
+    return try String(contentsOf: url, encoding: .utf8)
+}
+
 private func writeSongbook(at url: URL) throws {
     var db: OpaquePointer?
     if sqlite3_open(url.path, &db) != SQLITE_OK {
@@ -249,13 +304,10 @@ private func writeSongbook(at url: URL) throws {
         throw SongbookError.openFailed("Could not create the test songbook.")
     }
     defer { sqlite3_close(db) }
+    try exec(db, try songbookSchema())
     try exec(
         db,
         """
-        CREATE TABLE songs (id INTEGER PRIMARY KEY, text TEXT, title TEXT);
-        CREATE TABLE song_chord_link (
-            song_id INTEGER, character_num INTEGER, note_id INTEGER, chord_type_id INTEGER,
-            bass_note_id INTEGER, marker TEXT, in_parentheses INTEGER);
         INSERT INTO songs (id, text, title) VALUES (2, 'Hello world', 'beta Song');
         INSERT INTO songs (id, text, title) VALUES (1, 'Hello', 'Alpha');
         INSERT INTO song_chord_link (

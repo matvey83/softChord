@@ -1,0 +1,56 @@
+"""Monospace chord lines shared with the iOS viewer.
+
+Paired with softChord Viewer/softChord Viewer/softchord_text.swift.
+place_chord_on_line and format_song_text stay in this order.
+"""
+
+
+def place_chord_on_line(cells, anchor, chord_text):
+    """Write one chord into a monospace lyric line, centered on anchor.
+
+    cells is one character per lyric column. An even-length name is shifted
+    so the anchor letter sits just left of the name's middle. The name is
+    moved inward when it would hang off either end of the line.
+
+    Mirror: softchord_text.swift SongText.place.
+    """
+    chord_len = len(chord_text)
+    chord_left = anchor - (chord_len // 2)
+    if not (chord_len % 2):
+        chord_left += 1
+    chord_right = chord_left + chord_len
+
+    while chord_left < 0:
+        chord_left += 1
+        chord_right += 1
+
+    while chord_right >= len(cells):
+        chord_right -= 1
+        chord_left -= 1
+
+    for i, char in enumerate(chord_text):
+        cells[i + chord_left] = char
+
+
+def format_song_text(lines, include_chords, line_has_chords, chords_on_line):
+    """Clipboard text for one song. Chord lines need a monospace font.
+
+    Mirror: softchord_text.swift SongText.render.
+    chords_on_line(line_number) yields (anchor, chord text) for that line.
+    """
+    song_text = ''
+    for linenum, line_text in enumerate(lines):
+        if include_chords and line_has_chords(linenum):
+            cells = [' '] * len(line_text)
+            for anchor, chord_text in chords_on_line(linenum):
+                place_chord_on_line(cells, anchor, chord_text)
+            song_text += ''.join(cells).rstrip() + "\n"
+
+        if not include_chords:
+            line_text = line_text.rstrip()
+        song_text += line_text + "\n"
+
+    if song_text[-1] == "\n":
+        song_text = song_text[:-1]
+
+    return song_text.replace('\n', '\r\n')
