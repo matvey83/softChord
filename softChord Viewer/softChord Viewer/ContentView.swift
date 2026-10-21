@@ -6,10 +6,12 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     private let songs: [SongTitle]
     private let errorMessage: String?
+    @State private var copyError: String?
 
     init(songs: [SongTitle]? = nil) {
         if let songs {
@@ -35,8 +37,41 @@ struct ContentView: View {
             } else {
                 List(songs) { song in
                     Text(song.title)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            Button("Copy song text") {
+                                copy(song, includeChords: false)
+                            }
+                            Button("Copy song text with chords") {
+                                copy(song, includeChords: true)
+                            }
+                        }
                 }
             }
+        }
+        .alert("Could not copy the song", isPresented: copyErrorIsPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(copyError ?? "")
+        }
+    }
+
+    private var copyErrorIsPresented: Binding<Bool> {
+        Binding(
+            get: { copyError != nil },
+            set: { isPresented in
+                if !isPresented {
+                    copyError = nil
+                }
+            })
+    }
+
+    private func copy(_ song: SongTitle, includeChords: Bool) {
+        do {
+            UIPasteboard.general.string = try Songbook.songText(id: song.id, includeChords: includeChords)
+        } catch {
+            copyError = String(describing: error)
         }
     }
 }
