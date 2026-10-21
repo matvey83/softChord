@@ -38,20 +38,23 @@ struct ContentView: View {
                         .padding()
                 } else {
                     List(songs) { song in
-                        Text(song.title)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .contextMenu {
-                                Button("View") {
-                                    viewedSong = song
-                                }
-                                Button("Copy song text") {
-                                    copy(song, includeChords: false)
-                                }
-                                Button("Copy song text with chords") {
-                                    copy(song, includeChords: true)
-                                }
+                        Button {
+                            viewedSong = song
+                        } label: {
+                            Text(song.title)
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Copy song text") {
+                                copy(song, includeChords: false)
                             }
+                            Button("Copy song text with chords") {
+                                copy(song, includeChords: true)
+                            }
+                        }
                     }
                 }
             }
