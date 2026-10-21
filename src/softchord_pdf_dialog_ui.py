@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'softchord_pdf_dialog.ui'
+# Form implementation generated from reading ui file 'src/softchord_pdf_dialog.ui'
 #
 # Created by: PyQt6 UI code generator 6.11.0
 #
@@ -105,6 +105,12 @@ class Ui_Dialog(object):
         self.verticalLayout.addWidget(self.generate_table_of_contents_box)
         spacerItem2 = QtWidgets.QSpacerItem(20, 0, QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Expanding)
         self.verticalLayout.addItem(spacerItem2)
+        self.scale_label = QtWidgets.QLabel(parent=Dialog)
+        self.scale_label.setText("")
+        self.scale_label.setWordWrap(True)
+        self.scale_label.setVisible(False)
+        self.scale_label.setObjectName("scale_label")
+        self.verticalLayout.addWidget(self.scale_label)
         self.buttonBox = QtWidgets.QDialogButtonBox(parent=Dialog)
         self.buttonBox.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self.buttonBox.setStandardButtons(QtWidgets.QDialogButtonBox.StandardButton.Cancel|QtWidgets.QDialogButtonBox.StandardButton.Ok)

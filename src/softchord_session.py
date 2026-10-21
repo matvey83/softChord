@@ -599,6 +599,89 @@ class PdfOptions:
         self.page_height = 11.0
 
 
+def fit_scale_ratio(content_width, content_height, target_width, target_height,
+                    zoom_factor):
+    """How much to shrink the song so it fits the page. 1.0 means it already fits.
+
+    The content size is the on-screen document, which already includes zoom.
+    The returned number is the one shown in the export dialog. Painting
+    divides it by the zoom again. The header line is not part of this size.
+    """
+    content_width /= zoom_factor
+    content_height /= zoom_factor
+    ratio = max(content_width / target_width, content_height / target_height)
+    if ratio > 1.0:
+        return 1.0 / ratio
+    return 1.0
+
+
+def song_target_size(page_width, page_height, left, right, top, bottom,
+                     four_per_page):
+    """Width and height of the area one copy of the song is painted into."""
+    if four_per_page:
+        page_width = page_width // 2
+        page_height = page_height // 2
+        return (int(page_width - left - right), int(page_height - top - bottom))
+    return (page_width - left - right, page_height - top - bottom)
+
+
+def song_document_size(song):
+    """Width and height of the song text, in document units."""
+    rect = song.doc.documentLayout().frameBoundingRect(song.doc.rootFrame())
+    return rect.right(), rect.bottom()
+
+
+def single_song_fit_scale(song, page_width, page_height, left_in, right_in,
+                          top_in, bottom_in, four_per_page, zoom_factor):
+    """Fit scale for one song, or None when the printable area is empty."""
+    target_width, target_height = song_target_size(
+        page_width, page_height, left_in * 72.0, right_in * 72.0,
+        top_in * 72.0, bottom_in * 72.0, four_per_page)
+    if target_width <= 0 or target_height <= 0:
+        return None
+    content_width, content_height = song_document_size(song)
+    return fit_scale_ratio(content_width, content_height, target_width,
+                           target_height, zoom_factor)
+
+
+def scale_message(scale_ratio):
+    """Label text for one song's fit scale. None means the page area is empty."""
+    if scale_ratio is None:
+        return "The page is too small to fit this song."
+    percent = scale_ratio * 100.0
+    if percent >= 99.95:
+        return "The song fits the page at 100%."
+    return "The song will be scaled to %.1f%% to fit the page." % percent
+
+
+def export_printer(page_width_in, page_height_in, four_per_page,
+                   output_file=None, native_on_mac=False):
+    """A printer set up the way PDF export paints a page.
+
+    Four copies use a sheet twice as wide and twice as tall, and each copy
+    is then painted into one quarter. On macOS, one-file export uses PDF
+    output. One-file-per-song export uses the native format.
+    """
+    printer = QPrinter()
+    if four_per_page:
+        size = QtCore.QSizeF(page_width_in * 2.0, page_height_in * 2.0)
+    else:
+        size = QtCore.QSizeF(page_width_in, page_height_in)
+    printer.setPageSize(QtGui.QPageSize(size, QtGui.QPageSize.Unit.Inch))
+    printer.setFullPage(True)
+    printer.setPageOrientation(QtGui.QPageLayout.Orientation.Portrait)
+    if output_file:
+        printer.setOutputFileName(output_file)
+    if sys.platform == "win32":
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    elif sys.platform == "darwin":
+        if native_on_mac:
+            printer.setOutputFormat(QPrinter.OutputFormat.NativeFormat)
+        else:
+            printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    return printer
+
+
 class PdfDialog(QtWidgets.QDialog):
     """
     Dialog for allowing the user to set up printing and PDF export options.
@@ -624,10 +707,21 @@ class PdfDialog(QtWidgets.QDialog):
         self.ui.page_height_ef.setValidator(
             QtGui.QDoubleValidator(0, 1000000000, 5, self))
 
-    def display(self, pdf_options, single_pdf_export):
+        self._scale_song = None
+        self._scale_printer = None
+        self._native_on_mac = False
+        self._scale_inputs_connected = False
+
+    def display(self, pdf_options, single_pdf_export, song=None, printer=None,
+                native_on_mac=False):
         """
         Display a dialog that alters the PdfOptions if OK is pressed.
         Returns False if user pressed Cancel.
+
+        song is set for a one-song print or PDF export. The dialog then
+        shows the fit scale and updates it as the page settings change.
+        printer is the printer chosen in the system print dialog. PDF
+        export leaves it empty and uses the page size fields instead.
         """
 
         self.ui.left_margin_ef.setText(str(pdf_options.left_margin))
@@ -652,6 +746,11 @@ class PdfDialog(QtWidgets.QDialog):
         if not single_pdf_export:
             self.ui.generate_table_of_contents_box.setChecked(False)
             self.ui.generate_table_of_contents_box.setVisible(False)
+
+        if song is not None:
+            self.showSongScale(song, printer, native_on_mac)
+        else:
+            self.ui.scale_label.hide()
 
         self.show()
         self.raise_()
@@ -681,6 +780,67 @@ class PdfDialog(QtWidgets.QDialog):
         else:
             # Cancel pressed
             return False
+
+    def showSongScale(self, song, printer=None, native_on_mac=False):
+        """Show the fit scale for one song and keep it current."""
+        self._scale_song = song
+        self._scale_printer = printer
+        self._native_on_mac = native_on_mac
+        was_hidden = self.ui.scale_label.isHidden()
+        self.ui.scale_label.show()
+        self.updateScaleLabel()
+        if was_hidden:
+            extra = self.ui.scale_label.sizeHint().height() + 8
+            self.resize(self.width(), self.height() + extra)
+        if self._scale_inputs_connected:
+            return
+        for edit in (self.ui.left_margin_ef, self.ui.right_margin_ef,
+                     self.ui.top_margin_ef, self.ui.bottom_margin_ef,
+                     self.ui.page_width_ef, self.ui.page_height_ef):
+            edit.textChanged.connect(self.onScaleInputsChanged)
+        self.ui.print_4_per_page_box.toggled.connect(self.onScaleInputsChanged)
+        self._scale_inputs_connected = True
+
+    def onScaleInputsChanged(self, _value=None):
+        self.updateScaleLabel()
+
+    def updateScaleLabel(self):
+        """Refresh the fit-scale label from the fields currently on screen."""
+        if self._scale_song is None:
+            return
+        margins = self._read_inches()
+        if margins is None:
+            self.ui.scale_label.setText("Enter the page size to see the scale.")
+            return
+        left, right, top, bottom, page_width, page_height = margins
+        four_per_page = self.ui.print_4_per_page_box.isChecked()
+        if self._scale_printer is not None:
+            # The system print dialog already chose the paper.
+            page_px_width = self._scale_printer.width()
+            page_px_height = self._scale_printer.height()
+        else:
+            printer = export_printer(page_width, page_height, four_per_page,
+                                     native_on_mac=self._native_on_mac)
+            page_px_width = printer.width()
+            page_px_height = printer.height()
+        scale = single_song_fit_scale(
+            self._scale_song, page_px_width, page_px_height, left, right, top,
+            bottom, four_per_page, self.app.zoom_factor)
+        self.ui.scale_label.setText(scale_message(scale))
+
+    def _read_inches(self):
+        """Page size and margins from the fields, or None if one is not a number."""
+        try:
+            return (
+                float(self.ui.left_margin_ef.text()),
+                float(self.ui.right_margin_ef.text()),
+                float(self.ui.top_margin_ef.text()),
+                float(self.ui.bottom_margin_ef.text()),
+                float(self.ui.page_width_ef.text()),
+                float(self.ui.page_height_ef.text()),
+            )
+        except ValueError:
+            return None
 
 
 class SongbookSession(SongbookIO, QtCore.QObject):
@@ -1338,6 +1498,15 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             selected_song_ids.append(song_id)
         return selected_song_ids
 
+    def singleExportSong(self, song_ids):
+        """The song being printed or exported, when there is exactly one."""
+        if len(song_ids) != 1:
+            return None
+        song_id = song_ids[0]
+        if self.current_song is not None and self.current_song.id == song_id:
+            return self.current_song
+        return Song(self, song_id)
+
     def updateStates(self):
         """
         Enable / disable buttons and other widgets as needed.
@@ -1665,15 +1834,18 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         print_dialog = QPrintDialog(printer, self.win)
         if print_dialog.exec():  # accepted
-            ok = PdfDialog(self).display(self.pdf_options,
-                                         single_pdf_export=True)
-            if not ok:
-                return
-
             song_ids = self.getSelectedSongIds()
             if not song_ids:
                 # No selection, print the whole song book
                 song_ids = self.songs_model.getAllSongIds()
+
+            ok = PdfDialog(self).display(
+                self.pdf_options,
+                single_pdf_export=True,
+                song=self.singleExportSong(song_ids),
+                printer=printer)
+            if not ok:
+                return
 
             try:
                 self.printSongsToPrinter(song_ids, printer,
@@ -1810,32 +1982,29 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             # If alternating margins and this is an even page:
             left_margin, right_margin = right_margin, left_margin
 
-        width = printer.width()  #- 300
-        height = printer.height()  #- 300
+        page_width = printer.width()  #- 300
+        page_height = printer.height()  #- 300
+        song_width, song_height = song_target_size(
+            page_width, page_height, left_margin, right_margin, top_margin,
+            bottom_margin, self.pdf_options.print_4_per_page)
 
         if self.pdf_options.print_4_per_page:
-            width = width // 2
-            height = height // 2
+            page_width = page_width // 2
+            page_height = page_height // 2
             for (x, y) in ((0, 0), (0, 1), (1, 0), (1, 1)):
-                song_width = width - left_margin - right_margin
-                song_height = height - top_margin - bottom_margin
-
-                song_top = top_margin + y * height
-                song_left = left_margin + x * width
+                song_top = top_margin + y * page_height
+                song_left = left_margin + x * page_width
 
                 # FIXME either use QRectF or use integers instead of floats
-                paint_rect = QtCore.QRect(int(song_left), int(song_top), int(song_width), int(song_height))
+                paint_rect = QtCore.QRect(int(song_left), int(song_top),
+                                          song_width, song_height)
                 scale_ratio = self.drawSongToRect(song,
                                                   painter,
                                                   editor,
                                                   paint_rect,
                                                   exporting=True)
         else:
-            song_width = width - left_margin - right_margin
-            song_height = height - top_margin - bottom_margin
-            song_top = top_margin
-            song_left = left_margin
-            paint_rect = QtCore.QRectF(song_left, song_top, song_width,
+            paint_rect = QtCore.QRectF(left_margin, top_margin, song_width,
                                       song_height)
             scale_ratio = self.drawSongToRect(song,
                                               painter,
@@ -1915,8 +2084,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             song_ids = self.songs_model.getAllSongIds()
 
         if not pdf_file:
-            ok = PdfDialog(self).display(self.pdf_options,
-                                         single_pdf_export=True)
+            ok = PdfDialog(self).display(
+                self.pdf_options,
+                single_pdf_export=True,
+                song=self.singleExportSong(song_ids))
             if not ok:
                 return
 
@@ -1938,29 +2109,11 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 return
 
         self.setWaitCursor()
-        # TODO factor out duplication
         try:
-            printer = QPrinter()
-            if self.pdf_options.print_4_per_page:
-                page_size = QtCore.QSizeF(self.pdf_options.page_width * 2.0,
-                                          self.pdf_options.page_height * 2.0)
-            else:
-                page_size = QtCore.QSizeF(self.pdf_options.page_width,
-                                          self.pdf_options.page_height)
-            page_size = QtGui.QPageSize(page_size, QtGui.QPageSize.Unit.Inch)
-            printer.setPageSize(page_size)
-            printer.setFullPage(
-                True)  # considers whole page instead of only printable area.
-            printer.setPageOrientation(QtGui.QPageLayout.Orientation.Portrait)
-            printer.setOutputFileName(pdf_file)
-
-            if sys.platform == 'win32':
-                printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-            elif sys.platform == 'darwin':
-                # DON'T set it to NativeFormat, as that messes
-                # page size on export
-                printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-
+            printer = export_printer(self.pdf_options.page_width,
+                                     self.pdf_options.page_height,
+                                     self.pdf_options.print_4_per_page,
+                                     output_file=pdf_file)
             self.printSongsToPrinter(song_ids, printer,
                                                    "Exporting to PDF...")
 
@@ -1983,7 +2136,11 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             # No song is selected, export all.
             song_ids = self.songs_model.getAllSongIds()
 
-        ok = PdfDialog(self).display(self.pdf_options, single_pdf_export=False)
+        ok = PdfDialog(self).display(
+            self.pdf_options,
+            single_pdf_export=False,
+            song=self.singleExportSong(song_ids),
+            native_on_mac=True)
         if not ok:
             return
 
@@ -2020,30 +2177,12 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
             pdf_file = os.path.join(dir, song.title + ".pdf")
 
-            # TODO factor out duplication
             try:
-                printer = QPrinter()
-                if self.pdf_options.print_4_per_page:
-                    page_size = QtCore.QSizeF(
-                        self.pdf_options.page_width * 2.0,
-                        self.pdf_options.page_height * 2.0)
-                else:
-                    page_size = QtCore.QSizeF(self.pdf_options.page_width,
-                                              self.pdf_options.page_height)
-                page_size = QtGui.QPageSize(page_size,
-                                            QtGui.QPageSize.Unit.Inch)
-                printer.setPageSize(page_size)
-                printer.setFullPage(
-                    True
-                )  # considers whole page instead of only printable area.
-                printer.setPageOrientation(
-                    QtGui.QPageLayout.Orientation.Portrait)
-                printer.setOutputFileName(pdf_file)
-
-                if sys.platform == 'win32':
-                    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-                elif sys.platform == 'darwin':
-                    printer.setOutputFormat(QPrinter.OutputFormat.NativeFormat)
+                printer = export_printer(self.pdf_options.page_width,
+                                         self.pdf_options.page_height,
+                                         self.pdf_options.print_4_per_page,
+                                         output_file=pdf_file,
+                                         native_on_mac=True)
 
                 painter = QtGui.QPainter()
                 if not painter.begin(printer):
@@ -2067,17 +2206,16 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
 
     def reportScaleRatio(self, min_scale_ratio, num_songs):
+        """Tell the user when a multi-song export had to shrink a song.
 
-        if min_scale_ratio != 1.0:
-            scale_percent = min_scale_ratio * 100.0
-            if num_songs > 1:
-                self.info(
-                    "Some songs were scaled down up to %.1f%% to fit the page."
-                    % scale_percent)
-            else:
-                self.info(
-                    "The song was scaled down to %.1f%% to fit the page." %
-                    scale_percent)
+        One song shows its scale in the export settings before export.
+        """
+        if num_songs <= 1 or min_scale_ratio == 1.0:
+            return
+        scale_percent = min_scale_ratio * 100.0
+        self.info(
+            "Some songs were scaled down up to %.1f%% to fit the page."
+            % scale_percent)
 
     def cutSelected(self):
         """
@@ -2585,30 +2723,17 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         # FIXME this does not account for the header line and the first chords line
 
         # Figure out what the scaling factor should be:
-        #print "exporting:", exporting, "zoom_factor:", self.zoom_factor
         if not exporting:
             # Painting to screen, zoom factor is already applied to font size
             scale_ratio = 1.0
             actual_scale_ratio = None
         else:
-            # Exporting, make sure the song fits into the specified <rect>:
-            # Adjust according to the view zoom factor:
-            pic_right /= self.zoom_factor
-            pic_bottom /= self.zoom_factor
-
-            width_ratio = pic_right / rect.width()
-            height_ratio = pic_bottom / rect.height()
-            scale_ratio = max(width_ratio, height_ratio)
-
-            if scale_ratio > 1.0:
-                scale_ratio = 1.0 / scale_ratio
-            else:
-                # Do not make songs any bigger
-                scale_ratio = 1.0  # / self.zoom_factor # Adjust by the view zoom factor
-
-            # When exporting to PDF, undo the zoom scaling:
-            actual_scale_ratio = scale_ratio
-            scale_ratio /= self.zoom_factor
+            # Exporting, make sure the song fits into the specified <rect>.
+            # Do not make songs any bigger. Painting then undoes the zoom.
+            actual_scale_ratio = fit_scale_ratio(
+                pic_right, pic_bottom, rect.width(), rect.height(),
+                self.zoom_factor)
+            scale_ratio = actual_scale_ratio / self.zoom_factor
 
         # Height of the header line:
         lyrics_height = self.lyrics_font_metrics.height()
