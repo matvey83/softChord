@@ -6,12 +6,12 @@
 import Foundation
 import SQLite3
 
-struct SongTitle: Identifiable, Equatable, Hashable {
+nonisolated struct SongTitle: Identifiable, Equatable, Hashable {
     let id: Int
     let title: String
 }
 
-enum SongbookError: Error, CustomStringConvertible {
+enum SongbookError: Error, Equatable, CustomStringConvertible {
     case missingFile
     case openFailed(String)
     case queryFailed(String)

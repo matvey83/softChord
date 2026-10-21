@@ -3,7 +3,6 @@
 //  softChord Viewer
 //
 
-import CoreText
 import SwiftUI
 import UIKit
 
@@ -216,25 +215,6 @@ private final class SongSheetUIView: UIView {
     }
 
     override func draw(_ rect: CGRect) {
-        UIColor.white.setFill()
-        UIRectFill(bounds)
-        let scale = zoom
-        let origin = contentOrigin
-        for glyph in drawing.glyphs {
-            let font = UIFont(
-                descriptor: CTFontCopyFontDescriptor(glyph.font) as UIFontDescriptor,
-                size: CTFontGetSize(glyph.font) * scale)
-            let x = glyph.x * scale - origin.x
-            let top = glyph.baseline * scale - font.ascender - origin.y
-            if top > bounds.height || top + font.lineHeight < 0 || x > bounds.width {
-                continue
-            }
-            (glyph.text as NSString).draw(
-                at: CGPoint(x: x, y: top),
-                withAttributes: [
-                    .font: font,
-                    .foregroundColor: UIColor(cgColor: glyph.color),
-                ])
-        }
+        SongSheetImage.draw(drawing, zoom: zoom, origin: contentOrigin, clip: bounds)
     }
 }
