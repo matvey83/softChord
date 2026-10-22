@@ -46,6 +46,182 @@ class SongLayout:
         return SongLayout(placed)
 
 
+class ChordGapDocumentLayout(QtGui.QAbstractTextDocumentLayout):
+    """Line positions for one lyric document.
+
+    The empty space above a chord line is added here. A block margin would
+    leave the same space, and it would also be an undo step. The text
+    editor would then undo the space before the letter a chord sits on.
+    """
+
+    def __init__(self, document):
+        self._top = 0.0
+        self._line_gap = 0.0
+        self._left = 0.0
+        self._chord_blocks = set()
+        self._by_position = {}
+        self._size = QtCore.QSizeF()
+        self._in_relayout = False
+        super().__init__(document)
+
+    def set_chord_gap(self, top, line_gap, left, chord_block_numbers):
+        """Space above the first line, and above later lines that have chords."""
+        self._top = top
+        self._line_gap = line_gap
+        self._left = left
+        self._chord_blocks = set(chord_block_numbers)
+        self._relayout()
+
+    def _relayout(self):
+        if self._in_relayout:
+            return
+        self._in_relayout = True
+        try:
+            self._rebuild()
+        finally:
+            self._in_relayout = False
+        self.update.emit(QtCore.QRectF(0.0, 0.0, self._size.width(),
+                                       self._size.height()))
+        self.documentSizeChanged.emit(self._size)
+
+    def _rebuild(self):
+        doc = self.document()
+        margin = doc.documentMargin()
+        option = doc.defaultTextOption()
+        font = doc.defaultFont()
+        y = self._top
+        max_right = margin
+        by_position = {}
+        block = doc.begin()
+        while block.isValid():
+            # The first line's gap is the space above the whole song.
+            # Qt ignores a top margin on that line, so this does too.
+            if (block.blockNumber() != 0
+                    and block.blockNumber() in self._chord_blocks):
+                y += self._line_gap
+
+            text_layout = block.layout()
+            text_layout.clearLayout()
+            text_layout.setFont(font)
+            text_layout.setTextOption(option)
+            text_layout.beginLayout()
+            line_y = 0.0
+            natural = 0.0
+            while True:
+                line = text_layout.createLine()
+                if not line.isValid():
+                    break
+                line.setLineWidth(100000.0)
+                line.setPosition(QtCore.QPointF(self._left, line_y))
+                # Same line box Qt's own layout uses, so the caret stays put.
+                line.setLeadingIncluded(True)
+                natural = max(natural, self._left + line.naturalTextWidth())
+                line_y += line.height()
+            text_layout.endLayout()
+            if line_y == 0.0:
+                line_y = QtGui.QFontMetricsF(font).height()
+
+            rect = QtCore.QRectF(margin, y, natural, line_y)
+            text_layout.setPosition(rect.topLeft())
+            by_position[block.position()] = rect
+            max_right = max(max_right, margin + natural)
+            y += line_y
+            block = block.next()
+
+        self._by_position = by_position
+        self._size = QtCore.QSizeF(max_right + margin, y + margin)
+
+    def documentChanged(self, position, charsRemoved, charsAdded):
+        self._relayout()
+
+    def draw(self, painter, context):
+        doc = self.document()
+        block = doc.begin()
+        while block.isValid():
+            rect = self.blockBoundingRect(block)
+            clip = context.clip
+            if clip.isValid() and not rect.intersects(clip):
+                block = block.next()
+                continue
+
+            text_layout = block.layout()
+            selections = []
+            block_pos = block.position()
+            block_length = block.length()
+            for selection in context.selections:
+                start = selection.cursor.selectionStart() - block_pos
+                end = selection.cursor.selectionEnd() - block_pos
+                if start >= block_length or end <= 0:
+                    continue
+                text_range = QtGui.QTextLayout.FormatRange()
+                text_range.start = max(0, start)
+                text_range.length = min(block_length, end) - text_range.start
+                text_range.format = selection.format
+                selections.append(text_range)
+
+            # draw() adds the position already stored on the layout.
+            text_layout.draw(painter, QtCore.QPointF(0.0, 0.0), selections, clip)
+            cursor_pos = context.cursorPosition
+            if block_pos <= cursor_pos < block_pos + block_length:
+                text_layout.drawCursor(painter, QtCore.QPointF(0.0, 0.0),
+                                       cursor_pos - block_pos)
+            block = block.next()
+
+    def hitTest(self, point, accuracy):
+        doc = self.document()
+        if not self._by_position:
+            self._relayout()
+
+        # The gap above a line belongs to that line. A click on the chord
+        # sits in the gap, and the caret has to land on the lyric under it.
+        chosen = None
+        chosen_rect = None
+        block = doc.begin()
+        while block.isValid():
+            rect = self._by_position.get(block.position())
+            if rect is None:
+                break
+            chosen = block
+            chosen_rect = rect
+            if point.y() < rect.bottom():
+                break
+            block = block.next()
+        if chosen is None:
+            return -1
+
+        text_layout = chosen.layout()
+        if text_layout.lineCount() == 0:
+            return chosen.position()
+        relative_y = point.y() - chosen_rect.top()
+        line = text_layout.lineAt(0)
+        for index in range(text_layout.lineCount()):
+            candidate = text_layout.lineAt(index)
+            line = candidate
+            if relative_y < candidate.y() + candidate.height():
+                break
+        x_on_line = point.x() - chosen_rect.left() - line.x()
+        exact = accuracy == QtCore.Qt.HitTestAccuracy.ExactHit
+        if exact and (x_on_line < 0.0 or x_on_line > line.naturalTextWidth()
+                      or point.y() < chosen_rect.top()
+                      or point.y() > chosen_rect.bottom()):
+            return -1
+        return chosen.position() + line.xToCursor(x_on_line)
+
+    def pageCount(self):
+        return 1
+
+    def documentSize(self):
+        return self._size
+
+    def frameBoundingRect(self, frame):
+        return QtCore.QRectF(QtCore.QPointF(0.0, 0.0), self._size)
+
+    def blockBoundingRect(self, block):
+        if block.position() not in self._by_position and not self._in_relayout:
+            self._relayout()
+        return self._by_position.get(block.position(), QtCore.QRectF())
+
+
 class QtDocumentLayout:
     """Lyric positions and painting that go through a QTextDocument.
 
@@ -152,58 +328,43 @@ class QtDocumentLayout:
 
     @staticmethod
     def _apply_margins(song, session):
-        # Block format changes notify the editor. Callers hold
-        # ignore_song_text_changed so that is not treated as a lyric edit.
+        # Callers hold ignore_song_text_changed. Replacing the layout notifies
+        # the editor, and that notification is not a lyric edit.
+
+        if song.doc is None:
+            return
 
         chords_by_char = {}
         for chord in song._chords:
             chords_by_char[chord.character_num] = True
 
-        chords_height, lyrics_height, line_height = session.getHeightsWithChords(
+        _chords_height, lyrics_height, line_height = session.getHeightsWithChords(
         )
-        with_chords_top_margin = line_height - lyrics_height
+        # A little air between a chord and the lyric line under it.
+        chord_gap = (line_height - lyrics_height) * 1.03
 
-        with_chords_top_margin *= 1.03  # Add some spacing between lines (that have chords
-
-        # The first line is always given the chord gap. That is usually true,
-        # and it avoids a few layout problems when it is not.
-        root_frame = song.doc.rootFrame()
-        frame_format = root_frame.frameFormat()
-        frame_format.setTopMargin(with_chords_top_margin +
-                                  session.doc_editor_offset)
-        root_frame.setFrameFormat(frame_format)
-
+        # The first line always gets the gap. That is usually true, and it
+        # avoids a few layout problems when it is not.
+        chord_blocks = set()
         block = song.doc.begin()
-
-        with_chords_format = block.blockFormat()
-        with_chords_format.setTopMargin(with_chords_top_margin)
-        with_chords_format.setLeftMargin(session.doc_editor_offset)
-
-        without_chords_format = block.blockFormat()
-        without_chords_format.setTopMargin(0.0)
-        without_chords_format.setLeftMargin(session.doc_editor_offset)
-
         line_start_char = 0
-        for line_text in song.doc.toPlainText().split("\n"):
-            line_end_char = line_start_char + len(line_text)
-
-            line_has_chords = False
-            for chord_num in chords_by_char.keys():
-                if chord_num >= line_start_char and chord_num <= line_end_char:
-                    line_has_chords = True
+        while block.isValid():
+            line_end_char = line_start_char + len(block.text())
+            for chord_num in chords_by_char:
+                if line_start_char <= chord_num <= line_end_char:
+                    chord_blocks.add(block.blockNumber())
                     break
-
-            cursor = QtGui.QTextCursor(block)
-            if line_has_chords:
-                cursor.setBlockFormat(with_chords_format)
-            else:
-                cursor.setBlockFormat(without_chords_format)
-
-            if block == song.doc.end():
-                break
-
+            line_start_char = line_end_char + 1
             block = block.next()
-            line_start_char += len(line_text) + 1  # end-of-line character
+
+        layout = song.doc.documentLayout()
+        if not isinstance(layout, ChordGapDocumentLayout):
+            layout = ChordGapDocumentLayout(song.doc)
+            song.doc.setDocumentLayout(layout)
+        # The document owns the C++ layout. Keep the Python object too.
+        song.doc._softchord_layout = layout
+        layout.set_chord_gap(chord_gap + session.doc_editor_offset, chord_gap,
+                             session.doc_editor_offset, chord_blocks)
 
     @staticmethod
     def release_editor_document(editor, song):

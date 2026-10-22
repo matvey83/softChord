@@ -1804,6 +1804,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 self.ui.song_num_ef.setText(str(self.current_song.number))
 
             song.doc.setDefaultFont(self.lyrics_font)
+            # Line spacing lives in the layout. The copy kept after leaving
+            # this song does not have that layout yet.
+            QtDocumentLayout.apply_margins(song, self)
 
             # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
             QtDocumentLayout.show_document(self.editor, song.doc)
@@ -1922,8 +1925,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
     def _sync_lyric_chords(self, new_command, song_text):
         """Move chords with the text editor's undo stack.
 
-        song_text is None when the lyrics did not change. Line spacing is
-        still an undo step, and the chords have to stay recorded there.
+        song_text is None when this notification is not a lyric edit.
         """
         steps = self._lyric_undo_index()
         previous = self._lyric_undo_steps
@@ -1967,10 +1969,6 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         if text_changed or new_command:
             snaps[steps] = self._capture_lyric_chords()
-        elif steps not in snaps:
-            carried = snaps.get(previous)
-            snaps[steps] = (list(carried) if carried is not None else
-                            self._capture_lyric_chords())
         self._lyric_undo_steps = steps
 
     def lyricsTextChanged(self):
