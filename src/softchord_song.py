@@ -498,8 +498,15 @@ class Song:
         self._chords.append(new_chord)
         self.updateSharpsOrFlats()
 
-        # This is important for undo/redo to move the selection:
-        self.session.selected_char_num = new_chord.character_num
+        # A marquee move keeps every selected character selected, including
+        # through undo. One chord still follows the single selection.
+        nums = getattr(self.session, "selected_chord_nums", None)
+        if nums and prev_chord.character_num in nums:
+            nums.discard(prev_chord.character_num)
+            nums.add(new_chord.character_num)
+            self.session.selected_char_num = None
+        else:
+            self.session.selected_char_num = new_chord.character_num
 
     def copyChord(self, chord, new_song_char_num):
         """

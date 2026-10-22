@@ -113,6 +113,7 @@ class MinimalTestApp:
         self.current_song = None
         self.hover_char_num = None
         self.selected_char_num = None
+        self.selected_chord_nums = set()
         self.chords_font = QtGui.QFont()
         self.chords_color = QtGui.QColor("blue")
         self.lyrics_font = QtGui.QFont()
@@ -162,6 +163,7 @@ class MinimalTestApp:
         self.undo_stack = _DummyUndoStack()
         self.editor = _DummyEditor()
         self.selected_char_num = None
+        self.selected_chord_nums = set()
         self.ignore_song_text_changed = False
         self.doc_editor_offset = 0
 
@@ -276,6 +278,12 @@ class _DummyUndoStack:
         command.redo(
         )  # simulate the effect for tests that go through public API
 
+    def beginMacro(self, text):
+        self.commands.append(text)
+
+    def endMacro(self):
+        self.commands.append(None)
+
 
 class _DummyEditor:
     """Stand-in so Song doesn't blow up when it touches the editor."""
@@ -327,21 +335,24 @@ def test_app():
             session.chords_font_size,
             QtGui.QFont(session.symbols_font),
         )
-        return _test_app
-
+    else:
+        session = _test_app.session
+        for name in list(session.__dict__):
+            if callable(getattr(type(session), name, None)):
+                del session.__dict__[name]
+        lyrics, lyrics_size, chords, chords_size, symbols = _test_app_fonts
+        session.lyrics_font = QtGui.QFont(lyrics)
+        session.lyrics_font_size = lyrics_size
+        session.chords_font = QtGui.QFont(chords)
+        session.chords_font_size = chords_size
+        session.symbols_font = QtGui.QFont(symbols)
+        session.updateEditorFonts()
+        if session.editor.lyric_editor_mode:
+            session.chordEditorSelected()
     session = _test_app.session
-    for name in list(session.__dict__):
-        if callable(getattr(type(session), name, None)):
-            del session.__dict__[name]
-    lyrics, lyrics_size, chords, chords_size, symbols = _test_app_fonts
-    session.lyrics_font = QtGui.QFont(lyrics)
-    session.lyrics_font_size = lyrics_size
-    session.chords_font = QtGui.QFont(chords)
-    session.chords_font_size = chords_size
-    session.symbols_font = QtGui.QFont(symbols)
-    session.updateEditorFonts()
-    if session.editor.lyric_editor_mode:
-        session.chordEditorSelected()
+    session.selected_chord_nums = set()
+    session.selected_char_num = None
+    session.editor.cancelChordMarquee()
     return _test_app
 
 
@@ -1105,6 +1116,124 @@ class TestCustomTextEdit(unittest.TestCase):
         QTest.keyPress(self.editor, Qt.Key.Key_Backspace)
         self.assertTrue(called)
 
+    def _mouse(self, event_type, x, y):
+        pos = QtCore.QPointF(x, y)
+        if event_type == QtCore.QEvent.Type.MouseMove:
+            button = Qt.MouseButton.NoButton
+            buttons = Qt.MouseButton.LeftButton
+        else:
+            button = Qt.MouseButton.LeftButton
+            buttons = Qt.MouseButton.LeftButton
+        return QtGui.QMouseEvent(event_type, pos, pos, button, buttons,
+                                 Qt.KeyboardModifier.NoModifier)
+
+    def _press(self, x, y):
+        self.editor.mousePressEvent(
+            self._mouse(QtCore.QEvent.Type.MouseButtonPress, x, y))
+
+    def _move(self, x, y):
+        self.editor.mouseMoveEvent(
+            self._mouse(QtCore.QEvent.Type.MouseMove, x, y))
+
+    def _release(self, x, y):
+        self.editor.mouseReleaseEvent(
+            self._mouse(QtCore.QEvent.Type.MouseButtonRelease, x, y))
+
+    def _song_with_chords_at(self, positions):
+        song = create_test_song(self.app, song_id=50, text="0123456789")
+        self.app.current_song = song
+        for position in positions:
+            song.addChord(SongChord(song, position, 0, 0, -1, "", False))
+        return song
+
+    def test_click_clears_chord_rectangle_selection(self):
+        self._song_with_chords_at([0, 4])
+        self.app.selected_chord_nums = {0, 4}
+        self.app.determineClickedLetter = lambda x, y, dragging: (False, 2)
+
+        self._press(3, 3)
+        self._release(3, 3)
+
+        self.assertEqual(self.app.selected_chord_nums, set())
+        self.assertEqual(self.app.selected_char_num, 2)
+        self.assertIsNone(self.editor.marquee_origin)
+
+    def test_short_drag_is_a_click(self):
+        self._song_with_chords_at([0])
+        self.app.determineClickedLetter = lambda x, y, dragging: (False, 2)
+
+        self._press(3, 3)
+        self._move(4, 4)
+        self._release(4, 4)
+
+        self.assertEqual(self.app.selected_chord_nums, set())
+        self.assertEqual(self.app.selected_char_num, 2)
+
+    def test_drag_selects_chords_inside_the_rectangle(self):
+        self._song_with_chords_at([0, 4])
+
+        def rects(editor, char_num, chord=None):
+            left = char_num * 30
+            box = QtCore.QRectF(left, 0, 10, 12)
+            return (QtCore.QRectF(left, 20, 10, 12), box)
+
+        self.app.getCharRects = rects
+        self.app.determineClickedLetter = lambda x, y, dragging: None
+        self._press(0, 0)
+        self._move(20, 20)
+        self._release(20, 20)
+
+        self.assertEqual(self.app.selected_chord_nums, {0})
+        self.assertIsNone(self.app.selected_char_num)
+
+        self._press(0, 0)
+        self._move(140, 20)
+        self._release(140, 20)
+
+        self.assertEqual(self.app.selected_chord_nums, {0, 4})
+
+    def test_drag_that_misses_clears_the_letter_selection(self):
+        self._song_with_chords_at([0])
+
+        def rects(editor, char_num, chord=None):
+            box = QtCore.QRectF(0, 400, 10, 12)
+            return (box, box)
+
+        self.app.getCharRects = rects
+        self.app.determineClickedLetter = lambda x, y, dragging: (False, 3)
+
+        self._press(0, 0)
+        self._move(40, 40)
+        self._release(40, 40)
+
+        self.assertEqual(self.app.selected_chord_nums, set())
+        self.assertIsNone(self.app.selected_char_num)
+
+    def test_press_on_a_chord_glyph_does_not_start_a_rectangle(self):
+        self._song_with_chords_at([0])
+        self.app.determineClickedLetter = lambda x, y, dragging: (True, 0)
+
+        self._press(5, 5)
+
+        self.assertIsNotNone(self.editor.dragging_chord)
+        self.assertIsNone(self.editor.marquee_origin)
+        self.assertIn("chord dragged", self.app.undo_stack.commands)
+
+        self._release(5, 5)
+        self.assertIsNone(self.editor.dragging_chord)
+
+    def test_marquee_is_drawn_while_the_mouse_is_down(self):
+        image = QtGui.QImage(80, 80, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtGui.QColor("white"))
+        painter = QtGui.QPainter(image)
+        self.editor.marquee_origin = QtCore.QPoint(5, 5)
+        self.editor.marquee_current = QtCore.QPoint(50, 40)
+        self.editor._draw_marquee(painter)
+        painter.end()
+
+        self.assertNotEqual(image.pixelColor(20, 20), QtGui.QColor("white"))
+        self.assertEqual(image.pixelColor(0, 0), QtGui.QColor("white"))
+
 
 # ---------------------------------------------------------------------------
 # Tests for core App functionality (especially keyboard chord input)
@@ -1242,6 +1371,128 @@ class TestAppCoreFunctionality(unittest.TestCase):
 
         self.app.processKeyPressed(Qt.Key.Key_Down)  # C# -> C
         self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+
+    def _select_chords_at(self, text, positions, notes, song_id=10020):
+        song = create_test_song(self.app, song_id=song_id, text=text)
+        self.app.current_song = song
+        self.app.previous_song_text = text
+        for position, key in zip(positions, notes):
+            self.app.selected_char_num = position
+            self.app.processKeyPressed(key)
+        self.app.selected_char_num = None
+        self.app.selected_chord_nums = set(positions)
+        return song
+
+    def test_selected_chords_move_together_and_undo(self):
+        song = self._select_chords_at("0123456789", [1, 4],
+                                      [Qt.Key.Key_C, Qt.Key.Key_G])
+
+        moved = self.app.processKeyPressed(Qt.Key.Key_Right)
+
+        self.assertTrue(moved)
+        self.assertEqual(song.getChordAtPosition(2).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(5).note_id, 7)
+        self.assertIsNone(self.app.selected_char_num)
+        self.assertEqual(self.app.selected_chord_nums, {2, 5})
+        self.assertEqual(self.app.undo_stack.undoText(), "move chords")
+
+        self.app.undo_stack.undo()
+
+        self.assertEqual(song.getChordAtPosition(1).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(4).note_id, 7)
+        self.assertEqual(self.app.selected_chord_nums, {1, 4})
+        self.assertIsNone(self.app.selected_char_num)
+
+    def test_selected_chords_stop_at_a_line_break_or_the_end(self):
+        song = self._select_chords_at("01\n456789", [1, 4],
+                                      [Qt.Key.Key_C, Qt.Key.Key_D])
+
+        self.app.processKeyPressed(Qt.Key.Key_Right)
+
+        self.assertEqual(song.getChordAtPosition(1).note_id, 0)
+        self.assertIsNone(song.getChordAtPosition(4))
+        self.assertEqual(song.getChordAtPosition(5).note_id, 2)
+        self.assertEqual(self.app.selected_chord_nums, {1, 5})
+
+        end_song = self._select_chords_at("0123", [1, 3],
+                                          [Qt.Key.Key_C, Qt.Key.Key_D],
+                                          song_id=10021)
+        self.app.processKeyPressed(Qt.Key.Key_Right)
+        self.assertEqual(end_song.getChordAtPosition(2).note_id, 0)
+        self.assertEqual(end_song.getChordAtPosition(3).note_id, 2)
+
+    def test_blocked_selected_chords_do_not_add_an_undo_step(self):
+        song = self._select_chords_at("0\n2\n456789", [0, 2],
+                                      [Qt.Key.Key_C, Qt.Key.Key_D])
+        index = self.app.undo_stack.index()
+
+        moved = self.app.processKeyPressed(Qt.Key.Key_Right)
+
+        self.assertTrue(moved)
+        self.assertEqual(index, self.app.undo_stack.index())
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(2).note_id, 2)
+
+    def test_neighboring_selected_chords_move_without_landing_on_each_other(self):
+        song = self._select_chords_at("0123456789", [2, 3],
+                                      [Qt.Key.Key_C, Qt.Key.Key_D])
+
+        self.app.processKeyPressed(Qt.Key.Key_Right)
+
+        self.assertEqual(sorted(chord.character_num
+                                for chord in song.iterateAllChords()), [3, 4])
+        self.assertEqual(song.getChordAtPosition(3).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(4).note_id, 2)
+
+        left_song = self._select_chords_at("0123456789", [0, 1],
+                                           [Qt.Key.Key_C, Qt.Key.Key_E],
+                                           song_id=10021)
+        # The chord on the first letter cannot move, so the next one joins it.
+        self.app.processKeyPressed(Qt.Key.Key_Left)
+        left_chords = list(left_song.iterateAllChords())
+        self.assertEqual(sorted(chord.note_id for chord in left_chords),
+                         [0, 4])
+        self.assertEqual(sorted(chord.character_num for chord in left_chords),
+                         [0, 0])
+
+    def test_delete_removes_every_selected_chord_as_one_undo(self):
+        song = self._select_chords_at("0123456789", [1, 4],
+                                      [Qt.Key.Key_C, Qt.Key.Key_G])
+
+        self.app.deleteSelectedChord()
+
+        self.assertEqual(list(song.iterateAllChords()), [])
+        self.assertEqual(self.app.selected_chord_nums, set())
+        self.assertEqual(self.app.undo_stack.undoText(), "delete chords")
+
+        self.app.undo_stack.undo()
+
+        self.assertEqual(song.getChordAtPosition(1).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(4).note_id, 7)
+
+    def test_delete_still_removes_the_single_selected_chord(self):
+        song = self._select_chords_at("0123456789", [1, 4],
+                                      [Qt.Key.Key_C, Qt.Key.Key_G])
+        self.app.selected_chord_nums = set()
+        self.app.selected_char_num = 1
+
+        self.app.deleteSelectedChord()
+
+        self.assertIsNone(song.getChordAtPosition(1))
+        self.assertEqual(song.getChordAtPosition(4).note_id, 7)
+
+    def test_note_keys_do_not_edit_the_rectangle_selection(self):
+        song = self._select_chords_at("0123456789", [1, 4],
+                                      [Qt.Key.Key_C, Qt.Key.Key_G])
+
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_D))
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Up))
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_M))
+
+        chords = list(song.iterateAllChords())
+        self.assertEqual(sorted(chord.note_id for chord in chords), [0, 7])
+        self.assertEqual(sorted(chord.chord_type_id for chord in chords),
+                         [0, 0])
 
 
 # ---------------------------------------------------------------------------

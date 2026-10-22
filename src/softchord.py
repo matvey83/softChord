@@ -117,6 +117,7 @@ _SESSION_FIELDS = (
     "clipboard",
     "ignore_song_text_changed",
     "selected_char_num",
+    "selected_chord_nums",
     "hover_char_num",
     "lyrics_font",
     "lyrics_font_size",
