@@ -1,4 +1,5 @@
 // Title search. A blank query keeps every song, in the same order.
+// TODO: Also match the song number, the way the editor's song list filter does.
 // Paired with softChord Viewer/softChord Viewer/SongFilter.swift.
 
 (function (root, factory) {

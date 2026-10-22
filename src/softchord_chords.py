@@ -138,6 +138,8 @@ def family_score(chords, maj_tonic):
                score_key(chords, rel_minor, True))
 
 
+# TODO: The iPhone and web song pages should show this label. The editor's
+# auto-detected key line stays as it is.
 def key_label(tonic, is_minor, prefer):
     names = _NOTE_NAMES_FLAT if prefer == PREFER_FLATS else _NOTE_NAMES_SHARP
     text = names[tonic]
@@ -283,7 +285,8 @@ def replace_russian_characeters(text):
 def transpose_note(note_id, steps):
     """Move a note id up by the given number of half steps.
 
-    steps can be negative. One call wraps a single octave.
+    steps can be negative. One call wraps a single octave. That wrap stays.
+    The viewers fold any step count because they keep a running total.
     Mirror: softchord_chords.swift SoftchordChords.transposeNote.
     """
     note_id += steps

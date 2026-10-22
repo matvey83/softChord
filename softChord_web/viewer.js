@@ -72,6 +72,7 @@
       var button = document.createElement("button");
       button.type = "button";
       button.dataset.id = String(songs[i].id);
+      // TODO: Show the song number in front of the title when it is not -1.
       button.textContent = songs[i].title;
       item.appendChild(button);
       frag.appendChild(item);
@@ -94,6 +95,11 @@
     }
   }
 
+  // TODO: Show the subtitle and "Auto-detected key: ..." under the title.
+  // Paint with the same measurements as SongSheetLayout.drawing (gap, chord
+  // center, accidental raise, padding 16, left shift) instead of the CSS
+  // approximation. Then pinch and Ctrl-scroll zoom, and Copy as image.
+  // The editor keeps drawing with Qt.
   function paintSheet(lines) {
     var songChar = 0;
     var frag = document.createDocumentFragment();
@@ -196,6 +202,8 @@
     location.hash = "#/song/" + button.dataset.id;
   });
 
+  // TODO: Open this menu on a long press, and add Copy as image once the
+  // sheet uses the shared measurements.
   songList.addEventListener("contextmenu", function (event) {
     var button = event.target.closest("button");
     if (!button) {

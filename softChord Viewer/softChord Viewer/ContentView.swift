@@ -44,6 +44,7 @@ struct ContentView: View {
                         Button {
                             viewedSong = song
                         } label: {
+                            // TODO: Show the song number in front of the title when it is not -1.
                             Text(song.title)
                                 .foregroundStyle(.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)

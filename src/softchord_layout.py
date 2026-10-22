@@ -49,6 +49,9 @@ class SongLayout:
 class QtDocumentLayout:
     """Lyric positions and painting that go through a QTextDocument.
 
+    TODO: The web sheet should copy SongSheetLayout's measurements. This
+    Qt adapter stays until a new lyric renderer replaces it.
+
     This is the only place that asks Qt for cursor rectangles, hit
     testing, document drawing, and the document's bounding size.
     """

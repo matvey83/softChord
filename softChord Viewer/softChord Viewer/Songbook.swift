@@ -37,6 +37,8 @@ enum SongbookError: Error, Equatable, CustomStringConvertible {
 
 enum Songbook {
     /// Titles in the same order as the editor's song table.
+    /// TODO: Include the song number, blank when it is -1. The editor's list
+    /// shows that number, and its search matches it.
     nonisolated static func titles() throws -> [SongTitle] {
         guard let url = Bundle.main.url(forResource: "zvuki_neba", withExtension: "songbook") else {
             throw SongbookError.missingFile
@@ -114,6 +116,8 @@ enum Songbook {
     }
 
     private nonisolated static func loadBody(id: Int, db: OpaquePointer) throws -> SongBody {
+        // TODO: Also read number and subtitle. The open song should show the
+        // subtitle. This reader currently loads the lyric text only.
         let song = try prepare(db, "SELECT text FROM songs WHERE id=?")
         defer { sqlite3_finalize(song) }
         try bind(song, id: id, db: db)
