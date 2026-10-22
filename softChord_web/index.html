@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>softChord Viewer</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <main id="list-view">
+    <div class="search-bar">
+      <label for="search">Search:</label>
+      <input id="search" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+    <p id="list-error" class="error" hidden></p>
+    <ul id="song-list"></ul>
+  </main>
+
+  <main id="song-view" hidden>
+    <header class="toolbar">
+      <button id="back" type="button">‹ Back</button>
+      <h1 id="song-title"></h1>
+      <div class="toolbar-actions">
+        <button id="transpose-down" type="button">Down</button>
+        <button id="transpose-up" type="button">Up</button>
+      </div>
+    </header>
+    <p id="song-error" class="error" hidden></p>
+    <div id="sheet-scroll">
+      <article id="sheet"></article>
+    </div>
+    <p id="persist-note" hidden>Changes do not persist</p>
+  </main>
+
+  <div id="menu" class="menu" hidden>
+    <button type="button" data-action="text">Copy song text</button>
+    <button type="button" data-action="chords">Copy song text with chords</button>
+  </div>
+
+  <dialog id="notice">
+    <h2 id="notice-title"></h2>
+    <p id="notice-message"></p>
+    <form method="dialog"><button type="submit">OK</button></form>
+  </dialog>
+
+  <script src="sql-wasm.js"></script>
+  <script src="softchord_chords.js"></script>
+  <script src="softchord_text.js"></script>
+  <script src="song_filter.js"></script>
+  <script src="songbook.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>
