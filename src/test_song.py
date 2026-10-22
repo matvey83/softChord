@@ -2752,27 +2752,41 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(song.getChordAtPosition(0).note_id, 0)
         self.assertIsNone(song.getChordAtPosition(1))
 
-    def test_spacing_undo_leaves_the_deleted_lyric_chord_for_the_next_undo(self):
-        song = self._song_ready_for_lyric_edit("Hello", [(1, 5)])
+    def test_line_spacing_is_not_a_lyric_undo_step(self):
+        song = self._song_ready_for_lyric_edit("Hello\nWorld", [(6, 5)])
+        doc = self.app.editor.document()
+        steps = doc.availableUndoSteps()
+        QtDocumentLayout.apply_margins(song, self.app)
+        self.app.updateEditorFonts()
+        self.assertEqual(doc.availableUndoSteps(), steps)
+
+        # The first line always has the chord gap. A later line has it only
+        # when a chord sits on that line, and a click in the gap hits that line.
+        layout = doc.documentLayout()
+        first = doc.begin()
+        second = first.next()
+        first_rect = layout.blockBoundingRect(first)
+        second_rect = layout.blockBoundingRect(second)
+        _chords_height, lyrics_height, line_height = self.app.getHeightsWithChords(
+        )
+        gap = (line_height - lyrics_height) * 1.03
+        self.assertAlmostEqual(first_rect.top(), gap, delta=0.2)
+        self.assertAlmostEqual(second_rect.top() - first_rect.bottom(), gap,
+                               delta=0.2)
+        hit = layout.hitTest(
+            QtCore.QPointF(second_rect.left() + 2,
+                           (first_rect.bottom() + second_rect.top()) / 2),
+            Qt.HitTestAccuracy.FuzzyHit)
+        self.assertEqual(hit, 6)
+
         cursor = self.app.editor.textCursor()
-        cursor.setPosition(2)
+        cursor.setPosition(7)
         cursor.deletePreviousChar()
-        self.assertIsNone(song.getChordAtPosition(1))
-
-        # Line spacing is an undo step of its own. Undoing it has to leave
-        # the deleted letter, and the chord, for the following undo.
-        cursor = self.app.editor.textCursor()
-        block_format = cursor.blockFormat()
-        block_format.setTopMargin(block_format.topMargin() + 4)
-        cursor.setBlockFormat(block_format)
+        self.assertIsNone(song.getChordAtPosition(6))
 
         self.app.editor.undo()
-        self.assertEqual(self.app.editor.toPlainText(), "Hllo")
-        self.assertIsNone(song.getChordAtPosition(1))
-
-        self.app.editor.undo()
-        self.assertEqual(self.app.editor.toPlainText(), "Hello")
-        self.assertEqual(song.getChordAtPosition(1).note_id, 5)
+        self.assertEqual(self.app.editor.toPlainText(), "Hello\nWorld")
+        self.assertEqual(song.getChordAtPosition(6).note_id, 5)
 
     def test_save_songbook_copy_opens_new_file(self):
         self._open_empty_temp_songbook()
