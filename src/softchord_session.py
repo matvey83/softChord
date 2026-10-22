@@ -137,11 +137,60 @@ class CustomTextEdit(QtWidgets.QTextEdit):
         self.dragging_chord_orig_position = -1
         self.dragging_chord = None
         self.original_chord = None
+        # Press point while a selection rectangle may be dragged.
+        self.marquee_origin = None
+        self.marquee_current = None
 
         # So that hover mouse move events are generated:
         self.setMouseTracking(True)
 
         self.lyric_editor_mode = False
+
+    def cancelChordMarquee(self):
+        self.marquee_origin = None
+        self.marquee_current = None
+
+    def _marquee_is_drag(self):
+        """A short movement is still a click."""
+        if self.marquee_origin is None or self.marquee_current is None:
+            return False
+        delta = self.marquee_current - self.marquee_origin
+        distance = QtWidgets.QApplication.startDragDistance()
+        return delta.manhattanLength() >= distance
+
+    def _chord_nums_in_rect(self, rect):
+        song = self.app.current_song
+        if song is None:
+            return set()
+        selected = set()
+        editor = self.app.editor
+        for chord in song.iterateAllChords():
+            _char_rect, chord_rect = self.app.getCharRects(
+                editor, chord.character_num, chord)
+            if chord_rect is not None and rect.intersects(
+                    QtCore.QRectF(chord_rect)):
+                selected.add(chord.character_num)
+        return selected
+
+    def _finish_marquee(self):
+        if not self._marquee_is_drag():
+            return
+        rect = QtCore.QRectF(QtCore.QPointF(self.marquee_origin),
+                             QtCore.QPointF(self.marquee_current)).normalized()
+        self.app.selected_chord_nums = self._chord_nums_in_rect(rect)
+        # The drag is the rectangle, even when it misses every chord.
+        self.app.selected_char_num = None
+
+    def _draw_marquee(self, painter):
+        if not self._marquee_is_drag():
+            return
+        band = QtCore.QRect(self.marquee_origin,
+                            self.marquee_current).normalized()
+        color = self.app.chords_color
+        painter.setPen(QtGui.QPen(color))
+        painter.setBrush(QtGui.QColor(color.red(), color.green(), color.blue(),
+                                      40))
+        painter.drawRect(band)
 
     def paintEvent(self, event):
         """
@@ -173,6 +222,7 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                 self.app.drawSongToRect(self.app.current_song, painter, editor,
                                         paint_rect)
 
+            self._draw_marquee(painter)
             painter.end()
 
     def paintChordLayer(self, painter):
@@ -238,6 +288,13 @@ class CustomTextEdit(QtWidgets.QTextEdit):
             super().mouseMoveEvent(event)
             return
 
+        if self.dragging_chord is None and self.marquee_origin is not None:
+            self.marquee_current = event.pos()
+            if self._marquee_is_drag():
+                self.app.hover_char_num = None
+                self.viewport().update()
+                return
+
         localx = event.pos().x()
         localy = event.pos().y()
         dragging = (self.dragging_chord != None)
@@ -282,6 +339,11 @@ class CustomTextEdit(QtWidgets.QTextEdit):
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
+            # A click drops the rectangle selection. The press then selects
+            # one letter, or starts dragging the chord under the pointer.
+            self.app.selected_chord_nums = set()
+            self.cancelChordMarquee()
+
             localx = event.pos().x()
             localy = event.pos().y()
             letter_tuple = self.app.determineClickedLetter(
@@ -323,6 +385,11 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                 self.app.selected_char_num = None
                 self.dragging_chord = None
 
+            # A press that is not on a chord glyph can drag a selection rectangle.
+            if self.dragging_chord is None:
+                self.marquee_origin = event.pos()
+                self.marquee_current = event.pos()
+
             self.app.editor.viewport().update()
 
     def mouseReleaseEvent(self, event):
@@ -344,6 +411,11 @@ class CustomTextEdit(QtWidgets.QTextEdit):
             self.dragging_chord_orig_position = -1
             self.dragging_chord = None
             self.app.undo_stack.endMacro()
+        else:
+            self._finish_marquee()
+
+        self.cancelChordMarquee()
+        self.viewport().update()
 
     def mouseDoubleClickEvent(self, event):
         """
@@ -1042,6 +1114,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         # The letter/chord that is currently selected:
         self.selected_char_num = None
+        # Character indexes chosen by a drag rectangle in Edit chords.
+        self.selected_chord_nums = set()
         # The letter/chord that is currently hover (mouse hoveing over it):
         self.hover_char_num = None
 
@@ -1281,14 +1355,82 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         Deletes the currently selected chord from the song.
         """
 
+        if self._deleteSelectedChords():
+            return
+
         chord = self.getSelectedChord()
         if chord:
             self.current_song.deleteChord(chord)
+
+    def _deleteSelectedChords(self):
+        """Delete every marquee-selected chord as one undo step."""
+        if not self.selected_chord_nums or self.current_song is None:
+            return False
+        chords = [
+            chord for chord in self.current_song.iterateAllChords()
+            if chord.character_num in self.selected_chord_nums
+        ]
+        if not chords:
+            return False
+        self.undo_stack.beginMacro("delete chords")
+        for chord in chords:
+            self.current_song.deleteChord(chord)
+        self.undo_stack.endMacro()
+        self.selected_chord_nums = set()
+        self.selected_char_num = None
+        self.editor.viewport().update()
+        return True
+
+    def _position_is_on_line(self, char_num):
+        text = self.previous_song_text
+        if char_num < 0 or not text:
+            return False
+        try:
+            return text[char_num] != "\n"
+        except IndexError:
+            return False
+
+    def _nudgeSelectedChords(self, delta):
+        """Move every selected chord by one character, as one undo step.
+
+        The chord furthest along the move goes first, so two neighbors do
+        not land on each other. A chord that would leave its line stays put.
+        """
+        song = self.current_song
+        if song is None:
+            return
+        chords = [
+            chord for chord in song.iterateAllChords()
+            if chord.character_num in self.selected_chord_nums
+        ]
+        if not chords:
+            return
+        chords.sort(key=lambda chord: chord.character_num, reverse=delta > 0)
+        moves = []
+        for chord in chords:
+            new_num = chord.character_num + delta
+            if self._position_is_on_line(new_num):
+                moves.append((chord, new_num))
+        if not moves:
+            return
+        self.undo_stack.beginMacro("move chords")
+        for chord, new_num in moves:
+            new_chord = copy.copy(chord)
+            new_chord.character_num = new_num
+            song.replaceChord(chord, new_chord)
+        self.undo_stack.endMacro()
+        self.selected_char_num = None
 
     def processKeyPressed(self, key):
         """
         Returns True if the key press was processed
         """
+
+        if self.selected_chord_nums and key in (Qt.Key.Key_Left,
+                                                Qt.Key.Key_Right):
+            delta = -1 if key == Qt.Key.Key_Left else 1
+            self._nudgeSelectedChords(delta)
+            return True
 
         if self.selected_char_num == None:
             return False
@@ -1481,7 +1623,11 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.store.commit()
 
         self.selected_char_num = None  # Remove the selection
+        self.selected_chord_nums = set()
         self.hover_char_num = None  # Remove the hover highlighting
+        editor = getattr(self, "editor", None)
+        if editor is not None:
+            editor.cancelChordMarquee()
 
         sel_indecies = self.ui.songs_view.selectedIndexes()
         num_selected = len(sel_indecies) / self.songs_model.columnCount()
@@ -1708,6 +1854,11 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             if self.selected_char_num != None:
                 self.selected_char_num = renumber_map.get(
                     self.selected_char_num)
+            if self.selected_chord_nums:
+                self.selected_chord_nums = {
+                    renumber_map[num]
+                    for num in self.selected_chord_nums if num in renumber_map
+                }
             self.current_song._chords = new_all_chords
 
         self.current_song.text = song_text
@@ -2676,9 +2827,11 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 if chord_rect:
                     painter.fillRect(chord_rect, hover_brush)
 
+            selected_nums = set(self.selected_chord_nums)
             if self.selected_char_num != None:
-                char_rect, chord_rect = self.getCharRects(
-                    editor, self.selected_char_num)
+                selected_nums.add(self.selected_char_num)
+            for char_num in selected_nums:
+                char_rect, chord_rect = self.getCharRects(editor, char_num)
 
                 # Draw a selection rectangle:
                 painter.fillRect(char_rect, selection_brush)
