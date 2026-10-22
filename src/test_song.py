@@ -353,6 +353,7 @@ def test_app():
     session.selected_chord_nums = set()
     session.selected_char_num = None
     session.editor.cancelChordMarquee()
+    session._reset_lyric_chord_history()
     return _test_app
 
 
@@ -2634,6 +2635,144 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.lyricsTextChanged()
 
         self.assertEqual(list(song.iterateAllChords()), [])
+
+    def _song_ready_for_lyric_edit(self, text, chords):
+        """Show text in the lyric editor with chords already on it.
+
+        chords is a list of (character index, note id).
+        """
+        song = create_test_song(self.app, song_id=0, text=text)
+        self.app.current_song = song
+        self.app.editor.setDocument(song.doc)
+        for character_num, note_id in chords:
+            song._addChord(
+                SongChord(song, character_num, note_id, 2, 7, "1", 1))
+        self.app.previous_song_text = text
+        self.app.lyricEditorSelected()
+        return song
+
+    def test_undo_lyric_delete_restores_the_chord(self):
+        song = self._song_ready_for_lyric_edit("Hello", [(1, 5), (4, 7)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(2)
+        cursor.deletePreviousChar()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Hllo")
+        self.assertIsNone(song.getChordAtPosition(1))
+        self.assertEqual(song.getChordAtPosition(3).note_id, 7)
+
+        self.app.editor.undo()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Hello")
+        restored = song.getChordAtPosition(1)
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.note_id, 5)
+        self.assertEqual(restored.chord_type_id, 2)
+        self.assertEqual(restored.bass_note_id, 7)
+        self.assertEqual(restored.marker, "1")
+        self.assertEqual(restored.in_parentheses, 1)
+        self.assertEqual(song.getChordAtPosition(4).note_id, 7)
+        self.assertIsNone(song.getChordAtPosition(3))
+
+        self.app.editor.redo()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Hllo")
+        self.assertIsNone(song.getChordAtPosition(1))
+        self.assertEqual(song.getChordAtPosition(3).note_id, 7)
+
+    def test_undo_after_a_later_lyric_edit_keeps_the_chord(self):
+        song = self._song_ready_for_lyric_edit("Hello", [(1, 5)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(2)
+        cursor.deletePreviousChar()
+        self.app.editor.undo()
+
+        cursor = self.app.editor.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+        cursor.insertText("!")
+        self.assertEqual(self.app.editor.toPlainText(), "Hello!")
+        self.assertEqual(song.getChordAtPosition(1).note_id, 5)
+
+        self.app.editor.undo()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Hello")
+        self.assertEqual(song.getChordAtPosition(1).note_id, 5)
+        self.assertIsNone(song.getChordAtPosition(5))
+
+    def test_one_undo_restores_chords_removed_by_merged_deletes(self):
+        song = self._song_ready_for_lyric_edit("ABCDE", [(4, 4)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        self.app.editor.setTextCursor(cursor)
+        steps_before = self.app.editor.document().availableUndoSteps()
+        for _ in range(5):
+            self.app.editor.textCursor().deleteChar()
+
+        self.assertEqual(self.app.editor.toPlainText(), "")
+        # Qt groups these deletes into the one undo step a held Delete key is.
+        self.assertEqual(self.app.editor.document().availableUndoSteps(),
+                         steps_before + 1)
+        self.assertEqual(list(song.iterateAllChords()), [])
+
+        self.app.editor.undo()
+
+        self.assertEqual(self.app.editor.toPlainText(), "ABCDE")
+        self.assertEqual(song.getChordAtPosition(4).note_id, 4)
+        self.assertEqual(len(list(song.iterateAllChords())), 1)
+
+    def test_undo_of_a_lyric_selection_restores_every_chord(self):
+        song = self._song_ready_for_lyric_edit("Hello", [(1, 5), (2, 7)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(4, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Ho")
+        self.assertEqual(list(song.iterateAllChords()), [])
+
+        self.app.editor.undo()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Hello")
+        self.assertEqual(song.getChordAtPosition(1).note_id, 5)
+        self.assertEqual(song.getChordAtPosition(2).note_id, 7)
+
+    def test_undo_of_a_lyric_insert_moves_the_chord_back(self):
+        song = self._song_ready_for_lyric_edit("Hello", [(0, 0)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.insertText("x")
+
+        self.assertEqual(self.app.editor.toPlainText(), "xHello")
+        self.assertIsNone(song.getChordAtPosition(0))
+        self.assertEqual(song.getChordAtPosition(1).note_id, 0)
+
+        self.app.editor.undo()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Hello")
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertIsNone(song.getChordAtPosition(1))
+
+    def test_spacing_undo_leaves_the_deleted_lyric_chord_for_the_next_undo(self):
+        song = self._song_ready_for_lyric_edit("Hello", [(1, 5)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(2)
+        cursor.deletePreviousChar()
+        self.assertIsNone(song.getChordAtPosition(1))
+
+        # Line spacing is an undo step of its own. Undoing it has to leave
+        # the deleted letter, and the chord, for the following undo.
+        cursor = self.app.editor.textCursor()
+        block_format = cursor.blockFormat()
+        block_format.setTopMargin(block_format.topMargin() + 4)
+        cursor.setBlockFormat(block_format)
+
+        self.app.editor.undo()
+        self.assertEqual(self.app.editor.toPlainText(), "Hllo")
+        self.assertIsNone(song.getChordAtPosition(1))
+
+        self.app.editor.undo()
+        self.assertEqual(self.app.editor.toPlainText(), "Hello")
+        self.assertEqual(song.getChordAtPosition(1).note_id, 5)
 
     def test_save_songbook_copy_opens_new_file(self):
         self._open_empty_temp_songbook()

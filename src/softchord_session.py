@@ -1130,6 +1130,13 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.clipboard.dataChanged.connect(self.clipboardChanged)
 
         self.ignore_song_text_changed = False
+        # Chords that belong with the lyrics at each text-editor undo step.
+        # The editor can put a deleted character back, but the chord on it
+        # is not part of that text and would otherwise stay gone.
+        self._lyric_undo_doc = None
+        self._lyric_new_command = False
+        self._lyric_undo_steps = 0
+        self._lyric_chord_snapshots = {}
 
         # The letter/chord that is currently selected:
         self.selected_char_num = None
@@ -1223,8 +1230,13 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.ui.chords_editor_label.hide()
         self.ui.lyrics_editor_label.show()
+        entering = not self.editor.lyric_editor_mode
         self.editor.lyric_editor_mode = True
         self.editor.setUndoRedoEnabled(True)
+        # Chord edits use another undo stack. Coming back here starts the
+        # text undo history over, with the chords the song has now.
+        if entering:
+            self._reset_lyric_chord_history()
 
         self.editor.viewport().update()
 
@@ -1241,6 +1253,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.chords_editor_label.show()
         self.editor.lyric_editor_mode = False
         self.editor.setUndoRedoEnabled(False)
+        self._reset_lyric_chord_history()
 
         self.editor.viewport().update()
         self.updateEditMenu()
@@ -1797,6 +1810,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
             self.editor.verticalScrollBar().setValue(0)
 
+        # The text undo stack belongs to the document just shown.
+        self._reset_lyric_chord_history()
 
     def _transposeCurrentSong(self, steps):
         """
@@ -1811,79 +1826,185 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         finally:
             self.restoreCursor()
 
+    def _onLyricUndoCommandAdded(self):
+        # Undo and redo do not emit this. A document that is no longer shown
+        # must not mark the edit either.
+        if self.sender() is self.editor.document():
+            self._lyric_new_command = True
+
+    def _watch_lyric_undo_document(self):
+        doc = self.editor.document()
+        if doc is None or doc is self._lyric_undo_doc:
+            return
+        # Leave the previous document connected. Switching songs can delete
+        # it, and a signal from it is ignored above.
+        self._lyric_undo_doc = doc
+        doc.undoCommandAdded.connect(self._onLyricUndoCommandAdded)
+
+    def _lyric_undo_index(self):
+        doc = self.editor.document()
+        if doc is None or not doc.isUndoRedoEnabled():
+            return 0
+        return doc.availableUndoSteps()
+
+    def _capture_lyric_chords(self):
+        # The number is kept beside the chord. Later edits move the same
+        # object, and this number has to stay as it was at this undo step.
+        return [(chord, chord.character_num)
+                for chord in self.current_song._chords]
+
+    def _restore_lyric_chords(self, captured):
+        restored = []
+        for chord, character_num in captured:
+            chord.character_num = character_num
+            restored.append(chord)
+        self.current_song._chords = restored
+
+    def _reset_lyric_chord_history(self):
+        """The chords on the song now match the lyrics in the editor."""
+        self._lyric_new_command = False
+        self._lyric_chord_snapshots = {}
+        self._watch_lyric_undo_document()
+        steps = self._lyric_undo_index()
+        self._lyric_undo_steps = steps
+        if self.current_song is not None:
+            self._lyric_chord_snapshots[steps] = self._capture_lyric_chords()
+
+    def _lyric_renumber_map(self, song_text):
+        # For each character: key: old position, value: new position
+        renumber_map = {}
+        previous = self.previous_song_text
+
+        i = -1
+        while True:
+            i += 1
+            try:
+                if song_text[i] != previous[i]:
+                    break
+                else:
+                    renumber_map[i] = i
+            except IndexError:
+                # Reached end-of-line of either string
+                break
+
+        i = 0
+        while True:
+            i -= 1
+            try:
+                if song_text[i] != previous[i]:
+                    break
+                else:
+                    renumber_map[len(previous) + i] = len(song_text) + i
+            except IndexError:
+                # Reached end-of-line of either string
+                break
+        return renumber_map
+
+    def _remap_lyric_selection(self, renumber_map):
+        if self.selected_char_num != None:
+            self.selected_char_num = renumber_map.get(self.selected_char_num)
+        if self.selected_chord_nums:
+            self.selected_chord_nums = {
+                renumber_map[num]
+                for num in self.selected_chord_nums if num in renumber_map
+            }
+
+    def _renumber_lyric_chords(self, renumber_map):
+        kept = []
+        for chord in self.current_song.iterateAllChords():
+            try:
+                chord.character_num = renumber_map[chord.character_num]
+            except KeyError:
+                continue
+            kept.append(chord)
+        self.current_song._chords = kept
+
+    def _sync_lyric_chords(self, new_command, song_text):
+        """Move chords with the text editor's undo stack.
+
+        song_text is None when the lyrics did not change. Line spacing is
+        still an undo step, and the chords have to stay recorded there.
+        """
+        steps = self._lyric_undo_index()
+        previous = self._lyric_undo_steps
+        snaps = self._lyric_chord_snapshots
+
+        if self.current_song is None:
+            self._lyric_chord_snapshots = {}
+            self._lyric_undo_steps = steps
+            return
+
+        text_changed = (song_text is not None
+                        and self.previous_song_text is not None
+                        and song_text != self.previous_song_text)
+        if previous not in snaps:
+            snaps[previous] = self._capture_lyric_chords()
+
+        # One step back is undo, a step forward without a new edit is redo.
+        if text_changed and not new_command and (steps == previous - 1
+                                                  or steps > previous):
+            saved = snaps.get(steps)
+            if saved is not None:
+                self._remap_lyric_selection(
+                    self._lyric_renumber_map(song_text))
+                self._restore_lyric_chords(saved)
+                self._lyric_undo_steps = steps
+                return
+
+        if text_changed:
+            if not new_command and steps < previous:
+                # The undo stack was cleared (the text was replaced wholesale).
+                snaps = {}
+                self._lyric_chord_snapshots = snaps
+            renumber_map = self._lyric_renumber_map(song_text)
+            self._remap_lyric_selection(renumber_map)
+            self._renumber_lyric_chords(renumber_map)
+
+        if new_command:
+            for key in list(snaps):
+                if key > steps:
+                    del snaps[key]
+            carried = snaps.get(previous)
+            if carried is not None:
+                for missed in range(previous + 1, steps):
+                    if missed not in snaps:
+                        snaps[missed] = list(carried)
+
+        if text_changed or new_command:
+            snaps[steps] = self._capture_lyric_chords()
+        elif steps not in snaps:
+            carried = snaps.get(previous)
+            snaps[steps] = (list(carried) if carried is not None else
+                            self._capture_lyric_chords())
+        self._lyric_undo_steps = steps
+
     def lyricsTextChanged(self):
         """
         Called when the song lyric text is modified by the user.
         Removes all chords that were associated with any text that was deleted,
         and adjusts positions of all chords that were affected by the change.
+        Undoing that edit puts those chords back on the restored characters.
         """
 
-        if self.ignore_song_text_changed:
+        new_command = self._lyric_new_command
+        self._lyric_new_command = False
+
+        if self.ignore_song_text_changed or not self.current_song:
+            self._sync_lyric_chords(new_command, None)
             return
 
-        if not self.current_song:
-            return
+        if self.editor.document() is not self._lyric_undo_doc:
+            self._reset_lyric_chord_history()
+            new_command = False
 
         self.ignore_song_text_changed = True
-
-        song_text = self.editor.toPlainText()
-
-        # Compare the new text to the previous text:
-
-        if self.previous_song_text and self.previous_song_text != song_text:
-
-            # For each character: key: old position, value: new position
-            renumber_map = {}
-
-            i = -1
-            while True:
-                i += 1
-                try:
-                    if song_text[i] != self.previous_song_text[i]:
-                        break
-                    else:
-                        renumber_map[i] = i
-                except IndexError:
-                    # Reached end-of-line of either string
-                    break
-
-            i = 0
-            while True:
-                i -= 1
-                try:
-                    if song_text[i] != self.previous_song_text[i]:
-                        break
-                    else:
-                        renumber_map[len(self.previous_song_text) +
-                                     i] = len(song_text) + i
-                except IndexError:
-                    # Reached end-of-line of either string
-                    break
-
-            new_all_chords = []
-            for chord in self.current_song.iterateAllChords():
-                try:
-                    chord.character_num = renumber_map[chord.character_num]
-                except KeyError:
-                    continue
-                else:
-                    new_all_chords.append(chord)
-
-            # Renumber the selection:
-            if self.selected_char_num != None:
-                self.selected_char_num = renumber_map.get(
-                    self.selected_char_num)
-            if self.selected_chord_nums:
-                self.selected_chord_nums = {
-                    renumber_map[num]
-                    for num in self.selected_chord_nums if num in renumber_map
-                }
-            self.current_song._chords = new_all_chords
-
-        self.current_song.text = song_text
-        self.previous_song_text = song_text
-
-        self.ignore_song_text_changed = False
+        try:
+            song_text = self.editor.toPlainText()
+            self._sync_lyric_chords(new_command, song_text)
+            self.current_song.text = song_text
+            self.previous_song_text = song_text
+        finally:
+            self.ignore_song_text_changed = False
 
     def zoomIn(self):
         pos = self.ui.zoom_slider.sliderPosition()
