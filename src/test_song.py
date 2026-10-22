@@ -1494,6 +1494,33 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.assertEqual(sorted(chord.chord_type_id for chord in chords),
                          [0, 0])
 
+    def test_command_z_undoes_one_chord_edit_and_shift_redoes_it(self):
+        song = self._select_chords_at("0123456789", [1, 4],
+                                      [Qt.Key.Key_C, Qt.Key.Key_G])
+        self.assertEqual(self.app.undo_stack.index(), 2)
+        editor = self.app.editor
+
+        def press(key, modifiers):
+            # Send the events Qt delivers for a shortcut. QTest.keyClick
+            # leaves Shift held down, and the song list then selects nothing.
+            override = QtGui.QKeyEvent(QtCore.QEvent.Type.ShortcutOverride,
+                                       key, modifiers)
+            editor.event(override)
+            editor.event(QtGui.QKeyEvent(QtCore.QEvent.Type.KeyPress, key,
+                                         modifiers))
+
+        press(Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+
+        self.assertEqual(self.app.undo_stack.index(), 1)
+        self.assertIsNone(song.getChordAtPosition(4))
+        self.assertEqual(song.getChordAtPosition(1).note_id, 0)
+
+        press(Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier
+              | Qt.KeyboardModifier.ShiftModifier)
+
+        self.assertEqual(self.app.undo_stack.index(), 2)
+        self.assertEqual(song.getChordAtPosition(4).note_id, 7)
+
 
 # ---------------------------------------------------------------------------
 # Tests for hit-testing core functionality (determineClickedLetter + getCharRects)

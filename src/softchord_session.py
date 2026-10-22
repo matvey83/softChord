@@ -441,6 +441,25 @@ class CustomTextEdit(QtWidgets.QTextEdit):
 
             self.viewport().update()
 
+    def event(self, event):
+        # QTextEdit handles Undo and Redo before keyPressEvent, and accepts
+        # the shortcut so the Edit menu action does not run. While chords are
+        # edited, those keys belong to the chord undo stack.
+        if not self.lyric_editor_mode and event.type() in (
+                QtCore.QEvent.Type.ShortcutOverride,
+                QtCore.QEvent.Type.KeyPress):
+            redo = event.matches(QtGui.QKeySequence.StandardKey.Redo)
+            undo = event.matches(QtGui.QKeySequence.StandardKey.Undo)
+            if undo or redo:
+                if event.type() == QtCore.QEvent.Type.KeyPress:
+                    if redo:
+                        self.app.ui.actionRedo.trigger()
+                    else:
+                        self.app.ui.actionUndo.trigger()
+                event.accept()
+                return True
+        return super().event(event)
+
     def keyPressEvent(self, event):
 
         if self.lyric_editor_mode:
@@ -473,7 +492,7 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                     self.app.ui.actionPaste.trigger()
                     return
 
-        # Let the main window handle this event (required for undo/redo shortcuts):
+        # Unused keys are left for the window. Undo and redo are handled above.
         self.app.win.keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
