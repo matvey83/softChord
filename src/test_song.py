@@ -26,7 +26,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
 
 import softchord
-from softchord_layout import SongLayout
+from softchord_layout import QtDocumentLayout, SongLayout
 from softchord_io import (
     _chord_tokens,
     _classify_chord_line,
@@ -36,7 +36,12 @@ from softchord_io import (
     assign_chord_anchors,
     text_is_proportionally_spaced,
 )
-from softchord_session import fit_scale_ratio, scale_message, song_target_size
+from softchord_session import (
+    fit_scale_ratio,
+    scale_message,
+    song_document_size,
+    song_target_size,
+)
 from softchord_song import place_chord_on_line
 from softchord_store import (
     SongbookStore,
@@ -169,7 +174,7 @@ class MinimalTestApp:
         self.curs.commit()
 
     def _setup_method_stubs(self):
-        # These are called by Song.setDocMargins and other methods.
+        # These are called while the lyric document is being spaced.
         # We provide minimal safe implementations for unit testing.
 
         def _get_heights():
@@ -195,6 +200,9 @@ class MinimalTestApp:
 
     def getHeightsWithoutChords(self):
         return (0.0, 14.0, 14.0)
+
+    def updateChordLineSpacing(self, song):
+        pass
 
     # --- Stubs needed by CustomTextEdit ---
     def determineClickedLetter(self, x, y, dragging):
@@ -1569,7 +1577,8 @@ class TestAppRendering(unittest.TestCase):
         """Screen chords and exported chords come from SongLayout."""
         song = self.app.current_song
         chord = next(song.iterateAllChords())
-        layout = SongLayout.place(self.app.editor, [chord],
+        doc_layout = QtDocumentLayout(self.app.editor)
+        layout = SongLayout.place(doc_layout, [chord],
                                   self.app.getHeightsWithChords,
                                   self.app.getChordWidth,
                                   lambda item: item.getChordText())
@@ -1604,8 +1613,8 @@ class TestAppRendering(unittest.TestCase):
             SongLayout.place = staticmethod(original)
 
         self.assertGreaterEqual(len(calls), 2)
-        self.assertIs(calls[0], self.app.editor)
-        self.assertIs(calls[1], self.app.editor)
+        self.assertIs(calls[0].editor, self.app.editor)
+        self.assertIs(calls[1].editor, self.app.editor)
 
     def test_draw_song_to_rect_exporting_headers(self):
         """When exporting=True, song number/title/key should be considered in layout."""
@@ -1739,11 +1748,10 @@ class TestPrintingPdfFontClipboard(unittest.TestCase):
                                             exporting=True)
         finally:
             painter.end()
-        content = self.app.current_song.doc.documentLayout().frameBoundingRect(
-            self.app.current_song.doc.rootFrame())
-        expected = fit_scale_ratio(content.right(), content.bottom(),
-                                   rect.width(), rect.height(),
-                                   self.app.zoom_factor)
+        content_width, content_height = song_document_size(
+            self.app.current_song)
+        expected = fit_scale_ratio(content_width, content_height, rect.width(),
+                                   rect.height(), self.app.zoom_factor)
         self.assertEqual(drawn, expected)
         self.assertLess(drawn, 1.0)
 
