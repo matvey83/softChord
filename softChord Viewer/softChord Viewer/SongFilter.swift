@@ -7,6 +7,7 @@ import Foundation
 
 enum SongFilter {
     /// Titles that contain the query, ignoring case. A blank query keeps every song, in the same order.
+    /// TODO: Also match the song number, the way the editor's song list filter does.
     nonisolated static func matching(_ query: String, in songs: [SongTitle]) -> [SongTitle] {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {

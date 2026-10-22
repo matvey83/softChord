@@ -14,6 +14,8 @@
   var songs = null;
   var byId = new Map();
 
+  // TODO: Also read number and subtitle. The list and search should use the
+  // number (blank when it is -1). The open song should show the subtitle.
   var SONGS_SQL = "SELECT id, title, text FROM songs ORDER BY id";
   var CHORDS_SQL = "SELECT song_id, character_num, note_id, chord_type_id, " +
     "bass_note_id, marker, in_parentheses FROM song_chord_link ORDER BY rowid";

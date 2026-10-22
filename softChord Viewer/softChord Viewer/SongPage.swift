@@ -59,6 +59,11 @@ struct SongPage: View {
                 }
             }
             ToolbarItem(placement: .principal) {
+                // TODO: Under the title, show the subtitle when it is not empty,
+                // and the auto-detected key in the editor's words
+                // ("Auto-detected key: ..."). Port key_label and
+                // format_auto_detected_key_text from softchord_chords.py.
+                // This page keeps transpose in memory. The editor keeps saving it.
                 HStack(spacing: 6) {
                     Text(title)
                         .font(.headline)

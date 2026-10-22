@@ -26,6 +26,8 @@ enum SongSheetLayout {
         var size: CGSize
     }
 
+    // TODO: The web sheet should use these measurements. The desktop editor
+    // keeps QtDocumentLayout until a new lyric renderer replaces it.
     nonisolated static func drawing(for lines: [SongSheetLine]) -> Drawing {
         let lyrics = font(candidates: ["TimesNewRomanPSMT", "Times New Roman"], size: 20, bold: false)
         let chords = font(candidates: ["TimesNewRomanPS-BoldMT", "TimesNewRomanPSMT"], size: 12, bold: true)

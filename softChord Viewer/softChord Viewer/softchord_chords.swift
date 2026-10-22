@@ -222,6 +222,10 @@ nonisolated enum SoftchordChords {
     }
 }
 
+// TODO: Port key_label and format_auto_detected_key_text from softchord_chords.py
+// so the song page can show the detected key. bestDetectedKey here keeps
+// prefer and score only. Leave the editor's key label as it is.
+
 /// Half-step shifts for the open song. Nothing here is written to the songbook.
 nonisolated enum SongTranspose {
     /// Mirror: softchord_song.py Song.transpose.
