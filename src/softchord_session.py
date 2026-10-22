@@ -1964,11 +1964,6 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             for key in list(snaps):
                 if key > steps:
                     del snaps[key]
-            carried = snaps.get(previous)
-            if carried is not None:
-                for missed in range(previous + 1, steps):
-                    if missed not in snaps:
-                        snaps[missed] = list(carried)
 
         if text_changed or new_command:
             snaps[steps] = self._capture_lyric_chords()
