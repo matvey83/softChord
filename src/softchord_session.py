@@ -52,7 +52,7 @@ from softchord_store import (
     database_file_was_replaced,
     readonly_database_error,
 )
-from softchord_layout import SongLayout, character_and_chord_boxes
+from softchord_layout import QtDocumentLayout, SongLayout
 from softchord_io import (
     SQLITE_HEADER,
     SONGS_TABLE_SQL,
@@ -180,7 +180,7 @@ class CustomTextEdit(QtWidgets.QTextEdit):
         painter.setFont(self.app.chords_font)
         painter.setPen(self.app.chords_color)
         layout = SongLayout.place(
-            self, self.app.current_song.iterateAllChords(),
+            QtDocumentLayout(self), self.app.current_song.iterateAllChords(),
             self.app.getHeightsWithChords, self.app.getChordWidth,
             lambda chord: chord.getChordText())
         for placed in layout.placed:
@@ -627,8 +627,7 @@ def song_target_size(page_width, page_height, left, right, top, bottom,
 
 def song_document_size(song):
     """Width and height of the song text, in document units."""
-    rect = song.doc.documentLayout().frameBoundingRect(song.doc.rootFrame())
-    return rect.right(), rect.bottom()
+    return QtDocumentLayout.content_size(song.doc)
 
 
 def single_song_fit_scale(song, page_width, page_height, left_in, right_in,
@@ -1226,6 +1225,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             return
             # Update the current song in the database:
         song = self.current_song
+        # Lyric edits can sit in the editor until this save. Copy them into
+        # the song first so getAllText() is the text about to be written.
+        if self.editor.document() is song.doc:
+            song.text = self.editor.toPlainText()
 
         def write():
             chords_in_database = self.store.chord_positions(song.id)
@@ -1440,6 +1443,17 @@ class SongbookSession(SongbookIO, QtCore.QObject):
     def clearUndoStack(self):
         self.undo_stack.clear()
 
+    def updateChordLineSpacing(self, song):
+        """Give chord lines their extra space and repaint.
+
+        Chord commands call this. A drag is one undo step made of many
+        commands, and each of those has to update the spacing immediately.
+        """
+        if self.current_song is not song:
+            return
+        QtDocumentLayout.apply_margins(song, self)
+        self.editor.viewport().update()
+
     def warning(self, text):
         QtWidgets.QMessageBox.warning(self.win, "Warning", text)
 
@@ -1575,19 +1589,22 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.sendCurrentSongToDatabase()
 
         if self.current_song != None:
-
-            # Clear the document of the QTextEdit before setting it to a new document.
-            # This is needed to prevent a crash on Windows:
-            prev_doc = self.editor.document()
-            self.current_song.doc = prev_doc.clone()
-            prev_doc.clear()
+            # Clearing the shared document notifies the editor. That is not
+            # a lyric edit, and it has to happen before the new song is current.
+            self.ignore_song_text_changed = True
+            try:
+                QtDocumentLayout.release_editor_document(
+                    self.editor, self.current_song)
+            finally:
+                self.ignore_song_text_changed = False
 
         if song == None:
             self.current_song = None
             self.previous_song_text = None
             self.ui.song_num_ef.setText("")
 
-            self.editor.setDocument(self.empty_doc)
+            # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
+            QtDocumentLayout.show_document(self.editor, self.empty_doc)
             self.editor.verticalScrollBar().setValue(0)
             self._updateAutoDetectedKeyLabel()
 
@@ -1611,7 +1628,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             song.doc.setDefaultFont(self.lyrics_font)
 
             # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
-            self.editor.setDocument(song.doc)
+            QtDocumentLayout.show_document(self.editor, song.doc)
 
             self.editor.verticalScrollBar().setValue(0)
 
@@ -1693,6 +1710,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                     self.selected_char_num)
             self.current_song._chords = new_all_chords
 
+        self.current_song.text = song_text
         self.previous_song_text = song_text
 
         self.ignore_song_text_changed = False
@@ -1801,7 +1819,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.editor.setFont(self.lyrics_font)
 
         if self.current_song:
-            self.current_song.setDocMargins()
+            QtDocumentLayout.apply_margins(self.current_song, self)
         self.editor.viewport().update()
 
         # Update the chords fonts:
@@ -1813,7 +1831,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.symbols_font_metrics = QtGui.QFontMetricsF(self.symbols_font)
 
         if self.current_song:
-            self.current_song.setDocMargins()
+            QtDocumentLayout.apply_margins(self.current_song, self)
         self.editor.viewport().update()
 
     def printSelectedSongs(self):
@@ -1941,8 +1959,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 song = Song(self, song_id)
 
                 # Set this song's document (will be reset later):
-                print_editor.setDocument(song.doc)
                 # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
+                QtDocumentLayout.show_document(print_editor, song.doc)
 
                 scale_ratio = self.printSong(song, printer, painter, print_editor, page_num)
                 if scale_ratio < min_scale_ratio:
@@ -2172,8 +2190,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             song = Song(self, song_id)
 
             # Set this song's document (will be reset later):
-            print_editor.setDocument(song.doc)
             # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
+            QtDocumentLayout.show_document(print_editor, song.doc)
 
             pdf_file = os.path.join(dir, song.title + ".pdf")
 
@@ -2505,7 +2523,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.ignore_song_text_changed = True
             try:
                 self.current_song.updateSongFromDatabase()
-                self.editor.setDocument(self.current_song.doc)
+                QtDocumentLayout.show_document(self.editor,
+                                               self.current_song.doc)
                 self.previous_song_text = self.current_song.getAllText()
             finally:
                 self.ignore_song_text_changed = False
@@ -2572,9 +2591,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             chord_text = None
             chord_width = 0
 
-        return character_and_chord_boxes(editor, song_char_num, chord_text,
-                                         chords_height, line_height,
-                                         chord_width)
+        return QtDocumentLayout(editor).character_and_chord_boxes(
+            song_char_num, chord_text, chords_height, line_height, chord_width)
 
     def getChordWidth(self, chord_text):
 
@@ -2667,7 +2685,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 if chord_rect:
                     painter.fillRect(chord_rect, selection_brush)
 
-        layout = SongLayout.place(editor, song._chords,
+        doc_layout = QtDocumentLayout(editor)
+        layout = SongLayout.place(doc_layout, song._chords,
                                   self.getHeightsWithChords, self.getChordWidth,
                                   lambda chord: chord.getChordText())
         for placed in layout.placed:
@@ -2688,21 +2707,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         painter.setFont(self.lyrics_font)
         painter.setPen(self.lyrics_color)
-
-        doc = editor.document()
-
-        # When drawing to screen, we need to offset the current scroll bar values:
-        # (this will basically raise the document to (0,0) position temporarily)
-        if not exporting:
-            scroll_x = editor.horizontalScrollBar().value()
-            scroll_y = editor.verticalScrollBar().value()
-            painter.translate(-scroll_x, -scroll_y)
-
-        doc.drawContents(painter, QtCore.QRectF(0.0, 0.0, 10000.0, 10000.0))
-
-        if not exporting:
-            # Revert the scroll offset translation:
-            painter.translate(scroll_x, scroll_y)
+        doc_layout.draw_lyrics(painter, apply_scroll=not exporting)
 
     def drawSongToRect(self, song, output_painter, editor, rect, exporting=False):
         """
@@ -2715,11 +2720,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
 
         # FIXME will not account for chord text:
-        tf = song.doc.rootFrame()
-        layout_bounding_rect = song.doc.documentLayout().frameBoundingRect(tf)
-
-        pic_right = layout_bounding_rect.right()
-        pic_bottom = layout_bounding_rect.bottom()
+        pic_right, pic_bottom = song_document_size(song)
         # FIXME this does not account for the header line and the first chords line
 
         # Figure out what the scaling factor should be:
@@ -2894,19 +2895,16 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             if y > chord_rect.top() and y < char_rect.top():
                 y = char_rect.top() + 1
 
-        cursor = self.editor.cursorForPosition(QtCore.QPoint(int(offset_x), int(y)))
+        pos, at_start, at_end, rect = QtDocumentLayout(
+            self.editor).caret_at(offset_x, y)
 
         # If at the start or end of line, make sure the cursor is actually over a character:
-        at_start = cursor.atBlockStart()
-        at_end = cursor.atBlockEnd()
         if at_start or at_end:
-            r = self.editor.cursorRect(cursor)
-            if at_start and x < r.left():
+            if at_start and x < rect.left():
                 return None
-            if at_end and x >= r.right():
+            if at_end and x >= rect.right():
                 return None
 
-        pos = cursor.position()
         return (False, pos)
 
     def processSongCharEdit(self, song_char_num):

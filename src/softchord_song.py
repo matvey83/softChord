@@ -13,6 +13,7 @@ from softchord_chords import (
     detect_region_start_indices,
     transpose_note,
 )
+from softchord_layout import QtDocumentLayout
 from softchord_text import format_song_text, place_chord_on_line
 
 def document_owner(owner):
@@ -35,9 +36,11 @@ class AddChordCommand(QtGui.QUndoCommand):
 
     def undo(self):
         self.song._deleteChord(self.chord)
+        self.song.session.updateChordLineSpacing(self.song)
 
     def redo(self):
         self.song._addChord(self.chord)
+        self.song.session.updateChordLineSpacing(self.song)
 
 
 class DeleteChordCommand(QtGui.QUndoCommand):
@@ -49,9 +52,11 @@ class DeleteChordCommand(QtGui.QUndoCommand):
 
     def undo(self):
         self.song._addChord(self.chord)
+        self.song.session.updateChordLineSpacing(self.song)
 
     def redo(self):
         self.song._deleteChord(self.chord)
+        self.song.session.updateChordLineSpacing(self.song)
 
 
 class ReplaceChordCommand(QtGui.QUndoCommand):
@@ -64,9 +69,11 @@ class ReplaceChordCommand(QtGui.QUndoCommand):
 
     def undo(self):
         self.song._replaceChord(self.new_chord, self.prev_chord)
+        self.song.session.updateChordLineSpacing(self.song)
 
     def redo(self):
         self.song._replaceChord(self.prev_chord, self.new_chord)
+        self.song.session.updateChordLineSpacing(self.song)
 
 
 class DeleteSongsCommand(QtGui.QUndoCommand):
@@ -365,6 +372,8 @@ class Song:
         self.title = ""
         self.prefer = PREFER_NEITHER
         self._regions = []  # (start_char, prefer, key_label)
+        self.text = ""
+        self.doc = None
 
         self.updateSongFromDatabase()
         self.updateSharpsOrFlats()
@@ -395,9 +404,6 @@ class Song:
                           link.chord_type_id, link.bass_note_id, link.marker,
                           link.in_parentheses))
 
-        self.doc = QtGui.QTextDocument()
-        self.doc.setDefaultFont(self.session.lyrics_font)
-
         self.setAllText(record.text, song_chords)
 
         self.updateSharpsOrFlats()
@@ -416,82 +422,14 @@ class Song:
 
     def setAllText(self, all_text, all_chords):
         """
-        Populates the QTextDocument and self._chords lists based on the specified
-        data.
+        Store the lyric text and chords, and refresh the display document.
         """
 
-        self.doc.setPlainText(all_text)
+        self.text = all_text or ""
         self._chords = all_chords
-        self.setDocMargins()
+        QtDocumentLayout.fill(self, self.session)
 
         self.updateSharpsOrFlats()
-
-    def setDocMargins(self):
-
-        # Required to avoid circular calls:
-        self.session.ignore_song_text_changed = True
-
-        # Determine which chars have chords:
-        chords_by_char = {}
-        for chord in self._chords:
-            chords_by_char[chord.character_num] = True
-
-        chords_height, lyrics_height, line_height = self.session.getHeightsWithChords(
-        )
-        with_chords_top_margin = line_height - lyrics_height
-
-        with_chords_top_margin *= 1.03  # Add some spacing between lines (that have chords
-
-        # Set the margin for the first line (the top of the document):
-        # NOTE: We are always setting the top margin for the first line with the assumption that
-        # the first line always has chords on it. This assumption is often valid, and also
-        # lets us avoid some issues.
-        root_frame = self.doc.rootFrame()
-        frame_format = root_frame.frameFormat()
-        frame_format.setTopMargin(with_chords_top_margin +
-                                  self.session.doc_editor_offset)
-        root_frame.setFrameFormat(frame_format)
-
-        block = self.doc.begin()
-
-        with_chords_format = block.blockFormat()
-        with_chords_format.setTopMargin(with_chords_top_margin)
-        with_chords_format.setLeftMargin(self.session.doc_editor_offset)
-
-        without_chords_format = block.blockFormat()
-        without_chords_format.setTopMargin(0.0)
-        without_chords_format.setLeftMargin(self.session.doc_editor_offset)
-
-        linenum = -1
-        line_start_char = 0
-        for line_text in self.iterateLineTexts():
-            linenum += 1
-            line_end_char = line_start_char + len(line_text)
-
-            # Figure out whether this line has chords, and need to be made taller:
-            line_has_chords = False
-            for chord_num in chords_by_char.keys():
-                if chord_num >= line_start_char and chord_num <= line_end_char:
-                    line_has_chords = True
-                    break
-
-            # Set the height of this line:
-            cursor = QtGui.QTextCursor(block)
-
-            if line_has_chords:
-                cursor.setBlockFormat(with_chords_format)
-            else:
-                cursor.setBlockFormat(without_chords_format)
-
-            if block == self.doc.end():
-                break
-
-            block = block.next()
-
-            line_start_char += len(
-                line_text) + 1  # Add the eof-of-line character
-
-        self.session.ignore_song_text_changed = False
 
     def _prefer_for_char(self, char_num):
         prefer = self.prefer
@@ -536,11 +474,6 @@ class Song:
         # This is important for undo/redo to move the selection:
         self.session.selected_char_num = chord.character_num
 
-        # Update the margin of the document in case the chord was moved to a new line:
-        self.setDocMargins()
-
-        self.session.editor.viewport().update()
-
     def deleteChord(self, chord):
         self.session.undo_stack.push(DeleteChordCommand(self, chord))
 
@@ -550,11 +483,6 @@ class Song:
 
         # FIXME If the chord is last in line, delete white space on the line, if any was added
         # just to align this chord. Happens often when importing songs from Text.
-
-        # Update the margin of the document in case the chord was moved to a new line:
-        self.setDocMargins()
-
-        self.session.editor.viewport().update()
 
     def replaceChord(self, prev_chord, new_chord):
         command = ReplaceChordCommand(self, prev_chord, new_chord)
@@ -573,11 +501,6 @@ class Song:
         # This is important for undo/redo to move the selection:
         self.session.selected_char_num = new_chord.character_num
 
-        # Update the margin of the document in case the chord was moved to a new line:
-        self.setDocMargins()
-
-        self.session.editor.viewport().update()
-
     def copyChord(self, chord, new_song_char_num):
         """
         Copy the specified chord to a new position.
@@ -590,9 +513,7 @@ class Song:
         return new_chord
 
     def getAllText(self):
-
-        song_text = self.doc.toPlainText()
-        return song_text
+        return self.text
 
     def iterateLineTexts(self):
         """
