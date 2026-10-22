@@ -568,7 +568,7 @@ p, li { white-space: pre-wrap; }
     <string>Ctrl+Z</string>
    </property>
    <property name="shortcutContext">
-    <enum>Qt::WidgetShortcut</enum>
+    <enum>Qt::WindowShortcut</enum>
    </property>
   </action>
   <action name="actionRedo">
@@ -579,7 +579,7 @@ p, li { white-space: pre-wrap; }
     <string>Ctrl+Shift+Z</string>
    </property>
    <property name="shortcutContext">
-    <enum>Qt::WidgetShortcut</enum>
+    <enum>Qt::WindowShortcut</enum>
    </property>
   </action>
   <action name="actionSaveSongbook">
