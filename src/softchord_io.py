@@ -420,19 +420,21 @@ class SongbookIO:
         else:
             chordpro_files = [filename]
 
+        song_ids = []
         if chordpro_files:
             self.setWaitCursor()
             try:
                 for filename in chordpro_files:
                     try:
                         file_text = read_import_text_file(filename)
-                        self.importSongFromChordProText(file_text)
+                        song_ids.append(self.importSongFromChordProText(file_text))
                     except Exception:
                         self.error("Error importing %s:\n\n%s" %
                                    (filename, traceback.format_exc()))
                         break
             finally:
                 self.restoreCursor()
+        self._rememberImportedSongs(song_ids)
 
     def pasteAsNewSong(self):
         """
@@ -446,7 +448,7 @@ class SongbookIO:
         self.setWaitCursor()
         text = self.clipboard.text()
         try:
-            self.importSongFromText(text)
+            song_id = self.importSongFromText(text)
         except sqlite3.OperationalError as err:
             self.restoreCursor()
             if "readonly" in str(err).lower():
@@ -463,6 +465,7 @@ class SongbookIO:
                        traceback.format_exc())
         else:
             self.restoreCursor()
+            self._rememberImportedSongs([song_id])
 
     def browseForTextFile(self):
         """
@@ -478,19 +481,21 @@ class SongbookIO:
             self.importTextFiles(text_files)
 
     def importTextFiles(self, text_files):
+        song_ids = []
         self.setWaitCursor()
         try:
             for filename in text_files:
                 song_title = os.path.splitext(os.path.basename(filename))[0]
                 try:
                     text = read_import_text_file(filename)
-                    self.importSongFromText(text, song_title)
+                    song_ids.append(self.importSongFromText(text, song_title))
                 except Exception:
                     self.error("Error importing %s:\n\n%s" %
                                (filename, traceback.format_exc()))
                     break
         finally:
             self.restoreCursor()
+        self._rememberImportedSongs(song_ids)
 
     def importSongFromText(self, input_text, song_title=None):
         """
@@ -551,9 +556,9 @@ class SongbookIO:
 
             line_start_char_num += len(lyrics) + 1  # 1 for the EOL character
 
-        self._importSongFromLyricsAndChords(song_num, song_title, "",
-                                            global_song_text,
-                                            global_song_chords)
+        return self._importSongFromLyricsAndChords(song_num, song_title, "",
+                                                   global_song_text,
+                                                   global_song_chords)
 
     def _importSong(self, song_num, song_title, song_subtitle, song_text):
         """
@@ -624,6 +629,7 @@ class SongbookIO:
 
         # FIXME #index = self.songs_proxy_model.mapToSource(index)
         self.ui.songs_view.selectRow(self.songs_model.rowCount() - 1)
+        return song_id
 
     def importSongFromChordProText(self, song_text):
 
@@ -718,9 +724,9 @@ class SongbookIO:
             except:
                 pass
 
-        self._importSongFromLyricsAndChords(song_num, song_title, song_subtitle,
-                                            global_song_text,
-                                            global_song_chords)
+        return self._importSongFromLyricsAndChords(
+            song_num, song_title, song_subtitle, global_song_text,
+            global_song_chords)
 
     def convertChordFromString(self, chord_str):
         """

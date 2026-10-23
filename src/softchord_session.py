@@ -42,12 +42,18 @@ from softchord_song import (
     DeleteChordCommand,
     ReplaceChordCommand,
     DeleteSongsCommand,
+    ImportSongsCommand,
+    RemoveTrailingSpacesCommand,
+    RenumberSongsCommand,
+    SongTextSnapshot,
     SongsTableRow,
     SongsTableModel,
     SongsProxyModel,
     SongChord,
     SongChar,
     Song,
+    TransposeSongCommand,
+    text_has_trailing_spaces,
 )
 from softchord_store import (
     SongbookStore,
@@ -1083,6 +1089,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.editor = CustomTextEdit(self)
         self.editor.undoAvailable.connect(self.updateEditMenu)
+        self.editor.redoAvailable.connect(self.updateEditMenu)
 
         self.ui.lyric_editor_layout.addWidget(self.editor)
         self.ui.lyric_editor_layout.removeWidget(self.ui.chord_scroll_area)
@@ -1133,8 +1140,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.actionLyricsFont.triggered.connect(self.changeLyricsFont)
         self.ui.actionChordsFont.triggered.connect(self.changeChordFont)
 
-        self.ui.actionUndo.triggered.connect(self.undo_stack.undo)
-        self.ui.actionRedo.triggered.connect(self.undo_stack.redo)
+        self.ui.actionUndo.triggered.connect(self.undo)
+        self.ui.actionRedo.triggered.connect(self.redo)
         self.ui.actionCut.triggered.connect(self.cutSelected)
         self.ui.actionCopy.triggered.connect(self.copySelected)
         self.ui.actionPaste.triggered.connect(self.pasteSelected)
@@ -1296,6 +1303,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self._reset_lyric_chord_history()
 
         self.editor.viewport().update()
+        self.updateEditMenu()
 
     def chordEditorSelected(self):
 
@@ -1620,12 +1628,22 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         return True
 
+    def _using_lyric_undo(self):
+        """Text mode undoes letters. Chord mode undoes the chord stack."""
+        return self.current_song is not None and self.editor.lyric_editor_mode
+
     def undo(self):
-        self.undo_stack.undo()
+        if self._using_lyric_undo():
+            self.editor.undo()
+        else:
+            self.undo_stack.undo()
         self.editor.viewport().update()
 
     def redo(self):
-        self.undo_stack.redo()
+        if self._using_lyric_undo():
+            self.editor.redo()
+        else:
+            self.undo_stack.redo()
         self.editor.viewport().update()
 
     def updateEditMenu(self, ignored1=None, ignored2=None):
@@ -1642,11 +1660,11 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         try:
             if self.current_song:
                 if self.editor.lyric_editor_mode:
-                    # Currently editing the lyrics (QTextEdit)
-                    # FIXME what if the lyrics editor can undo?
-                    # FIXME We need to attach slots to QTextEdit.undoAvailable() and redoAvailable() signals
-                    undo_possible = False
-                    redo_possible = False
+                    # The Edit menu follows the letter undo, same as Command-Z
+                    # in the lyric editor. Chord edits stay on the other stack.
+                    document = self.editor.document()
+                    undo_possible = document.isUndoAvailable()
+                    redo_possible = document.isRedoAvailable()
                     enable_paste = bool(text)
                 else:
                     # In chord editor
@@ -1879,13 +1897,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         Transpose the current song up by the specified number of steps.
         """
 
-        self.setWaitCursor()
-        try:
-            self.current_song.transpose(steps)
-            self.sendCurrentSongToDatabase()
-            self.editor.viewport().update()
-        finally:
-            self.restoreCursor()
+        song = self.current_song
+        if song is None or not list(song.iterateAllChords()):
+            return
+        self.undo_stack.push(TransposeSongCommand(song, steps))
 
     def _onLyricUndoCommandAdded(self):
         # Undo and redo do not emit this. A document that is no longer shown
@@ -2943,22 +2958,66 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.sendCurrentSongToDatabase()
 
-        selected = self.getSelectedSongIds()
-        for song_id in selected:
-            song = Song(self, song_id)
-            song.removeTrailingSpaces()
+        snapshots = []
+        for song_id in self.getSelectedSongIds():
+            snapshot = SongTextSnapshot.capture(self, song_id)
+            if text_has_trailing_spaces(snapshot.text):
+                snapshots.append(snapshot)
+        if not snapshots:
+            return
+        self.undo_stack.push(RemoveTrailingSpacesCommand(self, snapshots))
 
-        if self.current_song and self.current_song.id in selected:
-            # Reload without sending the stale editor document back to the DB.
-            self.ignore_song_text_changed = True
-            try:
-                self.current_song.updateSongFromDatabase()
-                QtDocumentLayout.show_document(self.editor,
-                                               self.current_song.doc)
-                self.previous_song_text = self.current_song.getAllText()
-            finally:
-                self.ignore_song_text_changed = False
-            self._updateAutoDetectedKeyLabel()
+    def _reloadOpenSong(self, song_ids):
+        """Read an open song back after its text was rewritten in the songbook."""
+        if self.current_song is None or self.current_song.id not in song_ids:
+            return
+        # The new text replaced the document, so the letter undo no longer matches.
+        self.ignore_song_text_changed = True
+        try:
+            self.current_song.updateSongFromDatabase()
+            QtDocumentLayout.show_document(self.editor, self.current_song.doc)
+            self.previous_song_text = self.current_song.getAllText()
+        finally:
+            self.ignore_song_text_changed = False
+        self._reset_lyric_chord_history()
+        self._updateAutoDetectedKeyLabel()
+
+    def _writeSongNumbers(self, pairs):
+        """Save these song numbers. A later save of the open song must keep them."""
+
+        def write():
+            for song_id, number in pairs:
+                self.store.update_song_number(song_id, number)
+
+        if not self._run_songbook_write(write):
+            return
+
+        # Refreshing the song list can save the open song. Give it the new
+        # number first, or that save would put the old number back.
+        by_id = dict(pairs)
+        song = self.current_song
+        if song is not None and song.id in by_id:
+            song.number = by_id[song.id]
+            if song.number == -1:
+                self.ui.song_num_ef.setText("")
+            else:
+                self.ui.song_num_ef.setText(str(song.number))
+        self.songs_model.updateFromDatabase()
+
+    def _selectSongId(self, song_id):
+        ids = self.songs_model.getAllSongIds()
+        if song_id not in ids:
+            return
+        source_index = self.songs_model.index(ids.index(song_id), 0)
+        proxy_index = self.songs_proxy_model.mapFromSource(source_index)
+        if proxy_index.isValid():
+            self.ui.songs_view.selectRow(proxy_index.row())
+
+    def _rememberImportedSongs(self, song_ids):
+        """One undo step removes every song this import or paste added."""
+        song_ids = [song_id for song_id in song_ids if song_id is not None]
+        if song_ids:
+            self.undo_stack.push(ImportSongsCommand(self, song_ids))
 
     def renumberAllSongs(self):
         """
@@ -2970,17 +3029,17 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         ):
             return
 
-        all_song_ids = self.songs_model.getAllSongIds()
-
-        def write():
-            for song_num, song_id in enumerate(all_song_ids, start=1):
-                self.store.update_song_number(song_id, song_num)
-
-        if not self._run_songbook_write(write):
+        previous = []
+        for song_id in self.songs_model.getAllSongIds():
+            _title, number = self.songs_model.getTitleAndNumFromId(song_id)
+            previous.append((song_id, number))
+        if not previous:
+            return
+        if all(number == index
+               for index, (_song_id, number) in enumerate(previous, start=1)):
             return
 
-        # Update the song table from database:
-        self.songs_model.updateFromDatabase()
+        self.undo_stack.push(RenumberSongsCommand(self, previous))
 
     def question(self,
                  msg,
