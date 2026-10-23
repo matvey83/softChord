@@ -7,10 +7,12 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt6.QtGui import QPageSize
+from PyQt6.QtSvg import QSvgGenerator
 
 PageSizeId = QPageSize.PageSizeId
 import sys, os
 import copy
+import math
 import platform
 import sqlite3
 import traceback
@@ -933,6 +935,56 @@ class PdfDialog(QtWidgets.QDialog):
             return None
 
 
+def _png_bytes(image):
+    """PNG bytes for the clipboard. A QImage there becomes a TIFF on macOS."""
+
+    buffer = QtCore.QBuffer()
+    buffer.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buffer, "PNG")
+    data = buffer.data()
+    buffer.close()
+    return data
+
+
+class _SongSheetClipboardTypes(QtGui.QUtiMimeConverter):
+    """Mac names for a copied song sheet.
+
+    Qt's own image copy is a TIFF. Other apps paste a PNG or an SVG.
+    """
+
+    _types = (
+        ("image/png", "public.png"),
+        ("image/svg+xml", "public.svg-image"),
+    )
+
+    def utiForMime(self, mime):
+        for name, uti in self._types:
+            if mime == name:
+                return uti
+        return ""
+
+    def mimeForUti(self, uti):
+        for name, mapped in self._types:
+            if uti == mapped:
+                return name
+        return ""
+
+    def convertFromMime(self, mime, data, uti):
+        if self.mimeForUti(uti) != mime:
+            return []
+        if isinstance(data, QtCore.QByteArray):
+            return [data]
+        try:
+            return [QtCore.QByteArray(bytes(data))]
+        except TypeError:
+            return []
+
+    def convertToMime(self, mime, data, uti):
+        if self.mimeForUti(uti) != mime or not data:
+            return QtCore.QByteArray()
+        return data[0]
+
+
 class SongbookSession(SongbookIO, QtCore.QObject):
     """
     Open songbook, current song, undo stack, and editor commands.
@@ -1088,6 +1140,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.actionPaste.triggered.connect(self.pasteSelected)
         self.ui.actionCopySongText.triggered.connect(self.copySongText)
         self.ui.actionCopySongTextWithChords.triggered.connect(self.copySongTextWithChords)
+        self.ui.actionCopySongAsImage.triggered.connect(self.copySongAsImage)
         self.ui.actionExportClipboard.triggered.connect(self.copySongText)
 
         # FIXME we need only one way to import a song from the clipboard. Remove one of these actions:
@@ -1128,6 +1181,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.clipboard = QtWidgets.QApplication.clipboard()
         self.clipboard.dataChanged.connect(self.clipboardChanged)
+        # Kept alive for the session. Dropping it removes the PNG and SVG
+        # names from the Mac clipboard.
+        if sys.platform == "darwin":
+            self._song_sheet_clipboard_types = _SongSheetClipboardTypes()
 
         self.ignore_song_text_changed = False
         # Chords that belong with the lyrics at each text-editor undo step.
@@ -1735,6 +1792,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.actionExportChordPro.setEnabled(num_selected == 1)
         self.ui.actionCopySongText.setEnabled(num_selected == 1)
         self.ui.actionCopySongTextWithChords.setEnabled(num_selected == 1)
+        self.ui.actionCopySongAsImage.setEnabled(num_selected == 1)
         self.ui.actionExportClipboard.setEnabled(num_selected == 1)
 
         self.ui.actionPrint.setEnabled(songs_present)
@@ -2604,6 +2662,94 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         finally:
             self.restoreCursor()
 
+    def copySongAsImage(self):
+        """
+        Copy the selected song's sheet to the clipboard as PNG and SVG.
+        """
+
+        assert self.current_song is not None
+
+        self.setWaitCursor()
+        try:
+            song = self.current_song
+            editor = self.editor
+            mime = QtCore.QMimeData()
+            mime.setData("image/png",
+                         _png_bytes(self._renderSongSheetImage(song, editor)))
+            mime.setData("image/svg+xml",
+                         self._renderSongSheetSvg(song, editor))
+            # setImage() is a TIFF on macOS. These two types are the sheet.
+            self.clipboard.setMimeData(mime)
+        finally:
+            self.restoreCursor()
+
+    def _paddedSongSheetBounds(self, song, editor):
+        """Lyric frame and chords, with room for a chord past the letters."""
+
+        # A chord is centered on its letter, so it can hang past the lyrics.
+        pad = 16.0
+        return self._songSheetBounds(song, editor).adjusted(-pad, -pad, pad,
+                                                            pad)
+
+    def _renderSongSheetImage(self, song, editor):
+        """White song sheet at four times the screen resolution."""
+
+        scale = 4
+        bounds = self._paddedSongSheetBounds(song, editor)
+        width = max(1, math.ceil(bounds.width() * scale))
+        height = max(1, math.ceil(bounds.height() * scale))
+        image = QtGui.QImage(width, height, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtCore.Qt.GlobalColor.white)
+        painter = QtGui.QPainter(image)
+        try:
+            painter.scale(scale, scale)
+            painter.translate(-bounds.left(), -bounds.top())
+            self._drawSongToPainter(song, painter, editor, exporting=True)
+        finally:
+            painter.end()
+        return image
+
+    def _renderSongSheetSvg(self, song, editor):
+        """The same white sheet, as vectors."""
+
+        bounds = self._paddedSongSheetBounds(song, editor)
+        width = max(1, math.ceil(bounds.width()))
+        height = max(1, math.ceil(bounds.height()))
+        generator = QSvgGenerator()
+        buffer = QtCore.QBuffer()
+        buffer.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
+        generator.setOutputDevice(buffer)
+        generator.setResolution(96)
+        generator.setSize(QtCore.QSize(width, height))
+        generator.setViewBox(QtCore.QRectF(0, 0, width, height))
+        painter = QtGui.QPainter(generator)
+        try:
+            painter.fillRect(QtCore.QRectF(0, 0, width, height),
+                             QtCore.Qt.GlobalColor.white)
+            painter.translate(-bounds.left(), -bounds.top())
+            self._drawSongToPainter(song, painter, editor, exporting=True)
+        finally:
+            painter.end()
+        svg = buffer.data()
+        buffer.close()
+        return svg
+
+    def _songSheetBounds(self, song, editor):
+        """Lyric frame, plus any chord that extends outside it."""
+
+        right, bottom = song_document_size(song)
+        bounds = QtCore.QRectF(0.0, 0.0, right, bottom)
+        scroll_x = editor.horizontalScrollBar().value()
+        scroll_y = editor.verticalScrollBar().value()
+        layout = SongLayout.place(QtDocumentLayout(editor), song._chords,
+                                  self.getHeightsWithChords, self.getChordWidth,
+                                  lambda chord: chord.getChordText())
+        for placed in layout.placed:
+            if placed.chord_rect is not None:
+                bounds = bounds.united(
+                    placed.chord_rect.translated(scroll_x, scroll_y))
+        return bounds
+
     def currentSongTitleEdited(self, new_title):
         """
         Called when the user modifies the selected song's title.
@@ -2971,6 +3117,16 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 if chord_rect:
                     painter.fillRect(chord_rect, selection_brush)
 
+        # Chord boxes come from the editor viewport. Export draws the lyrics
+        # at the document origin, so shift the boxes by the scroll offset.
+        # A painter translate here would move the lyrics too: an SVG does not
+        # put that translate back the way a bitmap painter does.
+        scroll_x = 0.0
+        scroll_y = 0.0
+        if exporting:
+            scroll_x = editor.horizontalScrollBar().value()
+            scroll_y = editor.verticalScrollBar().value()
+
         doc_layout = QtDocumentLayout(editor)
         layout = SongLayout.place(doc_layout, song._chords,
                                   self.getHeightsWithChords, self.getChordWidth,
@@ -2985,7 +3141,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             painter.setPen(self.chords_color)
 
             if placed.chord_rect:
-                self.drawChord(painter, placed.chord_rect, placed.chord_text)
+                self.drawChord(
+                    painter, placed.chord_rect.translated(scroll_x, scroll_y),
+                    placed.chord_text)
             else:
                 print('no chord rect!')
 
