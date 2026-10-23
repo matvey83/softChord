@@ -134,6 +134,170 @@ class DeleteSongsCommand(QtGui.QUndoCommand):
             self.session.restoreCursor()
 
 
+def text_has_trailing_spaces(text):
+    """True when a line ends with a space Remove Trailing Spaces would delete."""
+    if not text:
+        return False
+    return any(line.endswith(" ") for line in text.split("\n"))
+
+
+class SongTextSnapshot:
+    """Lyric text and chords for one song, kept so an edit can be undone."""
+
+    def __init__(self, song_id, text, chords):
+        self.song_id = song_id
+        self.text = text
+        self.chords = chords
+
+    @staticmethod
+    def capture(session, song_id):
+        record = session.store.load_song(song_id)
+        chords = tuple(
+            (link.character_num, link.note_id, link.chord_type_id,
+             link.bass_note_id, link.marker or "",
+             int(link.in_parentheses or 0)) for link in record.chords)
+        return SongTextSnapshot(song_id, record.text or "", chords)
+
+    def restore(self, session):
+        """Put this text and these chords back into the songbook."""
+
+        def write():
+            session.store.update_song_text(self.song_id, self.text)
+            for position in session.store.chord_positions(self.song_id):
+                session.store.delete_chord(self.song_id, position)
+            for (character_num, note_id, chord_type_id, bass_note_id, marker,
+                 in_parentheses) in self.chords:
+                session.store.insert_chord(self.song_id, character_num,
+                                           note_id, chord_type_id,
+                                           bass_note_id, marker,
+                                           in_parentheses)
+
+        session._run_songbook_write(write)
+
+
+class TransposeSongCommand(QtGui.QUndoCommand):
+    """One transpose of every chord in the song."""
+
+    def __init__(self, song, steps):
+        QtGui.QUndoCommand.__init__(self)
+        self.setText("transpose")
+        self.song = song
+        self.steps = steps
+        self._notes = [(chord, chord.note_id, chord.bass_note_id)
+                       for chord in song.iterateAllChords()]
+
+    def redo(self):
+        self.song.transpose(self.steps)
+        self._save()
+
+    def undo(self):
+        for chord, note_id, bass_note_id in self._notes:
+            chord.note_id = note_id
+            chord.bass_note_id = bass_note_id
+        self.song.updateSharpsOrFlats()
+        self._save()
+
+    def _save(self):
+        session = self.song.session
+        session.setWaitCursor()
+        try:
+            session.sendCurrentSongToDatabase()
+            session.editor.viewport().update()
+        finally:
+            session.restoreCursor()
+
+
+class RemoveTrailingSpacesCommand(QtGui.QUndoCommand):
+    """Trim trailing spaces on the given songs, as one undo step."""
+
+    def __init__(self, owner, snapshots):
+        QtGui.QUndoCommand.__init__(self)
+        self.setText("remove trailing spaces")
+        self.session = document_owner(owner)
+        self.snapshots = list(snapshots)
+
+    def redo(self):
+        song_ids = []
+        for snapshot in self.snapshots:
+            song = Song(self.session, snapshot.song_id)
+            song.removeTrailingSpaces()
+            song_ids.append(snapshot.song_id)
+        self.session._reloadOpenSong(song_ids)
+
+    def undo(self):
+        for snapshot in self.snapshots:
+            snapshot.restore(self.session)
+        self.session._reloadOpenSong(
+            [snapshot.song_id for snapshot in self.snapshots])
+
+
+class RenumberSongsCommand(QtGui.QUndoCommand):
+    """Number the songs 1, 2, 3 in their current order."""
+
+    def __init__(self, owner, previous):
+        QtGui.QUndoCommand.__init__(self)
+        self.setText("renumber songs")
+        self.session = document_owner(owner)
+        # (song id, number before this command), in songbook order.
+        self.previous = list(previous)
+
+    def redo(self):
+        numbered = [(song_id, index) for index, (song_id, _number) in enumerate(
+            self.previous, start=1)]
+        self.session._writeSongNumbers(numbered)
+
+    def undo(self):
+        self.session._writeSongNumbers(self.previous)
+
+
+class ImportSongsCommand(QtGui.QUndoCommand):
+    """Songs added by one import or paste. Undo removes just those songs."""
+
+    def __init__(self, owner, song_ids):
+        QtGui.QUndoCommand.__init__(self)
+        self.setText("import songs")
+        self.session = document_owner(owner)
+        self.songs = [Song(self.session, song_id) for song_id in song_ids]
+        # push() runs redo, and these songs are already in the songbook.
+        self._already_imported = True
+
+    def redo(self):
+        if self._already_imported:
+            self._already_imported = False
+            return
+        self._insert()
+        self.session.songs_model.updateFromDatabase()
+        self.session._selectSongId(self.songs[-1].id)
+
+    def undo(self):
+        ids = {song.id for song in self.songs}
+        current = self.session.current_song
+        if current is not None and current.id in ids:
+            self.session.ui.songs_view.selectionModel().clearSelection()
+        self.session.setWaitCursor()
+        try:
+            for song in self.songs:
+                self.session.store.delete_song(song.id)
+            self.session.store.commit()
+            self.session.songs_model.updateFromDatabase()
+        finally:
+            self.session.restoreCursor()
+
+    def _insert(self):
+        self.session.setWaitCursor()
+        try:
+            for song in self.songs:
+                self.session.store.insert_song(song.id, song.number, song.title,
+                                               song.subtitle, song.getAllText())
+                for chord in song.iterateAllChords():
+                    self.session.store.insert_chord(
+                        chord.song_id, chord.character_num, chord.note_id,
+                        chord.chord_type_id, chord.bass_note_id, chord.marker,
+                        chord.in_parentheses)
+            self.session.store.commit()
+        finally:
+            self.session.restoreCursor()
+
 
 class SongsTableRow:
 

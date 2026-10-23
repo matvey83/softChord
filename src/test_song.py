@@ -3076,6 +3076,191 @@ class TestMoreAppOperations(unittest.TestCase):
         stored = self.app.curs.execute("SELECT text FROM songs").fetchone()[0]
         self.assertEqual(stored, "xHi\nGo")
 
+    def test_transpose_is_one_undo_step(self):
+        insert_and_select_song(self.app, with_chord=True)
+        song = self.app.current_song
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+
+        self.app.transposeUp()
+        self.app.transposeUp()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 2)
+        self.assertEqual(self.app.undo_stack.undoText(), "transpose")
+        self.assertEqual(self._stored_note_id(), 2)
+
+        self.app.undo_stack.undo()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 1)
+        self.assertEqual(self._stored_note_id(), 1)
+
+        self.app.undo_stack.redo()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 2)
+        self.app.undo_stack.undo()
+        self.app.undo_stack.undo()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertEqual(self._stored_note_id(), 0)
+
+    def test_remove_trailing_spaces_undo_restores_a_dropped_chord(self):
+        self._open_empty_temp_songbook()
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text) "
+            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo')")
+        self.app.curs.execute(
+            "INSERT INTO song_chord_link (id, song_id, character_num, "
+            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (1, 0, 3, 0, 0, -1, '', 0), "
+            "(2, 0, 5, 7, 0, -1, '', 0)")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.ui.songs_view.selectRow(0)
+
+        self.app.removeTrailingSpaces()
+
+        self.assertEqual(self.app.current_song.getAllText(), "Hi\nGo")
+        self.assertEqual(self.app.undo_stack.undoText(), "remove trailing spaces")
+        kept = list(self.app.current_song.iterateAllChords())
+        self.assertEqual([(chord.character_num, chord.note_id) for chord in kept],
+                         [(3, 7)])
+
+        self.app.undo_stack.undo()
+
+        self.assertEqual(self.app.current_song.getAllText(), "Hi  \nGo")
+        restored = sorted(
+            (chord.character_num, chord.note_id)
+            for chord in self.app.current_song.iterateAllChords())
+        self.assertEqual(restored, [(3, 0), (5, 7)])
+        stored = self.app.curs.execute(
+            "SELECT text FROM songs WHERE id=0").fetchone()[0]
+        self.assertEqual(stored, "Hi  \nGo")
+
+        self.app.undo_stack.redo()
+        self.assertEqual(self.app.current_song.getAllText(), "Hi\nGo")
+        kept = list(self.app.current_song.iterateAllChords())
+        self.assertEqual([(chord.character_num, chord.note_id) for chord in kept],
+                         [(3, 7)])
+
+    def test_renumber_undo_restores_song_numbers(self):
+        insert_and_select_song(self.app)
+        # Drop the open song before changing its number in the songbook.
+        # Refreshing the list saves the open song, and that save would put
+        # the old number back.
+        self.app.ui.songs_view.selectionModel().clearSelection()
+        self.app.curs.execute("UPDATE songs SET number=9 WHERE id=0")
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text) "
+            "VALUES (1, 4, 'Second', '', 'Line')")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.ui.songs_view.selectRow(0)
+
+        self.app.renumberAllSongs()
+
+        self.assertEqual(self._song_numbers(), [1, 2])
+        self.assertEqual(self.app.undo_stack.undoText(), "renumber songs")
+        self.app.undo_stack.undo()
+        self.assertEqual(self._song_numbers(), [9, 4])
+        self.app.undo_stack.redo()
+        self.assertEqual(self._song_numbers(), [1, 2])
+
+    def test_paste_as_new_song_undo_removes_only_the_new_song(self):
+        insert_and_select_song(self.app)
+        self.app.clipboard.setText("Pasted Song Title\nSome lyrics")
+        self.app.pasteAsNewSong()
+
+        self.assertEqual(self.app.songs_model.rowCount(), 2)
+        self.assertEqual(self.app.undo_stack.undoText(), "import songs")
+        self.app.undo_stack.undo()
+        self.assertEqual(
+            [row[0] for row in self.app.curs.execute(
+                "SELECT title FROM songs ORDER BY id")], ["Test Song"])
+
+        self.app.undo_stack.redo()
+        self.assertEqual(
+            [row[0] for row in self.app.curs.execute(
+                "SELECT title FROM songs ORDER BY id")],
+            ["Test Song", "Pasted Song Title"])
+
+    def test_import_text_files_undo_removes_the_whole_batch(self):
+        insert_and_select_song(self.app)
+        folder = tempfile.mkdtemp()
+        first = os.path.join(folder, "One.txt")
+        second = os.path.join(folder, "Two.txt")
+        with open(first, "w", encoding="utf-8") as handle:
+            handle.write("One line\n")
+        with open(second, "w", encoding="utf-8") as handle:
+            handle.write("Two line\n")
+
+        self.app.importTextFiles([first, second])
+
+        self.assertEqual(self.app.songs_model.rowCount(), 3)
+        self.app.undo_stack.undo()
+        self.assertEqual(
+            [row[0] for row in self.app.curs.execute(
+                "SELECT title FROM songs ORDER BY id")], ["Test Song"])
+        self.app.undo_stack.redo()
+        self.assertEqual(self.app.songs_model.rowCount(), 3)
+
+    def test_chordpro_import_undo_removes_the_song_and_its_chords(self):
+        insert_and_select_song(self.app, with_chord=True)
+        path = os.path.join(tempfile.mkdtemp(), "Hello.chordpro")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{title:Hello}\n[C]Hi\n")
+
+        self.app.importFromChordPro(path)
+
+        self.assertEqual(self.app.songs_model.rowCount(), 2)
+        self.assertEqual(self._chord_count(), 2)
+        self.app.undo_stack.undo()
+        self.assertEqual(self.app.songs_model.rowCount(), 1)
+        self.assertEqual(self._chord_count(), 1)
+        self.app.undo_stack.redo()
+        self.assertEqual(self.app.songs_model.rowCount(), 2)
+        self.assertEqual(self._chord_count(), 2)
+
+    def test_edit_menu_undo_follows_lyric_edits(self):
+        insert_and_select_song(self.app, with_chord=True)
+        song = self.app.current_song
+        song.addChord(SongChord(song, 1, 5, 0, -1, "", 0))
+        chord_index = self.app.undo_stack.index()
+
+        self.app.lyricEditorSelected()
+        self.assertFalse(self.app.ui.actionUndo.isEnabled())
+
+        cursor = self.app.editor.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+        cursor.insertText("!")
+        self.assertTrue(self.app.editor.toPlainText().endswith("!"))
+        self.assertTrue(self.app.ui.actionUndo.isEnabled())
+        self.assertFalse(self.app.ui.actionRedo.isEnabled())
+
+        self.app.ui.actionUndo.trigger()
+
+        self.assertFalse(self.app.editor.toPlainText().endswith("!"))
+        self.assertEqual(self.app.undo_stack.index(), chord_index)
+        self.assertTrue(self.app.ui.actionRedo.isEnabled())
+
+        self.app.ui.actionRedo.trigger()
+        self.assertTrue(self.app.editor.toPlainText().endswith("!"))
+
+        self.app.chordEditorSelected()
+        self.assertTrue(self.app.ui.actionUndo.isEnabled())
+        self.app.ui.actionUndo.trigger()
+        self.assertEqual(self.app.undo_stack.index(), chord_index - 1)
+        self.assertIsNone(song.getChordAtPosition(1))
+
+    def _stored_note_id(self):
+        return self.app.curs.execute(
+            "SELECT note_id FROM song_chord_link WHERE song_id=0"
+        ).fetchone()[0]
+
+    def _song_numbers(self):
+        return [
+            row[0] for row in self.app.curs.execute(
+                "SELECT number FROM songs ORDER BY id")
+        ]
+
+    def _chord_count(self):
+        return self.app.curs.execute(
+            "SELECT COUNT(*) FROM song_chord_link").fetchone()[0]
+
 
 class TestReadImportTextFile(unittest.TestCase):
 
