@@ -1918,6 +1918,94 @@ class TestAppRendering(unittest.TestCase):
             self.app.current_song.number = original_number
             painter.end()
 
+    def test_copy_song_as_image(self):
+        """Edit > Copy Song as Image puts a PNG and an SVG on the clipboard."""
+        menu_actions = self.app.ui.menuEdit.actions()
+        paste = self.app.ui.actionPasteAsNewSong
+        copy_image = self.app.ui.actionCopySongAsImage
+        self.assertEqual(copy_image.text(), "Copy Song as Image")
+        self.assertIs(menu_actions[menu_actions.index(paste) - 1], copy_image)
+        self.assertTrue(copy_image.isEnabled())
+
+        self.app.clipboard.setText("not a song sheet")
+        self.app.copySongAsImage()
+        mime = self.app.clipboard.mimeData()
+        formats = mime.formats()
+        self.assertIn("image/png", formats)
+        self.assertIn("image/svg+xml", formats)
+        self.assertNotIn("application/x-qt-image", formats)
+        self.assertFalse(any("tiff" in fmt.lower() for fmt in formats))
+        image = QtGui.QImage.fromData(bytes(mime.data("image/png")), "PNG")
+        self.assertFalse(image.isNull())
+        svg = bytes(mime.data("image/svg+xml"))
+        self.assertIn(b"<svg", svg)
+        self.assertTrue(b"<text" in svg or b"<path" in svg)
+        self.assertEqual(self.app.clipboard.text(), "")
+        self.assertFalse(self.app.ui.actionPasteAsNewSong.isEnabled())
+        self.assertEqual(image.pixelColor(0, 0),
+                         QtGui.QColor(QtCore.Qt.GlobalColor.white))
+        right, bottom = song_document_size(self.app.current_song)
+        self.assertGreater(image.width(), right * 4)
+        self.assertGreater(image.height(), bottom * 4)
+        self.assertTrue(_image_has_ink(image))
+
+        song = self.app.current_song
+        editor = self.app.editor
+        with_chords = self.app._renderSongSheetImage(song, editor)
+        lyrics_only = self._sheet_without_chords(song)
+        self.assertFalse(_same_image(with_chords, lyrics_only))
+
+        bar = editor.verticalScrollBar()
+        previous_value = bar.value()
+        previous_max = bar.maximum()
+        try:
+            bar.setValue(0)
+            resting = self.app._renderSongSheetImage(song, editor)
+            resting_top = self.app.getCharRects(editor, 0)[0].top()
+            bar.setMaximum(max(previous_max, 100))
+            bar.setValue(50)
+            scrolled_top = self.app.getCharRects(editor, 0)[0].top()
+            self.assertNotEqual(scrolled_top, resting_top)
+            scrolled = self.app._renderSongSheetImage(song, editor)
+            self.assertTrue(_same_image(resting, scrolled))
+            scrolled_svg = self.app._renderSongSheetSvg(song, editor)
+            bar.setValue(0)
+            self.assertEqual(bytes(self.app._renderSongSheetSvg(song, editor)),
+                             bytes(scrolled_svg))
+        finally:
+            bar.setValue(previous_value)
+            bar.setRange(bar.minimum(), previous_max)
+
+        self.app.ui.songs_view.clearSelection()
+        self.assertFalse(copy_image.isEnabled())
+
+    def _sheet_without_chords(self, song):
+        saved = song._chords
+        song._chords = []
+        try:
+            return self.app._renderSongSheetImage(song, self.app.editor)
+        finally:
+            song._chords = saved
+
+
+def _image_has_ink(image):
+    white = QtGui.qRgb(255, 255, 255)
+    for y in range(image.height()):
+        for x in range(image.width()):
+            if image.pixel(x, y) != white:
+                return True
+    return False
+
+
+def _same_image(first, second):
+    if first.size() != second.size():
+        return False
+    for y in range(first.height()):
+        for x in range(first.width()):
+            if first.pixel(x, y) != second.pixel(x, y):
+                return False
+    return True
+
 
 # ---------------------------------------------------------------------------
 # Minimal tests for previously untested large areas:
