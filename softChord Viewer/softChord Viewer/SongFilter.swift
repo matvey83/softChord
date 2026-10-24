@@ -13,9 +13,10 @@ enum SongFilter {
         guard !text.isEmpty else {
             return songs
         }
-        let needle = text.lowercased(with: Locale(identifier: "en_US"))
+        let locale = Locale(identifier: "en_US")
+        let needle = text.lowercased(with: locale)
         return songs.filter { song in
-            song.title.lowercased(with: Locale(identifier: "en_US")).contains(needle)
+            song.title.lowercased(with: locale).contains(needle)
         }
     }
 }

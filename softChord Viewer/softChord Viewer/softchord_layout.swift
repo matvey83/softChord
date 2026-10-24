@@ -28,10 +28,24 @@ enum SongSheetLayout {
 
     // TODO: The web sheet should use these measurements. The desktop editor
     // keeps QtDocumentLayout until a new lyric renderer replaces it.
+    /// Loads the sheet fonts. The song list starts this before a song is opened.
+    nonisolated static func warm() {
+        _ = lyricsFont
+        _ = chordsFont
+        _ = symbolsFontCached
+    }
+
+    // Resolved once. Looking the names up on every song made the first paint wait.
+    private nonisolated static let lyricsFont = font(
+        candidates: ["TimesNewRomanPSMT", "Times New Roman"], size: 20, bold: false)
+    private nonisolated static let chordsFont = font(
+        candidates: ["TimesNewRomanPS-BoldMT", "TimesNewRomanPSMT"], size: 12, bold: true)
+    private nonisolated static let symbolsFontCached = symbolsFont(size: 12, fallback: chordsFont)
+
     nonisolated static func drawing(for lines: [SongSheetLine]) -> Drawing {
-        let lyrics = font(candidates: ["TimesNewRomanPSMT", "Times New Roman"], size: 20, bold: false)
-        let chords = font(candidates: ["TimesNewRomanPS-BoldMT", "TimesNewRomanPSMT"], size: 12, bold: true)
-        let symbols = symbolsFont(size: 12, fallback: chords)
+        let lyrics = lyricsFont
+        let chords = chordsFont
+        let symbols = symbolsFontCached
         let lyricsHeight = height(lyrics)
         let chordsHeight = height(chords)
         let lineHeight = lyricsHeight + CTFontGetAscent(chords) - CTFontGetLeading(lyrics) - CTFontGetLeading(chords)
