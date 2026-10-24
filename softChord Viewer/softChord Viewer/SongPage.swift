@@ -13,6 +13,8 @@ struct SongPage: View {
     @State private var noticeMessage: String?
     @State private var editing = false
     @State private var closeWhenKeyboardEnds = false
+    /// Set once the keyboard has finished hiding, so Back can pop from the page.
+    @State private var popWhenReady = false
     @State private var draft = ""
     /// Chord positions for the edit in progress. Note ids stay as stored.
     @State private var editChords: [SongChord] = []
@@ -27,7 +29,7 @@ struct SongPage: View {
     private let errorMessage: String?
 
     init(song: SongTitle) {
-        // Start listening before a tap can hide the keyboard. Save then knows
+        // Start listening before a tap can hide the keyboard. Back then knows
         // a hide is already running and does not start another one.
         _ = KeyboardActivity.shared
         title = song.title
@@ -91,15 +93,28 @@ struct SongPage: View {
         .toolbar(.visible, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
+            // The bar's own back item highlights and then loses the press.
+            // The song controls draw Back instead, above the bar. This spacer
+            // only keeps the title from sliding under that button. With no
+            // song loaded there are no song controls, so the bar keeps Back.
+            if source == nil {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
                     }
                 }
+            } else {
+                ToolbarItem(placement: .topBarLeading) {
+                    Color.clear
+                        .frame(width: 88, height: 1)
+                        .accessibilityHidden(true)
+                }
+                .sharedBackgroundVisibility(.hidden)
             }
             ToolbarItem(placement: .principal) {
                 // TODO: Under the title, show the subtitle when it is not empty,
@@ -128,6 +143,7 @@ struct SongPage: View {
                     editing: editing,
                     songId: songId,
                     steps: $steps,
+                    onBack: { leaveSong() },
                     onEdit: beginLyricEdit,
                     onDiscard: { closeLyricEditor(save: false) },
                     onSave: { closeLyricEditor(save: true) },
@@ -136,6 +152,11 @@ struct SongPage: View {
                         noticeMessage = message
                     }
                 )
+            }
+        }
+        .onChange(of: popWhenReady) { _, pop in
+            if pop {
+                dismiss()
             }
         }
         .alert(noticeTitle ?? "", isPresented: noticeIsPresented) {
@@ -179,6 +200,48 @@ struct SongPage: View {
         closeWhenKeyboardEnds = true
     }
 
+    /// Pop after the keyboard is down. Popping while a field is still typing
+    /// hides the keyboard, and taking the page away hides it again.
+    private func leaveSong() {
+        let field = focusedTextInput()
+        // Nothing is typing, and no hide is running. The list has to come
+        // back from this press, not from a later turn.
+        guard field != nil || KeyboardActivity.shared.isHiding else {
+            dismiss()
+            return
+        }
+        // The pop has to happen from the page update. Dismiss inside the
+        // hide callback is ignored, and a view update during the hide
+        // asks UIKit to hide the keyboard a second time.
+        KeyboardActivity.shared.whenKeyboardIsDown(field) {
+            popWhenReady = true
+        }
+    }
+
+    private func focusedTextInput() -> UIView? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        for scene in scenes {
+            for window in scene.windows where window.isKeyWindow {
+                if let field = firstResponder(in: window), field is UITextField || field is UITextView {
+                    return field
+                }
+            }
+        }
+        return nil
+    }
+
+    private func firstResponder(in view: UIView) -> UIView? {
+        if view.isFirstResponder {
+            return view
+        }
+        for subview in view.subviews {
+            if let found = firstResponder(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
     private var noticeIsPresented: Binding<Bool> {
         Binding(
             get: { noticeTitle != nil },
@@ -198,6 +261,7 @@ private struct SongChromeDock: UIViewRepresentable {
     var editing: Bool
     var songId: Int
     @Binding var steps: Int
+    var onBack: () -> Void
     var onEdit: () -> Void
     var onDiscard: () -> Void
     var onSave: () -> Void
@@ -215,6 +279,7 @@ private struct SongChromeDock: UIViewRepresentable {
         coordinator.songId = songId
         coordinator.steps = $steps
         coordinator.editing = editing
+        coordinator.onBack = onBack
         coordinator.onEdit = onEdit
         coordinator.onDiscard = onDiscard
         coordinator.onSave = onSave
@@ -241,8 +306,12 @@ private struct SongChromeDock: UIViewRepresentable {
         var songId = 0
         var steps: Binding<Int> = .constant(0)
         var editing = false
+        var onBack: () -> Void = {}
         var onEdit: () -> Void = {}
         private weak var anchor: SongChromeAnchor?
+        /// Set once the page drops the buttons, so a late update cannot put them
+        /// back on the list.
+        private var closed = false
         var onDiscard: () -> Void = {}
         var onSave: () -> Void = {}
         var onNotice: (String, String) -> Void = { _, _ in }
@@ -252,9 +321,12 @@ private struct SongChromeDock: UIViewRepresentable {
         func install(on anchor: SongChromeAnchor) {
             // The bar's container covers the screen and takes presses that land
             // on the buttons. They stay in the bar's own view, above that
-            // container. The bar's controller presents the menu.
+            // container. The bar's controller presents the menu. An extra
+            // child controller makes Back flash and then time out.
+            // Once the page has left the window, a late update must not put
+            // the buttons back on the list.
             self.anchor = anchor
-            guard anchor.window != nil, anchor.panel == nil,
+            guard !closed, anchor.window != nil, anchor.panel == nil,
                   let bar = anchor.navigationBar(),
                   let parent = anchor.barOwner(for: bar) else {
                 return
@@ -264,6 +336,7 @@ private struct SongChromeDock: UIViewRepresentable {
             parent.view.addSubview(panel)
             NSLayoutConstraint.activate([
                 panel.topAnchor.constraint(equalTo: bar.safeAreaLayoutGuide.topAnchor),
+                panel.leadingAnchor.constraint(equalTo: bar.layoutMarginsGuide.leadingAnchor),
                 panel.trailingAnchor.constraint(equalTo: bar.layoutMarginsGuide.trailingAnchor),
             ])
             anchor.panel = panel
@@ -322,10 +395,35 @@ private struct SongChromeDock: UIViewRepresentable {
             trailing.alignment = .trailing
             trailing.setContentHuggingPriority(.required, for: .horizontal)
 
-            let panel = SongChromePanel(arrangedSubviews: [trailing])
+            // The gap is not a control. The panel refuses presses that miss a button.
+            let spacer = UIView()
+            spacer.isUserInteractionEnabled = false
+            spacer.setContentHuggingPriority(.fittingSizeLevel, for: .horizontal)
+            spacer.setContentCompressionResistancePriority(.fittingSizeLevel, for: .horizontal)
+
+            let panel = SongChromePanel(arrangedSubviews: [backButton(), spacer, trailing])
             panel.axis = .horizontal
             panel.alignment = .top
             return panel
+        }
+
+        private func backButton() -> UIButton {
+            var config = UIButton.Configuration.glass()
+            config.title = "Back"
+            config.image = UIImage(systemName: "chevron.left")
+            config.imagePadding = 4
+            config.buttonSize = .small
+            config.cornerStyle = .capsule
+            let button = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in
+                // Take the buttons down before the pop. They are hosted on the
+                // navigation controller, which stays up when the song leaves.
+                self?.closeChrome()
+                self?.onBack()
+            })
+            button.accessibilityLabel = "Back"
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            return button
         }
 
         private func menuConfiguration() -> UIButton.Configuration {
@@ -360,6 +458,11 @@ private struct SongChromeDock: UIViewRepresentable {
             return button
         }
 
+        private func closeChrome() {
+            closed = true
+            anchor?.removePanel()
+        }
+
         @objc private func transposeTapped(_ sender: UIButton) {
             steps.wrappedValue += sender.tag
         }
@@ -374,7 +477,8 @@ private struct SongChromeDock: UIViewRepresentable {
     }
 }
 
-/// The gap between the buttons is not a button. Presses there belong to the song.
+/// The gap between Back and the menu is not a button. Presses there
+/// belong to the song.
 private final class SongChromePanel: UIStackView {
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         for subview in subviews.reversed()
