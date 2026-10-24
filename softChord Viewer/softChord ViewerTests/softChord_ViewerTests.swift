@@ -263,6 +263,56 @@ struct softChord_ViewerTests {
         tappedAway.isHidden = true
     }
 
+    /// Save keeps the letters for this run. Opening the song again shows them.
+    /// Saving the songbook text again drops that copy. The file is not written.
+    @Test @MainActor func savedSongTextStaysForThisRun() async throws {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let song = try #require(Songbook.titles().first)
+        let first = show(UIHostingController(rootView: NavigationStack {
+            SongPage(song: song)
+        }))
+        await settle()
+        try await openEditor(in: first)
+        let editor = try #require(first.descendants(of: UITextView.self).first)
+        let original = editor.text ?? ""
+        let marked = original + "§keep"
+        editor.text = marked
+        editor.delegate?.textViewDidChange?(editor)
+        pressButton("Save", in: first)
+        await waitUntil(in: first) { view in
+            view.descendants(of: UITextView.self).isEmpty
+        }
+        #expect(SongSessionEdits.copy(for: song.id)?.text == marked)
+        first.isHidden = true
+
+        let second = show(UIHostingController(rootView: NavigationStack {
+            SongPage(song: song)
+        }))
+        await settle()
+        try await openEditor(in: second)
+        let again = try #require(second.descendants(of: UITextView.self).first)
+        #expect(again.text == marked)
+
+        again.text = original
+        again.delegate?.textViewDidChange?(again)
+        pressButton("Save", in: second)
+        await waitUntil(in: second) { view in
+            view.descendants(of: UITextView.self).isEmpty
+        }
+        #expect(SongSessionEdits.copy(for: song.id) == nil)
+        second.isHidden = true
+
+        let third = show(UIHostingController(rootView: NavigationStack {
+            SongPage(song: song)
+        }))
+        await settle()
+        try await openEditor(in: third)
+        let restored = try #require(third.descendants(of: UITextView.self).first)
+        #expect(restored.text == original)
+        third.isHidden = true
+    }
+
     @MainActor private func openEditor(in window: UIWindow) async throws {
         try performMenuAction("Edit song text...", in: window)
         await waitUntil(in: window) { view in
