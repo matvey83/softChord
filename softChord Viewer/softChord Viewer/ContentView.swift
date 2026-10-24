@@ -285,12 +285,24 @@ private func songShareCopy(songId: Int, includeChords: Bool, report: @escaping (
     }
 }
 
+/// The list search field. Resigning it twice asks UIKit to hide a keyboard
+/// that is already hidden.
+private final class SongSearchField: UITextField {
+    private var isResigning = false
+
+    override func resignFirstResponder() -> Bool {
+        resignOnce(self, isResigning: &isResigning) {
+            super.resignFirstResponder()
+        }
+    }
+}
+
 /// A rounded text field with the system clear button.
 private struct SongFilterField: UIViewRepresentable {
     @Binding var text: String
 
     func makeUIView(context: Context) -> UITextField {
-        let field = UITextField()
+        let field = SongSearchField()
         field.borderStyle = .roundedRect
         field.font = .preferredFont(forTextStyle: .body)
         field.adjustsFontForContentSizeCategory = true

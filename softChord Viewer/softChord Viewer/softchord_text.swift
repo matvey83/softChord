@@ -169,3 +169,50 @@ enum SongText {
         return chosen
     }
 }
+
+/// Chords follow the letters while the lyrics are edited.
+/// Mirror: softchord_session.py _lyric_renumber_map and _renumber_lyric_chords.
+enum SongLyricChords {
+    nonisolated static func moved(_ chords: [SongChord], from previous: String, to text: String) -> [SongChord] {
+        if previous == text || chords.isEmpty {
+            return chords
+        }
+        let map = renumberMap(from: previous, to: text)
+        var kept: [SongChord] = []
+        kept.reserveCapacity(chords.count)
+        for var chord in chords {
+            guard let newIndex = map[chord.characterNum] else {
+                continue
+            }
+            chord.characterNum = newIndex
+            kept.append(chord)
+        }
+        return kept
+    }
+
+    /// Old letter index to the index of that same letter after the edit.
+    /// A letter that was deleted has no entry, so the chord on it is dropped.
+    /// The walk from the end overwrites the walk from the start where they meet,
+    /// matching the desktop map.
+    private nonisolated static func renumberMap(from previous: String, to text: String) -> [Int: Int] {
+        let old = Array(previous.unicodeScalars)
+        let new = Array(text.unicodeScalars)
+        var map: [Int: Int] = [:]
+        var index = 0
+        while index < old.count && index < new.count && old[index] == new[index] {
+            map[index] = index
+            index += 1
+        }
+        var back = 1
+        while back <= old.count && back <= new.count {
+            let oldIndex = old.count - back
+            let newIndex = new.count - back
+            if old[oldIndex] != new[newIndex] {
+                break
+            }
+            map[oldIndex] = newIndex
+            back += 1
+        }
+        return map
+    }
+}
