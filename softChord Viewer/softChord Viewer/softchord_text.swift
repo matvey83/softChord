@@ -123,6 +123,19 @@ enum SongText {
         return song.replacingOccurrences(of: "\n", with: "\r\n")
     }
 
+    /// The chord text drawn on a letter, spelled as the sheet spells it.
+    /// Nil when the letter has no chord. This is what a chord edit starts from.
+    nonisolated static func displayedChordText(text: String, chords: [SongChord], characterNum: Int) -> String? {
+        var scalar = 0
+        for line in sheet(text: text, chords: chords) {
+            for chord in line.chords where scalar + chord.anchor == characterNum {
+                return chord.text
+            }
+            scalar += line.lyric.unicodeScalars.count + 1
+        }
+        return nil
+    }
+
     /// One lyric line, with each chord named and anchored on a letter.
     /// The editor paints this instead of returning it.
     nonisolated static func sheet(text: String, chords: [SongChord]) -> [SongSheetLine] {
@@ -219,6 +232,51 @@ enum SongLyricChords {
             kept.append(chord)
         }
         return kept
+    }
+
+    /// The chord that was on `from` now sits on `to`.
+    /// A chord that was already on `to` is dropped, so a letter keeps one chord.
+    nonisolated static func reattached(_ chords: [SongChord], from: Int, to: Int) -> [SongChord] {
+        guard from != to, chords.contains(where: { $0.characterNum == from }) else {
+            return chords
+        }
+        return chords.compactMap { chord in
+            if chord.characterNum == to {
+                return nil
+            }
+            if chord.characterNum == from {
+                var moved = chord
+                moved.characterNum = to
+                return moved
+            }
+            return chord
+        }
+    }
+
+    /// The chord typed for a letter. It replaces the chord there, or is added.
+    /// The page shows chords shifted by `steps` but keeps them as stored, so the
+    /// typed name is shifted back by the same steps before it is kept.
+    /// Text that is not a chord becomes the unknown "?" chord and keeps the typed text.
+    nonisolated static func replaced(_ chords: [SongChord], at characterNum: Int, withText text: String, steps: Int) -> [SongChord] {
+        let typed = SongChord.from(text: text, characterNum: characterNum)
+        let stored = SongTranspose.shifted([typed], by: -steps)[0]
+        var result = chords.filter { $0.characterNum != characterNum }
+        let index = result.firstIndex { $0.characterNum > characterNum } ?? result.count
+        result.insert(stored, at: index)
+        return result
+    }
+
+    nonisolated static func deleted(_ chords: [SongChord], at characterNum: Int) -> [SongChord] {
+        chords.filter { $0.characterNum != characterNum }
+    }
+
+    /// What the chord sheet says about the text typed so far.
+    nonisolated static func preview(ofTyped text: String) -> String {
+        let chord = SongChord.from(text: text, characterNum: 0)
+        if chord.unknown {
+            return "Not a chord. It will be shown as ?"
+        }
+        return "Shown as " + SoftchordChords.chordText(chord, prefer: SoftchordChords.preferNeither)
     }
 
     /// Old letter index to the index of that same letter after the edit.
