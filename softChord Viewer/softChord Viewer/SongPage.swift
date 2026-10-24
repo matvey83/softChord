@@ -6,6 +6,33 @@
 import SwiftUI
 import UIKit
 
+/// Letters and chords kept after Save, for this run of the app.
+/// The songbook file is not changed. Quit the app and the copy is gone.
+enum SongSessionEdits {
+    struct Copy: Equatable {
+        var text: String?
+        var chords: [SongChord]?
+    }
+
+    private static var copies: [Int: Copy] = [:]
+
+    static func copy(for id: Int) -> Copy? {
+        copies[id]
+    }
+
+    static func save(id: Int, text: String?, chords: [SongChord]?) {
+        if text == nil, chords == nil {
+            copies[id] = nil
+        } else {
+            copies[id] = Copy(text: text, chords: chords)
+        }
+    }
+
+    static func reset() {
+        copies = [:]
+    }
+}
+
 struct SongPage: View {
     @Environment(\.dismiss) private var dismiss
     @State private var steps = 0
@@ -19,6 +46,7 @@ struct SongPage: View {
     /// Chord positions for the edit in progress. Note ids stay as stored.
     @State private var editChords: [SongChord] = []
     /// Lyrics drawn after Save. Nil means the songbook text.
+    /// Also kept for this run of the app, so opening the song again shows them.
     @State private var shownText: String?
     /// Chord positions drawn after Save. Nil means the songbook chords.
     @State private var shownChords: [SongChord]?
@@ -34,6 +62,9 @@ struct SongPage: View {
         _ = KeyboardActivity.shared
         title = song.title
         songId = song.id
+        let kept = SongSessionEdits.copy(for: song.id)
+        _shownText = State(initialValue: kept?.text)
+        _shownChords = State(initialValue: kept?.chords)
         do {
             source = try Songbook.source(id: song.id)
             errorMessage = nil
@@ -55,13 +86,22 @@ struct SongPage: View {
         return SongText.sheet(text: lyricText, chords: chords)
     }
 
-    private var textWasEdited: Bool {
+    /// Unsaved keystrokes and a transpose are still only on this page.
+    /// A saved edit stays for this run, but it is not in the songbook file.
+    private var bannerText: String? {
         guard let source else {
-            return false
+            return nil
         }
-        let currentText = editing ? draft : lyricText
-        let currentChords = editing ? editChords : (shownChords ?? source.chords)
-        return currentText != source.text || currentChords != source.chords
+        let storedText = shownText ?? source.text
+        let storedChords = shownChords ?? source.chords
+        let dirtyDraft = editing && (draft != storedText || editChords != storedChords)
+        if dirtyDraft || (steps != 0 && shownText == nil && shownChords == nil) {
+            return "Changes do not persist"
+        }
+        if shownText != nil || shownChords != nil {
+            return "Not written to the songbook"
+        }
+        return nil
     }
 
     var body: some View {
@@ -165,8 +205,8 @@ struct SongPage: View {
             Text(noticeMessage ?? "")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if steps != 0 || textWasEdited {
-                Text("Changes do not persist")
+            if let bannerText {
+                Text(bannerText)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
@@ -196,6 +236,7 @@ struct SongPage: View {
             let sameChords = editChords == source?.chords
             shownText = sameText ? nil : draft
             shownChords = sameChords ? nil : editChords
+            SongSessionEdits.save(id: songId, text: shownText, chords: shownChords)
         }
         closeWhenKeyboardEnds = true
     }
