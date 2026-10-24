@@ -26,10 +26,20 @@ enum SongSheetImage {
         _ drawing: SongSheetLayout.Drawing,
         zoom: CGFloat,
         origin: CGPoint,
-        clip: CGRect
+        clip: CGRect,
+        highlights: [CGRect] = []
     ) {
         UIColor.white.setFill()
         UIRectFill(clip)
+        // Behind the letters. The rectangles are in song coordinates.
+        UIColor(red: 0.68, green: 0.85, blue: 1, alpha: 1).setFill()
+        for rect in highlights {
+            UIRectFill(CGRect(
+                x: rect.minX * zoom - origin.x,
+                y: rect.minY * zoom - origin.y,
+                width: rect.width * zoom,
+                height: rect.height * zoom))
+        }
         // One font per face for this frame. A font per chord letter made scrolling hitch.
         var fonts: [UnsafeRawPointer: UIFont] = [:]
         for glyph in drawing.glyphs {

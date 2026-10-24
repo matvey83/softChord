@@ -39,6 +39,15 @@ struct SongPage: View {
     @State private var noticeTitle: String?
     @State private var noticeMessage: String?
     @State private var editing = false
+    /// Chord editing is the other edit mode. Only one of the two is on at a time.
+    @State private var editingChords = false
+    /// The letter picked in chord editing. Its chord, if it has one, is the selected chord.
+    @State private var chordSelection: Int?
+    @State private var chordRequest: SongChordEditRequest?
+    /// Where the song controls end and where the chord view begins, both in window
+    /// coordinates. The chord view starts below the controls, so they never cover text.
+    @State private var panelBottom: CGFloat = 0
+    @State private var chordViewTop: CGFloat = 0
     @State private var closeWhenKeyboardEnds = false
     /// Set once the keyboard has finished hiding, so Back can pop from the page.
     @State private var popWhenReady = false
@@ -94,7 +103,7 @@ struct SongPage: View {
         }
         let storedText = shownText ?? source.text
         let storedChords = shownChords ?? source.chords
-        let dirtyDraft = editing && (draft != storedText || editChords != storedChords)
+        let dirtyDraft = (editing || editingChords) && (draft != storedText || editChords != storedChords)
         if dirtyDraft || (steps != 0 && shownText == nil && shownChords == nil) {
             return "Changes do not persist"
         }
@@ -102,6 +111,12 @@ struct SongPage: View {
             return "Not written to the songbook"
         }
         return nil
+    }
+
+    /// The chord controls hang below the navigation bar, one row each. The
+    /// chord view starts under the lowest of them.
+    private var chordControlsInset: CGFloat {
+        max(0, panelBottom - chordViewTop) + 8
     }
 
     var body: some View {
@@ -123,10 +138,34 @@ struct SongPage: View {
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .background(Color.white)
+            } else if editingChords {
+                // Mirror: the desktop's Edit Chords mode (chordEditorSelected).
+                // The letters are read-only. A press selects a letter and its
+                // chord, and a drag moves the chord onto another letter.
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: chordControlsInset)
+                    SongChordEditor(
+                        text: draft,
+                        chords: SongTranspose.shifted(editChords, by: steps),
+                        selection: $chordSelection,
+                        onChordMoved: moveChord,
+                        onEditRequested: requestChordEdit
+                    )
+                }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(Color.white)
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+                        chordViewTop = $0
+                    }
             } else {
                 SongZoomCanvas(lines: lines)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .background(Color.white)
+            }
+        }
+        .sheet(item: $chordRequest) { request in
+            SongChordTextSheet(request: request) { text in
+                applyChordText(text, for: request)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -171,7 +210,7 @@ struct SongPage: View {
             if source != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Color.clear
-                        .frame(width: 100, height: 1)
+                        .frame(width: editing || editingChords ? 170 : 100, height: 1)
                         .accessibilityHidden(true)
                 }
                 .sharedBackgroundVisibility(.hidden)
@@ -180,13 +219,19 @@ struct SongPage: View {
         .background {
             if source != nil {
                 SongChromeDock(
-                    editing: editing,
+                    editing: editing || editingChords,
+                    chordMode: editingChords,
+                    selectionState: chordSelectionState,
                     songId: songId,
                     steps: $steps,
                     onBack: { leaveSong() },
                     onEdit: beginLyricEdit,
-                    onDiscard: { closeLyricEditor(save: false) },
-                    onSave: { closeLyricEditor(save: true) },
+                    onEditChords: beginChordEdit,
+                    onEditChord: { requestChordEdit(chordSelection) },
+                    onDeleteChord: deleteSelectedChord,
+                    onDiscard: { finishEditing(save: false) },
+                    onSave: { finishEditing(save: true) },
+                    onPanelBottom: { panelBottom = $0 },
                     onNotice: { title, message in
                         noticeTitle = title
                         noticeMessage = message
@@ -217,6 +262,9 @@ struct SongPage: View {
     }
 
     private func beginLyricEdit() {
+        guard !editing, !editingChords else {
+            return
+        }
         draft = lyricText
         editChords = shownChords ?? source?.chords ?? []
         editing = true
@@ -227,16 +275,86 @@ struct SongPage: View {
         draft = newText
     }
 
+    /// Chord editing keeps the letters as they are. Chords are stored as the
+    /// songbook has them, and drawn shifted by the transpose steps.
+    private func beginChordEdit() {
+        guard !editing, !editingChords else {
+            return
+        }
+        draft = lyricText
+        editChords = shownChords ?? source?.chords ?? []
+        chordSelection = nil
+        chordRequest = nil
+        editingChords = true
+    }
+
+    private func moveChord(from: Int, to: Int) {
+        editChords = SongLyricChords.reattached(editChords, from: from, to: to)
+    }
+
+    /// What the buttons need to know: nothing picked, a letter, or a chord.
+    private var chordSelectionState: SongChordSelectionState {
+        guard let selected = chordSelection else {
+            return .none
+        }
+        return editChords.contains { $0.characterNum == selected } ? .chord : .letter
+    }
+
+    /// The text field starts with the chord as it is drawn, so a transposed
+    /// song shows the shifted name. A letter with no chord starts with C.
+    private func requestChordEdit(_ characterNum: Int?) {
+        guard editingChords, let characterNum else {
+            return
+        }
+        let shown = SongTranspose.shifted(editChords, by: steps)
+        let current = SongText.displayedChordText(text: draft, chords: shown, characterNum: characterNum)
+        chordRequest = SongChordEditRequest(
+            characterNum: characterNum, initialText: current ?? "C", isNew: current == nil)
+    }
+
+    private func applyChordText(_ text: String, for request: SongChordEditRequest) {
+        if !request.isNew, text.trimmingCharacters(in: .whitespacesAndNewlines) == request.initialText {
+            return
+        }
+        editChords = SongLyricChords.replaced(
+            editChords, at: request.characterNum, withText: text, steps: steps)
+    }
+
+    private func deleteSelectedChord() {
+        guard editingChords, let selected = chordSelection else {
+            return
+        }
+        editChords = SongLyricChords.deleted(editChords, at: selected)
+    }
+
+    private func finishEditing(save: Bool) {
+        if editingChords {
+            if save {
+                commitEdit()
+            }
+            // No keyboard is up in this mode, so the page can leave it now.
+            chordRequest = nil
+            chordSelection = nil
+            editingChords = false
+        } else {
+            closeLyricEditor(save: save)
+        }
+    }
+
+    private func commitEdit() {
+        let sameText = draft == source?.text
+        let sameChords = editChords == source?.chords
+        shownText = sameText ? nil : draft
+        shownChords = sameChords ? nil : editChords
+        SongSessionEdits.save(id: songId, text: shownText, chords: shownChords)
+    }
+
     /// The field resigns before it leaves the screen. Removing it while the
     /// keyboard is still hiding asks UIKit to hide an input view that is
     /// already hidden.
     private func closeLyricEditor(save: Bool) {
         if save {
-            let sameText = draft == source?.text
-            let sameChords = editChords == source?.chords
-            shownText = sameText ? nil : draft
-            shownChords = sameChords ? nil : editChords
-            SongSessionEdits.save(id: songId, text: shownText, chords: shownChords)
+            commitEdit()
         }
         closeWhenKeyboardEnds = true
     }
@@ -300,12 +418,18 @@ struct SongPage: View {
 /// choice then waits. These buttons keep one menu for the life of the page.
 private struct SongChromeDock: UIViewRepresentable {
     var editing: Bool
+    var chordMode: Bool
+    var selectionState: SongChordSelectionState
     var songId: Int
     @Binding var steps: Int
     var onBack: () -> Void
     var onEdit: () -> Void
+    var onEditChords: () -> Void
+    var onEditChord: () -> Void
+    var onDeleteChord: () -> Void
     var onDiscard: () -> Void
     var onSave: () -> Void
+    var onPanelBottom: (CGFloat) -> Void
     var onNotice: (String, String) -> Void
 
     func makeUIView(context: Context) -> SongChromeAnchor {
@@ -320,10 +444,16 @@ private struct SongChromeDock: UIViewRepresentable {
         coordinator.songId = songId
         coordinator.steps = $steps
         coordinator.editing = editing
+        coordinator.chordMode = chordMode
+        coordinator.selectionState = selectionState
         coordinator.onBack = onBack
         coordinator.onEdit = onEdit
+        coordinator.onEditChords = onEditChords
+        coordinator.onEditChord = onEditChord
+        coordinator.onDeleteChord = onDeleteChord
         coordinator.onDiscard = onDiscard
         coordinator.onSave = onSave
+        coordinator.onPanelBottom = onPanelBottom
         coordinator.onNotice = onNotice
         view.onInstall = { [weak coordinator, weak view] in
             guard let coordinator, let view else {
@@ -347,17 +477,27 @@ private struct SongChromeDock: UIViewRepresentable {
         var songId = 0
         var steps: Binding<Int> = .constant(0)
         var editing = false
+        var chordMode = false
+        var selectionState = SongChordSelectionState.none
         var onBack: () -> Void = {}
         var onEdit: () -> Void = {}
+        var onEditChords: () -> Void = {}
+        var onEditChord: () -> Void = {}
+        var onDeleteChord: () -> Void = {}
         private weak var anchor: SongChromeAnchor?
         /// Set once the page drops the buttons, so a late update cannot put them
         /// back on the list.
         private var closed = false
         var onDiscard: () -> Void = {}
         var onSave: () -> Void = {}
+        var onPanelBottom: (CGFloat) -> Void = { _ in }
+        private var reportedBottom: CGFloat?
         var onNotice: (String, String) -> Void = { _, _ in }
         private var viewControls: UIView?
         private var editControls: UIView?
+        private var chordTools: UIView?
+        private var editChordButton: UIButton?
+        private var deleteChordButton: UIButton?
 
         func install(on anchor: SongChromeAnchor) {
             // The bar's container covers the screen and takes presses that land
@@ -389,9 +529,12 @@ private struct SongChromeDock: UIViewRepresentable {
         func applyEditing() {
             viewControls?.isHidden = editing
             editControls?.isHidden = !editing
+            chordTools?.isHidden = !(editing && chordMode)
+            editChordButton?.isEnabled = selectionState != .none
+            deleteChordButton?.isEnabled = selectionState == .chord
         }
 
-        private func makePanel() -> UIStackView {
+        private func makePanel() -> SongChromePanel {
             let menuButton = UIButton(configuration: menuConfiguration())
             menuButton.showsMenuAsPrimaryAction = true
             menuButton.menu = SongShareMenu.menu(
@@ -401,6 +544,9 @@ private struct SongChromeDock: UIViewRepresentable {
                 },
                 onEdit: { [weak self] in
                     self?.onEdit()
+                },
+                onEditChords: { [weak self] in
+                    self?.onEditChords()
                 })
             menuButton.accessibilityLabel = "Menu"
 
@@ -431,9 +577,22 @@ private struct SongChromeDock: UIViewRepresentable {
             edits.isHidden = true
             editControls = edits
 
-            let trailing = UIStackView(arrangedSubviews: [stack, edits])
+            // Mirror: the desktop's chord dialog and deleteSelectedChord.
+            let editChord = textButton("Edit chord", prominent: false, action: #selector(editChordTapped))
+            let deleteChord = textButton("Delete chord", prominent: false, action: #selector(deleteChordTapped))
+            editChordButton = editChord
+            deleteChordButton = deleteChord
+            let tools = UIStackView(arrangedSubviews: [editChord, deleteChord])
+            tools.axis = .vertical
+            tools.alignment = .trailing
+            tools.spacing = 6
+            tools.isHidden = true
+            chordTools = tools
+
+            let trailing = UIStackView(arrangedSubviews: [stack, edits, tools])
             trailing.axis = .vertical
             trailing.alignment = .trailing
+            trailing.spacing = 6
             trailing.setContentHuggingPriority(.required, for: .horizontal)
 
             // The gap is not a control. The panel refuses presses that miss a button.
@@ -445,6 +604,18 @@ private struct SongChromeDock: UIViewRepresentable {
             let panel = SongChromePanel(arrangedSubviews: [backButton(), spacer, trailing])
             panel.axis = .horizontal
             panel.alignment = .top
+            // The page keeps its text below the lowest control.
+            panel.onLayout = { [weak self, weak panel] in
+                guard let self, let panel else {
+                    return
+                }
+                let bottom = panel.convert(panel.bounds, to: nil).maxY
+                guard bottom != self.reportedBottom else {
+                    return
+                }
+                self.reportedBottom = bottom
+                DispatchQueue.main.async { self.onPanelBottom(bottom) }
+            }
             return panel
         }
 
@@ -494,7 +665,12 @@ private struct SongChromeDock: UIViewRepresentable {
             config.title = title
             config.buttonSize = .small
             config.cornerStyle = .capsule
+            // A title is one line. The button grows to fit it.
+            config.titleLineBreakMode = .byClipping
             let button = UIButton(configuration: config)
+            button.titleLabel?.numberOfLines = 1
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
             button.addTarget(self, action: action, for: .touchUpInside)
             return button
         }
@@ -506,6 +682,14 @@ private struct SongChromeDock: UIViewRepresentable {
 
         @objc private func transposeTapped(_ sender: UIButton) {
             steps.wrappedValue += sender.tag
+        }
+
+        @objc private func editChordTapped() {
+            onEditChord()
+        }
+
+        @objc private func deleteChordTapped() {
+            onDeleteChord()
         }
 
         @objc private func discardTapped() {
@@ -521,6 +705,13 @@ private struct SongChromeDock: UIViewRepresentable {
 /// The gap between Back and the menu is not a button. Presses there
 /// belong to the song.
 private final class SongChromePanel: UIStackView {
+    var onLayout: (() -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?()
+    }
+
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         for subview in subviews.reversed()
             where !subview.isHidden && subview.isUserInteractionEnabled && subview.alpha > 0.01 {
@@ -911,10 +1102,8 @@ private final class KeyboardActivity {
     }
 }
 
-/// Chords drawn over the letters. Taps pass through to the text field.
-/// A drag will be a gesture on the text view, and only when the press is
-/// inside a chord box. This view stays out of the touch, so a press on a
-/// letter still edits the text.
+/// Chords drawn over the letters. This view stays out of the touch, so a
+/// press on a letter only edits the text.
 /// Mirror: paintChordLayer, and determineClickedLetter in softchord_session.py.
 private final class SongChordOverlay: UIView {
     weak var editor: SongLyricTextView?
@@ -1281,6 +1470,75 @@ private final class SongLyricTextView: UITextView {
     }
 }
 
+/// What the chord buttons can act on: nothing picked, a letter with no chord, or a chord.
+enum SongChordSelectionState: Equatable {
+    case none
+    case letter
+    case chord
+}
+
+/// One request to type a chord. A letter with no chord starts as a new chord.
+private struct SongChordEditRequest: Identifiable {
+    var characterNum: Int
+    var initialText: String
+    var isNew: Bool
+    var id: Int { characterNum }
+}
+
+/// A small sheet with one text field. The chord is read as it is typed:
+/// text that is not a chord becomes the unknown "?" chord.
+/// Mirror: ChordDialog in softchord_session.py, which also parses the typed text live.
+private struct SongChordTextSheet: View {
+    var request: SongChordEditRequest
+    var onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String
+    @FocusState private var focused: Bool
+
+    init(request: SongChordEditRequest, onSave: @escaping (String) -> Void) {
+        self.request = request
+        self.onSave = onSave
+        _text = State(initialValue: request.initialText)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Chord", text: $text)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($focused)
+                        .onSubmit(save)
+                } footer: {
+                    Text(SongLyricChords.preview(ofTyped: text))
+                }
+            }
+            .navigationTitle(request.isNew ? "Add chord" : "Edit chord")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("OK", action: save)
+                }
+            }
+        }
+        .presentationDetents([.height(260)])
+        .onAppear {
+            focused = true
+        }
+    }
+
+    private func save() {
+        onSave(text)
+        dismiss()
+    }
+}
+
 private struct SongZoomCanvas: UIViewRepresentable {
     var lines: [SongSheetLine]
 
@@ -1303,11 +1561,11 @@ private struct SongZoomCanvas: UIViewRepresentable {
 }
 
 /// Scrolls the sheet from the top-left and zooms with a two-finger pinch.
-private final class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+private class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     private let sheet = SongSheetUIView()
     private var loadedLines: [SongSheetLine] = []
     private var songSize: CGSize = .zero
-    private var zoom: CGFloat = 1
+    private(set) var zoom: CGFloat = 1
     private var baseZoom: CGFloat = 1
     private var lockToOrigin = true
     private var isLockingOrigin = false
@@ -1342,6 +1600,16 @@ private final class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGe
 
     override var intrinsicContentSize: CGSize {
         CGSize(width: UIView.noIntrinsicMetric, height: UIView.noIntrinsicMetric)
+    }
+
+    /// Where letters and chords are, in song coordinates.
+    var sheetDrawing: SongSheetLayout.Drawing {
+        sheet.drawing
+    }
+
+    /// Light rectangles behind the sheet, in song coordinates.
+    func setHighlights(_ rects: [CGRect]) {
+        sheet.highlights = rects
     }
 
     func setLines(_ lines: [SongSheetLine]) {
@@ -1450,13 +1718,294 @@ private final class SongSheetUIView: UIView {
         }
     }
 
-    private var drawing = SongSheetLayout.drawing(for: [])
+    var highlights: [CGRect] = [] {
+        didSet {
+            if highlights != oldValue {
+                setNeedsDisplay()
+            }
+        }
+    }
+
+    private(set) var drawing = SongSheetLayout.drawing(for: [])
 
     var songSize: CGSize {
         drawing.size
     }
 
     override func draw(_ rect: CGRect) {
-        SongSheetImage.draw(drawing, zoom: zoom, origin: contentOrigin, clip: bounds)
+        SongSheetImage.draw(drawing, zoom: zoom, origin: contentOrigin, clip: bounds, highlights: highlights)
+    }
+}
+
+/// The letters, read-only, drawn the way the song view draws them. Pinch zooms and a
+/// drag scrolls. A press picks a letter and its chord, and a drag moves the chord.
+/// Mirror: the desktop's Edit Chords mode, where lyric_editor_mode is off.
+private struct SongChordEditor: UIViewRepresentable {
+    var text: String
+    var chords: [SongChord]
+    @Binding var selection: Int?
+    var onChordMoved: (Int, Int) -> Void
+    var onEditRequested: (Int) -> Void
+
+    func makeUIView(context: Context) -> SongChordZoomView {
+        let view = SongChordZoomView()
+        view.accessibilityIdentifier = "Song chords"
+        update(view)
+        return view
+    }
+
+    func updateUIView(_ view: SongChordZoomView, context: Context) {
+        update(view)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: SongChordZoomView, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else {
+            return nil
+        }
+        return CGSize(width: width, height: height)
+    }
+
+    private func update(_ view: SongChordZoomView) {
+        let binding = $selection
+        view.onSelectionChanged = { binding.wrappedValue = $0 }
+        view.onChordMoved = onChordMoved
+        view.onEditRequested = onEditRequested
+        view.chords = chords
+        view.setLines(SongText.sheet(text: text, chords: chords))
+        view.applySelection(selection)
+    }
+}
+
+/// Selects a letter, drags the chord that is already selected, taps it to edit,
+/// or clears the selection. A press on empty page is left to the scroll view.
+/// A press that turns into a slide is a scroll, so nothing is picked.
+private final class SongChordPress: UIGestureRecognizer {
+    weak var zoomView: SongChordZoomView?
+    private var mode = Mode.idle
+    /// Where the finger went down on screen. A scroll moves the view under the
+    /// finger, so the slide is measured in the window and not in the view.
+    private var origin: CGPoint = .zero
+    private var dragged = false
+    /// A short slide still counts as a press.
+    private let slideDistance: CGFloat = 6
+
+    private enum Mode {
+        case idle
+        /// A press on the selected chord. A slide moves it. Letting go in place edits it.
+        case drag
+        /// A press that does its action when the finger lifts without sliding.
+        case release(SongChordPick.Action)
+
+        var isIdle: Bool {
+            if case .idle = self {
+                return true
+            }
+            return false
+        }
+    }
+
+    /// The scroll must not start on the selected chord, or it would steal the drag.
+    var armedToDrag: Bool {
+        if case .drag = mode {
+            return true
+        }
+        return false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard numberOfTouches == 1, let touch = touches.first, let zoomView else {
+            // A second finger is a pinch.
+            mode = .idle
+            state = state == .possible ? .failed : .cancelled
+            return
+        }
+        origin = touch.location(in: nil)
+        dragged = false
+        switch zoomView.pick(at: touch.location(in: zoomView)) {
+        case .drag?:
+            mode = .drag
+        case let action?:
+            mode = .release(action)
+        case nil:
+            mode = .idle
+            state = .failed
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard !mode.isIdle, numberOfTouches == 1, let touch = touches.first, let zoomView else {
+            // A second finger is a pinch.
+            mode = .idle
+            state = state == .possible ? .failed : .cancelled
+            return
+        }
+        let now = touch.location(in: nil)
+        let slide = hypot(now.x - origin.x, now.y - origin.y)
+        if case .release = mode {
+            if slide >= slideDistance {
+                self.mode = .idle
+                state = .failed
+            }
+            return
+        }
+        if !dragged, slide < slideDistance {
+            return
+        }
+        dragged = true
+        // Began and changed have to be separate turns. Setting both here
+        // leaves the recognizer in changed without ever starting.
+        state = state == .possible ? .began : .changed
+        zoomView.moveSelectedChord(at: touch.location(in: zoomView))
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        switch mode {
+        case .release(let action):
+            zoomView?.perform(action)
+        case .drag where !dragged:
+            zoomView?.requestEdit()
+        default:
+            break
+        }
+        state = dragged ? .ended : .failed
+        mode = .idle
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        mode = .idle
+        dragged = false
+        state = .cancelled
+    }
+
+    override func canPrevent(_ prevented: UIGestureRecognizer) -> Bool {
+        dragged
+    }
+
+    override func reset() {
+        super.reset()
+        mode = .idle
+        dragged = false
+    }
+}
+
+/// The song view with a chord picker on top. The page owns the chords. The view
+/// reports a pick or a move and draws the pick as light blue behind the letter
+/// and its chord. Touches are read in the zoomed sheet and converted to the song.
+/// Mirror: determineClickedLetter and the chord drag in softchord_session.py.
+private final class SongChordZoomView: SongZoomScrollView {
+    var onSelectionChanged: (Int?) -> Void = { _ in }
+    var onChordMoved: (Int, Int) -> Void = { _, _ in }
+    var onEditRequested: (Int) -> Void = { _ in }
+    /// The chords as drawn, so a move can tell a drop on the same letter from a real one.
+    var chords: [SongChord] = []
+    private(set) var selectedCharacterNum: Int?
+    private let press = SongChordPress()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        press.zoomView = self
+        press.cancelsTouchesInView = false
+        press.delaysTouchesBegan = false
+        press.delaysTouchesEnded = false
+        addGestureRecognizer(press)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func setLines(_ lines: [SongSheetLine]) {
+        super.setLines(lines)
+        showSelection()
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer !== press, gestureRecognizer is UIPanGestureRecognizer, press.armedToDrag {
+            return false
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+
+    /// A point in the scroll view's content is the song drawn at the zoom.
+    private func songPoint(_ contentPoint: CGPoint) -> CGPoint {
+        CGPoint(x: contentPoint.x / zoom, y: contentPoint.y / zoom)
+    }
+
+    func pick(at contentPoint: CGPoint) -> SongChordPick.Action? {
+        SongChordPick.action(
+            in: sheetDrawing, at: contentPoint, zoom: zoom, selected: selectedCharacterNum)
+    }
+
+    func perform(_ action: SongChordPick.Action) {
+        switch action {
+        case .select(let index):
+            selectLetter(index)
+        case .clear:
+            clearChordSelection()
+        case .edit:
+            requestEdit()
+        case .drag:
+            break
+        }
+    }
+
+    private func selectLetter(_ index: Int) {
+        selectedCharacterNum = index
+        showSelection()
+        onSelectionChanged(index)
+    }
+
+    private func clearChordSelection() {
+        guard selectedCharacterNum != nil else {
+            return
+        }
+        selectedCharacterNum = nil
+        showSelection()
+        onSelectionChanged(nil)
+    }
+
+    /// The page changed the selection, for example after a delete. No callback.
+    func applySelection(_ index: Int?) {
+        guard index != selectedCharacterNum else {
+            return
+        }
+        selectedCharacterNum = index
+        showSelection()
+    }
+
+    func requestEdit() {
+        guard let selected = selectedCharacterNum else {
+            return
+        }
+        onEditRequested(selected)
+    }
+
+    func moveSelectedChord(at contentPoint: CGPoint) {
+        guard let from = selectedCharacterNum,
+              let to = sheetDrawing.nearestLetter(at: songPoint(contentPoint)),
+              to != from else {
+            return
+        }
+        let next = SongLyricChords.reattached(chords, from: from, to: to)
+        guard next != chords else {
+            return
+        }
+        chords = next
+        selectedCharacterNum = to
+        onChordMoved(from, to)
+        showSelection()
+        onSelectionChanged(to)
+    }
+
+    /// Light blue behind the letter, and behind its chord if it has one.
+    private func showSelection() {
+        guard let selected = selectedCharacterNum else {
+            setHighlights([])
+            return
+        }
+        let drawing = sheetDrawing
+        let letter = drawing.letters.first { $0.characterNum == selected }?.rect
+        let chord = drawing.chordBoxes.first { $0.characterNum == selected }?.rect
+        setHighlights([letter, chord].compactMap { $0 })
     }
 }

@@ -30,6 +30,15 @@ struct softChord_ViewerTests {
         #expect(titles.last == "Edit song text...")
     }
 
+    @Test func songPageMenuAddsEditChordsNextToEditText() {
+        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: {}, onEditChords: {})
+        let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
+        #expect(Array(titles.suffix(2)) == ["Edit song text...", "Edit song chords..."])
+        let listMenu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: nil)
+        let listTitles = listMenu.children.compactMap { ($0 as? UIAction)?.title }
+        #expect(!listTitles.contains("Edit song chords..."))
+    }
+
     /// The list must not refresh a menu while it is closed. The cell gets one
     /// interaction, and the items are built when that interaction asks for them.
     @Test @MainActor func songRowsInstallOneContextMenu() async {
@@ -100,6 +109,65 @@ struct softChord_ViewerTests {
         window.layoutIfNeeded()
         await settle()
         try await checkSongControls(in: window)
+        window.isHidden = true
+    }
+
+    /// Edit chord and Delete chord sit under Discard and Save, one row each, on one
+    /// line, and the chord view starts below them.
+    @Test @MainActor func chordButtonsSitBelowSaveAndTheTextStartsBelowThem() async throws {
+        let song = try Songbook.titles().first
+        let title = try #require(song)
+        let controller = UIHostingController(rootView: NavigationStack(path: .constant([title])) {
+            Text("Songs")
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: SongTitle.self) { song in
+                    SongPage(song: song)
+                }
+        })
+        let window = show(controller)
+        await settle()
+        let menu = try #require(window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Menu" })
+        let action = try #require(menu.menu?.children.compactMap { $0 as? UIAction }.first {
+            $0.title == "Edit song chords..."
+        })
+        action.performWithSender(nil, target: nil)
+        await settle()
+        let sizes: [(CGSize, UIContentSizeCategory)] = [
+            (CGSize(width: 402, height: 874), .large),
+            (CGSize(width: 852, height: 393), .large),
+            (CGSize(width: 402, height: 874), .accessibilityLarge),
+        ]
+        for (size, category) in sizes {
+            window.frame = CGRect(origin: .zero, size: size)
+            controller.traitOverrides.preferredContentSizeCategory = category
+            window.layoutIfNeeded()
+            await settle()
+            func button(_ name: String) throws -> UIButton {
+                try #require(window.descendants(of: UIButton.self).first {
+                    $0.configuration?.title == name && !$0.isHidden
+                })
+            }
+            let save = try button("Save").convert(try button("Save").bounds, to: window)
+            let edit = try button("Edit chord")
+            let delete = try button("Delete chord")
+            let editFrame = edit.convert(edit.bounds, to: window)
+            let deleteFrame = delete.convert(delete.bounds, to: window)
+            #expect(editFrame.minY >= save.maxY, "\(size) \(category)")
+            #expect(deleteFrame.minY >= editFrame.maxY, "\(size) \(category)")
+            // One line of the button's own font, plus its padding.
+            let font = UIFont.preferredFont(forTextStyle: .footnote, compatibleWith: delete.traitCollection)
+            #expect(deleteFrame.height < font.lineHeight * 2 + 8, "\(size) \(category) \(deleteFrame)")
+            let chords = try #require(window.descendants(of: UIView.self).first {
+                $0.accessibilityIdentifier == "Song chords"
+            })
+            let chordsFrame = chords.convert(chords.bounds, to: window)
+            #expect(chordsFrame.minY >= deleteFrame.maxY, "\(size) \(category) \(chordsFrame)")
+        }
+        // The chord view zooms and scrolls like the song view.
+        let sheet = try #require(window.descendants(of: UIScrollView.self).first {
+            $0.accessibilityIdentifier == "Song chords"
+        })
+        #expect(sheet.gestureRecognizers?.contains { $0 is UIPinchGestureRecognizer } == true)
         window.isHidden = true
     }
 
@@ -583,6 +651,20 @@ struct softChord_ViewerTests {
         #expect(deleted.map(\.characterNum) == [3])
     }
 
+    @Test func draggingAChordAttachesItToAnotherLetter() {
+        let chord = SongChord(
+            characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false)
+        let other = SongChord(
+            characterNum: 4, noteId: 7, chordTypeId: 1, bassNoteId: -1, marker: "", inParentheses: false)
+        let moved = SongLyricChords.reattached([chord, other], from: 0, to: 2)
+        #expect(moved.map(\.characterNum) == [2, 4])
+        let replaced = SongLyricChords.reattached([chord, other], from: 0, to: 4)
+        #expect(replaced.count == 1)
+        #expect(replaced.first?.characterNum == 4)
+        #expect(replaced.first?.noteId == 0)
+        #expect(SongLyricChords.reattached([chord], from: 0, to: 0).map(\.characterNum) == [0])
+    }
+
     @Test func aPressInsideAChordBoxPicksThatLetter() {
         let boxes = [
             SongChordBoxes.Box(characterNum: 0, rect: CGRect(x: 10, y: 8, width: 20, height: 12)),
@@ -592,6 +674,105 @@ struct softChord_ViewerTests {
         // The border is the letter's, so a tap there can still edit the text.
         #expect(SongChordBoxes.characterNum(at: CGPoint(x: 10, y: 14), boxes: boxes) == nil)
         #expect(SongChordBoxes.characterNum(at: CGPoint(x: 30, y: 14), boxes: boxes) == nil)
+    }
+
+    @Test func aPressBesideAChordPicksThatLetter() {
+        let boxes = [
+            SongChordBoxes.Box(characterNum: 4, rect: CGRect(x: 40, y: 8, width: 24, height: 12)),
+        ]
+        let beside = CGPoint(x: 36, y: 14)
+        #expect(SongChordBoxes.characterNum(at: beside, boxes: boxes, slop: SongChordPick.slop) == 4)
+        #expect(SongChordBoxes.characterNum(at: beside, boxes: boxes) == nil)
+    }
+
+    @Test func aTapOnTheSelectedLetterEditsItsChord() {
+        // A letter with no chord, pressed again, is a new chord.
+        #expect(SongChordPick.action(
+            selected: 2, hit: 2, pressedSelectedChord: false, selectedHasChord: false) == .edit)
+        // The selected chord's letter, pressed below the chord, edits it as well.
+        #expect(SongChordPick.action(
+            selected: 4, hit: 4, pressedSelectedChord: false, selectedHasChord: true) == .edit)
+        // The chord itself still drags first. A tap in place edits it.
+        #expect(SongChordPick.action(
+            selected: 4, hit: 4, pressedSelectedChord: true, selectedHasChord: true) == .drag)
+    }
+
+    @Test func aTypedChordReplacesOrAddsTheChordOnThatLetter() {
+        let c = SongChord.from(text: "C", characterNum: 0)
+        let g = SongChord.from(text: "G", characterNum: 6)
+        let replaced = SongLyricChords.replaced([c, g], at: 0, withText: "Am7/G", steps: 0)
+        #expect(replaced.map(\.characterNum) == [0, 6])
+        #expect(SoftchordChords.chordText(replaced[0], prefer: 2) == "Am7/G")
+        #expect(replaced[1] == g)
+        let added = SongLyricChords.replaced([c, g], at: 3, withText: "F", steps: 0)
+        #expect(added.map(\.characterNum) == [0, 3, 6])
+        #expect(SongLyricChords.deleted(added, at: 3) == [c, g])
+        #expect(SongLyricChords.deleted([c, g], at: 1) == [c, g])
+    }
+
+    @Test func aChordTypedWhileTransposedIsStoredUntransposed() {
+        let text = "Hello there"
+        // Stored C and G, shown two steps up as D and A.
+        let stored = [SongChord.from(text: "C", characterNum: 0), SongChord.from(text: "G", characterNum: 6)]
+        let shown = SongTranspose.shifted(stored, by: 2)
+        #expect(SongText.displayedChordText(text: text, chords: shown, characterNum: 0) == "D")
+        #expect(SongText.displayedChordText(text: text, chords: shown, characterNum: 6) == "A")
+        #expect(SongText.displayedChordText(text: text, chords: shown, characterNum: 1) == nil)
+
+        // The user types Em over the D. Stored is Dm, which draws as Em again.
+        let edited = SongLyricChords.replaced(stored, at: 0, withText: "Em", steps: 2)
+        #expect(edited[0].noteId == 2)
+        #expect(edited[0].chordTypeId == 1)
+        #expect(edited[1] == stored[1])
+        let redrawn = SongTranspose.shifted(edited, by: 2)
+        #expect(SongText.displayedChordText(text: text, chords: redrawn, characterNum: 0) == "Em")
+
+        // A suffix this app does not know and a bass note shift with the root.
+        let rich = SongLyricChords.replaced(stored, at: 6, withText: "Bmaj9/F#", steps: 2)
+        #expect(rich[1].noteId == 9)
+        #expect(rich[1].bassNoteId == 4)
+        #expect(rich[1].suffix == "maj9")
+        let shownRich = SongTranspose.shifted(rich, by: 2)
+        #expect(SongText.displayedChordText(text: text, chords: shownRich, characterNum: 6) == "Bmaj9/F♯")
+
+        // Text that is not a chord is the unknown chord, and no step changes it.
+        let unknown = SongLyricChords.replaced(stored, at: 6, withText: "N.C.", steps: 5)
+        #expect(unknown[1].unknown)
+        #expect(SongText.displayedChordText(
+            text: text, chords: SongTranspose.shifted(unknown, by: 5), characterNum: 6) == "?")
+    }
+
+    @Test func movingAChordWhileTransposedKeepsItsStoredName() {
+        let text = "Hello there"
+        let stored = [SongChord.from(text: "C", characterNum: 0)]
+        let moved = SongLyricChords.reattached(stored, from: 0, to: 3)
+        #expect(moved[0].noteId == 0)
+        #expect(SongText.displayedChordText(
+            text: text, chords: SongTranspose.shifted(moved, by: 2), characterNum: 3) == "D")
+    }
+
+    @Test func theChordSheetPreviewsTheTypedText() {
+        #expect(SongLyricChords.preview(ofTyped: "Bbm7") == "Shown as B♭m7")
+        #expect(SongLyricChords.preview(ofTyped: "xyz") == "Not a chord. It will be shown as ?")
+        #expect(SongLyricChords.preview(ofTyped: "") == "Not a chord. It will be shown as ?")
+    }
+
+    @Test func aSecondPressClearsTheSelectedLetter() {
+        #expect(SongChordPick.action(
+            selected: nil, hit: 4, pressedSelectedChord: true, selectedHasChord: true) == .select(4))
+        #expect(SongChordPick.action(
+            selected: 4, hit: 4, pressedSelectedChord: true, selectedHasChord: true) == .drag)
+        #expect(SongChordPick.action(
+            selected: 4, hit: 1, pressedSelectedChord: false, selectedHasChord: true) == .clear)
+        #expect(SongChordPick.action(
+            selected: 4, hit: nil, pressedSelectedChord: false, selectedHasChord: true) == .clear)
+        // A letter with no chord can be selected, and a later press is not a drag.
+        #expect(SongChordPick.action(
+            selected: nil, hit: 2, pressedSelectedChord: false, selectedHasChord: false) == .select(2))
+        #expect(SongChordPick.action(
+            selected: 2, hit: 5, pressedSelectedChord: false, selectedHasChord: false) == .clear)
+        #expect(SongChordPick.action(
+            selected: nil, hit: nil, pressedSelectedChord: false, selectedHasChord: false) == nil)
     }
 
     /// The edit-mode chord layer is laid out in the text view's coordinates.
@@ -843,6 +1024,82 @@ struct SongSheetLayoutTests {
         let longer = SongSheetLayout.drawing(for: [SongSheetLine(lyric: "Hello there", chords: [])])
         #expect(withChord.size.height > plain.size.height)
         #expect(longer.size.width > plain.size.width)
+    }
+
+    @Test func lettersAreNumberedAcrossLines() {
+        let drawing = SongSheetLayout.drawing(for: [
+            SongSheetLine(lyric: "Hi", chords: []),
+            SongSheetLine(lyric: "", chords: []),
+            SongSheetLine(lyric: "Yo", chords: [SongSheetChord(anchor: 1, text: "G")]),
+        ])
+        // A newline is a miss, so the second line starts at 3 and the third at 4.
+        #expect(drawing.letters.map(\.characterNum) == [0, 1, 4, 5])
+        let yo = drawing.letters[3]
+        #expect(drawing.letter(at: CGPoint(x: yo.rect.midX, y: yo.rect.midY)) == 5)
+        #expect(drawing.letter(at: CGPoint(x: yo.rect.maxX + 30, y: yo.rect.midY)) == nil)
+    }
+
+    @Test func aChordBoxIsCenteredOnItsLetter() {
+        // A wide chord on the first letter pushes the sheet right. The letters move with it.
+        let drawing = SongSheetLayout.drawing(for: [
+            SongSheetLine(lyric: "Hello", chords: [SongSheetChord(anchor: 0, text: "Cmaj7/G")]),
+        ])
+        let box = drawing.chordBoxes[0]
+        let letter = drawing.letters[0]
+        #expect(box.characterNum == 0)
+        #expect(abs(box.rect.midX - letter.rect.midX) < 0.01)
+        #expect(box.rect.maxY <= letter.rect.minY + 4)
+        #expect(box.rect.minX >= 16 - 0.01)
+        #expect(letter.rect.minX > 16)
+        let chord = drawing.glyphs.first { $0.text == "C" }
+        #expect(chord != nil)
+        #expect(abs(chord!.x - box.rect.minX) < 0.01)
+    }
+
+    @Test func aPressPicksTheSameLetterAtAnyZoom() {
+        let drawing = SongSheetLayout.drawing(for: [
+            SongSheetLine(lyric: "Hello there friend", chords: [SongSheetChord(anchor: 1, text: "Am")]),
+        ])
+        let letter = drawing.letters[12]
+        let box = drawing.chordBoxes[0]
+        for zoom: CGFloat in [0.25, 0.5, 1, 2, 3.5] {
+            func at(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+                CGPoint(x: x * zoom, y: y * zoom)
+            }
+            #expect(SongChordPick.action(
+                in: drawing, at: at(letter.rect.midX, letter.rect.midY), zoom: zoom, selected: nil) == .select(12))
+            #expect(SongChordPick.action(
+                in: drawing, at: at(box.rect.midX, box.rect.midY), zoom: zoom, selected: nil) == .select(1))
+            #expect(SongChordPick.action(
+                in: drawing, at: at(box.rect.midX, box.rect.midY), zoom: zoom, selected: 1) == .drag)
+            #expect(SongChordPick.action(
+                in: drawing, at: at(letter.rect.midX, letter.rect.midY), zoom: zoom, selected: 12) == .edit)
+            #expect(SongChordPick.action(
+                in: drawing, at: at(letter.rect.midX, letter.rect.midY), zoom: zoom, selected: 1) == .clear)
+            // Five screen points off the chord still count. Twelve do not.
+            let near = CGPoint(x: box.rect.maxX * zoom + 5, y: box.rect.midY * zoom)
+            #expect(SongChordPick.action(in: drawing, at: near, zoom: zoom, selected: 1) == .drag)
+            let far = CGPoint(x: box.rect.maxX * zoom + 12, y: box.rect.midY * zoom)
+            #expect(SongChordPick.action(in: drawing, at: far, zoom: zoom, selected: 1) == .clear)
+            #expect(SongChordPick.action(in: drawing, at: far, zoom: zoom, selected: nil) == nil)
+        }
+    }
+
+    @Test func theNearestLetterAcceptsAFingerInTheChordRow() {
+        let drawing = SongSheetLayout.drawing(for: [
+            SongSheetLine(lyric: "One", chords: [SongSheetChord(anchor: 0, text: "C")]),
+            SongSheetLine(lyric: "Two", chords: []),
+        ])
+        let two = drawing.letters[3]
+        #expect(drawing.nearestLetter(at: CGPoint(x: two.rect.midX, y: two.rect.midY)) == 4)
+        let one = drawing.letters[1]
+        let chordRow = CGPoint(x: one.rect.midX, y: one.reach.minY + 1)
+        #expect(drawing.letter(at: chordRow) == nil)
+        #expect(drawing.nearestLetter(at: chordRow) == 1)
+        // Past the end of the line is a miss, so a drag there does not jump.
+        #expect(drawing.nearestLetter(at: CGPoint(x: one.rect.maxX + 60, y: one.rect.midY)) == nil)
+        // A finger far above the sheet still takes the first line.
+        #expect(drawing.nearestLetter(at: CGPoint(x: one.rect.midX, y: -50)) == 1)
     }
 }
 

@@ -227,7 +227,8 @@ enum SongShareMenu {
     static func menu(
         songId: @escaping () -> Int,
         report: @escaping (String, String) -> Void,
-        onEdit: (() -> Void)?
+        onEdit: (() -> Void)?,
+        onEditChords: (() -> Void)? = nil
     ) -> UIMenu {
         var children: [UIMenuElement] = [
             UIAction(title: "Copy song text") { _ in
@@ -247,6 +248,12 @@ enum SongShareMenu {
             // Mirror: softchord_session.py lyricEditorSelected.
             children.append(UIAction(title: "Edit song text...") { _ in
                 onEdit()
+            })
+        }
+        if let onEditChords {
+            // Mirror: softchord_session.py chordEditorSelected.
+            children.append(UIAction(title: "Edit song chords...") { _ in
+                onEditChords()
             })
         }
         return UIMenu(children: children)
