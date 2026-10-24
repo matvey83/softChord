@@ -187,3 +187,24 @@ enum SongSheetLayout {
         [NSAttributedString.Key(kCTFontAttributeName as String): font]
     }
 }
+
+/// The painted chord a finger is on.
+/// Mirror: determineClickedLetter in softchord_session.py. A press inside the
+/// box is on the chord. The edges are left for the letter, so a tap there
+/// still edits the text. The first box wins when two overlap.
+enum SongChordBoxes {
+    struct Box: Equatable {
+        var characterNum: Int
+        var rect: CGRect
+    }
+
+    nonisolated static func characterNum(at point: CGPoint, boxes: [Box]) -> Int? {
+        for box in boxes {
+            let rect = box.rect
+            if point.x > rect.minX, point.x < rect.maxX, point.y > rect.minY, point.y < rect.maxY {
+                return box.characterNum
+            }
+        }
+        return nil
+    }
+}
