@@ -103,8 +103,74 @@ struct softChord_ViewerTests {
         window.isHidden = true
     }
 
+    /// Back has to receive the press and return to the list. A press that only
+    /// flashes the button leaves the song on screen.
+    @Test @MainActor func backButtonReturnsToTheSongList() async throws {
+        let song = try Songbook.titles().first
+        let title = try #require(song)
+        let controller = UIHostingController(rootView: SongListHarness(song: title))
+        let window = show(controller)
+        await settle()
+        // Layout puts the bar container back in front. The buttons move above
+        // it when the run loop is about to wait.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async {
+                continuation.resume()
+            }
+        }
+        let back = try #require(window.descendants(of: UIButton.self).first {
+            $0.accessibilityLabel == "Back"
+        })
+        let area = back.convert(back.bounds, to: window).insetBy(dx: 1, dy: 1)
+        #expect(area.width > 50)
+        #expect(area.height > 16)
+        let samples = [
+            CGPoint(x: area.minX, y: area.minY),
+            CGPoint(x: area.midX, y: area.minY),
+            CGPoint(x: area.maxX, y: area.minY),
+            CGPoint(x: area.minX, y: area.midY),
+            CGPoint(x: area.midX, y: area.midY),
+            CGPoint(x: area.maxX, y: area.midY),
+            CGPoint(x: area.minX, y: area.maxY),
+            CGPoint(x: area.midX, y: area.maxY),
+            CGPoint(x: area.maxX, y: area.maxY),
+        ]
+        for point in samples {
+            let hit = window.hitTest(point, with: nil)
+            let onBack = hit === back || hit?.isDescendant(of: back) == true
+            #expect(onBack, "\(point) hit \(hit.map { String(describing: type(of: $0)) } ?? "nil")")
+        }
+        let beside = CGPoint(x: area.maxX + 12, y: area.midY)
+        let besideHit = window.hitTest(beside, with: nil)
+        let besideIsBack = besideHit === back || besideHit?.isDescendant(of: back) == true
+        #expect(besideIsBack == false)
+        #expect(navigationController(in: window.rootViewController)?.viewControllers.count == 2)
+        back.performPrimaryAction()
+        // The pop starts immediately. The song buttons stay until the
+        // transition takes the page off the window.
+        var returned = false
+        for _ in 0..<40 {
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(50))
+            let backLeft = window.descendants(of: UIButton.self).contains {
+                $0.accessibilityLabel == "Back"
+            } == false
+            let menuLeft = window.descendants(of: UIButton.self).contains {
+                $0.accessibilityLabel == "Menu"
+            } == false
+            if backLeft && menuLeft {
+                returned = true
+                break
+            }
+        }
+        #expect(returned)
+        #expect(navigationController(in: window.rootViewController)?.viewControllers.count == 1)
+        #expect(anyWindowShows("Songs"))
+        window.isHidden = true
+    }
+
     /// Save has to leave edit mode, and the field has to still be on screen
-    /// when the keyboard starts hiding.
+    /// when the keyboard starts hiding. Back from the editor returns to the list.
     @Test @MainActor func closingTheEditorWaitsForTheKeyboard() async throws {
         let song = try #require(Songbook.titles().first)
         let window = show(UIHostingController(rootView: SongListHarness(song: song)))
@@ -140,6 +206,37 @@ struct softChord_ViewerTests {
         }
         #expect(window.descendants(of: UITextView.self).isEmpty)
         window.isHidden = true
+
+        let editBack = show(UIHostingController(rootView: SongListHarness(song: song)))
+        await settle()
+        try await openEditor(in: editBack)
+        editBack.descendants(of: UITextView.self).first?.becomeFirstResponder()
+        await settle()
+        pressBack(in: editBack)
+        // The Back button leaves with the chrome, before the page pops.
+        await waitUntil(in: editBack) { view in
+            navigationController(in: view.rootViewController)?.viewControllers.count == 1
+        }
+        #expect(navigationController(in: editBack.rootViewController)?.viewControllers.count == 1)
+        #expect(editBack.descendants(of: UIButton.self).contains { $0.accessibilityLabel == "Back" } == false)
+        editBack.isHidden = true
+
+        // A tap outside the field resigns it before Back runs. The page has
+        // to stay up until that hide finishes, then return to the list.
+        let tappedAway = show(UIHostingController(rootView: SongListHarness(song: song)))
+        await settle()
+        try await openEditor(in: tappedAway)
+        let typing = try #require(tappedAway.descendants(of: UITextView.self).first)
+        #expect(typing.becomeFirstResponder())
+        await settle()
+        #expect(typing.resignFirstResponder())
+        pressBack(in: tappedAway)
+        #expect(navigationController(in: tappedAway.rootViewController)?.viewControllers.count == 2)
+        await waitUntil(in: tappedAway) { view in
+            navigationController(in: view.rootViewController)?.viewControllers.count == 1
+        }
+        #expect(navigationController(in: tappedAway.rootViewController)?.viewControllers.count == 1)
+        tappedAway.isHidden = true
     }
 
     @MainActor private func openEditor(in window: UIWindow) async throws {
@@ -148,6 +245,10 @@ struct softChord_ViewerTests {
             view.descendants(of: UITextView.self).isEmpty == false
         }
         #expect(window.descendants(of: UITextView.self).isEmpty == false)
+    }
+
+    @MainActor private func pressBack(in window: UIWindow) {
+        window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Back" }?.performPrimaryAction()
     }
 
     @MainActor private func pressButton(_ title: String, in window: UIWindow) {
