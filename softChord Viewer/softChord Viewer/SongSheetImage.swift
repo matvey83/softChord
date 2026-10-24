@@ -30,15 +30,27 @@ enum SongSheetImage {
     ) {
         UIColor.white.setFill()
         UIRectFill(clip)
+        // One font per face for this frame. A font per chord letter made scrolling hitch.
+        var fonts: [UnsafeRawPointer: UIFont] = [:]
         for glyph in drawing.glyphs {
-            let font = UIFont(
-                descriptor: CTFontCopyFontDescriptor(glyph.font) as UIFontDescriptor,
-                size: CTFontGetSize(glyph.font) * zoom)
+            let ascent = CTFontGetAscent(glyph.font) * zoom
+            let descent = CTFontGetDescent(glyph.font) * zoom
             let x = glyph.x * zoom - origin.x
-            let top = glyph.baseline * zoom - font.ascender - origin.y
-            if top > clip.maxY || top + font.lineHeight < clip.minY || x > clip.maxX {
+            let topEstimate = glyph.baseline * zoom - ascent - origin.y
+            if topEstimate - 2 > clip.maxY || topEstimate + ascent + descent + 2 < clip.minY || x > clip.maxX {
                 continue
             }
+            let key = Unmanaged.passUnretained(glyph.font).toOpaque()
+            let font: UIFont
+            if let cached = fonts[key] {
+                font = cached
+            } else {
+                font = UIFont(
+                    descriptor: CTFontCopyFontDescriptor(glyph.font) as UIFontDescriptor,
+                    size: CTFontGetSize(glyph.font) * zoom)
+                fonts[key] = font
+            }
+            let top = glyph.baseline * zoom - font.ascender - origin.y
             (glyph.text as NSString).draw(
                 at: CGPoint(x: x, y: top),
                 withAttributes: [

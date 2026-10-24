@@ -6,11 +6,42 @@
 //
 
 import SQLite3
+import SwiftUI
 import Testing
 import UIKit
 @testable import softChord_Viewer
 
 struct softChord_ViewerTests {
+
+    @Test func songMenuListsTheShareCommands() {
+        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: nil)
+        let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
+        #expect(titles == [
+            "Copy song text",
+            "Copy song text with chords",
+            "Copy as image",
+            "Add to Photos",
+        ])
+    }
+
+    /// The list must not refresh a menu while it is closed. The cell gets one
+    /// interaction, and the items are built when that interaction asks for them.
+    @Test @MainActor func songRowsInstallOneContextMenu() async {
+        let controller = UIHostingController(rootView: ContentView(songs: [
+            SongTitle(id: 1, title: "One"),
+            SongTitle(id: 2, title: "Two"),
+            SongTitle(id: 3, title: "Three"),
+        ]))
+        let window = show(controller)
+        await settle()
+        let cells = controller.view.descendants(of: UICollectionViewCell.self)
+        #expect(cells.isEmpty == false)
+        for cell in cells {
+            let menus = cell.interactions.filter { $0 is UIContextMenuInteraction }
+            #expect(menus.count == 1)
+        }
+        window.isHidden = true
+    }
 
     @Test func songTextMatchesTheEditorLayout() {
         let chords = [
@@ -46,6 +77,32 @@ struct softChord_ViewerTests {
             characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: 4, marker: "1", inParentheses: true)
         let rendered = SongText.render(text: "Hello world", chords: [chord], includeChords: true)
         #expect(rendered == "(1:C/E)\r\nHello world")
+    }
+
+    @MainActor private func windowScene() -> UIWindowScene {
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        precondition(scene != nil)
+        return scene!
+    }
+
+    @MainActor private func show(_ controller: UIViewController) -> UIWindow {
+        let window = UIWindow(windowScene: windowScene())
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.layoutIfNeeded()
+        return window
+    }
+
+    @MainActor private func settle() async {
+        for _ in 0..<8 {
+            await Task.yield()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     @Test func blankLinesStayInTheSheet() {
@@ -152,6 +209,19 @@ struct SongFilterTests {
             SongTitle(id: 4, title: "Бог моя защита"),
             SongTitle(id: 5, title: "Вместе мы с вами"),
         ]
+    }
+}
+
+private extension UIView {
+    func descendants<T: UIView>(of type: T.Type) -> [T] {
+        var found: [T] = []
+        for child in subviews {
+            if let match = child as? T {
+                found.append(match)
+            }
+            found.append(contentsOf: child.descendants(of: type))
+        }
+        return found
     }
 }
 
