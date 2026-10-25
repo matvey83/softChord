@@ -4,7 +4,7 @@
 //
 //  Paired with src/softchord_chords.py. Shared functions stay in this order:
 //  preferFromMajorTonic, scoreKey, familyScore, bestDetectedKey,
-//  detectRegionStartIndices, transposeNote, parseChord, chordString.
+//  detectRegionStartIndices, transposeNote, parseChord, isValidChordText, chordString.
 
 import Foundation
 
@@ -307,6 +307,13 @@ nonisolated enum SoftchordChords {
         parsed.bassText = bassText
         parsed.bassNoteId = bassNoteId
         return parsed
+    }
+
+    /// True when typed text is a chord the editors may save: parseChord finds a root
+    /// note, so transposing changes it. Empty text, "?" and text with no root are not.
+    /// Mirror: softchord_chords.py is_valid_chord_text.
+    static func isValidChordText(_ text: String) -> Bool {
+        !parseChord(text).unknown
     }
 
     /// The stored string of a known chord. Mirror: softchord_chords.py chord_string.

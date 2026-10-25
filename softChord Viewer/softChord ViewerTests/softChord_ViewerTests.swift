@@ -753,8 +753,27 @@ struct softChord_ViewerTests {
 
     @Test func theChordSheetPreviewsTheTypedText() {
         #expect(SongLyricChords.preview(ofTyped: "Bbm7") == "Shown as B♭m7")
-        #expect(SongLyricChords.preview(ofTyped: "xyz") == "Not a chord. It will be shown as ?")
-        #expect(SongLyricChords.preview(ofTyped: "") == "Not a chord. It will be shown as ?")
+        #expect(SongLyricChords.preview(ofTyped: "xyz") == "Not a chord. Start with a note from A to G.")
+        #expect(SongLyricChords.preview(ofTyped: "") == "Not a chord. Start with a note from A to G.")
+    }
+
+    /// The chord sheet turns the field red and blocks OK and Return for text that is not a
+    /// valid chord. Valid means a note A to G first, the same test transposing relies on.
+    @Test func theChordSheetOnlyAcceptsValidChords() {
+        for text in ["asdf", "", "   ", "?", "xyz", "N.C.", "m7"] {
+            let entry = SongLyricChords.ChordEntry(text: text)
+            #expect(entry.showsRed, "\(text)")
+            #expect(!entry.canSave, "\(text)")
+            #expect(entry.footer == "Not a chord. Start with a note from A to G.", "\(text)")
+        }
+        for text in ["C", "Bb", "F#m7/C#", "Em7/G", "Аm", "Сmaj7", "(Am)", "v:Am", "Gsus2add9"] {
+            let entry = SongLyricChords.ChordEntry(text: text)
+            #expect(!entry.showsRed, "\(text)")
+            #expect(entry.canSave, "\(text)")
+            #expect(entry.footer.hasPrefix("Shown as "), "\(text)")
+        }
+        // An existing unknown chord opens showing "?", so it opens red.
+        #expect(SongLyricChords.ChordEntry(text: "?").showsRed)
     }
 
     @Test func aSecondPressClearsTheSelectedLetter() {
@@ -1230,6 +1249,34 @@ struct ChordParserTests {
             // The canonical string reads back as itself.
             let canonical = SoftchordChords.parsedChordString(parsed)
             #expect(SoftchordChords.parsedChordString(SoftchordChords.parseChord(canonical)) == canonical, "\(input)")
+        }
+    }
+
+    @Test func sharedValidityVectors() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tests/chord_vectors.json")
+        let root = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let validity = try #require(root["validity"] as? [String: Any])
+        let valid = try #require(validity["valid"] as? [String])
+        let invalid = try #require(validity["invalid"] as? [String])
+        #expect(valid.count > 10)
+        for text in valid {
+            #expect(SoftchordChords.isValidChordText(text), "\(text)")
+        }
+        for text in invalid {
+            #expect(!SoftchordChords.isValidChordText(text), "\(text)")
+        }
+    }
+
+    @Test func validChordTextIsWhatTransposingChanges() {
+        for text in ["C", "Am", "Em7/G", "Bb", "F#m7/C#", "H", "Аm", "(Am)", "v:Am", "Gsus2add9",
+                     "asdf", "", "?", "xyz", "N.C."] {
+            let chord = SongChord.from(text: text, characterNum: 0)
+            let moved = SongTranspose.shifted([chord], by: 1)[0]
+            #expect(SoftchordChords.isValidChordText(text) == (moved != chord), "\(text)")
         }
     }
 

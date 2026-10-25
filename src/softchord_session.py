@@ -37,6 +37,7 @@ from softchord_chords import (
     transpose_note,
     convert_chord_from_string,
     parse_chord,
+    is_valid_chord_text,
 )
 from softchord_song import (
     AddChordCommand,
@@ -517,6 +518,10 @@ class CustomTextEdit(QtWidgets.QTextEdit):
 class ChordDialog(QtWidgets.QDialog):
     """
     Dialog for allowing the user to set the chord note & type.
+
+    The chord text must be a valid chord (is_valid_chord_text, the same test
+    as the parser and transposer use). While it is not, the field is red and
+    OK is disabled, and Enter does not accept.
     """
 
     # Native macOS line edits ignore a background color unless a border is set.
@@ -529,7 +534,6 @@ class ChordDialog(QtWidgets.QDialog):
         self.ui = softchord_chord_dialog_ui.Ui_Dialog()
         self.ui.setupUi(self)
         self._edited_chord = None
-        self._typed_unknown_raw = None
         self._kept_type_id = 0
         self._kept_suffix = None
         self._initial_text = ""
@@ -568,6 +572,7 @@ class ChordDialog(QtWidgets.QDialog):
         self.ui.marker_ef.textChanged.connect(self._onChordEdited)
         self.ui.in_parentheses_box.toggled.connect(self._onChordEdited)
         chord_text.textChanged.connect(self._onChordTextChanged)
+        chord_text.textChanged.connect(self._refreshChordValidity)
 
     def _onChordEdited(self, *args):
         if self._updating_chord:
@@ -579,14 +584,9 @@ class ChordDialog(QtWidgets.QDialog):
             return
         parsed = parse_chord(text)
         if parsed.unknown:
-            # Nothing parseable: OK makes this an unknown "?" chord that keeps
-            # the typed text. The controls stay as they are.
-            self._typed_unknown_raw = parsed.raw
-            self._setChordTextInvalid(False)
+            # Not a chord: red, and OK is off. The controls stay as they are.
             return
 
-        self._typed_unknown_raw = None
-        self._setChordTextInvalid(False)
         # Hold the menus still so this edit is not immediately replaced
         # with the normalized spelling.
         self._updating_chord = True
@@ -614,18 +614,34 @@ class ChordDialog(QtWidgets.QDialog):
         style = self._INVALID_CHORD_STYLE if invalid else ""
         self.ui.chord_text_ef.setStyleSheet(style)
 
+    def _chordTextIsValid(self):
+        return is_valid_chord_text(self.ui.chord_text_ef.text())
+
+    def _refreshChordValidity(self, *args):
+        """Red field and no OK while the chord text is not a valid chord."""
+        valid = self._chordTextIsValid()
+        self._setChordTextInvalid(not valid)
+        ok = self.ui.buttonBox.button(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok)
+        if ok is not None:
+            ok.setEnabled(valid)
+
+    def accept(self):
+        # Backstop for any path other than the (disabled) OK button.
+        if not self._chordTextIsValid():
+            return
+        super().accept()
+
     def _updateChordText(self):
         if self._edited_chord is None:
             return
         # Changing a control replaces whatever was typed.
-        self._typed_unknown_raw = None
         text = self._chordTextFromControls()
         edit = self.ui.chord_text_ef
         self._updating_chord = True
         try:
             if edit.text() != text:
                 edit.setText(text)
-            self._setChordTextInvalid(False)
         finally:
             self._updating_chord = False
 
@@ -654,7 +670,6 @@ class ChordDialog(QtWidgets.QDialog):
         Fill the controls from this chord and show its chord text.
         """
         self._edited_chord = chord
-        self._typed_unknown_raw = None
         self._kept_type_id = chord.chord_type_id
         self._kept_suffix = chord._suffix
         self._initial_text = chord.getStoredText()
@@ -670,9 +685,10 @@ class ChordDialog(QtWidgets.QDialog):
             # Show the chord as stored, so a chord this version cannot read
             # fully (or at all) is not changed by opening the dialog.
             self.ui.chord_text_ef.setText(self._initial_text)
-            self._setChordTextInvalid(False)
         finally:
             self._updating_chord = False
+        # An unknown chord ("?") shows red until a valid chord is typed.
+        self._refreshChordValidity()
 
     def display(self, chord):
         """
@@ -694,10 +710,6 @@ class ChordDialog(QtWidgets.QDialog):
         if out:  # OK pressed:
             if edit.text() == self._initial_text:
                 # Untouched. Keep the chord exactly as it was read.
-                return True
-            if self._typed_unknown_raw is not None:
-                # Text that is not a chord becomes an unknown chord ("?").
-                chord.set_unknown(self._typed_unknown_raw)
                 return True
             chord.note_id = self.ui.note_menu.currentIndex()
             chord.chord_type_id = self.ui.chord_type_menu.currentIndex()

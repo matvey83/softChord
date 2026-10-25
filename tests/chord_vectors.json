@@ -2011,5 +2011,48 @@
    "parens": false,
    "canonical": "∑"
   }
- ]
+ ],
+ "validity": {
+  "description": "Text the chord editors may save (is_valid_chord_text). Valid means the parser finds a root note, so transposing changes the chord. Python, Swift and JS tests read this.",
+  "valid": [
+   "C",
+   "Am",
+   "Em7/G",
+   "Bb",
+   "F#m7/C#",
+   "F♯m7",
+   "H",
+   "Hm",
+   "Н",
+   "Аm",
+   "Сmaj7",
+   "Вb",
+   "(Am)",
+   "v:Am",
+   "2:F#m7/G",
+   "(1:Am/G)",
+   "Gsus2add9",
+   "Cmaj9",
+   "  Am  "
+  ],
+  "invalid": [
+   "",
+   "   ",
+   "?",
+   "asdf",
+   "xyz",
+   "a",
+   "am",
+   "N.C.",
+   "Xyz",
+   "(?)",
+   "()",
+   "v:",
+   "/C",
+   "1",
+   "💥",
+   "(",
+   "m7"
+  ]
+ }
 }

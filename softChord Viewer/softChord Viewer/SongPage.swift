@@ -313,6 +313,9 @@ struct SongPage: View {
     }
 
     private func applyChordText(_ text: String, for request: SongChordEditRequest) {
+        guard SoftchordChords.isValidChordText(text) else {
+            return
+        }
         if !request.isNew, text.trimmingCharacters(in: .whitespacesAndNewlines) == request.initialText {
             return
         }
@@ -1485,15 +1488,20 @@ private struct SongChordEditRequest: Identifiable {
     var id: Int { characterNum }
 }
 
-/// A small sheet with one text field. The chord is read as it is typed:
-/// text that is not a chord becomes the unknown "?" chord.
-/// Mirror: ChordDialog in softchord_session.py, which also parses the typed text live.
+/// A small sheet with one text field. The text must be a valid chord
+/// (SoftchordChords.isValidChordText, the test transposing relies on). While it
+/// is not, the field is red and OK and Return do nothing. Cancel always works.
+/// Mirror: ChordDialog in softchord_session.py.
 private struct SongChordTextSheet: View {
     var request: SongChordEditRequest
     var onSave: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
     @FocusState private var focused: Bool
+
+    private var entry: SongLyricChords.ChordEntry {
+        SongLyricChords.ChordEntry(text: text)
+    }
 
     init(request: SongChordEditRequest, onSave: @escaping (String) -> Void) {
         self.request = request
@@ -1510,8 +1518,10 @@ private struct SongChordTextSheet: View {
                         .autocorrectionDisabled()
                         .focused($focused)
                         .onSubmit(save)
+                        .accessibilityIdentifier("Chord text")
+                        .listRowBackground(entry.showsRed ? Color.red.opacity(0.35) : nil)
                 } footer: {
-                    Text(SongLyricChords.preview(ofTyped: text))
+                    Text(entry.footer)
                 }
             }
             .navigationTitle(request.isNew ? "Add chord" : "Edit chord")
@@ -1524,6 +1534,7 @@ private struct SongChordTextSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("OK", action: save)
+                        .disabled(!entry.canSave)
                 }
             }
         }
@@ -1534,6 +1545,9 @@ private struct SongChordTextSheet: View {
     }
 
     private func save() {
+        guard entry.canSave else {
+            return
+        }
         onSave(text)
         dismiss()
     }

@@ -51,8 +51,11 @@ file `tests/chord_vectors.json` is run by the Python, Swift and JS tests.
    **The original suffix text is kept and written back unchanged**, so
    `Cmaj9` opened in an older version is still `Cmaj9` when saved.
 4. No valid root means an unknown chord. It is drawn as `?` and keeps its
-   original text, which is written back unchanged. `?` is written only when
-   the user entered nothing parseable, or typed `?`.
+   original text, which is written back unchanged. The editors do not let the
+   user save such text: a chord is **valid** (`is_valid_chord_text`,
+   `SoftchordChords.isValidChordText`) only when the parser finds a root, so
+   transposing changes it. Typing `asdf`, `?` or nothing turns the field red
+   and blocks OK, Enter and Save. An unusual suffix after a valid root is fine.
 
 Transposing changes only the root and bass. The suffix is kept as it is. The
 base quality is used for key detection and colouring.

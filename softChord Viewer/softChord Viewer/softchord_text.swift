@@ -270,12 +270,27 @@ enum SongLyricChords {
         chords.filter { $0.characterNum != characterNum }
     }
 
+    /// What the chord sheet does with the text typed so far. The field is red and OK and
+    /// Return do nothing while it is not a valid chord. Mirror: ChordDialog in softchord_session.py.
+    nonisolated struct ChordEntry: Equatable {
+        var text: String
+
+        /// The same test the parser and transposing use.
+        var isValid: Bool {
+            SoftchordChords.isValidChordText(text)
+        }
+
+        var showsRed: Bool { !isValid }
+        var canSave: Bool { isValid }
+        var footer: String { SongLyricChords.preview(ofTyped: text) }
+    }
+
     /// What the chord sheet says about the text typed so far.
     nonisolated static func preview(ofTyped text: String) -> String {
-        let chord = SongChord.from(text: text, characterNum: 0)
-        if chord.unknown {
-            return "Not a chord. It will be shown as ?"
+        if !SoftchordChords.isValidChordText(text) {
+            return "Not a chord. Start with a note from A to G."
         }
+        let chord = SongChord.from(text: text, characterNum: 0)
         return "Shown as " + SoftchordChords.chordText(chord, prefer: SoftchordChords.preferNeither)
     }
 
