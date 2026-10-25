@@ -1,5 +1,6 @@
-// Chord names, transpose, and the auto-detected key.
-// Paired with softChord Viewer/softChord Viewer/softchord_chords.swift.
+// Chord names, chord strings, transpose, and the auto-detected key.
+// Paired with softChord Viewer/softChord Viewer/softchord_chords.swift
+// and src/softchord_chords.py. The chord string format is in docs/chord_format.md.
 
 (function (root, factory) {
   var api = factory();
@@ -24,6 +25,17 @@
     "", "m", "sus4", "M7", "m7", "7", "9", "aug", "6", "m6", "11", "°", "°7",
   ];
   var MINOR_TYPE_IDS = { 1: true, 4: true, 9: true };
+  var UNKNOWN_CHORD_TEXT = "?";
+  // Alternative names for a type. Mirror: alternative_type_names.
+  var ALTERNATIVE_TYPE_NAMES = {
+    "sus": "sus4", "s4": "sus4", "maj7": "M7", "2": "9", "(7)": "7", "dim": "°", "dim7": "°7",
+  };
+  var NATURAL_NOTE_IDS = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  // Look-alike Russian letters and the European H. Mirror: replace_russian_characeters.
+  var LETTER_FIXES = {
+    "\u0415": "E", "\u0421": "C", "\u0412": "B", "\u0410": "A", "H": "B", "\u041D": "B",
+  };
+  var ACCIDENTAL_SYMBOLS = { "#": "♯", "b": "♭", "♯": "♯", "♭": "♭" };
   var SHARP_MAJOR_TONICS = { 7: true, 2: true, 9: true, 4: true, 11: true, 6: true };
   var FLAT_MAJOR_TONICS = { 5: true, 10: true, 3: true, 8: true, 1: true };
   var MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
@@ -53,6 +65,9 @@
     var dominant = mod12(tonic + 7);
     var parsed = [];
     for (var c = 0; c < chords.length; c++) {
+      if (chords[c].unknown) {
+        continue;
+      }
       parsed.push([chords[c].noteId, !!MINOR_TYPE_IDS[chords[c].chordTypeId]]);
     }
     var total = 0;
@@ -88,6 +103,9 @@
   }
 
   function bestDetectedKey(chords) {
+    chords = chords.filter(function (chord) {
+      return !chord.unknown;
+    });
     if (!chords.length) {
       return null;
     }
@@ -208,19 +226,185 @@
     return FLAT_NAMES[noteId];
   }
 
-  function chordText(chord, prefer) {
-    var note = noteString(chord.noteId, prefer);
-    var type = chord.chordTypeId >= 0 && chord.chordTypeId < TYPE_PRINTS.length
-      ? TYPE_PRINTS[chord.chordTypeId]
-      : "";
-    var text = chord.marker ? chord.marker + ":" + note + type : note + type;
-    if (chord.bassNoteId !== -1) {
-      text += "/" + noteString(chord.bassNoteId, prefer);
+  // Mirror: softchord_chords.py classify_suffix. Returns [chordTypeId, isKnownType].
+  function classifySuffix(suffix) {
+    var id = TYPE_PRINTS.indexOf(suffix);
+    if (id >= 0) {
+      return [id, true];
     }
-    if (chord.inParentheses) {
+    if (Object.prototype.hasOwnProperty.call(ALTERNATIVE_TYPE_NAMES, suffix)) {
+      return [TYPE_PRINTS.indexOf(ALTERNATIVE_TYPE_NAMES[suffix]), true];
+    }
+    if (suffix.charAt(0) === "-") {
+      return [1, false];
+    }
+    if (suffix.charAt(0) === "m" && suffix.slice(0, 2) !== "ma") {
+      return [1, false];
+    }
+    return [0, false];
+  }
+
+  // Split a leading note name off an array of characters.
+  // Mirror: softchord_chords.py _read_note.
+  function readNote(chars) {
+    if (!chars.length) {
+      return null;
+    }
+    var letter = Object.prototype.hasOwnProperty.call(LETTER_FIXES, chars[0])
+      ? LETTER_FIXES[chars[0]]
+      : chars[0];
+    if (!Object.prototype.hasOwnProperty.call(NATURAL_NOTE_IDS, letter)) {
+      return null;
+    }
+    var noteId = NATURAL_NOTE_IDS[letter];
+    var rest = chars.slice(1);
+    var accidental = "";
+    if (rest.length && Object.prototype.hasOwnProperty.call(ACCIDENTAL_SYMBOLS, rest[0])) {
+      accidental = ACCIDENTAL_SYMBOLS[rest[0]];
+      rest = rest.slice(1);
+      noteId = mod12(noteId + (accidental === "♯" ? 1 : -1));
+    }
+    return { letter: letter, accidental: accidental, rest: rest, noteId: noteId };
+  }
+
+  // Parse a chord string. Tolerant: never fails, even for garbage.
+  // Mirror: softchord_chords.py parse_chord.
+  function parseChord(text) {
+    var parsed = {
+      unknown: true,
+      raw: UNKNOWN_CHORD_TEXT,
+      marker: "",
+      inParentheses: false,
+      rootText: "",
+      noteId: -1,
+      suffix: "",
+      chordTypeId: -1,
+      isKnownType: false,
+      bassText: "",
+      bassNoteId: -1,
+      isMinor: false,
+    };
+    var raw = text == null ? "" : String(text).trim();
+    parsed.raw = raw === "" ? UNKNOWN_CHORD_TEXT : raw;
+
+    var body = Array.from(raw);
+    var parens = body.length >= 2 && body[0] === "(" && body[body.length - 1] === ")";
+    if (parens) {
+      body = body.slice(1, body.length - 1);
+    }
+    var marker = "";
+    var colon = body.indexOf(":");
+    if (colon >= 0) {
+      marker = body.slice(0, colon).join("");
+      body = body.slice(colon + 1);
+    }
+
+    var note = readNote(body);
+    if (!note) {
+      return parsed;
+    }
+    var rest = note.rest;
+    var bassText = "";
+    var bassNoteId = -1;
+    var slash = rest.lastIndexOf("/");
+    if (slash >= 0) {
+      var bass = readNote(rest.slice(slash + 1));
+      if (bass && bass.rest.length === 0) {
+        bassText = bass.letter + bass.accidental;
+        bassNoteId = bass.noteId;
+        rest = rest.slice(0, slash);
+      }
+    }
+    var suffix = rest.join("");
+    var typed = classifySuffix(suffix);
+    parsed.unknown = false;
+    parsed.marker = marker;
+    parsed.inParentheses = parens;
+    parsed.rootText = note.letter + note.accidental;
+    parsed.noteId = note.noteId;
+    parsed.isKnownType = typed[1];
+    parsed.chordTypeId = typed[0];
+    parsed.suffix = typed[1] ? TYPE_PRINTS[typed[0]] : suffix;
+    parsed.bassText = bassText;
+    parsed.bassNoteId = bassNoteId;
+    parsed.isMinor = !!MINOR_TYPE_IDS[typed[0]];
+    return parsed;
+  }
+
+  // The stored string of a known chord. Mirror: softchord_chords.py chord_string.
+  function chordString(marker, rootText, suffix, bassText, inParentheses) {
+    var text = rootText + suffix;
+    if (marker) {
+      text = marker + ":" + text;
+    }
+    if (bassText) {
+      text += "/" + bassText;
+    }
+    if (inParentheses) {
       text = "(" + text + ")";
     }
     return text;
+  }
+
+  // The canonical string for a parsed chord. An unknown chord keeps its raw text.
+  function parsedChordString(parsed) {
+    if (parsed.unknown) {
+      return parsed.raw;
+    }
+    return chordString(
+      parsed.marker, parsed.rootText, parsed.suffix, parsed.bassText, parsed.inParentheses);
+  }
+
+  // A chord from its stored string. Never fails: text that cannot be read
+  // becomes an unknown chord. Mirror: softchord_song.py SongChord.from_text.
+  function chordFromText(text, characterNum) {
+    var parsed = parseChord(text);
+    if (parsed.unknown) {
+      return {
+        characterNum: characterNum,
+        noteId: -1,
+        chordTypeId: 0,
+        bassNoteId: -1,
+        marker: "",
+        inParentheses: false,
+        suffix: null,
+        rootText: null,
+        bassText: null,
+        unknown: true,
+        raw: parsed.raw,
+      };
+    }
+    return {
+      characterNum: characterNum,
+      noteId: parsed.noteId,
+      chordTypeId: parsed.chordTypeId,
+      bassNoteId: parsed.bassNoteId,
+      marker: parsed.marker,
+      inParentheses: parsed.inParentheses,
+      suffix: parsed.isKnownType ? null : parsed.suffix,
+      rootText: parsed.rootText,
+      bassText: parsed.bassText || null,
+      unknown: false,
+      raw: UNKNOWN_CHORD_TEXT,
+    };
+  }
+
+  // Mirror: softchord_song.py SongChord.getChordText. An unknown chord is "?".
+  function chordText(chord, prefer) {
+    if (chord.unknown) {
+      return UNKNOWN_CHORD_TEXT;
+    }
+    var note = chord.rootText || noteString(chord.noteId, prefer);
+    var type = chord.suffix != null
+      ? chord.suffix
+      : (chord.chordTypeId >= 0 && chord.chordTypeId < TYPE_PRINTS.length
+        ? TYPE_PRINTS[chord.chordTypeId]
+        : "");
+    var bass = "";
+    if (chord.bassNoteId != null && chord.bassNoteId !== -1) {
+      bass = chord.bassText || noteString(chord.bassNoteId, prefer);
+    }
+    return chordString(chord.marker || "", note, type, bass, !!chord.inParentheses);
   }
 
   function shifted(chords, steps) {
@@ -228,16 +412,16 @@
       return chords;
     }
     return chords.map(function (chord) {
-      var copy = {
-        characterNum: chord.characterNum,
-        noteId: transposeNote(chord.noteId, steps),
-        chordTypeId: chord.chordTypeId,
-        bassNoteId: chord.bassNoteId,
-        marker: chord.marker,
-        inParentheses: chord.inParentheses,
-      };
+      if (chord.unknown) {
+        return chord;
+      }
+      // Only the root and bass change. The suffix is kept as it is.
+      var copy = Object.assign({}, chord);
+      copy.noteId = transposeNote(chord.noteId, steps);
+      copy.rootText = null;
       if (chord.bassNoteId !== -1) {
         copy.bassNoteId = transposeNote(chord.bassNoteId, steps);
+        copy.bassText = null;
       }
       return copy;
     });
@@ -255,6 +439,12 @@
       detectRegionStartIndices: detectRegionStartIndices,
       transposeNote: transposeNote,
       chordText: chordText,
+      classifySuffix: classifySuffix,
+      parseChord: parseChord,
+      chordString: chordString,
+      parsedChordString: parsedChordString,
+      chordFromText: chordFromText,
+      unknownChordText: UNKNOWN_CHORD_TEXT,
     },
     SongTranspose: {
       shifted: shifted,

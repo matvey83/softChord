@@ -4,7 +4,7 @@
 //
 //  Paired with src/softchord_chords.py. Shared functions stay in this order:
 //  preferFromMajorTonic, scoreKey, familyScore, bestDetectedKey,
-//  detectRegionStartIndices, transposeNote.
+//  detectRegionStartIndices, transposeNote, parseChord, chordString.
 
 import Foundation
 
@@ -23,7 +23,23 @@ nonisolated enum SoftchordChords {
     private static let typePrints = [
         "", "m", "sus4", "M7", "m7", "7", "9", "aug", "6", "m6", "11", "°", "°7",
     ]
-    private static let minorTypeIds: Set<Int> = [1, 4, 9]
+    fileprivate static let minorTypeIds: Set<Int> = [1, 4, 9]
+    /// Alternative names for a type. Mirror: alternative_type_names.
+    private static let alternativeTypeNames = [
+        "sus": "sus4", "s4": "sus4", "maj7": "M7", "2": "9", "(7)": "7", "dim": "°", "dim7": "°7",
+    ]
+    private static let naturalNoteIds: [Unicode.Scalar: Int] = [
+        "C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11,
+    ]
+    /// Look-alike Russian letters and the European H. Mirror: replace_russian_characeters.
+    private static let letterFixes: [Unicode.Scalar: Unicode.Scalar] = [
+        "\u{0415}": "E", "\u{0421}": "C", "\u{0412}": "B", "\u{0410}": "A",
+        "H": "B", "\u{041D}": "B",
+    ]
+    private static let accidentalSymbols: [Unicode.Scalar: String] = [
+        "#": "♯", "b": "♭", "♯": "♯", "♭": "♭",
+    ]
+    static let unknownChordText = "?"
     private static let sharpMajorTonics: Set<Int> = [7, 2, 9, 4, 11, 6]
     private static let flatMajorTonics: Set<Int> = [5, 10, 3, 8, 1]
     private static let majorScale = [0, 2, 4, 5, 7, 9, 11]
@@ -185,18 +201,157 @@ nonisolated enum SoftchordChords {
         mod12(noteId + steps)
     }
 
-    /// Mirror: softchord_song.py SongChord.getChordText.
-    static func chordText(_ chord: SongChord, prefer: Int) -> String {
-        let note = noteString(chord.noteId, prefer: prefer)
-        let type = typePrints.indices.contains(chord.chordTypeId) ? typePrints[chord.chordTypeId] : ""
-        var text = chord.marker.isEmpty ? note + type : "\(chord.marker):\(note)\(type)"
-        if chord.bassNoteId != -1 {
-            text += "/" + noteString(chord.bassNoteId, prefer: prefer)
+    /// The fields of one chord string. Mirror: softchord_chords.py ParsedChord.
+    struct ParsedChord: Equatable {
+        var unknown = true
+        var raw = SoftchordChords.unknownChordText
+        var marker = ""
+        var inParentheses = false
+        var rootText = ""
+        var noteId = -1
+        var suffix = ""
+        var chordTypeId = -1
+        var isKnownType = false
+        var bassText = ""
+        var bassNoteId = -1
+
+        var isMinor: Bool {
+            !unknown && SoftchordChords.minorTypeIds.contains(chordTypeId)
         }
-        if chord.inParentheses {
-            text = "(\(text))"
+    }
+
+    /// Mirror: softchord_chords.py classify_suffix. Returns (chordTypeId, isKnownType).
+    static func classifySuffix(_ suffix: String) -> (Int, Bool) {
+        if let id = typePrints.firstIndex(of: suffix) {
+            return (id, true)
+        }
+        if let official = alternativeTypeNames[suffix], let id = typePrints.firstIndex(of: official) {
+            return (id, true)
+        }
+        if suffix.hasPrefix("-") {
+            return (1, false)
+        }
+        if suffix.hasPrefix("m") && !suffix.hasPrefix("ma") {
+            return (1, false)
+        }
+        return (0, false)
+    }
+
+    private static func scalarString(_ scalars: ArraySlice<Unicode.Scalar>) -> String {
+        String(String.UnicodeScalarView(scalars))
+    }
+
+    /// Split a leading note name off the text. Mirror: softchord_chords.py _read_note.
+    private static func readNote(_ text: ArraySlice<Unicode.Scalar>)
+        -> (letter: Unicode.Scalar, accidental: String, rest: ArraySlice<Unicode.Scalar>, noteId: Int)? {
+        guard let first = text.first else {
+            return nil
+        }
+        let letter = letterFixes[first] ?? first
+        guard var noteId = naturalNoteIds[letter] else {
+            return nil
+        }
+        var rest = text.dropFirst()
+        var accidental = ""
+        if let next = rest.first, let symbol = accidentalSymbols[next] {
+            accidental = symbol
+            rest = rest.dropFirst()
+            noteId = mod12(noteId + (symbol == "♯" ? 1 : -1))
+        }
+        return (letter, accidental, rest, noteId)
+    }
+
+    /// Parse a chord string. Tolerant: never fails, even for garbage.
+    /// Mirror: softchord_chords.py parse_chord.
+    static func parseChord(_ text: String) -> ParsedChord {
+        var parsed = ParsedChord()
+        let raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        parsed.raw = raw.isEmpty ? unknownChordText : raw
+
+        var body = Array(raw.unicodeScalars)[...]
+        let parens = body.count >= 2 && body.first == "(" && body.last == ")"
+        if parens {
+            body = body.dropFirst().dropLast()
+        }
+
+        var marker = ""
+        if let colon = body.firstIndex(of: ":") {
+            marker = scalarString(body[body.startIndex..<colon])
+            body = body[(colon + 1)...]
+        }
+
+        guard let note = readNote(body) else {
+            return parsed
+        }
+
+        var rest = note.rest
+        var bassText = ""
+        var bassNoteId = -1
+        if let slash = rest.lastIndex(of: "/"),
+           let bass = readNote(rest[(slash + 1)...]), bass.rest.isEmpty {
+            bassText = String(bass.letter) + bass.accidental
+            bassNoteId = bass.noteId
+            rest = rest[rest.startIndex..<slash]
+        }
+
+        let suffix = scalarString(rest)
+        let (typeId, known) = classifySuffix(suffix)
+        parsed.unknown = false
+        parsed.marker = marker
+        parsed.inParentheses = parens
+        parsed.rootText = String(note.letter) + note.accidental
+        parsed.noteId = note.noteId
+        parsed.isKnownType = known
+        parsed.chordTypeId = typeId
+        parsed.suffix = known ? typePrints[typeId] : suffix
+        parsed.bassText = bassText
+        parsed.bassNoteId = bassNoteId
+        return parsed
+    }
+
+    /// The stored string of a known chord. Mirror: softchord_chords.py chord_string.
+    static func chordString(
+        marker: String, rootText: String, suffix: String, bassText: String, inParentheses: Bool
+    ) -> String {
+        var text = rootText + suffix
+        if !marker.isEmpty {
+            text = marker + ":" + text
+        }
+        if !bassText.isEmpty {
+            text += "/" + bassText
+        }
+        if inParentheses {
+            text = "(" + text + ")"
         }
         return text
+    }
+
+    /// The canonical string for a parsed chord. Unknown chords keep their raw text.
+    /// Mirror: softchord_chords.py parsed_chord_string.
+    static func parsedChordString(_ parsed: ParsedChord) -> String {
+        if parsed.unknown {
+            return parsed.raw
+        }
+        return chordString(
+            marker: parsed.marker, rootText: parsed.rootText, suffix: parsed.suffix,
+            bassText: parsed.bassText, inParentheses: parsed.inParentheses)
+    }
+
+    /// Mirror: softchord_song.py SongChord.getChordText. An unknown chord is "?".
+    static func chordText(_ chord: SongChord, prefer: Int) -> String {
+        if chord.unknown {
+            return unknownChordText
+        }
+        let note = chord.rootText ?? noteString(chord.noteId, prefer: prefer)
+        let type = chord.suffix
+            ?? (typePrints.indices.contains(chord.chordTypeId) ? typePrints[chord.chordTypeId] : "")
+        var bass = ""
+        if chord.bassNoteId != -1 {
+            bass = chord.bassText ?? noteString(chord.bassNoteId, prefer: prefer)
+        }
+        return chordString(
+            marker: chord.marker, rootText: note, suffix: type, bassText: bass,
+            inParentheses: chord.inParentheses)
     }
 
     private static func noteString(_ noteId: Int, prefer: Int) -> String {
@@ -235,10 +390,16 @@ nonisolated enum SongTranspose {
             return chords
         }
         return chords.map { chord in
+            if chord.unknown {
+                return chord
+            }
+            // Only the root and bass change. The suffix is kept as it is.
             var shifted = chord
             shifted.noteId = SoftchordChords.transposeNote(chord.noteId, steps: steps)
+            shifted.rootText = nil
             if chord.bassNoteId != -1 {
                 shifted.bassNoteId = SoftchordChords.transposeNote(chord.bassNoteId, steps: steps)
+                shifted.bassText = nil
             }
             return shifted
         }

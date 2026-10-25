@@ -1,5 +1,8 @@
 import sqlite3
 
+from softchord_chords import ChordFields, spelled_chord_strings
+from softchord_store import new_uuid, utc_now
+
 db_file = "song_database.sqlite"
 
 # This will be used for Python (sqlite3) operations:
@@ -259,24 +262,36 @@ for song_num, song_title, song_text in all_songs:
         # Replace all double quotes with single quotes:
         global_song_text = global_song_text.replace('"', "'")
 
-        out = curs.execute("INSERT INTO songs (id, number, text, title) " + \
-            'VALUES (%i, %i, "%s", "%s")' % (song_id, song_num, global_song_text, song_title))
+        # Every song gets a uuid and an updated_at (UTC epoch seconds).
+        out = curs.execute(
+            "INSERT INTO songs (id, uuid, number, text, title, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (song_id, new_uuid(), song_num, global_song_text, song_title,
+             utc_now()))
         print('song add out:', out)
 
-        for song_char_num, chord in global_song_chords.iteritems():
-            (marker, note_id, type_id, bass_id, in_parentheses) = chord
-            if not marker:
-                marker = ""
+        # Songbook format version 2 stores one string per chord. The strings
+        # are spelled with sharps or flats to match the song's key.
+        positions = sorted(global_song_chords.keys())
+        fields = []
+        for song_char_num in positions:
+            (marker, note_id, type_id, bass_id,
+             in_parentheses) = global_song_chords[song_char_num]
+            fields.append(ChordFields(song_char_num, note_id, type_id,
+                                      bass_id, marker or "",
+                                      int(in_parentheses)))
 
-            in_parentheses = int(in_parentheses)
-
+        for song_char_num, chord_text in zip(positions,
+                                             spelled_chord_strings(fields)):
             # Get the next available ID:
             chord_id = 0
             for row in curs.execute("SELECT MAX(id) from song_chord_link"):
-                chord_id = row[0] + 1
+                chord_id = (row[0] or 0) + 1
 
-            out = curs.execute('INSERT INTO song_chord_link (id, song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses) ' + \
-                        'VALUES (%i, %i, %i, %i, %i, %i, "%s", %i)' % (chord_id, song_id, song_char_num, note_id, type_id, bass_id, marker, in_parentheses))
+            out = curs.execute(
+                'INSERT INTO song_chord_link (id, song_id, character_num, chord) '
+                'VALUES (?, ?, ?, ?)',
+                (chord_id, song_id, song_char_num, chord_text))
 
         curs.commit()
         print('DONE', out)

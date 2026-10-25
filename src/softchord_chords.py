@@ -1,8 +1,14 @@
-"""Chord names, transpose, and auto-detected key (no Qt).
+"""Chord names, chord strings, transpose, and auto-detected key (no Qt).
 
-Paired with softChord Viewer/softChord Viewer/softchord_chords.swift.
+Paired with softChord Viewer/softChord Viewer/softchord_chords.swift and
+softChord_web/softchord_chords.js.
 Shared functions stay in this order: prefer_from_major_tonic, score_key,
-family_score, best_detected_key, detect_region_start_indices, transpose_note.
+family_score, best_detected_key, detect_region_start_indices, transpose_note,
+parse_chord, chord_string.
+
+A chord is stored in the songbook as one string (see docs/chord_format.md).
+parse_chord() is tolerant and never raises. Its behaviour is checked by
+tests/chord_vectors.json in all three languages.
 """
 
 PREFER_SHARPS, PREFER_FLATS, PREFER_NEITHER = range(3)
@@ -299,74 +305,311 @@ def transpose_note(note_id, steps):
     return note_id
 
 
-def convert_chord_from_string(chord_str, note_text_id_dict,
-                              chord_type_texts_dict):
+# ---------------------------------------------------------------------------
+# Chord strings
+# ---------------------------------------------------------------------------
+
+UNKNOWN_CHORD_TEXT = "?"
+
+# Semitone of each natural note name. The pitch of "E♯" or "C♭" comes from
+# this, so spellings that are not in global_notes_list still parse.
+_NATURAL_NOTE_IDS = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+_ACCIDENTAL_SHIFT = {"♯": 1, "♭": -1}
+_ACCIDENTAL_SYMBOL = {"#": "♯", "b": "♭", "♯": "♯", "♭": "♭"}
+
+
+def _chord_type_texts():
+    """Known suffix text -> chord_types_list id. Includes alternative names."""
+    texts = {}
+    for type_id, _name, print_text in chord_types_list:
+        texts[print_text] = type_id
+    for alternative, official in alternative_type_names.items():
+        for type_id, _name, print_text in chord_types_list:
+            if print_text == official:
+                texts[alternative] = type_id
+    return texts
+
+
+_TYPE_ID_BY_SUFFIX = _chord_type_texts()
+
+
+def classify_suffix(suffix):
+    """Return (chord_type_id, is_known_type) for the text after the root.
+
+    A known type is an exact match of a printed type or an alternative name.
+    Any other suffix is still a chord: it counts as minor when it starts with
+    m, min, mi or - (but not ma/maj), and as major otherwise. Callers keep
+    the original suffix text for such chords.
     """
-    Convert the specified chord string to a note_id, chord_type_id, and a bass_note_id.
+    if suffix in _TYPE_ID_BY_SUFFIX:
+        return _TYPE_ID_BY_SUFFIX[suffix], True
+    if suffix.startswith("-"):
+        return 1, False
+    if suffix.startswith("m") and not suffix.startswith("ma"):
+        return 1, False
+    return 0, False
+
+
+def canonical_suffix(type_id):
+    """Printed suffix of a chord_types_list id."""
+    return chord_types_list[type_id][2]
+
+
+def _note_id_from(letter, accidental_symbol):
+    note_id = _NATURAL_NOTE_IDS[letter]
+    if accidental_symbol:
+        note_id = (note_id + _ACCIDENTAL_SHIFT[accidental_symbol]) % 12
+    return note_id
+
+
+def _read_note(text):
+    """Split a leading note name off text.
+
+    Returns (letter, accidental_symbol, rest) or None when text does not
+    start with A-G (after the look-alike Russian letters are fixed).
+    """
+    if not text:
+        return None
+    letter = replace_russian_characeters(text[0])
+    if letter not in _NATURAL_NOTE_IDS:
+        return None
+    rest = text[1:]
+    accidental = ""
+    if rest and rest[0] in _ACCIDENTAL_SYMBOL:
+        accidental = _ACCIDENTAL_SYMBOL[rest[0]]
+        rest = rest[1:]
+    return letter, accidental, rest
+
+
+class ParsedChord:
+    """The fields of one chord string. Mirror: SoftchordChords.ParsedChord.
+
+    unknown chords have no root; raw is the text to write back unchanged.
+    note_id and bass_note_id are 0-11 (bass_note_id is -1 for none).
+    chord_type_id is the chord_types_list id; when is_known_type is False it
+    is only the base quality (0 major, 1 minor) and suffix holds the
+    original text.
+    """
+
+    def __init__(self):
+        self.unknown = True
+        self.raw = UNKNOWN_CHORD_TEXT
+        self.marker = ""
+        self.in_parentheses = False
+        self.root_text = ""
+        self.note_id = -1
+        self.suffix = ""
+        self.chord_type_id = -1
+        self.is_known_type = False
+        self.bass_text = ""
+        self.bass_note_id = -1
+
+    @property
+    def is_minor(self):
+        return (not self.unknown) and self.chord_type_id in _MINOR_CHORD_TYPE_IDS
+
+
+def parse_chord(text):
+    """Parse a chord string. Tolerant: never raises, even for garbage.
+
+    Layers: strip outer parentheses, the marker before the first colon and
+    a valid slash bass note; the root must be A-G with an optional accidental
+    (look-alike Russian letters are fixed, # and b become ♯ and ♭); the rest
+    is the suffix. A suffix that is not a known type keeps its text. With no
+    valid root the chord is unknown and keeps the raw text.
+
+    Mirror: softchord_chords.swift SoftchordChords.parseChord.
+    """
+    parsed = ParsedChord()
+    raw = (text or "").strip()
+    parsed.raw = raw if raw else UNKNOWN_CHORD_TEXT
+
+    body = raw
+    parens = len(body) >= 2 and body.startswith("(") and body.endswith(")")
+    if parens:
+        body = body[1:-1]
+
+    marker = ""
+    colon = body.find(":")
+    if colon != -1:
+        marker = body[:colon]
+        body = body[colon + 1:]
+
+    note = _read_note(body)
+    if note is None:
+        return parsed
+    letter, accidental, rest = note
+
+    bass_text = ""
+    bass_note_id = -1
+    slash = rest.rfind("/")
+    if slash != -1:
+        bass = _read_note(rest[slash + 1:])
+        if bass is not None and not bass[2]:
+            bass_letter, bass_accidental, _ = bass
+            bass_text = bass_letter + bass_accidental
+            bass_note_id = _note_id_from(bass_letter, bass_accidental)
+            rest = rest[:slash]
+
+    type_id, known = classify_suffix(rest)
+    parsed.unknown = False
+    parsed.marker = marker
+    parsed.in_parentheses = parens
+    parsed.root_text = letter + accidental
+    parsed.note_id = _note_id_from(letter, accidental)
+    parsed.is_known_type = known
+    parsed.chord_type_id = type_id
+    parsed.suffix = canonical_suffix(type_id) if known else rest
+    parsed.bass_text = bass_text
+    parsed.bass_note_id = bass_note_id
+    return parsed
+
+
+def chord_string(marker, root_text, suffix, bass_text, in_parentheses):
+    """Build the stored string of a known chord.
+
+    Mirror: softchord_chords.swift SoftchordChords.chordString.
+    """
+    chord = root_text + suffix
+    if marker:
+        chord = "%s:%s" % (marker, chord)
+    if bass_text:
+        chord += "/" + bass_text
+    if in_parentheses:
+        chord = "(%s)" % chord
+    return chord
+
+
+def parsed_chord_string(parsed):
+    """The canonical string for a ParsedChord. Unknown chords keep their raw."""
+    if parsed.unknown:
+        return parsed.raw
+    return chord_string(parsed.marker, parsed.root_text, parsed.suffix,
+                        parsed.bass_text, parsed.in_parentheses)
+
+
+def convert_chord_from_string(chord_str):
+    """Strict parse for imports: only a chord with a known type is accepted.
+
+    Text and ChordPro import use this to tell chords from words, so "And" is
+    not a chord. Raises ValueError otherwise. Returns
+    (marker, note_id, chord_type_id, bass_note_id, in_parentheses).
     """
     if not chord_str:
         raise ValueError('Empty string')
-
-    chord_str = replace_russian_characeters(chord_str)
-
-    in_parentheses = chord_str.startswith('(') and chord_str.endswith(')')
-    if in_parentheses:
-        chord_str = chord_str[1:-1]
-
-    marker = None
-
-    colon = chord_str.find(':')
+    body = chord_str.strip()
+    if len(body) >= 2 and body.startswith("(") and body.endswith(")"):
+        body = body[1:-1]
+    colon = body.find(":")
     if colon != -1:
-        if colon == len(chord_str) - 1:
-            raise ValueError("Not a chord (nothing after a colon")
-
-        marker = chord_str[:colon]
-        chord_str = chord_str[colon + 1:]
-
-    slash = chord_str.find('/')
+        body = body[colon + 1:]
+        if not body:
+            raise ValueError("Marker with nothing after a colon")
+    slash = body.rfind("/")
+    if slash == 0:
+        raise ValueError("Nothing before the bass slash")
     if slash != -1:
-        bass_str = chord_str[slash + 1:]
-        chord_str = chord_str[:slash]
-        if len(chord_str) == 0:
-            raise ValueError("No characters present before the bass slash")
-        if len(bass_str) == 0:
-            raise ValueError("No character present after the bass slash")
-    else:
-        bass_str = None
-
-    if chord_str[0] in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
-        if len(chord_str) > 1 and chord_str[1] in ['#', 'b', '♭', '♯']:
-            note = chord_str[:2]
-            type = chord_str[2:]
-        else:
-            note = chord_str[0]
-            type = chord_str[1:]
-    else:
-        raise ValueError("First chord letter is not a note")
-
-    if len(note) > 1:
-        if note[1] == '#':
-            note = note[0] + '♯'
-        elif note[1] == 'b':
-            note = note[0] + '♭'
-    if bass_str and len(bass_str) > 1:
-        if bass_str[1] == '#':
-            bass_str = bass_str[0] + '♯'
-        elif bass_str[1] == 'b':
-            bass_str = bass_str[0] + '♭'
-
-    note_id = note_text_id_dict[note]
-    if bass_str != None:
-        try:
-            bass_id = note_text_id_dict[bass_str]
-        except KeyError:
+        bass = _read_note(body[slash + 1:])
+        if not body[slash + 1:]:
+            raise ValueError("Nothing after the bass slash")
+        if bass is None or bass[2]:
             raise ValueError("Unrecognized bass note string")
-    else:
-        bass_id = -1
-
-    try:
-        type_id = chord_type_texts_dict[type]
-    except KeyError:
+    parsed = parse_chord(chord_str)
+    if parsed.unknown:
+        raise ValueError("First chord letter is not a note")
+    if not parsed.is_known_type:
         raise ValueError("Unkown chord type")
+    return (parsed.marker or None, parsed.note_id, parsed.chord_type_id,
+            parsed.bass_note_id, parsed.in_parentheses)
 
-    return (marker, note_id, type_id, bass_id, in_parentheses)
+
+# ---------------------------------------------------------------------------
+# Spelling by key region, shared by the editor and the old-format converter
+# ---------------------------------------------------------------------------
+
+
+def note_text(note_id, prefer):
+    """Spelling of a note id (0-11) for a sharps/flats preference."""
+    text, alt_text = global_notes_list[note_id][1:]
+    if prefer == PREFER_SHARPS:
+        return text
+    if prefer == PREFER_FLATS:
+        return alt_text
+    if note_id in (1, 6):  # C♯, F♯
+        return text
+    return alt_text  # B♭, E♭, A♭
+
+
+def key_regions(chords):
+    """Return [(start_char, prefer, key_label)] for chords with character_num,
+    note_id and chord_type_id. Unknown chords must be left out.
+
+    Mirror: softchord_text.swift SongText.regions.
+    """
+    chords = sorted(chords, key=lambda c: c.character_num)
+    starts = detect_region_start_indices(chords)
+    regions = []
+    for k, idx in enumerate(starts):
+        end = starts[k + 1] if k + 1 < len(starts) else len(chords)
+        group = chords[idx:end]
+        detected = best_detected_key(group)
+        start_char = group[0].character_num if group else 0
+        if detected is None:
+            prefer, label = PREFER_NEITHER, ""
+        else:
+            prefer, label = detected.prefer, detected.label
+        regions.append((start_char, prefer, label))
+    return regions
+
+
+def prefer_at(regions, char_num):
+    """Sharps/flats preference at a character, given key_regions()."""
+    prefer = regions[0][1] if regions else PREFER_NEITHER
+    for start_char, region_prefer, _label in regions:
+        if char_num >= start_char:
+            prefer = region_prefer
+        else:
+            break
+    return prefer
+
+
+class ChordFields:
+    """One chord as separate fields (the old storage form)."""
+
+    def __init__(self, character_num, note_id, chord_type_id, bass_note_id,
+                 marker, in_parentheses, suffix=None, unknown_raw=None):
+        self.character_num = character_num
+        self.note_id = note_id
+        self.chord_type_id = chord_type_id
+        self.bass_note_id = bass_note_id
+        self.marker = marker
+        self.in_parentheses = in_parentheses
+        # None means the printed text of chord_type_id.
+        self.suffix = suffix
+        # Set for a chord with no usable root. It is written as this text.
+        self.unknown_raw = unknown_raw
+
+
+def spelled_chord_strings(fields_list):
+    """Chord strings for one song's ChordFields, spelled like the editor shows
+    them (sharps or flats by key region). Returns one string per item.
+    """
+    known = [f for f in fields_list if f.unknown_raw is None]
+    regions = key_regions(known)
+    out = []
+    for fields in fields_list:
+        if fields.unknown_raw is not None:
+            out.append(fields.unknown_raw or UNKNOWN_CHORD_TEXT)
+            continue
+        prefer = prefer_at(regions, fields.character_num)
+        suffix = fields.suffix
+        if suffix is None:
+            suffix = canonical_suffix(fields.chord_type_id)
+        bass_text = ""
+        if fields.bass_note_id is not None and fields.bass_note_id >= 0:
+            bass_text = note_text(fields.bass_note_id, prefer)
+        out.append(
+            chord_string(fields.marker or "",
+                         note_text(fields.note_id, prefer), suffix, bass_text,
+                         fields.in_parentheses))
+    return out

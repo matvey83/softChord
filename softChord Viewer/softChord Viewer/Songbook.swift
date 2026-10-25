@@ -22,6 +22,8 @@ enum SongbookError: Error, Equatable, CustomStringConvertible {
     case openFailed(String)
     case queryFailed(String)
     case songNotFound
+    case oldFormat
+    case newerFormat(Int)
 
     var description: String {
         switch self {
@@ -31,11 +33,18 @@ enum SongbookError: Error, Equatable, CustomStringConvertible {
             return message
         case .songNotFound:
             return "That song is not in the songbook."
+        case .oldFormat:
+            return "This songbook is an old format. Update softChord on your Mac, open the songbook there to convert it, then copy it here again."
+        case .newerFormat(let version):
+            return "This songbook is a newer format (version \(version)). Update this app."
         }
     }
 }
 
 enum Songbook {
+    /// The songbook format this app reads. See docs/chord_format.md.
+    nonisolated static let formatVersion = 2
+
     /// Titles in the same order as the editor's song table.
     /// TODO: Include the song number, blank when it is -1. The editor's list
     /// shows that number, and its search matches it.
@@ -132,8 +141,7 @@ enum Songbook {
 
         let links = try prepare(
             db,
-            "SELECT character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses "
-                + "FROM song_chord_link WHERE song_id=? ORDER BY rowid")
+            "SELECT character_num, chord FROM song_chord_link WHERE song_id=? ORDER BY rowid")
         defer { sqlite3_finalize(links) }
         try bind(links, id: id, db: db)
         var chords: [SongChord] = []
@@ -145,22 +153,12 @@ enum Songbook {
             if chordStep != SQLITE_ROW {
                 throw SongbookError.queryFailed(String(cString: sqlite3_errmsg(db)))
             }
-            chords.append(SongChord(
-                characterNum: Int(sqlite3_column_int64(links, 0)),
-                noteId: Int(sqlite3_column_int(links, 1)),
-                chordTypeId: Int(sqlite3_column_int(links, 2)),
-                bassNoteId: sqlite3_column_type(links, 3) == SQLITE_NULL ? -1 : Int(sqlite3_column_int(links, 3)),
-                marker: normalizedMarker(columnText(links, 4)),
-                inParentheses: sqlite3_column_int(links, 5) != 0))
+            // A chord string this app cannot read is an unknown chord, drawn as "?".
+            chords.append(SongChord.from(
+                text: columnText(links, 1),
+                characterNum: Int(sqlite3_column_int64(links, 0))))
         }
         return SongBody(text: text, chords: chords)
-    }
-
-    private nonisolated static func normalizedMarker(_ marker: String) -> String {
-        if marker.isEmpty || marker == "-1" || marker == "None" {
-            return ""
-        }
-        return marker
     }
 
     private nonisolated static func withDatabase<T>(_ url: URL, _ body: (OpaquePointer) throws -> T) throws -> T {
@@ -174,7 +172,25 @@ enum Songbook {
             throw SongbookError.openFailed("Could not open the songbook.")
         }
         defer { sqlite3_close(db) }
+        try checkFormat(db)
         return try body(db)
+    }
+
+    /// Only version 2 (one chord string per row) is read. The desktop editor
+    /// converts older files when it opens them.
+    private nonisolated static func checkFormat(_ db: OpaquePointer) throws {
+        let statement = try prepare(db, "PRAGMA user_version")
+        defer { sqlite3_finalize(statement) }
+        if sqlite3_step(statement) != SQLITE_ROW {
+            throw SongbookError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        let version = Int(sqlite3_column_int(statement, 0))
+        if version > formatVersion {
+            throw SongbookError.newerFormat(version)
+        }
+        if version != formatVersion {
+            throw SongbookError.oldFormat
+        }
     }
 
     private nonisolated static func prepare(_ db: OpaquePointer, _ sql: String) throws -> OpaquePointer {

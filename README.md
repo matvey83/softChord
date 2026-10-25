@@ -19,6 +19,25 @@ A cross-platform editor for songs with chords. Chords are attached to individual
 
 The app is written in Python with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/). PyQt6 bundles Qt, so a separate Qt SDK is not required.
 
+## Songbook format
+
+A `.songbook` is a SQLite file with `PRAGMA user_version = 2`. Each chord is one
+text string such as `Am7/G` or `(1:C♯m)`, stored in `song_chord_link.chord`. The
+string grammar and the tolerant parser are described in
+[docs/chord_format.md](docs/chord_format.md). The whole file format (song uuids,
+`updated_at`, `meta`, deleted-song tombstones) is in
+[docs/songbook_format.md](docs/songbook_format.md). The same parser cases
+(`tests/chord_vectors.json`) are run by the Python, Swift and JS tests.
+
+The desktop editor still opens the old format (separate note, type, bass,
+marker and parentheses columns). It converts the file when it opens it, after
+saving a backup next to it as `<name>.songbook.v1.bak`. If the file cannot be
+changed, it opens a converted temporary copy and asks you to use Save As. The
+iPhone app and the web viewer read version 2 only. To convert a file without
+the editor: `python3 tools/convert_songbook_v1_to_v2.py FILE...`. Version 2 files
+made before song uuids existed are upgraded the same way (backup
+`<name>.songbook.pre-uuid.bak`, or `python3 tools/upgrade_songbook_v2.py`).
+
 ## Running from source
 
 Requires [Python](https://www.python.org/) 3.10 or newer.

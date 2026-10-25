@@ -7,6 +7,15 @@
 
 import Foundation
 
+/// One chord on one letter.
+///
+/// A chord whose suffix is not a known type (for example "maj9") keeps that
+/// text in `suffix`, and `chordTypeId` is then only its base quality (0 major,
+/// 1 minor). An unknown chord has no root: it is drawn as "?" and `raw` is its
+/// original text. `rootText` and `bassText` are the spellings read from the
+/// songbook. Changing the note drops them (see SongTranspose.shifted).
+///
+/// Mirror: softchord_song.py SongChord.
 nonisolated struct SongChord: Equatable {
     var characterNum: Int
     var noteId: Int
@@ -14,6 +23,27 @@ nonisolated struct SongChord: Equatable {
     var bassNoteId: Int
     var marker: String
     var inParentheses: Bool
+    var suffix: String? = nil
+    var rootText: String? = nil
+    var bassText: String? = nil
+    var unknown: Bool = false
+    var raw: String = SoftchordChords.unknownChordText
+
+    /// Read a chord string. Never fails. Mirror: softchord_song.py SongChord.from_text.
+    static func from(text: String, characterNum: Int) -> SongChord {
+        let parsed = SoftchordChords.parseChord(text)
+        if parsed.unknown {
+            return SongChord(
+                characterNum: characterNum, noteId: -1, chordTypeId: 0, bassNoteId: -1,
+                marker: "", inParentheses: false, unknown: true, raw: parsed.raw)
+        }
+        return SongChord(
+            characterNum: characterNum, noteId: parsed.noteId, chordTypeId: parsed.chordTypeId,
+            bassNoteId: parsed.bassNoteId, marker: parsed.marker, inParentheses: parsed.inParentheses,
+            suffix: parsed.isKnownType ? nil : parsed.suffix,
+            rootText: parsed.rootText,
+            bassText: parsed.bassText.isEmpty ? nil : parsed.bassText)
+    }
 }
 
 nonisolated struct SongSheetChord: Equatable {
@@ -144,8 +174,9 @@ enum SongText {
     }
 
     /// Mirror: softchord_song.py Song.updateSharpsOrFlats.
+    /// Unknown chords have no root, so they take no part in key detection.
     private nonisolated static func regions(for chords: [SongChord]) -> [(start: Int, prefer: Int)] {
-        let sorted = chords.sorted { $0.characterNum < $1.characterNum }
+        let sorted = chords.filter { !$0.unknown }.sorted { $0.characterNum < $1.characterNum }
         let starts = SoftchordChords.detectRegionStartIndices(sorted)
         var found: [(start: Int, prefer: Int)] = []
         for (index, startIndex) in starts.enumerated() {

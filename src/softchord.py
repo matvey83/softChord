@@ -34,6 +34,9 @@ from softchord_chords import (
     replace_russian_characeters,
     transpose_note,
     convert_chord_from_string,
+    parse_chord,
+    chord_string,
+    UNKNOWN_CHORD_TEXT,
 )
 from softchord_song import (
     AddChordCommand,

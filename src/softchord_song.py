@@ -9,8 +9,12 @@ from softchord_chords import (
     PREFER_FLATS,
     PREFER_NEITHER,
     PREFER_SHARPS,
-    best_detected_key,
-    detect_region_start_indices,
+    UNKNOWN_CHORD_TEXT,
+    chord_string,
+    classify_suffix,
+    key_regions,
+    note_text,
+    parse_chord,
     transpose_note,
 )
 from softchord_layout import QtDocumentLayout
@@ -97,15 +101,16 @@ class DeleteSongsCommand(QtGui.QUndoCommand):
         try:
             for song in self.songs:
                 song_text = song.getAllText()
+                # The song comes back with its own uuid (and loses its tombstone).
                 self.session.store.insert_song(song.id, song.number, song.title,
-                                               song.subtitle, song_text)
+                                               song.subtitle, song_text,
+                                               song.uuid)
 
                 # Re-add all the chords:
                 for chord in song.iterateAllChords():
                     self.session.store.insert_chord(
-                        chord.song_id, chord.character_num, chord.note_id,
-                        chord.chord_type_id, chord.bass_note_id, chord.marker,
-                        chord.in_parentheses)
+                        chord.song_id, chord.character_num,
+                        chord.getStoredText())
 
             self.session.store.commit()
 
@@ -152,10 +157,8 @@ class SongTextSnapshot:
     @staticmethod
     def capture(session, song_id):
         record = session.store.load_song(song_id)
-        chords = tuple(
-            (link.character_num, link.note_id, link.chord_type_id,
-             link.bass_note_id, link.marker or "",
-             int(link.in_parentheses or 0)) for link in record.chords)
+        chords = tuple((link.character_num, link.chord)
+                       for link in record.chords)
         return SongTextSnapshot(song_id, record.text or "", chords)
 
     def restore(self, session):
@@ -165,12 +168,8 @@ class SongTextSnapshot:
             session.store.update_song_text(self.song_id, self.text)
             for position in session.store.chord_positions(self.song_id):
                 session.store.delete_chord(self.song_id, position)
-            for (character_num, note_id, chord_type_id, bass_note_id, marker,
-                 in_parentheses) in self.chords:
-                session.store.insert_chord(self.song_id, character_num,
-                                           note_id, chord_type_id,
-                                           bass_note_id, marker,
-                                           in_parentheses)
+            for character_num, chord in self.chords:
+                session.store.insert_chord(self.song_id, character_num, chord)
 
         session._run_songbook_write(write)
 
@@ -183,7 +182,8 @@ class TransposeSongCommand(QtGui.QUndoCommand):
         self.setText("transpose")
         self.song = song
         self.steps = steps
-        self._notes = [(chord, chord.note_id, chord.bass_note_id)
+        self._notes = [(chord, chord.note_id, chord.bass_note_id,
+                        chord._root_text, chord._bass_text)
                        for chord in song.iterateAllChords()]
 
     def redo(self):
@@ -191,9 +191,11 @@ class TransposeSongCommand(QtGui.QUndoCommand):
         self._save()
 
     def undo(self):
-        for chord, note_id, bass_note_id in self._notes:
+        for chord, note_id, bass_note_id, root_text, bass_text in self._notes:
             chord.note_id = note_id
             chord.bass_note_id = bass_note_id
+            chord._root_text = root_text
+            chord._bass_text = bass_text
         self.song.updateSharpsOrFlats()
         self._save()
 
@@ -288,12 +290,12 @@ class ImportSongsCommand(QtGui.QUndoCommand):
         try:
             for song in self.songs:
                 self.session.store.insert_song(song.id, song.number, song.title,
-                                               song.subtitle, song.getAllText())
+                                               song.subtitle, song.getAllText(),
+                                               song.uuid)
                 for chord in song.iterateAllChords():
                     self.session.store.insert_chord(
-                        chord.song_id, chord.character_num, chord.note_id,
-                        chord.chord_type_id, chord.bass_note_id, chord.marker,
-                        chord.in_parentheses)
+                        chord.song_id, chord.character_num,
+                        chord.getStoredText())
             self.session.store.commit()
         finally:
             self.session.restoreCursor()
@@ -446,17 +448,38 @@ class SongChord:
     """
     Class that stores specific chord information. This chord is for a
     specific letter in a specific song.
+
+    The songbook stores one string per chord (docs/chord_format.md).
+    note_id, chord_type_id and bass_note_id are the parsed fields.
+
+    A chord whose suffix is not a known type (for example "maj9") keeps that
+    text in the suffix, so it is written back unchanged. chord_type_id is then
+    only its base quality (0 major, 1 minor). Setting chord_type_id replaces
+    the suffix with the type's own text.
+
+    An unknown chord has no root. It is drawn as "?" and written back as raw.
+
+    Setting note_id or bass_note_id drops the spelling read from the file, and
+    the song's key picks sharps or flats again.
+
+    Mirror: softchord_chords.swift SongChord.
     """
 
     def __init__(self, song, character_num, note_id, chord_type_id,
-                 bass_note_id, marker, in_parentheses):
+                 bass_note_id, marker, in_parentheses, suffix=None,
+                 root_text=None, bass_text=None):
         self.app = song.app
         self.song = song
         self.song_id = song.id
         self.character_num = character_num
-        self.note_id = note_id
-        self.chord_type_id = chord_type_id
-        self.bass_note_id = bass_note_id
+        self.unknown = False
+        self.raw = UNKNOWN_CHORD_TEXT
+        self._suffix = suffix
+        self._root_text = root_text
+        self._bass_text = bass_text
+        self._note_id = note_id
+        self._chord_type_id = chord_type_id
+        self._bass_note_id = bass_note_id
 
         if marker == "-1" or marker == None or marker == "None":
             # FIXME the database should have only one of these in it
@@ -467,12 +490,91 @@ class SongChord:
             in_parentheses = 0
         self.in_parentheses = in_parentheses
 
+    @classmethod
+    def unknown_chord(cls, song, character_num, raw=UNKNOWN_CHORD_TEXT):
+        """A chord with no usable root. raw is written back unchanged."""
+        chord = cls(song, character_num, -1, 0, -1, "", 0)
+        chord.set_unknown(raw)
+        return chord
+
+    @classmethod
+    def from_text(cls, song, character_num, text):
+        """Read a chord string with the tolerant parser. Never raises."""
+        parsed = parse_chord(text)
+        if parsed.unknown:
+            return cls.unknown_chord(song, character_num, parsed.raw)
+        return cls(song, character_num, parsed.note_id, parsed.chord_type_id,
+                   parsed.bass_note_id, parsed.marker, parsed.in_parentheses,
+                   suffix=None if parsed.is_known_type else parsed.suffix,
+                   root_text=parsed.root_text,
+                   bass_text=parsed.bass_text or None)
+
+    def set_unknown(self, raw):
+        """Make this an unknown chord that is written back as raw."""
+        raw = (raw or "").strip()
+        self.unknown = True
+        self.raw = raw if raw else UNKNOWN_CHORD_TEXT
+        self._note_id = -1
+        self._chord_type_id = 0
+        self._bass_note_id = -1
+        self._suffix = None
+        self._root_text = None
+        self._bass_text = None
+        self.marker = ""
+        self.in_parentheses = 0
+
+    @property
+    def note_id(self):
+        return self._note_id
+
+    @note_id.setter
+    def note_id(self, value):
+        self._note_id = value
+        self._root_text = None
+        if value is not None and value >= 0:
+            self.unknown = False
+
+    @property
+    def chord_type_id(self):
+        return self._chord_type_id
+
+    @chord_type_id.setter
+    def chord_type_id(self, value):
+        self._chord_type_id = value
+        self._suffix = None
+
+    @property
+    def bass_note_id(self):
+        return self._bass_note_id
+
+    @bass_note_id.setter
+    def bass_note_id(self, value):
+        self._bass_note_id = value
+        self._bass_text = None
+
+    @property
+    def suffix(self):
+        """Text after the root: the type's own text, or the kept original."""
+        if self._suffix is not None:
+            return self._suffix
+        return self.app.chord_type_prints[self._chord_type_id]
+
+    @suffix.setter
+    def suffix(self, value):
+        """Set the suffix text. A known type text selects that type."""
+        type_id, known = classify_suffix(value)
+        self._chord_type_id = type_id
+        self._suffix = None if known else value
+
     def transpose(self, steps):
         """Move this chord up by the given number of half steps.
 
-        steps can be negative. Mirror: softchord_chords.swift transposeNote,
-        which SongTranspose.shifted calls for every chord.
+        steps can be negative. Only the root and bass change. The suffix is
+        kept as it is. Mirror: softchord_chords.swift transposeNote, which
+        SongTranspose.shifted calls for every chord.
         """
+        if self.unknown:
+            return
         self.note_id = transpose_note(self.note_id, steps)
         if self.bass_note_id != -1:
             self.bass_note_id = transpose_note(self.bass_note_id, steps)
@@ -480,30 +582,28 @@ class SongChord:
     def getChordText(self):
         """Return this chord as text, for example "Fm" or "Bbsus4".
 
-        Mirror: softchord_chords.swift SoftchordChords.chordText.
+        An unknown chord is "?". Mirror: softchord_chords.swift
+        SoftchordChords.chordText.
         """
-        note_text = self.song._getNoteString(self.note_id, self.character_num)
+        if self.unknown:
+            return UNKNOWN_CHORD_TEXT
 
-        chord_type_text = self.app.chord_type_prints[self.chord_type_id]
+        note_str = self._root_text or self.song._getNoteString(
+            self.note_id, self.character_num)
 
-        # Convert the chord note and type to a text string:
-        if self.marker:  # Not NULL
-            # Add the chord prefix (example: "1:", "2:")
-            chord_str = '%s:%s%s' % (self.marker, note_text, chord_type_text)
-        else:
-            chord_str = '%s%s' % (note_text, chord_type_text)
-
-        # Add the bass note (if any):
+        bass_str = ""
         if self.bass_note_id != -1:  # Not NULL
-            bass_note_text = self.song._getNoteString(self.bass_note_id,
-                                                      self.character_num)
-            chord_str += "/%s" % bass_note_text
+            bass_str = self._bass_text or self.song._getNoteString(
+                self.bass_note_id, self.character_num)
 
-        # Add parentheses (if any):
-        if self.in_parentheses:
-            chord_str = "(%s)" % chord_str
+        return chord_string(self.marker, note_str, self.suffix, bass_str,
+                            self.in_parentheses)
 
-        return chord_str
+    def getStoredText(self):
+        """The string written to the songbook for this chord."""
+        if self.unknown:
+            return self.raw
+        return self.getChordText()
 
 
 class SongChar:
@@ -531,6 +631,7 @@ class Song:
     def __init__(self, owner, song_id):
         self.session = document_owner(owner)
         self.id = song_id
+        self.uuid = None  # set from the songbook; never changes
         self._chords = []
         self.number = -1
         self.title = ""
@@ -552,9 +653,9 @@ class Song:
         Read this song from the database, and populate the instnces properties.
         """
 
-        # Legacy key_note_id / key_is_major columns are left unread.
         record = self.session.store.load_song(self.id)
 
+        self.uuid = record.uuid
         self.number = record.number
         self.title = record.title
         self.subtitle = record.subtitle
@@ -564,9 +665,7 @@ class Song:
         song_chords = []
         for link in record.chords:
             song_chords.append(
-                SongChord(self, link.character_num, link.note_id,
-                          link.chord_type_id, link.bass_note_id, link.marker,
-                          link.in_parentheses))
+                SongChord.from_text(self, link.character_num, link.chord))
 
         self.setAllText(record.text, song_chords)
 
@@ -610,23 +709,12 @@ class Song:
         as appropriate for the local key region.
         """
 
-        note_text, note_alt_text = self.session.notes_list[note_id]
         if char_num is None:
             prefer = self.prefer
         else:
             prefer = self._prefer_for_char(char_num)
 
-        if prefer == PREFER_SHARPS:
-            return note_text
-        elif prefer == PREFER_FLATS:
-            return note_alt_text
-        else:
-            if note_id in [1, 6]:
-                # C#, F#
-                return note_text
-            else:
-                # Bb, Eb, Ab
-                return note_alt_text
+        return note_text(note_id, prefer)
 
     def addChord(self, chord):
         self.session.undo_stack.push(AddChordCommand(self, chord))
@@ -809,7 +897,8 @@ class Song:
         chord_texts_by_char_nums = {}
         for chord in self.iterateAllChords():
             chord_song_char_num = chord.character_num
-            chord_text = chord.getChordText()
+            # An unknown chord keeps its own text (for example "N.C.").
+            chord_text = chord.getStoredText()
 
             # Replace "♯" with "#" and "♭" with "b":
             chord_text = chord_text.replace("♯", "#").replace("♭", "b")
@@ -841,20 +930,9 @@ class Song:
 
         Mirror: softchord_text.swift SongText.regions.
         """
-        chords = list(self.iterateAllChords())
-        chords.sort(key=lambda c: c.character_num)
-        starts = detect_region_start_indices(chords)
-        self._regions = []
-        for k, idx in enumerate(starts):
-            end = starts[k + 1] if k + 1 < len(starts) else len(chords)
-            group = chords[idx:end]
-            detected = best_detected_key(group)
-            start_char = group[0].character_num if group else 0
-            if detected is None:
-                prefer, label = PREFER_NEITHER, ""
-            else:
-                prefer, label = detected.prefer, detected.label
-            self._regions.append((start_char, prefer, label))
+        # An unknown chord has no root, so it says nothing about the key.
+        chords = [c for c in self.iterateAllChords() if not c.unknown]
+        self._regions = key_regions(chords)
         if self._regions:
             self.prefer = self._regions[0][1]
         else:

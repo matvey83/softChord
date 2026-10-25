@@ -36,6 +36,7 @@ from softchord_chords import (
     replace_russian_characeters,
     transpose_note,
     convert_chord_from_string,
+    parse_chord,
 )
 from softchord_song import (
     AddChordCommand,
@@ -528,6 +529,10 @@ class ChordDialog(QtWidgets.QDialog):
         self.ui = softchord_chord_dialog_ui.Ui_Dialog()
         self.ui.setupUi(self)
         self._edited_chord = None
+        self._typed_unknown_raw = None
+        self._kept_type_id = 0
+        self._kept_suffix = None
+        self._initial_text = ""
         # Set while copying one side onto the other, so the two stay in step
         # without rewriting the text the user is still typing.
         self._updating_chord = False
@@ -572,25 +577,38 @@ class ChordDialog(QtWidgets.QDialog):
     def _onChordTextChanged(self, text):
         if self._updating_chord or self._edited_chord is None:
             return
-        try:
-            parsed = self.app.convertChordFromString(text)
-        except (ValueError, KeyError, IndexError):
-            self._setChordTextInvalid(True)
+        parsed = parse_chord(text)
+        if parsed.unknown:
+            # Nothing parseable: OK makes this an unknown "?" chord that keeps
+            # the typed text. The controls stay as they are.
+            self._typed_unknown_raw = parsed.raw
+            self._setChordTextInvalid(False)
             return
 
+        self._typed_unknown_raw = None
         self._setChordTextInvalid(False)
-        marker, note_id, type_id, bass_id, in_parentheses = parsed
         # Hold the menus still so this edit is not immediately replaced
         # with the normalized spelling.
         self._updating_chord = True
         try:
-            self.ui.note_menu.setCurrentIndex(note_id)
-            self.ui.chord_type_menu.setCurrentIndex(type_id)
-            self.ui.bass_menu.setCurrentIndex(bass_id + 1)
-            self.ui.marker_ef.setText(marker or "")
-            self.ui.in_parentheses_box.setChecked(bool(in_parentheses))
+            self._setControls(parsed.note_id, parsed.chord_type_id,
+                              parsed.bass_note_id, parsed.marker,
+                              parsed.in_parentheses)
+            # A suffix that is not a known type is kept as typed.
+            self._kept_type_id = parsed.chord_type_id
+            self._kept_suffix = (None if parsed.is_known_type else
+                                 parsed.suffix)
         finally:
             self._updating_chord = False
+
+    def _setControls(self, note_id, type_id, bass_note_id, marker,
+                     in_parentheses):
+        self.ui.note_menu.setCurrentIndex(note_id)
+        self.ui.chord_type_menu.setCurrentIndex(type_id)
+        # -1 becomes 0, etc:
+        self.ui.bass_menu.setCurrentIndex(bass_note_id + 1)
+        self.ui.marker_ef.setText(marker or "")
+        self.ui.in_parentheses_box.setChecked(bool(in_parentheses))
 
     def _setChordTextInvalid(self, invalid):
         style = self._INVALID_CHORD_STYLE if invalid else ""
@@ -599,6 +617,8 @@ class ChordDialog(QtWidgets.QDialog):
     def _updateChordText(self):
         if self._edited_chord is None:
             return
+        # Changing a control replaces whatever was typed.
+        self._typed_unknown_raw = None
         text = self._chordTextFromControls()
         edit = self.ui.chord_text_ef
         self._updating_chord = True
@@ -608,6 +628,12 @@ class ChordDialog(QtWidgets.QDialog):
             self._setChordTextInvalid(False)
         finally:
             self._updating_chord = False
+
+    def _suffixFromControls(self):
+        """Kept suffix text while the type menu still shows its base type."""
+        if self.ui.chord_type_menu.currentIndex() == self._kept_type_id:
+            return self._kept_suffix
+        return None
 
     def _chordTextFromControls(self):
         """
@@ -619,35 +645,34 @@ class ChordDialog(QtWidgets.QDialog):
                             self.ui.chord_type_menu.currentIndex(),
                             self.ui.bass_menu.currentIndex() - 1,
                             self.ui.marker_ef.text(),
-                            self.ui.in_parentheses_box.isChecked())
+                            self.ui.in_parentheses_box.isChecked(),
+                            suffix=self._suffixFromControls())
         return preview.getChordText()
 
     def _loadChord(self, chord):
         """
-        Fill the controls from this chord and refresh the chord text.
+        Fill the controls from this chord and show its chord text.
         """
         self._edited_chord = chord
+        self._typed_unknown_raw = None
+        self._kept_type_id = chord.chord_type_id
+        self._kept_suffix = chord._suffix
+        self._initial_text = chord.getStoredText()
 
-        note_id = chord.note_id
-        chord_type_id = chord.chord_type_id
-        bass_note_id = chord.bass_note_id
-        marker = chord.marker
-        in_parentheses = chord.in_parentheses
-
-        if note_id != None:
-            self.ui.note_menu.setCurrentIndex(note_id)
-        if chord_type_id != None:
-            self.ui.chord_type_menu.setCurrentIndex(chord_type_id)
-        if bass_note_id != None:
-            # -1 becomes 0, etc:
-            self.ui.bass_menu.setCurrentIndex(bass_note_id + 1)
-
-        if marker == -1 or marker == "" or marker == "None":
-            marker = ""
-        self.ui.marker_ef.setText(marker)
-
-        self.ui.in_parentheses_box.setChecked(in_parentheses)
-        self._updateChordText()
+        self._updating_chord = True
+        try:
+            if not chord.unknown:
+                self._setControls(chord.note_id, chord.chord_type_id,
+                                  chord.bass_note_id, chord.marker,
+                                  chord.in_parentheses)
+            else:
+                self._setControls(0, 0, -1, "", False)
+            # Show the chord as stored, so a chord this version cannot read
+            # fully (or at all) is not changed by opening the dialog.
+            self.ui.chord_text_ef.setText(self._initial_text)
+            self._setChordTextInvalid(False)
+        finally:
+            self._updating_chord = False
 
     def display(self, chord):
         """
@@ -667,8 +692,18 @@ class ChordDialog(QtWidgets.QDialog):
         self.raise_()
         out = self.exec()
         if out:  # OK pressed:
+            if edit.text() == self._initial_text:
+                # Untouched. Keep the chord exactly as it was read.
+                return True
+            if self._typed_unknown_raw is not None:
+                # Text that is not a chord becomes an unknown chord ("?").
+                chord.set_unknown(self._typed_unknown_raw)
+                return True
             chord.note_id = self.ui.note_menu.currentIndex()
             chord.chord_type_id = self.ui.chord_type_menu.currentIndex()
+            suffix = self._suffixFromControls()
+            if suffix is not None:
+                chord._suffix = suffix
             # 0 (first item) will become -1 (invalid):
             chord.bass_note_id = self.ui.bass_menu.currentIndex() - 1
             chord.marker = self.ui.marker_ef.text()
@@ -678,6 +713,7 @@ class ChordDialog(QtWidgets.QDialog):
         else:
             # Cancel pressed
             return False
+
 
 
 class PdfOptions:
@@ -1014,6 +1050,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
     def __init__(self):
         super().__init__()
         self._readonly_songbook_reported = False
+        # TODO(remove-v1-compat): path of an old-format songbook that could
+        # not be converted in place, while a converted temporary copy is open.
+        self.songbook_original_path = None
         self.doc_editor_offset = 0  # FIXME
 
         self.win = QtWidgets.QMainWindow()
@@ -1341,7 +1380,33 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
     def closeEvent(self, event):
         self.sendCurrentSongToDatabase()
+        if not self._confirm_close_of_converted_copy():
+            event.ignore()
+            return
         self._orig_closeEvent(event)
+
+    def _confirm_close_of_converted_copy(self):
+        """True when the window may close.
+
+        TODO(remove-v1-compat): an old-format songbook that could not be
+        converted in place was opened as a temporary copy. Closing would lose
+        the edits made to it, so offer Save As first.
+        """
+        if self.songbook_original_path is None:
+            return True
+        conn = self.store.connection
+        if conn is None or conn.total_changes == 0:
+            return True
+        if not self.question(
+                "Your changes are in a temporary converted copy. The original "
+                "songbook was not changed:\n%s\n\nSave the copy now?" %
+                self.songbook_original_path,
+                button1="Save As...",
+                button2="Close Without Saving"):
+            return True
+        self.saveSongbook()
+        # Still the copy when the user cancelled the Save As dialog.
+        return self.songbook_original_path is None
 
     def _rollback_songbook(self):
         conn = self.store.connection
@@ -1408,17 +1473,13 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 # Update existing chords
                 if chord.character_num in chords_in_database:
                     self.store.update_chord(chord.song_id, chord.character_num,
-                                            chord.note_id, chord.chord_type_id,
-                                            chord.bass_note_id, chord.marker,
-                                            chord.in_parentheses)
+                                            chord.getStoredText())
                     chords_in_database.remove(chord.character_num)
 
                 else:
                     # Add new chords
                     self.store.insert_chord(chord.song_id, chord.character_num,
-                                            chord.note_id, chord.chord_type_id,
-                                            chord.bass_note_id, chord.marker,
-                                            chord.in_parentheses)
+                                            chord.getStoredText())
 
             # Remove old chords
             for song_char_num in chords_in_database:
@@ -1577,7 +1638,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                     prev_chord = iter_chord
                     break
 
-            if prev_chord:
+            if prev_chord and not prev_chord.unknown:
                 # Chord already exists, flip major/minor
                 new_chord = copy.copy(prev_chord)
                 if new_chord.chord_type_id == 0:
