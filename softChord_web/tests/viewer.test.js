@@ -380,6 +380,20 @@ test("shared chord vectors", function () {
   });
 });
 
+test("shared chord validity vectors", function () {
+  var file = path.join(__dirname, "..", "..", "tests", "chord_vectors.json");
+  var vectors = JSON.parse(fs.readFileSync(file, "utf8")).validity;
+  assert.ok(vectors.valid.length > 10);
+  vectors.valid.forEach(function (text) {
+    assert.equal(SoftchordChords.isValidChordText(text), true, JSON.stringify(text));
+  });
+  vectors.invalid.forEach(function (text) {
+    assert.equal(SoftchordChords.isValidChordText(text), false, JSON.stringify(text));
+  });
+  assert.equal(SoftchordChords.isValidChordText(null), false);
+  assert.equal(SoftchordChords.isValidChordText(undefined), false);
+});
+
 test("garbage chord strings never throw", function () {
   ["", "   ", "?", "(", ")", "()", ":", "/", "C/", "/C", "(:)", "\u0000", "💥", "C/H/", "((C))", null, undefined]
     .forEach(function (text) {

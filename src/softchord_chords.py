@@ -4,7 +4,7 @@ Paired with softChord Viewer/softChord Viewer/softchord_chords.swift and
 softChord_web/softchord_chords.js.
 Shared functions stay in this order: prefer_from_major_tonic, score_key,
 family_score, best_detected_key, detect_region_start_indices, transpose_note,
-parse_chord, chord_string.
+parse_chord, is_valid_chord_text, chord_string.
 
 A chord is stored in the songbook as one string (see docs/chord_format.md).
 parse_chord() is tolerant and never raises. Its behaviour is checked by
@@ -463,6 +463,20 @@ def parse_chord(text):
     parsed.bass_text = bass_text
     parsed.bass_note_id = bass_note_id
     return parsed
+
+
+def is_valid_chord_text(text):
+    """True when typed text is a chord the editors may save.
+
+    This is the one definition of a valid chord: parse_chord() finds a root
+    note, so transposing changes it. An empty text, "?" and any text with no
+    root (for example "asdf" or "xyz") are not valid. An unusual suffix after
+    a valid root is still valid, so a chord such as "Gsus2add9" keeps its text.
+
+    Mirror: softchord_chords.swift SoftchordChords.isValidChordText and
+    softchord_chords.js isValidChordText.
+    """
+    return not parse_chord(text).unknown
 
 
 def chord_string(marker, root_text, suffix, bass_text, in_parentheses):

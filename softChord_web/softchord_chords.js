@@ -331,6 +331,13 @@
     return parsed;
   }
 
+  // True when typed text is a chord the editors may save: parseChord finds a
+  // root note, so transposing changes it. Mirror: softchord_chords.py
+  // is_valid_chord_text.
+  function isValidChordText(text) {
+    return !parseChord(text).unknown;
+  }
+
   // The stored string of a known chord. Mirror: softchord_chords.py chord_string.
   function chordString(marker, rootText, suffix, bassText, inParentheses) {
     var text = rootText + suffix;
@@ -441,6 +448,7 @@
       chordText: chordText,
       classifySuffix: classifySuffix,
       parseChord: parseChord,
+      isValidChordText: isValidChordText,
       chordString: chordString,
       parsedChordString: parsedChordString,
       chordFromText: chordFromText,

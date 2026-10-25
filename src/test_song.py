@@ -26,6 +26,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
 
 import softchord
+import softchord_chords
 from softchord_layout import QtDocumentLayout, SongLayout
 from softchord_io import (
     _chord_tokens,
@@ -1571,6 +1572,22 @@ class TestChordDialogEditing(unittest.TestCase):
         open_empty_temp_songbook(self.app)
         insert_and_select_song(self.app, with_chord=True)
 
+    def test_valid_means_transposing_changes_the_chord(self):
+        song = self.app.current_song
+        with open(VECTORS_PATH, encoding="utf-8") as fh:
+            vectors = json.load(fh)
+        texts = (TestChordTextValidity.VALID + TestChordTextValidity.INVALID[:-1] + vectors["validity"]["valid"] +
+                 vectors["validity"]["invalid"] +
+                 [case["input"] for case in vectors["cases"]])
+        for text in texts:
+            with self.subTest(text=text):
+                chord = softchord.SongChord.from_text(song, 0, text)
+                before = chord.getStoredText()
+                chord.transpose(1)
+                changed = chord.getStoredText() != before
+                self.assertEqual(
+                    softchord_chords.is_valid_chord_text(text), changed)
+
     def test_process_song_char_edit_add_new_chord(self):
         """Calling processSongCharEdit on a position with no chord should add one after 'OK'."""
         # Choose a position unlikely to already have a chord in the test song
@@ -1712,8 +1729,8 @@ class TestChordDialogEditing(unittest.TestCase):
         self.assertTrue(dialog.ui.in_parentheses_box.isChecked())
         dialog.close()
 
-    def test_unparseable_chord_text_keeps_the_menus_and_is_not_an_error(self):
-        """Text that is not a chord is not red. The menus stay as they were."""
+    def test_unparseable_chord_text_keeps_the_menus_and_is_red(self):
+        """Text that is not a chord is red. The menus stay as they were."""
         chord = list(self.app.current_song.iterateAllChords())[0]
         dialog = softchord.ChordDialog(self.app)
         dialog._loadChord(chord)
@@ -1725,7 +1742,7 @@ class TestChordDialogEditing(unittest.TestCase):
                 dialog.ui.bass_menu.currentIndex(),
                 dialog.ui.in_parentheses_box.isChecked())
         edit.setText("nope")
-        self.assertEqual(edit.styleSheet(), "")
+        self.assertIn("red", edit.styleSheet())
         self.assertEqual(
             kept,
             (dialog.ui.marker_ef.text(), dialog.ui.note_menu.currentIndex(),
@@ -4550,6 +4567,40 @@ class TestChordVectors(unittest.TestCase):
                 softchord_chords_string(parsed)
 
 
+class TestChordTextValidity(unittest.TestCase):
+    """is_valid_chord_text: the one definition the chord editors use."""
+
+    VALID = [
+        "C", "Am", "Em7/G", "Bb", "F#m7/C#", "H", "Hm", "Аm", "Сmaj7",
+        "Вb", "Н", "(Am)", "v:Am", "2:F#m7/G", "Gsus2add9", "  Am  "
+    ]
+    INVALID = [
+        "", "   ", "?", "asdf", "xyz", "a", "am", "N.C.", "(?)", "()", "v:",
+        "/C", "1", None
+    ]
+
+    def test_valid_texts(self):
+        for text in self.VALID:
+            with self.subTest(text=text):
+                self.assertTrue(softchord_chords.is_valid_chord_text(text))
+
+    def test_invalid_texts(self):
+        for text in self.INVALID:
+            with self.subTest(text=text):
+                self.assertFalse(softchord_chords.is_valid_chord_text(text))
+
+    def test_shared_validity_vectors(self):
+        with open(VECTORS_PATH, encoding="utf-8") as fh:
+            vectors = json.load(fh)["validity"]
+        for text in vectors["valid"]:
+            with self.subTest(valid=text):
+                self.assertTrue(softchord_chords.is_valid_chord_text(text))
+        for text in vectors["invalid"]:
+            with self.subTest(invalid=text):
+                self.assertFalse(softchord_chords.is_valid_chord_text(text))
+
+
+
 def softchord_chords_string(parsed):
     import softchord_chords
     return softchord_chords.parsed_chord_string(parsed)
@@ -4673,19 +4724,108 @@ class TestChordStringsInTheEditor(unittest.TestCase):
         self.assertTrue(dialog.display(chord))
         self.assertEqual(chord.getStoredText(), "Cmaj9")
 
-    def test_dialog_unparseable_text_becomes_an_unknown_chord(self):
+    def _dispose(self, dialog):
+        """Close and delete a dialog so none is left under the main window."""
+        dialog.close()
+        dialog.setParent(None)
+        dialog.deleteLater()
+        QtWidgets.QApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+
+    def test_dialog_refuses_text_that_is_not_a_chord(self):
         chord = self.app.current_song.getChordAtPosition(6)
-        self._run_dialog(chord, "N.C.")
-        self.assertTrue(chord.unknown)
-        self.assertEqual(chord.getStoredText(), "N.C.")
-        self._run_dialog(chord, "")
-        self.assertEqual(chord.getStoredText(), "?")
+        before = chord.getStoredText()
+        dialog = softchord.ChordDialog(self.app)
+
+        def type_and_try_to_accept():
+            for text in ("N.C.", "", "?", "asdf"):
+                dialog.ui.chord_text_ef.setText(text)
+                dialog.accept()  # Refused, so the dialog stays open.
+                self.assertTrue(dialog.isVisible(), text)
+            dialog.reject()
+
+        QtCore.QTimer.singleShot(0, type_and_try_to_accept)
+        self.assertFalse(dialog.display(chord))
+        self.assertEqual(chord.getStoredText(), before)
+        self._dispose(dialog)
 
     def test_dialog_edits_an_unknown_chord_into_a_known_one(self):
         chord = self.app.current_song.getChordAtPosition(3)
         self._run_dialog(chord, "Dm7")
         self.assertFalse(chord.unknown)
         self.assertEqual(chord.getStoredText(), "Dm7")
+
+    def _open(self, position):
+        chord = self.app.current_song.getChordAtPosition(position)
+        dialog = softchord.ChordDialog(self.app)
+        dialog._loadChord(chord)
+        ok = dialog.ui.buttonBox.button(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok)
+        return chord, dialog, ok
+
+    def test_invalid_text_is_red_and_cannot_be_saved(self):
+        chord, dialog, ok = self._open(6)
+        edit = dialog.ui.chord_text_ef
+        self.assertEqual(edit.styleSheet(), "")
+        self.assertTrue(ok.isEnabled())
+        for text in ("asdf", "", "?", "xyz", "N.C."):
+            with self.subTest(text=text):
+                edit.setText(text)
+                self.assertIn("red", edit.styleSheet())
+                self.assertFalse(ok.isEnabled())
+        for text in ("Dm7", "Bb", "F#m7/C#", "Аm", "(Am)", "v:Am", "Gsus2add9"):
+            with self.subTest(text=text):
+                edit.setText(text)
+                self.assertEqual(edit.styleSheet(), "")
+                self.assertTrue(ok.isEnabled())
+        self._dispose(dialog)
+
+    def test_an_unknown_chord_opens_red_until_a_valid_chord_is_typed(self):
+        chord, dialog, ok = self._open(3)
+        edit = dialog.ui.chord_text_ef
+        self.assertEqual(edit.text(), "Xyz")
+        self.assertIn("red", edit.styleSheet())
+        self.assertFalse(ok.isEnabled())
+        edit.setText("Dm7")
+        self.assertEqual(edit.styleSheet(), "")
+        self.assertTrue(ok.isEnabled())
+        # Using the menus replaces the text with a valid chord too.
+        edit.setText("asdf")
+        self.assertFalse(ok.isEnabled())
+        dialog.ui.note_menu.setCurrentIndex(5)
+        self.assertEqual(edit.styleSheet(), "")
+        self.assertTrue(ok.isEnabled())
+        self._dispose(dialog)
+
+    def test_enter_does_not_accept_an_invalid_chord(self):
+        chord, dialog, ok = self._open(6)
+        before = chord.getStoredText()
+        dialog.show()
+        edit = dialog.ui.chord_text_ef
+        edit.setText("asdf")
+        QTest.keyClick(edit, Qt.Key.Key_Return)
+        self.assertTrue(dialog.isVisible())
+        self.assertEqual(dialog.result(), 0)
+        # A valid chord is accepted by Enter.
+        edit.setText("Dm7")
+        QTest.keyClick(edit, Qt.Key.Key_Return)
+        self.assertFalse(dialog.isVisible())
+        self.assertEqual(dialog.result(), 1)
+        self.assertEqual(chord.getStoredText(), before)  # display() not used
+        self._dispose(dialog)
+
+    def test_cancel_still_works_with_an_invalid_chord(self):
+        chord, dialog, ok = self._open(3)
+        before = chord.getStoredText()
+
+        def cancel():
+            self.assertFalse(ok.isEnabled())
+            dialog.reject()
+
+        QtCore.QTimer.singleShot(0, cancel)
+        self.assertFalse(dialog.display(chord))
+        self.assertEqual(chord.getStoredText(), before)
+        self.assertTrue(chord.unknown)
+        self._dispose(dialog)
 
     def test_dialog_keeps_a_typed_unusual_suffix(self):
         chord = self.app.current_song.getChordAtPosition(6)
