@@ -229,13 +229,37 @@ struct softChord_ViewerTests {
         let typing = try #require(tappedAway.descendants(of: UITextView.self).first)
         #expect(typing.becomeFirstResponder())
         await settle()
+        // The hide can already be over when resign returns: the simulator
+        // may show no software keyboard, or finish the hide at once. Only a
+        // hide that is still running has to hold the page.
+        let tapHide = KeyboardHideNote()
+        let center = NotificationCenter.default
+        let tapWillHide = center.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            tapHide.hideStarted = true
+        }
+        let tapDidHide = center.addObserver(
+            forName: UIResponder.keyboardDidHideNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            tapHide.hideFinished = true
+        }
         #expect(typing.resignFirstResponder())
+        let hideStillRunning = tapHide.hideStarted && !tapHide.hideFinished
         pressBack(in: tappedAway)
-        #expect(navigationController(in: tappedAway.rootViewController)?.viewControllers.count == 2)
+        if hideStillRunning {
+            #expect(navigationController(in: tappedAway.rootViewController)?.viewControllers.count == 2)
+        }
         await waitUntil(in: tappedAway) { view in
             navigationController(in: view.rootViewController)?.viewControllers.count == 1
         }
         #expect(navigationController(in: tappedAway.rootViewController)?.viewControllers.count == 1)
+        center.removeObserver(tapWillHide)
+        center.removeObserver(tapDidHide)
         tappedAway.isHidden = true
     }
 
@@ -698,6 +722,7 @@ struct SongFilterTests {
 
 private final class KeyboardHideNote: @unchecked Sendable {
     var hideStarted = false
+    var hideFinished = false
     var editorWasOnScreen = false
 }
 
