@@ -4,38 +4,48 @@
 
 (function (root, factory) {
   var songText = typeof root.SongText !== "undefined" ? root.SongText : require("./softchord_text");
-  var api = factory(songText, root);
+  var chords = typeof root.SoftchordChords !== "undefined"
+    ? root.SoftchordChords
+    : require("./softchord_chords").SoftchordChords;
+  var api = factory(songText, root, chords);
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   } else {
     root.Songbook = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, function (SongText, root) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (SongText, root, SoftchordChords) {
   var songs = null;
   var byId = new Map();
 
   // TODO: Also read number and subtitle. The list and search should use the
   // number (blank when it is -1). The open song should show the subtitle.
   var SONGS_SQL = "SELECT id, title, text FROM songs ORDER BY id";
-  var CHORDS_SQL = "SELECT song_id, character_num, note_id, chord_type_id, " +
-    "bass_note_id, marker, in_parentheses FROM song_chord_link ORDER BY rowid";
+  var CHORDS_SQL = "SELECT song_id, character_num, chord FROM song_chord_link ORDER BY rowid";
+  // The songbook format this viewer reads. See docs/chord_format.md.
+  var FORMAT_VERSION = 2;
 
-  function normalizeMarker(marker) {
-    if (marker == null || marker === "" || marker === "-1" || marker === "None") {
-      return "";
-    }
-    return String(marker);
+  // A chord string this viewer cannot read becomes an unknown chord, drawn as "?".
+  function normalizeChord(row) {
+    return SoftchordChords.chordFromText(row.chord, row.character_num);
   }
 
-  function normalizeChord(row) {
-    return {
-      characterNum: row.character_num,
-      noteId: row.note_id,
-      chordTypeId: row.chord_type_id,
-      bassNoteId: row.bass_note_id == null ? -1 : row.bass_note_id,
-      marker: normalizeMarker(row.marker),
-      inParentheses: !!row.in_parentheses,
-    };
+  // Only version 2 (one chord string per row) is read. The desktop editor
+  // converts older files when it opens them.
+  function checkFormat(db) {
+    var rows = queryRows(db, "PRAGMA user_version");
+    var version = rows.length ? Number(rows[0].user_version) : 0;
+    var problem = null;
+    if (version > FORMAT_VERSION) {
+      problem = "This songbook is a newer format (version " + version + "). Update this viewer.";
+    } else if (version !== FORMAT_VERSION) {
+      problem = "This songbook is an old format. Update softChord on your Mac, open the " +
+        "songbook there to convert it, then copy it here again.";
+    }
+    if (problem) {
+      var error = new Error(problem);
+      error.formatProblem = true;
+      throw error;
+    }
   }
 
   function queryRows(db, sql) {
@@ -83,11 +93,15 @@
   function openBytes(SQL, bytes) {
     var db = new SQL.Database(bytes);
     try {
+      checkFormat(db);
       var songRows = queryRows(db, SONGS_SQL);
       var chordRows = queryRows(db, CHORDS_SQL);
       useSongs(songsFromRows(songRows, chordRows));
     } catch (error) {
       var message = error && error.message ? error.message : String(error);
+      if (error && error.formatProblem) {
+        throw error;
+      }
       throw new Error("The songbook could not be read. " + message);
     } finally {
       db.close();
@@ -134,14 +148,7 @@
   }
 
   function copyChord(chord) {
-    return {
-      characterNum: chord.characterNum,
-      noteId: chord.noteId,
-      chordTypeId: chord.chordTypeId,
-      bassNoteId: chord.bassNoteId,
-      marker: chord.marker,
-      inParentheses: chord.inParentheses,
-    };
+    return Object.assign({}, chord);
   }
 
   function titles() {

@@ -45,6 +45,8 @@ from softchord_session import (
 from softchord_song import place_chord_on_line
 from softchord_store import (
     SongbookStore,
+    create_schema,
+    enable_foreign_keys,
     database_file_was_replaced,
     readonly_database_error,
 )
@@ -171,9 +173,9 @@ class MinimalTestApp:
         self._setup_method_stubs()
 
     def _create_minimal_tables(self):
-        self.curs.execute(SONGS_TABLE_SQL)
-        self.curs.execute(SONG_CHORD_LINK_TABLE_SQL)
+        create_schema(self.curs)
         self.curs.commit()
+        enable_foreign_keys(self.curs)
 
     def _setup_method_stubs(self):
         # These are called while the lyric document is being spaced.
@@ -308,8 +310,8 @@ def create_test_song(app,
     """Helper: insert a minimal song into the test DB and return a Song instance."""
     app.curs.execute(
         """
-        INSERT INTO songs (id, number, title, subtitle, text)
-        VALUES (?, 1, ?, '', ?)
+        INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at)
+        VALUES (?, 1, ?, '', ?, lower(hex(randomblob(16))), 1700000000)
     """, (song_id, title, text))
     app.curs.commit()
 
@@ -362,8 +364,7 @@ def open_empty_temp_songbook(app):
     td = tempfile.mkdtemp()
     path = os.path.join(td, "t.songbook")
     conn = sqlite3.connect(path)
-    conn.execute(SONG_CHORD_LINK_TABLE_SQL)
-    conn.execute(SONGS_TABLE_SQL)
+    create_schema(conn)
     conn.commit()
     conn.close()
     app.setCurrentSongbook(path)
@@ -376,13 +377,12 @@ def insert_and_select_song(app,
                            text="Amazing grace\nHow sweet the sound",
                            with_chord=False):
     app.curs.execute(
-        "INSERT INTO songs (id, number, title, subtitle, text) "
-        "VALUES (?, 1, ?, '', ?)", (song_id, title, text))
+        "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+        "VALUES (?, 1, ?, '', ?, lower(hex(randomblob(16))), 1700000000)", (song_id, title, text))
     if with_chord:
         app.curs.execute(
-            "INSERT INTO song_chord_link (id, song_id, character_num, "
-            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
-            "VALUES (0, ?, 0, 0, 0, -1, '', 0)", (song_id,))
+            "INSERT INTO song_chord_link (id, song_id, character_num, chord) "
+            "VALUES (0, ?, 0, 'C')", (song_id,))
     app.curs.commit()
     app.songs_model.updateFromDatabase()
     app.ui.songs_view.selectRow(0)
@@ -708,9 +708,8 @@ class TestSong(unittest.TestCase):
         text = "Hi  \nGo"
         song = create_test_song(self.app, song_id=8, text=text)
         self.app.curs.execute(
-            "INSERT INTO song_chord_link (id, song_id, character_num, "
-            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
-            "VALUES (1, 8, 5, 7, 0, -1, '', 0)")
+            "INSERT INTO song_chord_link (id, song_id, character_num, chord) "
+            "VALUES (1, 8, 5, 'G')")
         self.app.curs.commit()
         song = Song(self.app, 8)
 
@@ -729,9 +728,8 @@ class TestSong(unittest.TestCase):
         text = "Hi  \nGo"
         song = create_test_song(self.app, song_id=9, text=text)
         self.app.curs.execute(
-            "INSERT INTO song_chord_link (id, song_id, character_num, "
-            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
-            "VALUES (1, 9, 3, 0, 0, -1, '', 0)")
+            "INSERT INTO song_chord_link (id, song_id, character_num, chord) "
+            "VALUES (1, 9, 3, 'C')")
         self.app.curs.commit()
         song = Song(self.app, 9)
 
@@ -749,10 +747,9 @@ class TestSong(unittest.TestCase):
         text = "Hi  \nGo"
         song = create_test_song(self.app, song_id=10, text=text)
         self.app.curs.execute(
-            "INSERT INTO song_chord_link (id, song_id, character_num, "
-            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
-            "VALUES (1, 10, 5, 7, 0, -1, '', 0), "
-            "(2, 10, 3, 0, 0, -1, '', 0)")
+            "INSERT INTO song_chord_link (id, song_id, character_num, chord) "
+            "VALUES (1, 10, 5, 'G'), "
+            "(2, 10, 3, 'C')")
         self.app.curs.commit()
         song = Song(self.app, 10)
         self.app.current_song = song
@@ -790,27 +787,6 @@ class TestSong(unittest.TestCase):
         stored = self.app.curs.execute(
             "SELECT text FROM songs WHERE id=11").fetchone()[0]
         self.assertEqual(stored, "Hi")
-
-    def test_loads_legacy_schema_without_subtitle(self):
-        app = MinimalTestApp()
-        app.curs.execute("DROP TABLE songs")
-        app.curs.execute(
-            "CREATE TABLE songs (id INTEGER PRIMARY KEY, title TEXT, "
-            "number INTEGER, text TEXT)")
-        app.curs.execute(
-            "INSERT INTO songs (id, title, number, text) "
-            "VALUES (1, 'Old', 3, 'hi')")
-        app.curs.commit()
-
-        song = Song(app, 1)
-        self.assertEqual(song.title, "Old")
-        self.assertEqual(song.number, 3)
-        self.assertEqual(song.subtitle, "")
-        self.assertEqual(song.getAllText(), "hi")
-        columns = [
-            row[1] for row in app.curs.execute("PRAGMA table_info(songs)")
-        ]
-        self.assertIn("subtitle", columns)
 
 
 # ---------------------------------------------------------------------------
@@ -886,8 +862,8 @@ class TestSongsTableModels(unittest.TestCase):
         # Insert some test songs directly into the DB
         self.app.curs.executemany(
             """
-            INSERT INTO songs (id, number, title, subtitle, text)
-            VALUES (?, ?, ?, '', 'lyrics here')
+            INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at)
+            VALUES (?, ?, ?, '', 'lyrics here', lower(hex(randomblob(16))), 1700000000)
         """,
             [
                 (1, 10, "Amazing Grace"),
@@ -953,8 +929,8 @@ class TestSongsTableModels(unittest.TestCase):
     def test_table_model_update_from_database(self):
         # Add a new song directly to DB
         self.app.curs.execute("""
-            INSERT INTO songs (id, number, title, subtitle, text)
-            VALUES (5, 40, "New Song Added Later", '', '')
+            INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at)
+            VALUES (5, 40, "New Song Added Later", '', '', lower(hex(randomblob(16))), 1700000000)
         """)
         self.app.curs.commit()
 
@@ -1736,8 +1712,8 @@ class TestChordDialogEditing(unittest.TestCase):
         self.assertTrue(dialog.ui.in_parentheses_box.isChecked())
         dialog.close()
 
-    def test_invalid_chord_text_is_red_and_keeps_selection(self):
-        """A chord the parser rejects turns the field red and leaves the menus."""
+    def test_unparseable_chord_text_keeps_the_menus_and_is_not_an_error(self):
+        """Text that is not a chord is not red. The menus stay as they were."""
         chord = list(self.app.current_song.iterateAllChords())[0]
         dialog = softchord.ChordDialog(self.app)
         dialog._loadChord(chord)
@@ -1749,7 +1725,7 @@ class TestChordDialogEditing(unittest.TestCase):
                 dialog.ui.bass_menu.currentIndex(),
                 dialog.ui.in_parentheses_box.isChecked())
         edit.setText("nope")
-        self.assertIn("red", edit.styleSheet())
+        self.assertEqual(edit.styleSheet(), "")
         self.assertEqual(
             kept,
             (dialog.ui.marker_ef.text(), dialog.ui.note_menu.currentIndex(),
@@ -1758,7 +1734,6 @@ class TestChordDialogEditing(unittest.TestCase):
              dialog.ui.in_parentheses_box.isChecked()))
 
         dialog.ui.chord_type_menu.setCurrentIndex(0)
-        self.assertEqual(edit.styleSheet(), "")
         note = chord.song._getNoteString(6, chord.character_num)
         self.assertEqual(edit.text(), "2:%s/G" % note)
         dialog.close()
@@ -2316,8 +2291,8 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
         song = self.app.current_song
         song._addChord(SongChord(song, 5, 2, 0, -1, "", 0))
         self.app.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) "
-            "VALUES (1, 2, 'Other', '', 'line')")
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (1, 2, 'Other', '', 'line', lower(hex(randomblob(16))), 1700000000)")
         self.app.curs.commit()
         self.app.songs_model.updateFromDatabase()
         self.app.curs.execute("PRAGMA query_only = ON")
@@ -2661,11 +2636,11 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(title, "Hello")
         self.assertEqual(number, 12)
         self.assertIn("Hi", text)
-        notes = [
+        chords = [
             row[0] for row in self.app.curs.execute(
-                "SELECT note_id FROM song_chord_link ORDER BY character_num")
+                "SELECT chord FROM song_chord_link ORDER BY character_num")
         ]
-        self.assertEqual(notes, [0, 7])  # C, G
+        self.assertEqual(chords, ["C", "G"])
 
     def test_import_chordpro_stores_non_numeric_subtitle(self):
         self._open_empty_temp_songbook()
@@ -2989,11 +2964,10 @@ class TestMoreAppOperations(unittest.TestCase):
         source_dir = tempfile.mkdtemp()
         source_path = os.path.join(source_dir, "source.songbook")
         conn = sqlite3.connect(source_path)
-        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
-        conn.execute(SONGS_TABLE_SQL)
+        create_schema(conn)
         conn.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) "
-            "VALUES (0, 5, 'Appended', 'sub', 'New lyrics')")
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (0, 5, 'Appended', 'sub', 'New lyrics', lower(hex(randomblob(16))), 1700000000)")
         conn.commit()
         conn.close()
 
@@ -3010,17 +2984,15 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.importSongFromText("Keep me\nAlready here")
         source_path = os.path.join(tempfile.mkdtemp(), "source.songbook")
         conn = sqlite3.connect(source_path)
-        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
-        conn.execute(SONGS_TABLE_SQL)
+        create_schema(conn)
         conn.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) "
-            "VALUES (0, 1, 'First', '', 'Hello'), "
-            "(1, 2, 'Second', '', 'World')")
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (0, 1, 'First', '', 'Hello', lower(hex(randomblob(16))), 1700000000), "
+            "(1, 2, 'Second', '', 'World', lower(hex(randomblob(16))), 1700000000)")
         conn.execute(
-            "INSERT INTO song_chord_link (id, song_id, character_num, "
-            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
-            "VALUES (0, 0, 0, 0, 0, -1, '', 0), "
-            "(1, 1, 0, 7, 0, -1, '', 1)")
+            "INSERT INTO song_chord_link (id, song_id, character_num, chord) "
+            "VALUES (0, 0, 0, 'C'), "
+            "(1, 1, 0, '(G)')")
         conn.commit()
         conn.close()
 
@@ -3033,18 +3005,18 @@ class TestMoreAppOperations(unittest.TestCase):
         dest_ids = {title: song_id for song_id, title in dest_songs}
         chords = list(
             self.app.curs.execute(
-                "SELECT song_id, character_num, note_id, in_parentheses "
+                "SELECT song_id, character_num, chord "
                 "FROM song_chord_link ORDER BY song_id"))
         self.assertEqual(chords, [
-            (dest_ids["First"], 0, 0, 0),
-            (dest_ids["Second"], 0, 7, 1),
+            (dest_ids["First"], 0, "C"),
+            (dest_ids["Second"], 0, "(G)"),
         ])
 
     def test_remove_trailing_spaces_updates_current_song(self):
         self._open_empty_temp_songbook()
         self.app.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) "
-            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo')")
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo', lower(hex(randomblob(16))), 1700000000)")
         self.app.curs.commit()
         self.app.songs_model.updateFromDatabase()
         self.app.ui.songs_view.selectRow(0)
@@ -3062,8 +3034,8 @@ class TestMoreAppOperations(unittest.TestCase):
     def test_remove_trailing_spaces_keeps_unsaved_lyric_edits(self):
         self._open_empty_temp_songbook()
         self.app.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) "
-            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo')")
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo', lower(hex(randomblob(16))), 1700000000)")
         self.app.curs.commit()
         self.app.songs_model.updateFromDatabase()
         self.app.ui.songs_view.selectRow(0)
@@ -3101,13 +3073,11 @@ class TestMoreAppOperations(unittest.TestCase):
     def test_remove_trailing_spaces_undo_restores_a_dropped_chord(self):
         self._open_empty_temp_songbook()
         self.app.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) "
-            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo')")
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (0, 1, 'Trim Me', '', 'Hi  \nGo', lower(hex(randomblob(16))), 1700000000)")
         self.app.curs.execute(
-            "INSERT INTO song_chord_link (id, song_id, character_num, "
-            "note_id, chord_type_id, bass_note_id, marker, in_parentheses) "
-            "VALUES (1, 0, 3, 0, 0, -1, '', 0), "
-            "(2, 0, 5, 7, 0, -1, '', 0)")
+            "INSERT INTO song_chord_link (id, song_id, character_num, chord) "
+            "VALUES (1, 0, 3, 'C'), (2, 0, 5, 'G')")
         self.app.curs.commit()
         self.app.songs_model.updateFromDatabase()
         self.app.ui.songs_view.selectRow(0)
@@ -3145,8 +3115,8 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.ui.songs_view.selectionModel().clearSelection()
         self.app.curs.execute("UPDATE songs SET number=9 WHERE id=0")
         self.app.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) "
-            "VALUES (1, 4, 'Second', '', 'Line')")
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (1, 4, 'Second', '', 'Line', lower(hex(randomblob(16))), 1700000000)")
         self.app.curs.commit()
         self.app.songs_model.updateFromDatabase()
         self.app.ui.songs_view.selectRow(0)
@@ -3247,9 +3217,10 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertIsNone(song.getChordAtPosition(1))
 
     def _stored_note_id(self):
-        return self.app.curs.execute(
-            "SELECT note_id FROM song_chord_link WHERE song_id=0"
-        ).fetchone()[0]
+        """Note id of the first stored chord string (root only)."""
+        text = self.app.curs.execute(
+            "SELECT chord FROM song_chord_link WHERE song_id=0").fetchone()[0]
+        return softchord.parse_chord(text).note_id
 
     def _song_numbers(self):
         return [
@@ -3283,11 +3254,10 @@ class TestConnectExistingSongbook(unittest.TestCase):
     def _write_songbook(self, path, with_songs_table=True):
         conn = sqlite3.connect(path)
         if with_songs_table:
-            conn.execute(SONG_CHORD_LINK_TABLE_SQL)
-            conn.execute(SONGS_TABLE_SQL)
+            create_schema(conn)
             conn.execute(
-                "INSERT INTO songs (id, number, title, subtitle, text) "
-                "VALUES (0, 1, 'One', '', 'lyrics')")
+                "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+                "VALUES (0, 1, 'One', '', 'lyrics', lower(hex(randomblob(16))), 1700000000)")
         else:
             conn.execute("CREATE TABLE other (id INTEGER)")
         conn.commit()
@@ -3596,18 +3566,13 @@ class TestAutoDetectedKey(unittest.TestCase):
         ][0]
         self.assertIn("F♯", first_fsharp.getChordText())
 
-    def test_legacy_stored_key_does_not_affect_spelling(self):
-        """Old songbooks may store Bb; A-major chords must still use sharps."""
+    def test_song_has_no_stored_key(self):
+        """The key is always detected: A-major chords must use sharps."""
         app = MinimalTestApp()
-        app.curs.execute("DROP TABLE songs")
         app.curs.execute(
-            "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, "
-            "text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, "
-            "key_is_major INTEGER)"
-        )
-        app.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text, "
-            "key_note_id, key_is_major) VALUES (1, 1, 'x', '', ?, 10, 1)",
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, "
+            "updated_at) VALUES (1, 1, 'x', '', ?, "
+            "lower(hex(randomblob(16))), 1700000000)",
             ("x" * 80,),
         )
         app.curs.commit()
@@ -3938,14 +3903,14 @@ class TestSongbookStoreEdits(unittest.TestCase):
         self.assertEqual(self.store.next_song_id(), 0)
         self.assertEqual(self.store.next_chord_id(), 0)
         self.store.insert_song(0, 1, "One", "", "Hello")
-        self.store.insert_chord(0, 0, 0, 0, -1, "", 0, chord_id=3)
+        self.store.insert_chord(0, 0, "C", chord_id=3)
         self.store.commit()
         self.assertEqual(self.store.next_song_id(), 1)
         self.assertEqual(self.store.next_chord_id(), 4)
 
     def test_move_and_delete_song(self):
         self.store.insert_song(0, 1, "One", "sub", "Hello")
-        self.store.insert_chord(0, 2, 0, 0, -1, "", 0, chord_id=0)
+        self.store.insert_chord(0, 2, "C", chord_id=0)
         self.store.move_chord(0, 2, 4)
         self.store.commit()
         self.assertEqual(self.store.chord_positions(0), [4])
@@ -3983,38 +3948,13 @@ class TestSongbookKeySchema(unittest.TestCase):
         self.assertNotIn("key_note_id", names)
         self.assertNotIn("key_is_major", names)
 
-    def test_save_leaves_legacy_key_columns_untouched(self):
-        app = MinimalTestApp()
-        app.curs.execute("DROP TABLE songs")
-        app.curs.execute(
-            "CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, "
-            "text TEXT, title TEXT, subtitle TEXT, key_note_id INTEGER, "
-            "key_is_major INTEGER)"
-        )
-        app.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text, "
-            "key_note_id, key_is_major) VALUES (1, 7, 'Old', 'note', 'hi', 10, 1)"
-        )
-        app.curs.commit()
-        song = Song(app, 1)
-        self.assertEqual(song.title, "Old")
-        app.curs.execute(
-            "UPDATE songs SET number=?, title=?, subtitle=?, text=? WHERE id=?",
-            (song.number, song.title, song.subtitle, song.getAllText(), song.id),
-        )
-        app.curs.commit()
-        stored = app.curs.execute(
-            "SELECT key_note_id, key_is_major FROM songs WHERE id=1"
-        ).fetchone()
-        self.assertEqual(stored, (10, 1))
-
     def test_import_into_new_schema_does_not_require_key_columns(self):
         app = MinimalTestApp()
         song_id = app.curs.execute("SELECT MAX(id) FROM songs").fetchone()[0]
         self.assertIsNone(song_id)
         app.curs.execute(
-            "INSERT INTO songs (id, number, title, subtitle, text) "
-            "VALUES (0, -1, '', '', '')"
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (0, -1, '', '', '', lower(hex(randomblob(16))), 1700000000)"
         )
         app.curs.commit()
         names = [row[1] for row in app.curs.execute("PRAGMA table_info(songs)")]
@@ -4030,8 +3970,7 @@ class TestSongsContextMenu(unittest.TestCase):
         cls._td = tempfile.TemporaryDirectory()
         path = os.path.join(cls._td.name, "songs.songbook")
         conn = sqlite3.connect(path)
-        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
-        conn.execute(SONGS_TABLE_SQL)
+        create_schema(conn)
         conn.commit()
         conn.close()
         cls.app.setCurrentSongbook(path)
@@ -4061,8 +4000,8 @@ class TestSongsContextMenu(unittest.TestCase):
         self.app.curs.execute("DELETE FROM songs")
         for number, title in ((1, "One"), (2, "Two"), (3, "Three")):
             self.app.curs.execute(
-                "INSERT INTO songs (id, number, title, subtitle, text) "
-                "VALUES (?, ?, ?, '', '')", (number, number, title))
+                "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+                "VALUES (?, ?, ?, '', '', lower(hex(randomblob(16))), 1700000000)", (number, number, title))
         self.app.curs.commit()
         self.app.songs_model.updateFromDatabase()
         self.app.ui.songs_view.clearSelection()
@@ -4348,8 +4287,7 @@ class TestChordOverLyricPlacement(unittest.TestCase):
         cls._td = tempfile.TemporaryDirectory()
         path = os.path.join(cls._td.name, "songs.songbook")
         conn = sqlite3.connect(path)
-        conn.execute(SONG_CHORD_LINK_TABLE_SQL)
-        conn.execute(SONGS_TABLE_SQL)
+        create_schema(conn)
         conn.commit()
         conn.close()
         cls.app.setCurrentSongbook(path)
@@ -4545,6 +4483,1447 @@ class TestAppShutdown(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("ok", result.stdout)
 
+
+
+# ---------------------------------------------------------------------------
+# Chord strings (songbook format version 2)
+# ---------------------------------------------------------------------------
+
+import hashlib
+import json
+
+import softchord_songbook_upgrade
+import softchord_v1_compat
+
+VECTORS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "tests",
+    "chord_vectors.json")
+
+
+class TestChordVectors(unittest.TestCase):
+    """The same cases are run by the Swift and JS tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(VECTORS_PATH, encoding="utf-8") as fh:
+            cls.cases = json.load(fh)["cases"]
+
+    def test_vectors_are_not_empty(self):
+        self.assertGreater(len(self.cases), 100)
+
+    def test_every_vector(self):
+        for case in self.cases:
+            with self.subTest(input=case["input"]):
+                parsed = softchord.parse_chord(case["input"])
+                self.assertEqual(parsed.unknown, case["unknown"])
+                if case["unknown"]:
+                    self.assertEqual(softchord_chords_string(parsed),
+                                     case["canonical"])
+                    continue
+                self.assertEqual(parsed.root_text, case["root"])
+                self.assertEqual(parsed.note_id, case["note_id"])
+                self.assertEqual(
+                    "minor" if parsed.is_minor else "major", case["quality"])
+                self.assertEqual(parsed.chord_type_id, case["type_id"])
+                self.assertEqual(parsed.is_known_type, case["known_type"])
+                self.assertEqual(parsed.suffix, case["suffix"])
+                self.assertEqual(parsed.bass_text or None, case["bass"])
+                if case["bass"] is not None:
+                    self.assertEqual(parsed.bass_note_id, case["bass_id"])
+                self.assertEqual(parsed.marker, case["marker"])
+                self.assertEqual(parsed.in_parentheses, case["parens"])
+                self.assertEqual(softchord_chords_string(parsed),
+                                 case["canonical"])
+
+    def test_canonical_strings_are_stable(self):
+        for case in self.cases:
+            with self.subTest(input=case["input"]):
+                again = softchord.parse_chord(case["canonical"])
+                self.assertEqual(softchord_chords_string(again),
+                                 case["canonical"])
+
+    def test_parser_never_raises(self):
+        for text in (None, "", " ", "\n", "(", ")", ":", "/", "//", "(:)",
+                     "🎸", "C" * 500, "\x00", "Am7/", "(((C)))", "::"):
+            with self.subTest(text=text):
+                parsed = softchord.parse_chord(text)
+                softchord_chords_string(parsed)
+
+
+def softchord_chords_string(parsed):
+    import softchord_chords
+    return softchord_chords.parsed_chord_string(parsed)
+
+
+class TestSongChordFromString(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+
+    def setUp(self):
+        self.app = MinimalTestApp()
+        self.song = create_test_song(self.app, song_id=1, text="Hello there")
+
+    def chord(self, text):
+        return SongChord.from_text(self.song, 0, text)
+
+    def test_known_chord_round_trips(self):
+        self.assertEqual(self.chord("Am7/G").getStoredText(), "Am7/G")
+        self.assertEqual(self.chord("(1:F♯m)").getStoredText(), "(1:F♯m)")
+
+    def test_unknown_suffix_is_kept_and_base_quality_is_used(self):
+        chord = self.chord("Cmaj9")
+        self.assertFalse(chord.unknown)
+        self.assertEqual(chord.chord_type_id, 0)
+        self.assertEqual(chord.getStoredText(), "Cmaj9")
+        minor = self.chord("Am(add9)")
+        self.assertEqual(minor.chord_type_id, 1)
+        self.assertEqual(minor.getStoredText(), "Am(add9)")
+
+    def test_transpose_changes_only_root_and_bass(self):
+        chord = self.chord("Am(add9)/E")
+        chord.transpose(2)
+        self.assertEqual(chord.getStoredText(), "Bm(add9)/F♯")
+
+    def test_unknown_chord_is_kept_drawn_as_question_mark_and_does_not_move(self):
+        chord = self.chord("N.C.")
+        self.assertTrue(chord.unknown)
+        self.assertEqual(chord.getChordText(), "?")
+        self.assertEqual(chord.getStoredText(), "N.C.")
+        chord.transpose(5)
+        self.assertEqual(chord.getStoredText(), "N.C.")
+
+    def test_empty_or_question_mark_is_written_as_question_mark(self):
+        self.assertEqual(self.chord("").getStoredText(), "?")
+        self.assertEqual(self.chord("?").getStoredText(), "?")
+
+    def test_setting_a_note_makes_an_unknown_chord_known(self):
+        chord = self.chord("Xyz")
+        chord.note_id = 4
+        self.assertFalse(chord.unknown)
+        self.assertEqual(chord.getStoredText(), "E")
+
+    def test_setting_the_type_replaces_a_kept_suffix(self):
+        chord = self.chord("Cmaj9")
+        chord.chord_type_id = 1
+        self.assertEqual(chord.getStoredText(), "Cm")
+
+    def test_strict_import_parser_still_rejects_words(self):
+        for text in ("And", "Xyz", "Cmaj9", "N.C."):
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    softchord.convert_chord_from_string(text)
+
+
+class TestChordStringsInTheEditor(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+        else:
+            cls.qapp = QtWidgets.QApplication.instance()
+
+    def setUp(self):
+        self.app = test_app()
+        open_empty_temp_songbook(self.app)
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (0, 1, 'S', '', 'Amazing grace here', lower(hex(randomblob(16))), 1700000000)")
+        self.app.curs.execute(
+            "INSERT INTO song_chord_link (id, song_id, character_num, chord) "
+            "VALUES (0, 0, 0, 'Cmaj9'), (1, 0, 3, 'Xyz'), (2, 0, 6, '(1:Am/G)')")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.ui.songs_view.selectRow(0)
+
+    def stored(self):
+        return [
+            row[0] for row in self.app.curs.execute(
+                "SELECT chord FROM song_chord_link ORDER BY character_num")
+        ]
+
+    def test_saving_without_edits_writes_the_same_strings(self):
+        self.app.sendCurrentSongToDatabase()
+        self.assertEqual(self.stored(), ["Cmaj9", "Xyz", "(1:Am/G)"])
+
+    def test_unknown_chord_is_drawn_as_a_question_mark(self):
+        chord = self.app.current_song.getChordAtPosition(3)
+        self.assertTrue(chord.unknown)
+        self.assertEqual(chord.getChordText(), "?")
+
+    def _run_dialog(self, chord, text):
+        dialog = softchord.ChordDialog(self.app)
+
+        def type_and_accept():
+            dialog.ui.chord_text_ef.setText(text)
+            dialog.accept()
+
+        QtCore.QTimer.singleShot(0, type_and_accept)
+        self.assertTrue(dialog.display(chord))
+
+    def test_dialog_keeps_a_chord_this_version_cannot_fully_read(self):
+        chord = self.app.current_song.getChordAtPosition(0)
+        dialog = softchord.ChordDialog(self.app)
+        dialog._loadChord(chord)
+        self.assertEqual(dialog.ui.chord_text_ef.text(), "Cmaj9")
+        QtCore.QTimer.singleShot(0, dialog.accept)
+        self.assertTrue(dialog.display(chord))
+        self.assertEqual(chord.getStoredText(), "Cmaj9")
+
+    def test_dialog_unparseable_text_becomes_an_unknown_chord(self):
+        chord = self.app.current_song.getChordAtPosition(6)
+        self._run_dialog(chord, "N.C.")
+        self.assertTrue(chord.unknown)
+        self.assertEqual(chord.getStoredText(), "N.C.")
+        self._run_dialog(chord, "")
+        self.assertEqual(chord.getStoredText(), "?")
+
+    def test_dialog_edits_an_unknown_chord_into_a_known_one(self):
+        chord = self.app.current_song.getChordAtPosition(3)
+        self._run_dialog(chord, "Dm7")
+        self.assertFalse(chord.unknown)
+        self.assertEqual(chord.getStoredText(), "Dm7")
+
+    def test_dialog_keeps_a_typed_unusual_suffix(self):
+        chord = self.app.current_song.getChordAtPosition(6)
+        self._run_dialog(chord, "Gsus2add9")
+        self.assertEqual(chord.getStoredText(), "Gsus2add9")
+
+    def test_m_key_does_not_crash_on_an_unknown_chord(self):
+        self.app.selected_char_num = 3
+        self.app.selected_chord_nums = {3}
+        event = QtGui.QKeyEvent(QtCore.QEvent.Type.KeyPress, Qt.Key.Key_M,
+                                Qt.KeyboardModifier.NoModifier, "m")
+        self.app.editor.keyPressEvent(event)
+        self.assertEqual(self.stored()[1], "Xyz")
+
+
+V1_SCHEMA = [
+    "CREATE TABLE songs (id int primary key, number int, text text, "
+    "title text, subtitle text)",
+    "CREATE TABLE song_chord_link (id int primary key, song_id int, "
+    "character_num int, note_id int, chord_type_id int, bass_note_id int, "
+    "marker text, in_parentheses int)",
+    "CREATE TABLE notes (id int primary key, text text, alt_text text)",
+    "CREATE TABLE chord_types (id int primary key, name text, print text)",
+]
+
+# (song_id, character_num, note_id, type_id, bass_id, marker, parens) and the
+# string the converter must write. The id column is NULL in real old files.
+V1_CHORDS = [
+    (0, 0, 0, 0, -1, "", 0, "C"),
+    (0, 3, 9, 1, -1, "1", 0, "1:Am"),
+    (0, 6, 9, 4, 7, "", 1, "(Am7/G)"),
+    (0, 8, 10, 0, 5, None, 0, "B♭/F"),
+    (0, 10, 4, 2, 0, "-1", None, "Esus4/C"),
+    (1, 0, 6, 9, -1, "2", 0, "2:F♯m6"),
+]
+
+
+def write_v1_songbook(path):
+    conn = sqlite3.connect(path)
+    for statement in V1_SCHEMA:
+        conn.execute(statement)
+    conn.execute("INSERT INTO songs VALUES (0, 1, 'Some words here', 'One', "
+                 "'sub')")
+    conn.execute("INSERT INTO songs VALUES (1, 2, 'More words', 'Two', '')")
+    for note_id, text, alt in softchord.global_notes_list:
+        conn.execute("INSERT INTO notes VALUES (?, ?, ?)",
+                     (note_id, text, alt))
+    for type_id, name, printed in softchord.chord_types_list:
+        conn.execute("INSERT INTO chord_types VALUES (?, ?, ?)",
+                     (type_id, name, printed))
+    for chord in V1_CHORDS:
+        conn.execute(
+            "INSERT INTO song_chord_link (song_id, character_num, note_id, "
+            "chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)", chord[:7])
+    conn.commit()
+    conn.close()
+
+
+def file_hash(path):
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+class TestV1Compat(unittest.TestCase):
+    """TODO(remove-v1-compat): delete with softchord_v1_compat.py."""
+
+    def setUp(self):
+        self.td = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        self.path = os.path.join(self.td, "old.songbook")
+        write_v1_songbook(self.path)
+
+    def _cleanup(self):
+        os.chmod(self.td, 0o755)
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    def chords(self, path):
+        conn = sqlite3.connect(path)
+        try:
+            return list(
+                conn.execute("SELECT song_id, character_num, chord FROM "
+                             "song_chord_link ORDER BY song_id, character_num"))
+        finally:
+            conn.close()
+
+    def expected(self):
+        return [(c[0], c[1], c[7]) for c in V1_CHORDS]
+
+    def test_detect_format(self):
+        conn = sqlite3.connect(self.path)
+        self.assertEqual(softchord_v1_compat.detect_format(conn),
+                         softchord_v1_compat.FORMAT_V1)
+        conn.close()
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE song_chord_link (id int, song_id int, "
+                     "character_num int, chord text)")
+        # Chord strings but not the current schema yet.
+        self.assertEqual(softchord_v1_compat.detect_format(conn),
+                         softchord_v1_compat.FORMAT_V2_EARLY)
+        current = sqlite3.connect(":memory:")
+        create_schema(current)
+        self.assertEqual(softchord_v1_compat.detect_format(current),
+                         softchord_v1_compat.FORMAT_V2)
+        conn.execute("PRAGMA user_version = 3")
+        with self.assertRaises(ValueError):
+            softchord_v1_compat.detect_format(conn)
+
+    def test_in_place_conversion_writes_backup_and_new_format(self):
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertTrue(opened.converted)
+        self.assertFalse(opened.temp_copy)
+        self.assertEqual(self.chords(self.path), self.expected())
+        conn = sqlite3.connect(self.path)
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
+        tables = [
+            row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")
+        ]
+        self.assertEqual(sorted(tables), [
+            "deleted_songs", "meta", "song_chord_link", "songs"])
+        # The conversion writes the final schema directly.
+        self.assertTrue(softchord_v1_compat.schema_is_current(conn))
+        self.assertEqual(
+            conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        self.assertEqual(list(conn.execute("PRAGMA foreign_key_check")), [])
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM song_chord_link WHERE id IS "
+                         "NULL").fetchone()[0], 0)
+        conn.close()
+        backup = self.path + ".v1.bak"
+        self.assertEqual(opened.backup_path, backup)
+        # The backup is the old file: same schema, same rows.
+        old = sqlite3.connect(backup)
+        self.assertEqual(
+            old.execute("SELECT COUNT(*) FROM song_chord_link WHERE note_id "
+                        "IS NOT NULL").fetchone()[0], len(V1_CHORDS))
+        old.close()
+
+    def test_existing_backup_is_never_overwritten(self):
+        with open(self.path + ".v1.bak", "w") as fh:
+            fh.write("precious")
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        with open(self.path + ".v1.bak") as fh:
+            self.assertEqual(fh.read(), "precious")
+        self.assertEqual(opened.backup_path, self.path + ".v1.2.bak")
+
+    def test_second_open_does_not_convert_or_back_up_again(self):
+        first = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        first.conn.close()
+        second = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        second.conn.close()
+        self.assertFalse(second.converted)
+        self.assertIsNone(second.message)
+        self.assertEqual(
+            sorted(os.listdir(self.td)),
+            ["old.songbook", "old.songbook.v1.bak"])
+
+    def test_file_without_chord_types_table_uses_the_code_list(self):
+        conn = sqlite3.connect(self.path)
+        conn.execute("DROP TABLE chord_types")
+        conn.execute("DROP TABLE notes")
+        conn.commit()
+        conn.close()
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertEqual(self.chords(self.path), self.expected())
+
+    def test_file_chord_types_table_wins_over_the_code(self):
+        # The old solo_and_group_songs file had id 7 as "dim", not "aug".
+        conn = sqlite3.connect(self.path)
+        conn.execute("UPDATE chord_types SET print='dim' WHERE id=7")
+        conn.execute(
+            "INSERT INTO song_chord_link (song_id, character_num, note_id, "
+            "chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (1, 5, 0, 7, -1, '', 0)")
+        conn.commit()
+        conn.close()
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertEqual(self.chords(self.path)[-1], (1, 5, "C°"))
+        self.assertTrue(
+            any("7" in line for line in opened.report.type_table_differences))
+
+    def test_read_only_old_file_is_converted_as_a_temporary_copy(self):
+        original = file_hash(self.path)
+        os.chmod(self.path, 0o444)
+        os.chmod(self.td, 0o555)
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertTrue(opened.temp_copy)
+        self.assertNotEqual(opened.path, self.path)
+        self.assertEqual(opened.original_path, self.path)
+        self.assertIn("not changed", opened.message)
+        self.assertEqual(file_hash(self.path), original)
+        self.assertEqual(os.listdir(self.td), ["old.songbook"])
+        self.assertEqual(self.chords(opened.path), self.expected())
+        # The copy can be edited.
+        conn = sqlite3.connect(opened.path)
+        conn.execute("UPDATE songs SET title='x'")
+        conn.commit()
+        conn.close()
+
+    def test_a_failed_check_leaves_the_original_untouched(self):
+        before = file_hash(self.path)
+        original = softchord_v1_compat._check_parsed
+
+        def always_fails(*args):
+            raise softchord_v1_compat.ConversionError("forced")
+
+        softchord_v1_compat._check_parsed = always_fails
+        try:
+            with self.assertRaises(softchord_v1_compat.ConversionError):
+                softchord_v1_compat.open_songbook(
+                    self.path, softchord.connect_existing_songbook)
+        finally:
+            softchord_v1_compat._check_parsed = original
+        self.assertEqual(file_hash(self.path), before)
+        conn = sqlite3.connect(self.path)
+        columns = [
+            row[1] for row in conn.execute("PRAGMA table_info(song_chord_link)")
+        ]
+        conn.close()
+        self.assertIn("note_id", columns)
+
+    def test_a_row_with_no_valid_note_becomes_an_unknown_chord(self):
+        conn = sqlite3.connect(self.path)
+        conn.execute(
+            "INSERT INTO song_chord_link (song_id, character_num, note_id, "
+            "chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (1, 5, 'oops', 0, -1, '', 0)")
+        conn.commit()
+        conn.close()
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertEqual(self.chords(self.path)[-1], (1, 5, "?"))
+        self.assertEqual(opened.report.unknown_chords, 1)
+
+    def test_orphans_are_removed_duplicates_and_null_ids_are_kept(self):
+        conn = sqlite3.connect(self.path)
+        conn.execute(
+            "INSERT INTO song_chord_link (song_id, character_num, note_id, "
+            "chord_type_id, bass_note_id, marker, in_parentheses) "
+            "VALUES (99, 0, 0, 0, -1, '', 0), (0, 0, 2, 0, -1, '', 0)")
+        conn.commit()
+        conn.close()
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertEqual(opened.report.orphan_chords, 1)
+        self.assertEqual(opened.report.orphan_song_ids, [99])
+        self.assertEqual(opened.report.duplicate_positions, 1)
+        # The chord of song 99 is gone, the duplicate position stays.
+        self.assertEqual(len(self.chords(self.path)), len(V1_CHORDS) + 1)
+        self.assertNotIn(99, [row[0] for row in self.chords(self.path)])
+
+    def test_open_for_reading_leaves_the_source_alone(self):
+        before = file_hash(self.path)
+        conn, cleanup = softchord_v1_compat.open_for_reading(
+            self.path, softchord.connect_existing_songbook)
+        rows = list(conn.execute(
+            "SELECT chord FROM song_chord_link ORDER BY song_id, "
+            "character_num"))
+        conn.close()
+        cleanup()
+        self.assertEqual([r[0] for r in rows], [c[7] for c in V1_CHORDS])
+        self.assertEqual(file_hash(self.path), before)
+
+    def test_newer_format_is_refused(self):
+        conn = sqlite3.connect(self.path)
+        conn.execute("PRAGMA user_version = 9")
+        conn.commit()
+        conn.close()
+        with self.assertRaises(ValueError):
+            softchord_v1_compat.open_songbook(
+                self.path, softchord.connect_existing_songbook)
+
+
+class TestOpeningOldSongbooksInTheEditor(unittest.TestCase):
+    """TODO(remove-v1-compat): delete with softchord_v1_compat.py."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+        else:
+            cls.qapp = QtWidgets.QApplication.instance()
+
+    def setUp(self):
+        self.app = test_app()
+        self.td = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        self.path = os.path.join(self.td, "old.songbook")
+        write_v1_songbook(self.path)
+        self.messages = []
+        self.app.info = lambda text: self.messages.append(text)
+
+    def _cleanup(self):
+        try:
+            self.app.setCurrentSongbook(None)
+        except Exception:
+            pass
+        os.chmod(self.td, 0o755)
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    def test_opening_converts_and_says_where_the_backup_is(self):
+        self.app.setCurrentSongbook(self.path)
+        self.assertEqual(len(self.messages), 1)
+        self.assertIn(".v1.bak", self.messages[0])
+        self.assertIsNone(self.app.songbook_original_path)
+        self.assertEqual(self.app.curs.execute(
+            "SELECT chord FROM song_chord_link WHERE song_id=0 AND "
+            "character_num=6").fetchone()[0], "(Am7/G)")
+
+    def test_not_writable_opens_a_copy_and_save_as_keeps_the_work(self):
+        original = file_hash(self.path)
+        os.chmod(self.path, 0o444)
+        os.chmod(self.td, 0o555)
+        self.app.setCurrentSongbook(self.path)
+
+        self.assertEqual(len(self.messages), 1)
+        self.assertIn("old chord format", self.messages[0])
+        self.assertEqual(self.app.songbook_original_path, self.path)
+        self.assertNotEqual(self.app.current_songbook_filename, self.path)
+        self.assertIn("not saved", self.app.win.windowTitle())
+
+        # Edit through the normal path, then Save As.
+        self.app.curs.execute("UPDATE songs SET title='Edited' WHERE id=0")
+        self.app.curs.commit()
+        self.assertEqual(file_hash(self.path), original)
+
+        dest = os.path.join(tempfile.mkdtemp(), "saved.songbook")
+        original_get_save = QtWidgets.QFileDialog.getSaveFileName
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+            lambda *a, **k: (dest, ""))
+        try:
+            self.app.saveSongbook()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original_get_save
+        self.assertIsNone(self.app.songbook_original_path)
+        self.assertEqual(os.path.abspath(self.app.current_songbook_filename),
+                         os.path.abspath(dest))
+        self.assertEqual(self.app.curs.execute(
+            "SELECT title FROM songs WHERE id=0").fetchone()[0], "Edited")
+        self.assertEqual(file_hash(self.path), original)
+
+    def test_closing_a_changed_copy_offers_save_as(self):
+        os.chmod(self.path, 0o444)
+        os.chmod(self.td, 0o555)
+        self.app.setCurrentSongbook(self.path)
+        asked = []
+        self.app.question = lambda text, *a, **k: (asked.append(text) or False)
+        self.app.curs.execute("UPDATE songs SET title='Edited' WHERE id=0")
+        self.app.curs.commit()
+        self.assertTrue(self.app._confirm_close_of_converted_copy())
+        self.assertEqual(len(asked), 1)
+        self.assertIn(self.path, asked[0])
+
+    def test_closing_a_normal_songbook_asks_nothing(self):
+        self.app.setCurrentSongbook(self.path)
+        asked = []
+        self.app.question = lambda text, *a, **k: (asked.append(text) or False)
+        self.assertTrue(self.app._confirm_close_of_converted_copy())
+        self.assertEqual(asked, [])
+
+    def test_read_only_new_format_file_opens_read_only_with_a_message(self):
+        new_path = os.path.join(self.td, "new.songbook")
+        store = SongbookStore()
+        store.create_file(new_path)
+        os.chmod(new_path, 0o444)
+        os.chmod(self.td, 0o555)
+        self.app.setCurrentSongbook(new_path)
+        self.assertEqual(len(self.messages), 1)
+        self.assertIn("read-only", self.messages[0])
+        self.assertIn("Save Songbook As", self.messages[0])
+        self.assertIn("read-only", self.app.win.windowTitle())
+        self.assertIsNone(self.app.songbook_original_path)
+
+    def test_new_songbooks_are_version_2(self):
+        path = os.path.join(self.td, "fresh.songbook")
+        store = SongbookStore()
+        store.create_file(path)
+        conn = sqlite3.connect(path)
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
+        columns = [
+            row[1] for row in conn.execute("PRAGMA table_info(song_chord_link)")
+        ]
+        self.assertEqual(columns, ["id", "song_id", "character_num", "chord"])
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Songbook format: uuid, updated_at, meta, tombstones, constraints
+# ---------------------------------------------------------------------------
+
+import time
+import uuid as uuid_module
+
+
+def is_lowercase_uuid4(text):
+    try:
+        parsed = uuid_module.UUID(text)
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return parsed.version == 4 and str(parsed) == text
+
+
+def table_columns(conn, table):
+    return [row[1] for row in conn.execute("PRAGMA table_info(%s)" % table)]
+
+
+class TestSongbookSchema(unittest.TestCase):
+
+    def setUp(self):
+        self.td = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.td, True)
+        self.path = os.path.join(self.td, "My Book.songbook")
+        self.conn = SongbookStore.create_file(self.path)
+        self.addCleanup(self.conn.close)
+
+    def test_new_songbook_has_the_current_tables_and_columns(self):
+        conn = self.conn
+        self.assertEqual(
+            table_columns(conn, "songs"),
+            ["id", "uuid", "number", "title", "subtitle", "text",
+             "updated_at"])
+        self.assertEqual(table_columns(conn, "song_chord_link"),
+                         ["id", "song_id", "character_num", "chord"])
+        self.assertEqual(table_columns(conn, "meta"), ["key", "value"])
+        self.assertEqual(table_columns(conn, "deleted_songs"),
+                         ["uuid", "deleted_at"])
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertTrue(
+            softchord_v1_compat.schema_is_current(conn))
+        indexes = [row[1] for row in conn.execute(
+            "PRAGMA index_list(song_chord_link)")]
+        self.assertIn("idx_song_chord_link_song_id", indexes)
+        # NOT NULL flags and the foreign key with cascade
+        notnull = {row[1]: row[3] for row in conn.execute(
+            "PRAGMA table_info(songs)")}
+        for column in ("uuid", "title", "subtitle", "text", "updated_at"):
+            self.assertEqual(notnull[column], 1, column)
+        self.assertEqual(notnull["number"], 0)
+        foreign_keys = list(conn.execute(
+            "PRAGMA foreign_key_list(song_chord_link)"))
+        self.assertEqual(foreign_keys[0][2:7],
+                         ("songs", "song_id", "id", "NO ACTION", "CASCADE"))
+
+    def test_new_songbook_has_meta_rows(self):
+        meta = dict(self.conn.execute("SELECT key, value FROM meta"))
+        self.assertEqual(sorted(meta),
+                         ["format_version", "name", "songbook_uuid"])
+        self.assertEqual(meta["format_version"], "2")
+        self.assertEqual(meta["name"], "My Book")
+        self.assertTrue(is_lowercase_uuid4(meta["songbook_uuid"]))
+
+    def test_each_new_songbook_has_its_own_uuid(self):
+        other = SongbookStore.create_file(
+            os.path.join(self.td, "Other.songbook"))
+        self.addCleanup(other.close)
+        ids = {conn.execute("SELECT value FROM meta WHERE key="
+                            "'songbook_uuid'").fetchone()[0]
+               for conn in (self.conn, other)}
+        self.assertEqual(len(ids), 2)
+
+    def test_connections_enforce_foreign_keys(self):
+        self.assertEqual(
+            self.conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+        self.conn.close()
+        conn = softchord.connect_existing_songbook(self.path)
+        self.addCleanup(conn.close)
+        self.assertEqual(conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+
+    def test_deleting_a_song_row_cascades_to_its_chords(self):
+        conn = self.conn
+        conn.execute(
+            "INSERT INTO songs (id, uuid, number, text, updated_at) "
+            "VALUES (1, 'a', 1, 'x', 1)")
+        conn.execute(
+            "INSERT INTO song_chord_link (song_id, character_num, chord) "
+            "VALUES (1, 0, 'C'), (1, 1, 'G')")
+        conn.execute("DELETE FROM songs WHERE id=1")
+        self.assertEqual(conn.execute(
+            "SELECT COUNT(*) FROM song_chord_link").fetchone()[0], 0)
+
+    def test_a_chord_needs_a_song_and_a_chord_text(self):
+        conn = self.conn
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO song_chord_link (song_id, character_num, chord) "
+                "VALUES (5, 0, 'C')")
+        conn.execute(
+            "INSERT INTO songs (id, uuid, updated_at) VALUES (5, 'b', 1)")
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO song_chord_link (song_id, character_num, chord) "
+                "VALUES (5, 0, NULL)")
+
+    def test_songs_need_a_unique_uuid_and_updated_at(self):
+        conn = self.conn
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO songs (id, updated_at) VALUES (1, 1)")
+        conn.execute("INSERT INTO songs (id, uuid, updated_at) "
+                     "VALUES (1, 'same', 1)")
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO songs (id, uuid, updated_at) "
+                         "VALUES (2, 'same', 1)")
+        with self.assertRaises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO songs (id, uuid) VALUES (3, 'other')")
+        # Defaults: empty strings, NULL number
+        row = conn.execute(
+            "SELECT number, title, subtitle, text FROM songs WHERE id=1"
+        ).fetchone()
+        self.assertEqual(row, (None, "", "", ""))
+
+
+class TestSongUuidUpdatedAtAndTombstones(unittest.TestCase):
+
+    def setUp(self):
+        self.app = MinimalTestApp()
+        self.store = self.app.store
+        self.conn = self.app.curs
+
+    def row(self, song_id=1):
+        return self.conn.execute(
+            "SELECT uuid, updated_at FROM songs WHERE id=?",
+            (song_id,)).fetchone()
+
+    def age(self, song_id=1):
+        """Pretend the song was saved long ago."""
+        self.conn.execute("UPDATE songs SET updated_at=1000 WHERE id=?",
+                          (song_id,))
+
+    def test_a_new_song_gets_a_uuid4_and_utc_updated_at(self):
+        before = int(time.time())
+        returned = self.store.insert_song(1, 5, "T", "S", "text")
+        self.store.commit()
+        after = int(time.time())
+        uuid_text, updated_at = self.row()
+        self.assertEqual(returned, uuid_text)
+        self.assertTrue(is_lowercase_uuid4(uuid_text))
+        self.assertIsInstance(updated_at, int)
+        # UTC epoch seconds, so it is close to time.time() whatever the zone.
+        self.assertTrue(before <= updated_at <= after)
+        self.store.insert_song(2, 5, "T", "S", "text")
+        self.assertNotEqual(self.row(2)[0], uuid_text)
+
+    def test_none_title_subtitle_and_text_are_stored_as_empty(self):
+        self.store.insert_song(1, -1, None, None, None)
+        self.assertEqual(self.conn.execute(
+            "SELECT title, subtitle, text FROM songs").fetchone(),
+            ("", "", ""))
+
+    def test_song_object_has_the_uuid_and_it_never_changes(self):
+        self.store.insert_song(1, 1, "T", "", "Hello")
+        song = Song(self.app, 1)
+        uuid_text = self.row()[0]
+        self.assertEqual(song.uuid, uuid_text)
+        song.title = "New title"
+        self.store.update_song(1, song.number, song.title, song.subtitle,
+                               song.getAllText())
+        self.assertEqual(self.row()[0], uuid_text)
+
+    def test_each_edit_updates_updated_at(self):
+        self.store.insert_song(1, 1, "T", "S", "Hello")
+        cases = [
+            lambda: self.store.update_song_title(1, "Other"),
+            lambda: self.store.update_song_subtitle(1, "Other"),
+            lambda: self.store.update_song_number(1, 42),
+            lambda: self.store.update_song_text(1, "Other text"),
+            lambda: self.store.update_song(1, 43, "Third", "x", "Third text"),
+            lambda: self.store.insert_chord(1, 0, "C"),
+            lambda: self.store.update_chord(1, 0, "D"),
+            lambda: self.store.move_chord(1, 0, 2),
+            lambda: self.store.delete_chord(1, 2),
+        ]
+        for index, edit in enumerate(cases):
+            with self.subTest(index=index):
+                self.age()
+                before = int(time.time())
+                edit()
+                updated_at = self.row()[1]
+                self.assertTrue(before <= updated_at <= int(time.time()))
+
+    def test_saving_without_a_change_leaves_updated_at_alone(self):
+        self.store.insert_song(1, 1, "T", "S", "Hello")
+        self.store.insert_chord(1, 0, "C")
+        self.age()
+        self.store.update_song(1, 1, "T", "S", "Hello")
+        self.store.update_song_title(1, "T")
+        self.store.update_song_text(1, "Hello")
+        self.store.update_song_number(1, 1)
+        self.store.update_chord(1, 0, "C")
+        self.store.move_chord(1, 0, 0)
+        self.store.delete_chord(1, 99)
+        self.assertEqual(self.row()[1], 1000)
+
+    def test_save_of_the_current_song_follows_the_same_rule(self):
+        app = test_app()
+        td = open_empty_temp_songbook(app)
+        self.addCleanup(shutil.rmtree, td, True)
+        app.createNewSong()
+        song_id = app.current_song.id
+        app.curs.execute("UPDATE songs SET updated_at=1000 WHERE id=?",
+                         (song_id,))
+        app.curs.commit()
+        app.sendCurrentSongToDatabase()
+        self.assertEqual(app.curs.execute(
+            "SELECT updated_at FROM songs WHERE id=?",
+            (song_id,)).fetchone()[0], 1000)
+        app.current_song.title = "A title"
+        before = int(time.time())
+        app.sendCurrentSongToDatabase()
+        self.assertGreaterEqual(app.curs.execute(
+            "SELECT updated_at FROM songs WHERE id=?",
+            (song_id,)).fetchone()[0], before)
+        app.setCurrentSongbook(None)
+
+    def test_delete_leaves_a_tombstone_with_the_uuid(self):
+        self.store.insert_song(1, 1, "T", "S", "Hello")
+        self.store.insert_chord(1, 0, "C")
+        uuid_text = self.row()[0]
+        before = int(time.time())
+        self.store.delete_song(1)
+        self.store.commit()
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM songs").fetchone()[0], 0)
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM song_chord_link").fetchone()[0], 0)
+        tombstone = self.conn.execute(
+            "SELECT uuid, deleted_at FROM deleted_songs").fetchall()
+        self.assertEqual(len(tombstone), 1)
+        self.assertEqual(tombstone[0][0], uuid_text)
+        self.assertTrue(before <= tombstone[0][1] <= int(time.time()))
+
+    def test_tombstone_and_delete_are_one_transaction(self):
+        self.store.insert_song(1, 1, "T", "S", "Hello")
+        self.store.commit()
+        self.store.delete_song(1)
+        self.conn.rollback()
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM songs").fetchone()[0], 1)
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM deleted_songs").fetchone()[0], 0)
+
+    def test_reinserting_the_uuid_removes_the_tombstone(self):
+        self.store.insert_song(1, 1, "T", "S", "Hello")
+        uuid_text = self.row()[0]
+        self.store.delete_song(1)
+        self.store.insert_song(1, 1, "T", "S", "Hello", uuid_text)
+        self.assertEqual(self.row()[0], uuid_text)
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM deleted_songs").fetchone()[0], 0)
+
+    def test_deleting_a_missing_song_adds_no_tombstone(self):
+        self.store.delete_song(77)
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM deleted_songs").fetchone()[0], 0)
+
+
+class TestUuidsInTheEditor(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+
+    def setUp(self):
+        self.app = test_app()
+        self.td = open_empty_temp_songbook(self.app)
+        self.addCleanup(shutil.rmtree, self.td, True)
+        self.addCleanup(self.app.setCurrentSongbook, None)
+
+    def uuids(self):
+        return [row[0] for row in self.app.curs.execute(
+            "SELECT uuid FROM songs ORDER BY id")]
+
+    def test_new_and_imported_songs_get_uuids(self):
+        self.app.createNewSong()
+        self.app.importSongFromText("Title\nSome lyrics")
+        uuids = self.uuids()
+        self.assertEqual(len(uuids), 2)
+        self.assertEqual(len(set(uuids)), 2)
+        self.assertTrue(all(is_lowercase_uuid4(u) for u in uuids))
+
+    def test_chordpro_import_gets_a_uuid(self):
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "test_тест_chordpro_song.chordpro"),
+                  encoding="utf-8") as fh:
+            text = fh.read()
+        self.app.importSongFromText(text, "chordpro song")
+        self.assertTrue(is_lowercase_uuid4(self.uuids()[0]))
+
+    def test_appended_songs_get_new_uuids(self):
+        source_path = os.path.join(self.td, "source.songbook")
+        conn = SongbookStore.create_file(source_path)
+        conn.execute(
+            "INSERT INTO songs (id, uuid, number, title, text, updated_at) "
+            "VALUES (0, '11111111-1111-4111-8111-111111111111', 1, 'A', "
+            "'Hello', 1)")
+        conn.commit()
+        conn.close()
+        self.app.appendSongbookFile(source_path)
+        self.app.appendSongbookFile(source_path)  # twice must not collide
+        uuids = self.uuids()
+        self.assertEqual(len(uuids), 2)
+        self.assertEqual(len(set(uuids)), 2)
+        self.assertNotIn("11111111-1111-4111-8111-111111111111", uuids)
+
+    def test_delete_and_undo_keep_the_uuid(self):
+        self.app.importSongFromText("Title\nSome lyrics")
+        song_id = self.app.curs.execute("SELECT id FROM songs").fetchone()[0]
+        uuid_text = self.uuids()[0]
+        command = DeleteSongsCommand(self.app, [song_id])
+        command.redo()
+        self.assertEqual(self.uuids(), [])
+        self.assertEqual([row[0] for row in self.app.curs.execute(
+            "SELECT uuid FROM deleted_songs")], [uuid_text])
+        command.undo()
+        self.assertEqual(self.uuids(), [uuid_text])
+        self.assertEqual(self.app.curs.execute(
+            "SELECT COUNT(*) FROM deleted_songs").fetchone()[0], 0)
+
+    def test_the_editor_deletes_chords_with_their_song(self):
+        self.app.importSongFromText("Title\nSome lyrics")
+        song_id = self.app.curs.execute("SELECT id FROM songs").fetchone()[0]
+        self.app.curs.execute(
+            "INSERT INTO song_chord_link (song_id, character_num, chord) "
+            "VALUES (?, 0, 'C')", (song_id,))
+        self.app.curs.commit()
+        DeleteSongsCommand(self.app, [song_id]).redo()
+        self.assertEqual(self.app.curs.execute(
+            "SELECT COUNT(*) FROM song_chord_link").fetchone()[0], 0)
+
+
+# ---------------------------------------------------------------------------
+# Upgrading early version 2 files (chord strings, but no uuid / meta)
+# ---------------------------------------------------------------------------
+
+EARLY_V2_SCHEMA = """
+CREATE TABLE songs (id INTEGER PRIMARY KEY, number INTEGER, text TEXT,
+    title TEXT, subtitle TEXT, key_note_id INTEGER, key_is_major INTEGER,
+    alt_key_note_id INTEGER);
+CREATE TABLE song_chord_link (id INTEGER PRIMARY KEY, song_id INTEGER,
+    character_num INTEGER, chord TEXT);
+PRAGMA user_version = 2;
+"""
+EARLY_V2_SONGS = [
+    # id, number, text, title, subtitle, key, major, alt key
+    (0, 1, "Hello world", "One", None, 2, 1, None),
+    (1, None, None, None, "sub", None, None, 4),
+    (5, 7, "abc", "Five", "", 0, 0, 0),
+]
+EARLY_V2_CHORDS = [
+    (1, 0, 0, "C"),
+    (2, 0, 6, "(Am7/G)"),
+    (3, 1, 0, "D"),
+    (4, 99, 0, "G"),  # orphan
+    (5, 99, 3, "A"),  # orphan
+    (6, 5, 1, "E"),
+]
+EARLY_V2_ORPHANS = 2
+
+
+def write_early_v2_songbook(path, songs=EARLY_V2_SONGS,
+                            chords=EARLY_V2_CHORDS):
+    conn = sqlite3.connect(path)
+    conn.executescript(EARLY_V2_SCHEMA)
+    conn.executemany("INSERT INTO songs VALUES (?,?,?,?,?,?,?,?)", songs)
+    conn.executemany("INSERT INTO song_chord_link VALUES (?,?,?,?)", chords)
+    conn.commit()
+    conn.close()
+
+
+class TestEarlyVersion2Upgrade(unittest.TestCase):
+
+    def setUp(self):
+        self.td = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        self.path = os.path.join(self.td, "early.songbook")
+        write_early_v2_songbook(self.path)
+
+    def _cleanup(self):
+        os.chmod(self.td, 0o755)
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    def check_current(self, path):
+        conn = sqlite3.connect(path)
+        self.addCleanup(conn.close)
+        self.assertTrue(softchord_v1_compat.schema_is_current(conn))
+        self.assertEqual(softchord_v1_compat.detect_format(conn),
+                         softchord_v1_compat.FORMAT_V2)
+        self.assertEqual(
+            table_columns(conn, "songs"),
+            ["id", "uuid", "number", "title", "subtitle", "text",
+             "updated_at"])
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
+        self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0],
+                         "ok")
+        self.assertEqual(list(conn.execute("PRAGMA foreign_key_check")), [])
+        return conn
+
+    def test_detected_by_schema(self):
+        conn = sqlite3.connect(self.path)
+        self.addCleanup(conn.close)
+        self.assertEqual(softchord_v1_compat.detect_format(conn),
+                         softchord_v1_compat.FORMAT_V2_EARLY)
+        # The version number does not decide it.
+        conn.execute("PRAGMA user_version = 0")
+        self.assertEqual(softchord_v1_compat.detect_format(conn),
+                         softchord_v1_compat.FORMAT_V2_EARLY)
+
+    def test_writable_file_is_upgraded_in_place_with_a_backup(self):
+        before = int(time.time())
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertTrue(opened.converted)
+        self.assertFalse(opened.temp_copy)
+        backup = self.path + ".pre-uuid.bak"
+        self.assertEqual(opened.backup_path, backup)
+        self.assertIn(backup, opened.message)
+        # The backup is the untouched early file.
+        old = sqlite3.connect(backup)
+        self.assertIn("key_note_id", table_columns(old, "songs"))
+        self.assertEqual(old.execute(
+            "SELECT COUNT(*) FROM song_chord_link").fetchone()[0],
+            len(EARLY_V2_CHORDS))
+        old.close()
+
+        conn = self.check_current(self.path)
+        songs = list(conn.execute(
+            "SELECT id, number, title, subtitle, text FROM songs ORDER BY id"))
+        self.assertEqual(songs, [
+            (0, 1, "One", "", "Hello world"),
+            (1, None, "", "sub", ""),
+            (5, 7, "Five", "", "abc"),
+        ])
+        uuids = [r[0] for r in conn.execute("SELECT uuid FROM songs")]
+        self.assertTrue(all(is_lowercase_uuid4(u) for u in uuids))
+        self.assertEqual(len(set(uuids)), 3)
+        for (updated_at,) in conn.execute("SELECT updated_at FROM songs"):
+            self.assertTrue(before <= updated_at <= int(time.time()))
+        meta = dict(conn.execute("SELECT key, value FROM meta"))
+        self.assertEqual(meta["format_version"], "2")
+        self.assertEqual(meta["name"], "early")
+        self.assertTrue(is_lowercase_uuid4(meta["songbook_uuid"]))
+        self.assertEqual(conn.execute(
+            "SELECT COUNT(*) FROM deleted_songs").fetchone()[0], 0)
+
+    def test_orphan_chord_rows_are_removed_and_reported(self):
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        report = opened.report
+        self.assertEqual(report.songs, 3)
+        self.assertEqual(report.chords_before, len(EARLY_V2_CHORDS))
+        self.assertEqual(report.orphan_chords, EARLY_V2_ORPHANS)
+        self.assertEqual(report.orphan_song_ids, [99])
+        self.assertEqual(report.chords,
+                         len(EARLY_V2_CHORDS) - EARLY_V2_ORPHANS)
+        self.assertEqual(sorted(report.key_columns_removed),
+                         ["alt_key_note_id", "key_is_major", "key_note_id"])
+        self.assertEqual(report.uuids_assigned, 3)
+        conn = self.check_current(self.path)
+        self.assertEqual(
+            list(conn.execute(
+                "SELECT id, song_id, character_num, chord "
+                "FROM song_chord_link ORDER BY id")),
+            [c for c in EARLY_V2_CHORDS if c[1] != 99])
+
+    def test_a_second_open_changes_nothing(self):
+        first = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        first.conn.close()
+        digest = file_hash(self.path)
+        second = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        second.conn.close()
+        self.assertFalse(second.converted)
+        self.assertEqual(file_hash(self.path), digest)
+        self.assertEqual(sorted(os.listdir(self.td)),
+                         ["early.songbook", "early.songbook.pre-uuid.bak"])
+
+    def test_an_existing_backup_is_never_overwritten(self):
+        with open(self.path + ".pre-uuid.bak", "wb") as fh:
+            fh.write(b"precious")
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        with open(self.path + ".pre-uuid.bak", "rb") as fh:
+            self.assertEqual(fh.read(), b"precious")
+        self.assertEqual(opened.backup_path, self.path + ".pre-uuid.2.bak")
+
+    def test_a_failed_upgrade_rolls_back(self):
+        # Two songs sharing a uuid-less row is fine, but a chord row that
+        # cannot become NOT NULL makes the rebuild fail.
+        conn = sqlite3.connect(self.path)
+        conn.execute("INSERT INTO song_chord_link VALUES (50, 0, 9, NULL)")
+        conn.commit()
+        conn.close()
+        before = file_hash(self.path)
+        with self.assertRaises(Exception):
+            softchord_songbook_upgrade.upgrade_file_in_place(self.path)
+        self.assertEqual(file_hash(self.path), before)
+        conn = sqlite3.connect(self.path)
+        self.addCleanup(conn.close)
+        self.assertEqual(softchord_v1_compat.detect_format(conn),
+                         softchord_v1_compat.FORMAT_V2_EARLY)
+
+    def test_not_writable_file_opens_a_converted_copy(self):
+        original = file_hash(self.path)
+        os.chmod(self.path, 0o444)
+        os.chmod(self.td, 0o555)
+        opened = softchord_v1_compat.open_songbook(
+            self.path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertTrue(opened.temp_copy)
+        self.assertEqual(opened.original_path, self.path)
+        self.assertNotEqual(opened.path, self.path)
+        self.assertIn("not changed", opened.message)
+        self.assertEqual(file_hash(self.path), original)
+        self.assertEqual(os.listdir(self.td), ["early.songbook"])
+        conn = self.check_current(opened.path)
+        self.assertEqual(conn.execute(
+            "SELECT COUNT(*) FROM song_chord_link").fetchone()[0],
+            len(EARLY_V2_CHORDS) - EARLY_V2_ORPHANS)
+        self.assertEqual(dict(conn.execute(
+            "SELECT key, value FROM meta"))["name"], "early")
+
+    def test_current_read_only_file_opens_read_only(self):
+        path = os.path.join(self.td, "current.songbook")
+        SongbookStore.create_file(path).close()
+        os.chmod(path, 0o444)
+        os.chmod(self.td, 0o555)
+        digest = file_hash(path)
+        opened = softchord_v1_compat.open_songbook(
+            path, softchord.connect_existing_songbook)
+        opened.conn.close()
+        self.assertTrue(opened.read_only)
+        self.assertFalse(opened.converted)
+        self.assertEqual(file_hash(path), digest)
+
+    def test_upgrade_copy_never_touches_the_source(self):
+        digest = file_hash(self.path)
+        target = os.path.join(self.td, "out.songbook")
+        report = softchord_songbook_upgrade.upgrade_copy(self.path, target)
+        self.assertEqual(file_hash(self.path), digest)
+        self.assertEqual(report.orphan_chords, EARLY_V2_ORPHANS)
+        conn = self.check_current(target)
+        self.assertEqual(dict(conn.execute(
+            "SELECT key, value FROM meta"))["name"], "out")
+        with self.assertRaises(softchord_songbook_upgrade.ConversionError):
+            softchord_songbook_upgrade.upgrade_copy(self.path, target)
+
+    def test_upgrade_keeps_valid_uuids_and_updated_at_of_a_half_made_file(self):
+        # A file that already has uuid columns but lacks the rest keeps them.
+        conn = sqlite3.connect(self.path)
+        conn.execute("ALTER TABLE songs ADD COLUMN uuid TEXT")
+        conn.execute("ALTER TABLE songs ADD COLUMN updated_at INTEGER")
+        conn.execute("UPDATE songs SET uuid='3f2a9c1e-5b7d-4e8a-9c1d-"
+                     "0123456789ab', updated_at=1234 WHERE id=0")
+        conn.commit()
+        conn.close()
+        softchord_songbook_upgrade.upgrade_file_in_place(self.path)
+        conn = self.check_current(self.path)
+        self.assertEqual(conn.execute(
+            "SELECT uuid, updated_at FROM songs WHERE id=0").fetchone(),
+            ("3f2a9c1e-5b7d-4e8a-9c1d-0123456789ab", 1234))
+
+    def test_chord_rows_with_no_song_id_are_removed_too(self):
+        write = os.path.join(self.td, "nulls.songbook")
+        write_early_v2_songbook(
+            write, chords=EARLY_V2_CHORDS + [(8, None, 0, "F")])
+        softchord_songbook_upgrade.upgrade_file_in_place(write)
+        conn = self.check_current(write)
+        self.assertEqual(conn.execute(
+            "SELECT COUNT(*) FROM song_chord_link").fetchone()[0],
+            len(EARLY_V2_CHORDS) - EARLY_V2_ORPHANS)
+
+    def test_an_empty_early_file_upgrades(self):
+        path = os.path.join(self.td, "empty.songbook")
+        write_early_v2_songbook(path, songs=[], chords=[])
+        softchord_songbook_upgrade.upgrade_file_in_place(path)
+        conn = self.check_current(path)
+        self.assertEqual(conn.execute(
+            "SELECT COUNT(*) FROM songs").fetchone()[0], 0)
+
+
+class TestEarlyVersion2InTheEditor(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+
+    def setUp(self):
+        self.app = test_app()
+        self.td = tempfile.mkdtemp()
+        self.addCleanup(self._cleanup)
+        self.path = os.path.join(self.td, "early.songbook")
+        write_early_v2_songbook(self.path)
+        self.messages = []
+        self.app.info = lambda text: self.messages.append(text)
+
+    def _cleanup(self):
+        try:
+            self.app.setCurrentSongbook(None)
+        except Exception:
+            pass
+        os.chmod(self.td, 0o755)
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    def test_opening_upgrades_and_says_where_the_backup_is(self):
+        self.app.setCurrentSongbook(self.path)
+        self.assertEqual(len(self.messages), 1)
+        self.assertIn(".pre-uuid.bak", self.messages[0])
+        self.assertIsNone(self.app.songbook_original_path)
+        self.assertEqual(self.app.curs.execute(
+            "SELECT COUNT(*) FROM songs").fetchone()[0], 3)
+        self.assertEqual(self.app.curs.execute(
+            "PRAGMA foreign_keys").fetchone()[0], 1)
+
+    def test_not_writable_opens_a_copy_and_save_as_keeps_the_work(self):
+        original = file_hash(self.path)
+        os.chmod(self.path, 0o444)
+        os.chmod(self.td, 0o555)
+        self.app.setCurrentSongbook(self.path)
+        self.assertEqual(len(self.messages), 1)
+        self.assertEqual(self.app.songbook_original_path, self.path)
+        self.assertIn("not saved", self.app.win.windowTitle())
+        uuid_before = self.app.curs.execute(
+            "SELECT uuid FROM songs WHERE id=0").fetchone()[0]
+        meta_uuid = self.app.curs.execute(
+            "SELECT value FROM meta WHERE key='songbook_uuid'").fetchone()[0]
+        self.app.curs.execute("UPDATE songs SET title='Edited' WHERE id=0")
+        self.app.curs.commit()
+        self.assertEqual(file_hash(self.path), original)
+
+        dest = os.path.join(tempfile.mkdtemp(), "saved.songbook")
+        original_get_save = QtWidgets.QFileDialog.getSaveFileName
+        QtWidgets.QFileDialog.getSaveFileName = staticmethod(
+            lambda *a, **k: (dest, ""))
+        try:
+            self.app.saveSongbook()
+        finally:
+            QtWidgets.QFileDialog.getSaveFileName = original_get_save
+        self.assertIsNone(self.app.songbook_original_path)
+        self.assertEqual(self.app.curs.execute(
+            "SELECT title, uuid FROM songs WHERE id=0").fetchone(),
+            ("Edited", uuid_before))
+        # Save As keeps the songbook uuid.
+        self.assertEqual(self.app.curs.execute(
+            "SELECT value FROM meta WHERE key='songbook_uuid'").fetchone()[0],
+            meta_uuid)
+        self.assertEqual(file_hash(self.path), original)
+
+    def test_append_reads_an_early_file_through_a_copy(self):
+        self.app.setCurrentSongbook(None)
+        current = os.path.join(self.td, "current.songbook")
+        SongbookStore.create_file(current).close()
+        self.app.setCurrentSongbook(current)
+        original = file_hash(self.path)
+        self.app.appendSongbookFile(self.path)
+        self.assertEqual(file_hash(self.path), original)
+        self.assertEqual(self.app.curs.execute(
+            "SELECT COUNT(*) FROM songs").fetchone()[0], 3)
+        self.assertEqual(self.app.curs.execute(
+            "SELECT COUNT(*) FROM song_chord_link").fetchone()[0],
+            len(EARLY_V2_CHORDS) - EARLY_V2_ORPHANS)
+        uuids = [r[0] for r in self.app.curs.execute("SELECT uuid FROM songs")]
+        self.assertEqual(len(set(uuids)), 3)
+
+
+class TestV1ConvertsStraightToTheCurrentSchema(unittest.TestCase):
+    """TODO(remove-v1-compat): delete with softchord_v1_compat.py."""
+
+    def test_converted_v1_file_has_uuids_meta_and_no_key_columns(self):
+        td = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, td, True)
+        path = os.path.join(td, "old.songbook")
+        write_v1_songbook(path)
+        opened = softchord_v1_compat.open_songbook(
+            path, softchord.connect_existing_songbook)
+        conn = opened.conn
+        self.addCleanup(conn.close)
+        self.assertTrue(softchord_v1_compat.schema_is_current(conn))
+        columns = table_columns(conn, "songs")
+        for obsolete in ("key_note_id", "key_is_major", "alt_key_note_id"):
+            self.assertNotIn(obsolete, columns)
+        uuids = [r[0] for r in conn.execute("SELECT uuid FROM songs")]
+        self.assertTrue(uuids)
+        self.assertTrue(all(is_lowercase_uuid4(u) for u in uuids))
+        self.assertEqual(len(set(uuids)), len(uuids))
+        self.assertEqual(dict(conn.execute(
+            "SELECT key, value FROM meta"))["name"], "old")
+        self.assertEqual(list(conn.execute("PRAGMA foreign_key_check")), [])
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 2)
+
+
+class TestUpgradeTools(unittest.TestCase):
+    """tools/upgrade_songbook_v2.py and tools/convert_songbook_v1_to_v2.py."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        import io
+        cls.io = io
+        tools = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                             "tools")
+        cls.modules = {}
+        for name in ("upgrade_songbook_v2", "convert_songbook_v1_to_v2"):
+            spec = importlib.util.spec_from_file_location(
+                name, os.path.join(tools, name + ".py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            cls.modules[name] = module
+
+    def setUp(self):
+        self.td = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.td, True)
+        self.path = os.path.join(self.td, "early.songbook")
+        write_early_v2_songbook(self.path)
+
+    def run_tool(self, name, *args):
+        import contextlib
+        out = self.io.StringIO()
+        with contextlib.redirect_stdout(out):
+            try:
+                code = self.modules[name].main(list(args))
+            except SystemExit as exit_:
+                code = exit_.code
+        return code, out.getvalue()
+
+    def test_output_mode_leaves_the_source_alone(self):
+        digest = file_hash(self.path)
+        out_path = os.path.join(self.td, "new.songbook")
+        code, text = self.run_tool("upgrade_songbook_v2", self.path,
+                                   "--output", out_path)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(file_hash(self.path), digest)
+        self.assertIn("orphan chord rows removed: 2 (song ids 99)", text)
+        self.assertIn("verified", text)
+        conn = sqlite3.connect(out_path)
+        self.addCleanup(conn.close)
+        self.assertTrue(softchord_v1_compat.schema_is_current(conn))
+        self.assertEqual(dict(conn.execute(
+            "SELECT key, value FROM meta"))["name"], "new")
+        self.assertEqual(os.listdir(self.td).count("early.songbook"), 1)
+        self.assertFalse(any(n.endswith(".bak") for n in os.listdir(self.td)))
+
+    def test_output_must_not_exist_and_failure_leaves_nothing(self):
+        out_path = os.path.join(self.td, "new.songbook")
+        open(out_path, "w").close()
+        code, text = self.run_tool("upgrade_songbook_v2", self.path,
+                                   "--output", out_path)
+        self.assertEqual(code, 1)
+        self.assertIn("already exists", text)
+        self.assertEqual(os.path.getsize(out_path), 0)
+
+    def test_needs_exactly_one_of_output_and_in_place(self):
+        code, _ = self.run_tool("upgrade_songbook_v2", self.path)
+        self.assertNotEqual(code, 0)
+        code, _ = self.run_tool("upgrade_songbook_v2", self.path, "--output",
+                                os.path.join(self.td, "x"), "--in-place")
+        self.assertNotEqual(code, 0)
+        code, _ = self.run_tool("upgrade_songbook_v2", self.path, "--output",
+                                self.path)
+        self.assertNotEqual(code, 0)
+
+    def test_in_place_makes_a_backup_first(self):
+        original = file_hash(self.path)
+        code, text = self.run_tool("upgrade_songbook_v2", self.path,
+                                   "--in-place")
+        self.assertEqual(code, 0, text)
+        backup = self.path + ".pre-uuid.bak"
+        self.assertTrue(os.path.exists(backup))
+        conn = sqlite3.connect(self.path)
+        self.addCleanup(conn.close)
+        self.assertTrue(softchord_v1_compat.schema_is_current(conn))
+        self.assertIn("key_note_id",
+                      table_columns(sqlite3.connect(backup), "songs"))
+        self.assertNotEqual(file_hash(self.path), original)
+
+    def test_a_current_file_is_left_alone(self):
+        path = os.path.join(self.td, "current.songbook")
+        SongbookStore.create_file(path).close()
+        digest = file_hash(path)
+        code, text = self.run_tool("upgrade_songbook_v2", path, "--in-place")
+        self.assertEqual(code, 0)
+        self.assertIn("already the current format", text)
+        self.assertEqual(file_hash(path), digest)
+        self.assertEqual(sorted(os.listdir(self.td)),
+                         ["current.songbook", "early.songbook"])
+
+    def test_a_version_1_file_goes_straight_to_the_current_schema(self):
+        v1 = os.path.join(self.td, "v1.songbook")
+        write_v1_songbook(v1)
+        out_path = os.path.join(self.td, "v1_new.songbook")
+        code, text = self.run_tool("upgrade_songbook_v2", v1, "--output",
+                                   out_path)
+        self.assertEqual(code, 0, text)
+        conn = sqlite3.connect(out_path)
+        self.addCleanup(conn.close)
+        self.assertTrue(softchord_v1_compat.schema_is_current(conn))
+
+    def test_v1_converter_produces_the_current_schema_and_verifies(self):
+        v1 = os.path.join(self.td, "v1.songbook")
+        write_v1_songbook(v1)
+        code, text = self.run_tool("convert_songbook_v1_to_v2", v1)
+        self.assertEqual(code, 0, text)
+        self.assertIn("verified", text)
+        conn = sqlite3.connect(v1)
+        self.addCleanup(conn.close)
+        self.assertTrue(softchord_v1_compat.schema_is_current(conn))
+
+    def test_v1_converter_check_mode_does_not_touch_the_file(self):
+        v1 = os.path.join(self.td, "v1.songbook")
+        write_v1_songbook(v1)
+        digest = file_hash(v1)
+        code, text = self.run_tool("convert_songbook_v1_to_v2", "--check", v1)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(file_hash(v1), digest)
+
+    def test_v1_converter_points_early_files_to_the_upgrade_tool(self):
+        code, text = self.run_tool("convert_songbook_v1_to_v2", self.path)
+        self.assertEqual(code, 1)
+        self.assertIn("upgrade_songbook_v2", text)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

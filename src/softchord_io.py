@@ -7,13 +7,21 @@ import traceback
 
 from PyQt6 import QtCore, QtWidgets
 
-from softchord_chords import convert_chord_from_string, replace_russian_characeters
+from softchord_chords import (
+    ChordFields,
+    convert_chord_from_string,
+    replace_russian_characeters,
+    spelled_chord_strings,
+)
 from softchord_song import Song
 from softchord_store import (
     SONGS_TABLE_SQL,
     SONG_CHORD_LINK_TABLE_SQL,
     SongbookStore,
+    enable_foreign_keys,
 )
+# TODO(remove-v1-compat): old songbook files are converted when opened.
+import softchord_v1_compat
 
 # File extensions that can be used for the ChordPro file format:
 chordpro_extensions = [".pro", ".chopro", ".chordpro", ".cpm"]
@@ -79,6 +87,7 @@ def connect_existing_songbook(filename):
         raise ValueError(
             "This file is not a valid softChord songbook (missing songs table):\n%s"
             % filename)
+    enable_foreign_keys(conn)
     return conn
 
 
@@ -572,17 +581,9 @@ class SongbookIO:
                                song_text)
         return song_id
 
-    def _importChord(self,
-                     song_id,
-                     song_char_num,
-                     note_id,
-                     type_id,
-                     bass_id,
-                     marker,
-                     in_parentheses,
-                     chord_id=None):
+    def _importChord(self, song_id, song_char_num, chord, chord_id=None):
         """
-        Import the given chord to the database.
+        Import the given chord string to the database.
         Returns the ID assigned to the new chord entry (if ID was not given).
         NOTE: curs.commit() MUST be called afterwards.
         """
@@ -590,11 +591,7 @@ class SongbookIO:
         if chord_id == None:
             chord_id = self.store.next_chord_id()
 
-        if not marker:
-            marker = ""
-        in_parentheses = int(in_parentheses)
-        self.store.insert_chord(song_id, song_char_num, note_id, type_id,
-                                bass_id, marker, in_parentheses, chord_id)
+        self.store.insert_chord(song_id, song_char_num, chord, chord_id)
         return chord_id
 
     def _importSongFromLyricsAndChords(self,
@@ -606,6 +603,7 @@ class SongbookIO:
         """
         Import the given song to the database.
         song_chords (optional) should be a dict: key=song_char_num, values: (marker, note_id, type_id, bass_id, in_parentheses)
+        Chords are written spelled by the song's key (sharps or flats).
         """
 
         song_id = self._importSong(song_num, song_title, song_subtitle,
@@ -614,12 +612,17 @@ class SongbookIO:
         # Add song's chords (if any):
         chord_id = None  # So that _importChord() assigned a new ID to the new chord
         if song_chords:
-            for song_char_num, chord in song_chords.items():
-                (marker, note_id, type_id, bass_id, in_parentheses) = chord
-
-                chord_id = self._importChord(song_id, song_char_num, note_id,
-                                             type_id, bass_id, marker,
-                                             in_parentheses, chord_id)
+            positions = list(song_chords.keys())
+            fields = [
+                ChordFields(song_char_num, note_id, type_id, bass_id,
+                            marker or "", int(in_parentheses))
+                for song_char_num, (marker, note_id, type_id, bass_id,
+                                    in_parentheses) in song_chords.items()
+            ]
+            for song_char_num, chord_text in zip(
+                    positions, spelled_chord_strings(fields)):
+                chord_id = self._importChord(song_id, song_char_num,
+                                             chord_text, chord_id)
                 chord_id += 1  # Increment the ID for the next chord.
 
         self.store.commit()
@@ -730,16 +733,27 @@ class SongbookIO:
 
     def convertChordFromString(self, chord_str):
         """
-        Convert the specified chord string to a note_id, chord_type_id, and a bass_note_id.
+        Strictly convert a chord string to (marker, note_id, chord_type_id,
+        bass_note_id, in_parentheses). Raises ValueError for text that is not
+        a chord with a known type. Imports use this to tell chords from words.
         """
-        return convert_chord_from_string(chord_str, self.note_text_id_dict,
-                                         self.chord_type_texts_dict)
+        return convert_chord_from_string(chord_str)
 
     def setCurrentSongbook(self, filename, conn=None):
+        opened = None
+        original_path = None
         if filename is not None:
             filename = _normalize_local_path(filename)
             if conn is None:
-                conn = connect_existing_songbook(filename)
+                # TODO(remove-v1-compat): an old file is converted here. When
+                # it cannot be converted in place, a converted temporary copy
+                # is opened and original_path is the untouched original.
+                opened = softchord_v1_compat.open_songbook(
+                    filename, connect_existing_songbook)
+                conn = opened.conn
+                original_path = (opened.original_path
+                                 if opened.temp_copy else None)
+                filename = opened.path
         else:
             conn = None
 
@@ -755,11 +769,23 @@ class SongbookIO:
         self.store.path = filename
         self.store._connect = connect_existing_songbook if filename else None
         self.current_songbook_filename = filename
+        # Set when the open file is a converted copy of an old-format original
+        # that could not be changed. Save Songbook As keeps the work.
+        self.songbook_original_path = original_path
         if filename is None:
             self.win.setWindowTitle("softChord")
+        elif original_path is not None:
+            songbook_name = os.path.splitext(
+                os.path.basename(original_path))[0]
+            self.win.setWindowTitle(
+                "softChord - %s (converted copy, not saved)" % songbook_name)
         else:
             songbook_name = os.path.splitext(os.path.basename(filename))[0]
-            self.win.setWindowTitle("softChord - %s" % songbook_name)
+            suffix = ""
+            if opened is not None and opened.read_only:
+                suffix = " (read-only)"
+            self.win.setWindowTitle("softChord - %s%s" %
+                                    (songbook_name, suffix))
 
         self.songs_model.updateFromDatabase()
         self.updateStates()
@@ -770,6 +796,8 @@ class SongbookIO:
                 pass
         # A different file gets its own explanation if it cannot be modified.
         self._readonly_songbook_reported = False
+        if opened is not None and opened.message:
+            self.info(opened.message)
 
     def appendSongbookFile(self, filename):
         """
@@ -783,7 +811,10 @@ class SongbookIO:
 
             self.ui.songs_view.selectionModel().clearSelection()
 
-            curs2 = connect_existing_songbook(filename)
+            # TODO(remove-v1-compat): an old file is read through a converted
+            # temporary copy. The source file itself is never changed.
+            curs2, source_cleanup = softchord_v1_compat.open_for_reading(
+                filename, connect_existing_songbook)
 
             chord_id = None  # So that _importChord() assigned a new ID to the new chord
 
@@ -792,12 +823,9 @@ class SongbookIO:
                 dest_song_id = self._importSong(song_num, song_title,
                                                 song_subtitle, song_text)
 
-                for (song_char_num, note_id, chord_type_id, bass_note_id,
-                     marker, in_parentheses) in source_chords:
+                for song_char_num, chord_text in source_chords:
                     chord_id = self._importChord(dest_song_id, song_char_num,
-                                                 note_id, chord_type_id,
-                                                 bass_note_id, marker,
-                                                 in_parentheses, chord_id)
+                                                 chord_text, chord_id)
                     chord_id += 1  # Increment the ID for the next chord.
 
             self.store.commit()
@@ -810,6 +838,7 @@ class SongbookIO:
                 curs2.close()
             except Exception:
                 pass
+            source_cleanup()
 
     def newSongbook(self):
         songbook_file, _ = QtWidgets.QFileDialog.getSaveFileName(

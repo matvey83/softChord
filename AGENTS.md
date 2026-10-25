@@ -2,7 +2,7 @@
 
 ## Songbooks
 
-Repository `.songbook` files are production song libraries. Do not open, write, import into, or commit them during development.
+Repository `.songbook` files are production song libraries. Do not open, write, import into, or commit them during development without explicit permission.
 
 - Tests use `open_empty_temp_songbook`, or a copy under a temp directory, as `src/softchord_test.py` does. Never pass a repository `.songbook` path to `setCurrentSongbook`.
 - To run the app by hand, copy a songbook to a temp file first. Do not launch `start_softChord.py` or `src/softchord.py` on a repository songbook.

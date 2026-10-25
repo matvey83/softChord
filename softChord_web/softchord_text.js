@@ -84,8 +84,11 @@
     return false;
   }
 
+  // Unknown chords have no root, so they take no part in key detection.
   function regions(chords) {
-    var sorted = chords.slice().sort(function (a, b) {
+    var sorted = chords.filter(function (chord) {
+      return !chord.unknown;
+    }).sort(function (a, b) {
       return a.characterNum - b.characterNum;
     });
     var starts = SoftchordChords.detectRegionStartIndices(sorted);

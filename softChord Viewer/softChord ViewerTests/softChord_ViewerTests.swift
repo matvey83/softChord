@@ -887,7 +887,8 @@ struct SongbookReadTests {
         #expect(source.text == "Hello world")
         #expect(source.chords == [
             SongChord(
-                characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: 4, marker: "1", inParentheses: true),
+                characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: 4, marker: "1", inParentheses: true,
+                rootText: "C", bassText: "E"),
         ])
 
         #expect(sheet == [SongSheetLine(lyric: "Hello", chords: [SongSheetChord(anchor: 0, text: "C")])])
@@ -895,6 +896,115 @@ struct SongbookReadTests {
         #expect(throws: SongbookError.songNotFound) {
             try Songbook.sheet(id: 99, in: url)
         }
+    }
+
+    @Test func refusesAnOldFormatSongbook() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("songbook-\(UUID().uuidString).songbook")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try writeSongbook(at: url, version: 0)
+        #expect(throws: SongbookError.oldFormat) {
+            try Songbook.titles(in: url)
+        }
+        try writeSongbook(at: url, version: 3)
+        #expect(throws: SongbookError.newerFormat(3)) {
+            try Songbook.titles(in: url)
+        }
+    }
+
+    @Test func unreadableChordStringsBecomeUnknownChords() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("songbook-\(UUID().uuidString).songbook")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try writeSongbook(at: url)
+        try withTestDatabase(url) { db in
+            try exec(
+                db,
+                """
+                INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (2, 6, 'N.C.');
+                INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (2, 7, '');
+                """)
+        }
+        let source = try Songbook.source(id: 2, in: url)
+        #expect(source.chords.count == 3)
+        #expect(source.chords[1].unknown)
+        #expect(source.chords[1].raw == "N.C.")
+        #expect(source.chords.dropFirst().allSatisfy { $0.unknown })
+        let text = try Songbook.songText(id: 2, includeChords: true, in: url)
+        #expect(text.contains("?"))
+        // Moving an unknown chord keeps it unknown.
+        let moved = SongLyricChords.reattached(source.chords, from: 6, to: 3)
+        #expect(moved.contains { $0.characterNum == 3 && $0.unknown })
+    }
+}
+
+struct ChordParserTests {
+    @Test func sharedVectors() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tests/chord_vectors.json")
+        let data = try Data(contentsOf: url)
+        let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let cases = try #require(root["cases"] as? [[String: Any]])
+        #expect(cases.count > 100)
+        for item in cases {
+            let input = item["input"] as? String ?? ""
+            let parsed = SoftchordChords.parseChord(input)
+            let unknown = item["unknown"] as? Bool ?? false
+            #expect(parsed.unknown == unknown, "\(input)")
+            #expect(SoftchordChords.parsedChordString(parsed) == item["canonical"] as? String, "\(input)")
+            if unknown {
+                continue
+            }
+            #expect(parsed.rootText == item["root"] as? String, "\(input)")
+            #expect(parsed.noteId == item["note_id"] as? Int, "\(input)")
+            #expect((parsed.isMinor ? "minor" : "major") == item["quality"] as? String, "\(input)")
+            #expect(parsed.chordTypeId == item["type_id"] as? Int, "\(input)")
+            #expect(parsed.isKnownType == item["known_type"] as? Bool, "\(input)")
+            #expect(parsed.suffix == item["suffix"] as? String, "\(input)")
+            #expect((parsed.bassText.isEmpty ? nil : parsed.bassText) == item["bass"] as? String, "\(input)")
+            if item["bass"] as? String != nil {
+                #expect(parsed.bassNoteId == item["bass_id"] as? Int, "\(input)")
+            }
+            #expect(parsed.marker == item["marker"] as? String, "\(input)")
+            #expect(parsed.inParentheses == item["parens"] as? Bool, "\(input)")
+            // The canonical string reads back as itself.
+            let canonical = SoftchordChords.parsedChordString(parsed)
+            #expect(SoftchordChords.parsedChordString(SoftchordChords.parseChord(canonical)) == canonical, "\(input)")
+        }
+    }
+
+    @Test func garbageNeverCrashes() {
+        for text in ["", "   ", "?", "(", ")", "()", ":", "/", "C/", "/C", "(:)", "\u{0}", "💥", "C/H/", "((C))"] {
+            _ = SoftchordChords.parseChord(text)
+            _ = SongChord.from(text: text, characterNum: 0)
+        }
+    }
+
+    @Test func unknownSuffixIsKeptAndSurvivesTranspose() {
+        let chord = SongChord.from(text: "Am7add13/G", characterNum: 0)
+        #expect(!chord.unknown)
+        #expect(chord.chordTypeId == 1)
+        #expect(SoftchordChords.chordText(chord, prefer: 0) == "Am7add13/G")
+        let up = SongTranspose.shifted([chord], by: 2)
+        #expect(SoftchordChords.chordText(up[0], prefer: 0) == "Bm7add13/A")
+        let unknown = SongChord.from(text: "N.C.", characterNum: 0)
+        #expect(SongTranspose.shifted([unknown], by: 2) == [unknown])
+        #expect(SoftchordChords.chordText(unknown, prefer: 0) == "?")
+    }
+
+    @Test func unknownChordsDoNotChangeTheKeyOrCrashRendering() {
+        let chords = [
+            SongChord.from(text: "N.C.", characterNum: 0),
+            SongChord.from(text: "C", characterNum: 2),
+        ]
+        let text = SongText.render(text: "abc def", chords: chords, includeChords: true)
+        #expect(text.contains("?"))
+        #expect(text.contains("C"))
+        let sheet = SongText.sheet(text: "abc def", chords: chords)
+        #expect(sheet.first?.chords.map(\.text) == ["?", "C"])
     }
 }
 
@@ -959,7 +1069,21 @@ private func songbookSchema() throws -> String {
     return try String(contentsOf: url, encoding: .utf8)
 }
 
-private func writeSongbook(at url: URL) throws {
+private func withTestDatabase(_ url: URL, _ body: (OpaquePointer) throws -> Void) throws {
+    var db: OpaquePointer?
+    if sqlite3_open(url.path, &db) != SQLITE_OK {
+        throw SongbookError.openFailed("Could not open the test songbook.")
+    }
+    guard let db else {
+        throw SongbookError.openFailed("Could not open the test songbook.")
+    }
+    defer { sqlite3_close(db) }
+    try body(db)
+}
+
+/// `version` is the PRAGMA user_version, 2 unless a test needs another.
+private func writeSongbook(at url: URL, version: Int = 2) throws {
+    try? FileManager.default.removeItem(at: url)
     var db: OpaquePointer?
     if sqlite3_open(url.path, &db) != SQLITE_OK {
         throw SongbookError.openFailed("Could not create the test songbook.")
@@ -972,14 +1096,11 @@ private func writeSongbook(at url: URL) throws {
     try exec(
         db,
         """
-        INSERT INTO songs (id, text, title) VALUES (2, 'Hello world', 'beta Song');
-        INSERT INTO songs (id, text, title) VALUES (1, 'Hello', 'Alpha');
-        INSERT INTO song_chord_link (
-            song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
-        VALUES (1, 0, 0, 0, NULL, '-1', 0);
-        INSERT INTO song_chord_link (
-            song_id, character_num, note_id, chord_type_id, bass_note_id, marker, in_parentheses)
-        VALUES (2, 0, 0, 0, 4, '1', 1);
+        INSERT INTO songs (id, uuid, text, title, updated_at) VALUES (2, '2b0f0a5e-6f38-4d0b-9d6e-6c1d9a6e1b02', 'Hello world', 'beta Song', 1700000000);
+        INSERT INTO songs (id, uuid, text, title, updated_at) VALUES (1, '5d1c3f0a-1c52-4a43-8f55-0a8d2f6f3a01', 'Hello', 'Alpha', 1700000001);
+        INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (1, 0, 'C');
+        INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (2, 0, '(1:C/E)');
+        PRAGMA user_version = \(version);
         """)
 }
 
