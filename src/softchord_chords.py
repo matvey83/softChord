@@ -291,18 +291,10 @@ def replace_russian_characeters(text):
 def transpose_note(note_id, steps):
     """Move a note id up by the given number of half steps.
 
-    steps can be negative. One call wraps a single octave. That wrap stays.
-    The viewers fold any step count because they keep a running total.
+    steps can be negative and any size: 13 is one half step, and -25 is one down.
     Mirror: softchord_chords.swift SoftchordChords.transposeNote.
     """
-    note_id += steps
-
-    if note_id < 0:
-        note_id += 12
-    elif note_id > 11:
-        note_id -= 12
-
-    return note_id
+    return (note_id + steps) % 12
 
 
 # ---------------------------------------------------------------------------
