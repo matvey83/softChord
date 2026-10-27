@@ -3087,6 +3087,52 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(song.getChordAtPosition(0).note_id, 0)
         self.assertEqual(self._stored_note_id(), 0)
 
+    def test_undo_after_switching_songs_does_not_change_the_song_on_screen(self):
+        insert_and_select_song(self.app, with_chord=True)
+        first = self.app.current_song
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (1, 2, 'Zed', '', 'Other song', lower(hex(randomblob(16))), 1700000000)")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+
+        self.app.transposeUp()
+        self.assertTrue(self.app.undo_stack.canUndo())
+        self.assertEqual(self._stored_note_id(), 1)
+
+        self.app.setCurrentSong(Song(self.app, 1))
+        other = self.app.current_song
+        self.assertEqual(other.id, 1)
+        # The step belonged to the first song. It is gone, not applied to this one.
+        self.assertFalse(self.app.undo_stack.canUndo())
+        self.app.undo()
+        self.assertIs(self.app.current_song, other)
+        self.assertEqual(other.getAllText(), "Other song")
+        self.assertEqual(self._stored_note_id(), 1)
+
+        # Coming back shows the saved song, and Undo has nothing from before.
+        self.app.setCurrentSong(Song(self.app, first.id))
+        self.assertFalse(self.app.undo_stack.canUndo())
+
+    def test_songbook_steps_survive_switching_songs_when_no_song_step_is_with_them(self):
+        insert_and_select_song(self.app)
+        self.app.ui.songs_view.selectionModel().clearSelection()
+        self.app.curs.execute("UPDATE songs SET number=9 WHERE id=0")
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (1, 4, 'Second', '', 'Line', lower(hex(randomblob(16))), 1700000000)")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.ui.songs_view.selectRow(0)
+        self.app.renumberAllSongs()
+        self.assertEqual(self._song_numbers(), [1, 2])
+
+        self.app.setCurrentSong(Song(self.app, 1))
+        self.assertEqual(self.app.current_song.id, 1)
+        self.assertEqual(self.app.undo_stack.undoText(), "renumber songs")
+        self.app.undo_stack.undo()
+        self.assertEqual(self._song_numbers(), [9, 4])
+
     def test_reset_transpose_is_dimmed_until_the_song_is_transposed(self):
         insert_and_select_song(self.app, with_chord=True)
         song = self.app.current_song

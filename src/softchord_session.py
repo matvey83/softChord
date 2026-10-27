@@ -1766,6 +1766,26 @@ class SongbookSession(SongbookIO, QtCore.QObject):
     def clearUndoStack(self):
         self.undo_stack.clear()
 
+    def _dropSongEditSteps(self):
+        """Forget the chord and transpose steps when another song is shown.
+
+        Those steps edit one Song object. Undo after a switch would change that
+        old object and then save the song on screen. Steps for the whole songbook
+        (delete, import, renumber, trailing spaces) stay as long as no song step
+        is on the stack with them.
+        """
+        stack = self.undo_stack
+
+        def song_step(command):
+            if getattr(command, "song_scoped", False):
+                return True
+            return any(song_step(command.child(index))
+                       for index in range(command.childCount()))
+
+        if self.current_song is not None and any(
+                song_step(stack.command(index)) for index in range(stack.count())):
+            stack.clear()
+
     def updateChordLineSpacing(self, song):
         """Give chord lines their extra space and repaint.
 
@@ -1915,6 +1935,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if self.current_song == None and song == None:
             return
 
+        self._dropSongEditSteps()
         self.sendCurrentSongToDatabase()
 
         if self.current_song != None:

@@ -32,6 +32,8 @@ def document_owner(owner):
 
 
 class AddChordCommand(QtGui.QUndoCommand):
+    # Edits one Song object. The session drops these when another song is shown.
+    song_scoped = True
 
     def __init__(self, song, chord):
         QtGui.QUndoCommand.__init__(self)
@@ -48,6 +50,8 @@ class AddChordCommand(QtGui.QUndoCommand):
 
 
 class DeleteChordCommand(QtGui.QUndoCommand):
+    # Edits one Song object. The session drops these when another song is shown.
+    song_scoped = True
 
     def __init__(self, song, chord):
         QtGui.QUndoCommand.__init__(self)
@@ -64,6 +68,8 @@ class DeleteChordCommand(QtGui.QUndoCommand):
 
 
 class ReplaceChordCommand(QtGui.QUndoCommand):
+    # Edits one Song object. The session drops these when another song is shown.
+    song_scoped = True
 
     def __init__(self, song, prev_chord, new_chord):
         QtGui.QUndoCommand.__init__(self)
@@ -176,6 +182,8 @@ class SongTextSnapshot:
 
 class TransposeSongCommand(QtGui.QUndoCommand):
     """One transpose of every chord in the song."""
+    # Edits one Song object. The session drops these when another song is shown.
+    song_scoped = True
 
     def __init__(self, song, steps, text="transpose"):
         QtGui.QUndoCommand.__init__(self)
