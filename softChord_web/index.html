@@ -26,9 +26,43 @@
     <header class="toolbar">
       <button id="back" type="button">‹ Back</button>
       <h1 id="song-title"></h1>
+      <!-- The toolbar icons are drawn for this app (24 px grid, round stroke,
+           currentColor; Up and Down are plain arrows like the SF Symbols arrow.up
+           and arrow.down in the iOS app; Zoom out and Zoom in are a magnifying
+           glass with a minus, an equals sign (back to 100%) or a plus), so they need no licence note or network fetch. -->
       <div class="toolbar-actions">
-        <button id="transpose-down" type="button">Down</button>
-        <button id="transpose-up" type="button">Up</button>
+        <div class="tool-group" role="group" aria-label="Copy song">
+          <button id="copy-text" class="tool" type="button" title="Copy song text" aria-label="Copy song text">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 15V5a2 2 0 0 1 2-2h8"/><rect x="8" y="7" width="13" height="15" rx="2"/><path d="M11.5 12h6M11.5 15.5h6M11.5 19h3.5"/></svg>
+          </button>
+          <button id="copy-chords" class="tool" type="button" title="Copy song text (with chords)" aria-label="Copy song text (with chords)">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 15V5a2 2 0 0 1 2-2h8"/><rect x="8" y="7" width="13" height="15" rx="2"/><circle cx="12.6" cy="18.6" r="1.7"/><path d="M14.3 18.6V11.5l3 1.2"/></svg>
+          </button>
+          <button id="copy-image" class="tool" type="button" title="Copy song as image" aria-label="Copy song as image">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M3.5 17.5 8.5 13l4 3.8 3-2.8 5.5 5"/></svg>
+          </button>
+        </div>
+        <span class="tool-sep" aria-hidden="true"></span>
+        <div class="tool-group" role="group" aria-label="Transpose">
+          <button id="transpose-down" class="tool" type="button" title="Transpose down" aria-label="Transpose down">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M12 4v16M6 14l6 6 6-6"/></svg>
+          </button>
+          <button id="transpose-up" class="tool" type="button" title="Transpose up" aria-label="Transpose up">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M12 20V4M6 10l6-6 6 6"/></svg>
+          </button>
+        </div>
+        <span class="tool-sep" aria-hidden="true"></span>
+        <div class="tool-group" role="group" aria-label="Zoom">
+          <button id="zoom-out" class="tool" type="button" title="Zoom out" aria-label="Zoom out">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4 21 21M7.5 10.5h6"/></svg>
+          </button>
+          <button id="zoom-reset" class="tool" type="button" title="Reset zoom (100%)" aria-label="Reset zoom (100%)">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4 21 21M7.5 9h6M7.5 12h6"/></svg>
+          </button>
+          <button id="zoom-in" class="tool" type="button" title="Zoom in" aria-label="Zoom in">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4 21 21M7.5 10.5h6M10.5 7.5v6"/></svg>
+          </button>
+        </div>
       </div>
     </header>
     <p id="song-error" class="error" hidden></p>
@@ -43,6 +77,8 @@
     <button type="button" data-action="chords">Copy song text with chords</button>
   </div>
 
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+
   <dialog id="notice">
     <h2 id="notice-title"></h2>
     <p id="notice-message"></p>
@@ -54,6 +90,8 @@
   <script src="softchord_text.js"></script>
   <script src="song_filter.js"></script>
   <script src="songbook.js"></script>
+  <script src="softchord_zoom.js"></script>
+  <script src="softchord_sheet_image.js"></script>
   <script src="viewer.js"></script>
 </body>
 </html>

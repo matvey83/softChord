@@ -6,6 +6,8 @@ const path = require("node:path");
 const chordsApi = require("../softchord_chords");
 const SongText = require("../softchord_text");
 const SongFilter = require("../song_filter");
+const SheetImage = require("../softchord_sheet_image");
+const SongZoom = require("../softchord_zoom");
 const Songbook = require("../songbook");
 const initSqlJs = require("../sql-wasm.js");
 
@@ -400,4 +402,231 @@ test("garbage chord strings never throw", function () {
       SoftchordChords.parseChord(text);
       SoftchordChords.chordFromText(text, 0);
     });
+});
+
+// A fixed-pitch stand-in for canvas measureText: half the font size per letter.
+function fakeMeasure(font, text) {
+  var size = parseFloat(/(\d+(?:\.\d+)?)px/.exec(font)[1]);
+  return { width: Array.from(text).length * size / 2, ascent: size * 0.9, descent: size * 0.2 };
+}
+
+function glyphsOf(drawing, text) {
+  return drawing.glyphs.filter(function (glyph) { return glyph.text === text; });
+}
+
+test("sheet image puts the title first and each chord over its letter", function () {
+  var lines = SongText.sheet("Hello world\nplain", [chord(6, 7), chord(3, 0, 1)]);
+  var drawing = SheetImage.layout("My song", lines, fakeMeasure);
+  assert.equal(drawing.glyphs[0].text, "My song");
+  assert.equal(drawing.glyphs[0].x, SheetImage.PADDING);
+  var hello = glyphsOf(drawing, "Hello world")[0];
+  var plain = glyphsOf(drawing, "plain")[0];
+  var g = glyphsOf(drawing, "G")[0];
+  assert.equal(hello.x, SheetImage.PADDING);
+  // Letter 6 spans x 16+60 to 16+70 on the fake pitch, and G is 6 wide.
+  assert.equal(g.x, 16 + 65 - 3);
+  assert.ok(g.baseline < hello.baseline, "the chord sits above the lyric");
+  assert.ok(g.baseline > hello.baseline - 20);
+  assert.equal(g.color, "#00f");
+  assert.equal(hello.color, "#000");
+  assert.ok(plain.baseline > hello.baseline);
+  assert.ok(drawing.width >= 16 + 11 * 10 + 16);
+  assert.ok(drawing.height > plain.baseline);
+});
+
+test("sheet image gives a line more room only when it has chords", function () {
+  var without = SheetImage.layout("", SongText.sheet("a\nb", []), fakeMeasure);
+  var withChord = SheetImage.layout("", SongText.sheet("a\nb", [chord(2, 0)]), fakeMeasure);
+  assert.ok(Math.abs(withChord.height - without.height - (12 * 0.9) * 1.03) < 1e-9);
+  assert.equal(without.glyphs.length, 2);
+});
+
+test("sheet image keeps a wide first chord inside the left padding", function () {
+  var wide = chord(0, 0, 1);
+  wide.bassNoteId = 4;
+  var lines = SongText.sheet("a", [wide]);
+  var drawing = SheetImage.layout("", lines, fakeMeasure);
+  var xs = drawing.glyphs.map(function (glyph) { return glyph.x; });
+  assert.ok(Math.min.apply(null, xs) >= SheetImage.PADDING - 1e-9);
+  assert.ok(drawing.width > 32);
+});
+
+test("sheet image raises sharps and flats in the symbol font", function () {
+  var lines = SongText.sheet("Hello", [chord(0, 6)]);
+  var drawing = SheetImage.layout("", lines, fakeMeasure);
+  var sharp = drawing.glyphs.filter(function (glyph) { return glyph.text === "♯" || glyph.text === "♭"; });
+  var letter = glyphsOf(drawing, "F")[0] || glyphsOf(drawing, "G")[0];
+  assert.equal(sharp.length, 1);
+  assert.equal(sharp[0].font, SheetImage.SYMBOLS_FONT);
+  assert.ok(sharp[0].baseline < letter.baseline);
+  assert.ok(sharp[0].x > letter.x);
+});
+
+test("sheet image scale and file name stay in range", function () {
+  assert.equal(SheetImage.scaleFor({ width: 400, height: 600 }, 3), 3);
+  assert.ok(SheetImage.scaleFor({ width: 400, height: 60000 }, 2) * 60000 <= 16384);
+  var size = SheetImage.pixelSize({ width: 100.2, height: 50 }, 2);
+  assert.deepEqual(size, { width: 201, height: 100 });
+  assert.equal(SheetImage.fileName("Ты мой Бог: Святой?"), "Ты мой Бог Святой.png");
+  assert.equal(SheetImage.fileName(""), "song.png");
+});
+
+test("sheet image paint draws on a white page at the given scale", function () {
+  var calls = [];
+  var ctx = {
+    save: function () { calls.push(["save"]); },
+    restore: function () { calls.push(["restore"]); },
+    setTransform: function () { calls.push(["setTransform"].concat([].slice.call(arguments))); },
+    fillRect: function () { calls.push(["fillRect"].concat([].slice.call(arguments))); },
+    fillText: function (text, x, y) { calls.push(["fillText", text, x, y, ctx.font, ctx.fillStyle]); },
+  };
+  var drawing = SheetImage.layout("T", SongText.sheet("Hi", [chord(0, 0)]), fakeMeasure);
+  var pixels = SheetImage.pixelSize(drawing, 2);
+  SheetImage.paint(ctx, drawing, 2, pixels);
+  assert.deepEqual(calls[1], ["setTransform", 2, 0, 0, 2, 0, 0]);
+  assert.equal(calls[2][0], "fillRect");
+  var texts = calls.filter(function (call) { return call[0] === "fillText"; });
+  assert.deepEqual(texts.map(function (call) { return call[1]; }), ["T", "Hi", "C"]);
+  assert.equal(texts[2][5], "#00f");
+});
+
+test("the song toolbar has a labelled button for every action", function () {
+  var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  var expected = {
+    "copy-text": "Copy song text",
+    "copy-chords": "Copy song text (with chords)",
+    "copy-image": "Copy song as image",
+    "transpose-down": "Transpose down",
+    "transpose-up": "Transpose up",
+    "zoom-out": "Zoom out",
+    "zoom-reset": "Reset zoom (100%)",
+    "zoom-in": "Zoom in",
+  };
+  var order = [];
+  Object.keys(expected).forEach(function (id) {
+    var match = new RegExp("<button id=\"" + id + "\"[^>]*>([\\s\\S]*?)</button>").exec(html);
+    assert.ok(match, id);
+    assert.ok(match[0].includes("title=\"" + expected[id] + "\""), id + " tooltip");
+    assert.ok(match[0].includes("aria-label=\"" + expected[id] + "\""), id + " aria-label");
+    assert.ok(match[1].includes("<svg"), id + " icon");
+    order.push(html.indexOf("id=\"" + id + "\""));
+  });
+  var sorted = order.slice().sort(function (a, b) { return a - b; });
+  assert.deepEqual(order, sorted, "copy, then transpose, then zoom buttons");
+  assert.ok(html.indexOf("id=\"back\"") < order[0]);
+  assert.ok(html.includes("softchord_sheet_image.js"));
+  assert.ok(html.indexOf("<!--") < html.indexOf("<html"), "README link comment stays at the top");
+});
+
+test("the toolbar buttons are wired to the copy actions in viewer.js", function () {
+  var code = fs.readFileSync(path.join(__dirname, "..", "viewer.js"), "utf8");
+  assert.ok(/copyTextButton\.addEventListener\("click"[\s\S]*?copyShownText\(false/.test(code));
+  assert.ok(/copyChordsButton\.addEventListener\("click"[\s\S]*?copyShownText\(true/.test(code));
+  assert.ok(/copyImageButton\.addEventListener\("click", copyShownImage\)/.test(code));
+  assert.ok(code.includes("navigator.clipboard.write"));
+  assert.ok(code.includes("download"));
+});
+
+test("zoom steps by 10 percent and stops at 50 and 300", function () {
+  assert.equal(SongZoom.DEFAULT, 100);
+  assert.equal(SongZoom.stepped(100, 1), 110);
+  assert.equal(SongZoom.stepped(100, -1), 90);
+  var p = 100;
+  for (var i = 0; i < 100; i++) { p = SongZoom.stepped(p, 1); }
+  assert.equal(p, 300);
+  for (i = 0; i < 100; i++) { p = SongZoom.stepped(p, -1); }
+  assert.equal(p, 50);
+  assert.equal(SongZoom.stepped(300, 1), 300);
+  assert.equal(SongZoom.stepped(50, -1), 50);
+  // Twenty steps up then twenty down comes back exactly (no float drift).
+  p = 100;
+  for (i = 0; i < 20; i++) { p = SongZoom.stepped(p, 1); }
+  for (i = 0; i < 20; i++) { p = SongZoom.stepped(p, -1); }
+  assert.equal(p, 100);
+});
+
+test("zoom snaps stray values to the 10 percent grid and clamps", function () {
+  assert.equal(SongZoom.stepped(105, 1), 110);
+  assert.equal(SongZoom.stepped(105, -1), 100);
+  assert.equal(SongZoom.stepped(5, 1), 60);
+  assert.equal(SongZoom.clamp(1000), 300);
+  assert.equal(SongZoom.clamp(-5), 50);
+  assert.equal(SongZoom.clamp("abc"), 100);
+});
+
+test("saved zoom is read back only when it is sane", function () {
+  assert.equal(SongZoom.parseStored("150"), 150);
+  assert.equal(SongZoom.parseStored("50"), 50);
+  assert.equal(SongZoom.parseStored("300"), 300);
+  ["", "49", "301", "abc", "1e2", "-100", "100.5", null, undefined, 150].forEach(function (bad) {
+    assert.equal(SongZoom.parseStored(bad), 100, String(bad));
+  });
+});
+
+test("zoom is saved and loaded through storage, and survives broken storage", function () {
+  var data = {};
+  var storage = {
+    getItem: function (k) { return k in data ? data[k] : null; },
+    setItem: function (k, v) { data[k] = v; },
+  };
+  assert.equal(SongZoom.load(storage), 100);
+  SongZoom.save(storage, 140);
+  assert.equal(data[SongZoom.STORAGE_KEY], "140");
+  assert.equal(SongZoom.load(storage), 140);
+  var broken = {
+    getItem: function () { throw new Error("blocked"); },
+    setItem: function () { throw new Error("full"); },
+  };
+  assert.equal(SongZoom.load(broken), 100);
+  SongZoom.save(broken, 140);
+  assert.equal(SongZoom.load(null), 100);
+  SongZoom.save(null, 140);
+});
+
+test("zoom changes only the song area font, and not the toolbar or the image", function () {
+  var css = fs.readFileSync(path.join(__dirname, "..", "viewer.css"), "utf8");
+  var code = fs.readFileSync(path.join(__dirname, "..", "viewer.js"), "utf8");
+  var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  // --zoom is set on the sheet only and read only by the sheet's font size.
+  assert.ok(/sheet\.style\.setProperty\("--zoom"/.test(code));
+  assert.equal(css.split("--zoom").length - 1, 1);
+  assert.ok(/#sheet \{[^}]*font-size: calc\(20px \* var\(--zoom, 1\)\)/.test(css));
+  // Chords scale with the sheet, so they stay over their letters.
+  assert.ok(/\.chord \{[^}]*font-size: 0\.6em/.test(css));
+  assert.equal(/transform: *scale|zoom: /.test(css), false);
+  // The picture is drawn from the song at its normal size.
+  var imageCode = /function renderSongImage[\s\S]*?\n  \}\n/.exec(code)[0];
+  assert.equal(imageCode.includes("zoom"), false);
+  assert.equal(imageCode.includes("Zoom"), false);
+  assert.ok(/zoomOutButton\.addEventListener\("click"[\s\S]*?zoomBy\(-1\)/.test(code));
+  assert.ok(/zoomInButton\.addEventListener\("click"[\s\S]*?zoomBy\(1\)/.test(code));
+  assert.ok(html.indexOf("softchord_zoom.js") < html.indexOf("viewer.js"));
+  // Each zoom icon is a circle (the glass) with a handle, and Zoom in adds a vertical bar.
+  var out = /id="zoom-out"[\s\S]*?<\/button>/.exec(html)[0];
+  var inn = /id="zoom-in"[\s\S]*?<\/button>/.exec(html)[0];
+  assert.ok(out.includes("<circle") && inn.includes("<circle"));
+  assert.equal(out.includes("M10.5 7.5v6"), false);
+  assert.ok(inn.includes("M10.5 7.5v6"));
+});
+
+test("reset zoom is only for a song area that is not at 100 percent", function () {
+  assert.equal(SongZoom.isDefault(100), true);
+  [50, 90, 110, 300].forEach(function (p) {
+    assert.equal(SongZoom.isDefault(p), false, String(p));
+  });
+  // A stray stored value is snapped by clamp, and 100 stays the only normal size.
+  assert.equal(SongZoom.isDefault("abc"), true);
+  assert.equal(SongZoom.isDefault(1000), false);
+});
+
+test("the Reset zoom button sits between Zoom out and Zoom in and is wired in viewer.js", function () {
+  var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  var code = fs.readFileSync(path.join(__dirname, "..", "viewer.js"), "utf8");
+  var out = html.indexOf("id=\"zoom-out\"");
+  var reset = html.indexOf("id=\"zoom-reset\"");
+  var inn = html.indexOf("id=\"zoom-in\"");
+  assert.ok(out < reset && reset < inn);
+  assert.ok(/zoomResetButton\.disabled = SongZoom\.isDefault\(zoomPercent\)/.test(code));
+  assert.ok(/zoomResetButton\.addEventListener\("click", resetZoom\)/.test(code));
+  assert.ok(/function resetZoom[\s\S]*?zoomPercent = SongZoom\.DEFAULT[\s\S]*?SongZoom\.save/.test(code));
 });
