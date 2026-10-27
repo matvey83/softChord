@@ -2,6 +2,8 @@
 
 A cross-platform editor for songs with chords. Chords are attached to individual letters in the lyrics (not lined up with spaces), so they stay in place as you edit. Songs are stored together in a songbook file.
 
+**Web viewer:** [open the songbook on any phone or computer](https://matvey83.github.io/softChord/softChord_web/) (read-only, hosted with GitHub Pages).
+
 ![softChord editing a song with chords](docs/screenshot.jpg)
 
 ## Features
