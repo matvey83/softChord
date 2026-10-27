@@ -104,7 +104,7 @@ struct SongPage: View {
         let storedText = shownText ?? source.text
         let storedChords = shownChords ?? source.chords
         let dirtyDraft = (editing || editingChords) && (draft != storedText || editChords != storedChords)
-        if dirtyDraft || (SongTranspose.changesChords(steps) && shownText == nil && shownChords == nil) {
+        if dirtyDraft || (SongTranspose.changesChords(steps, in: storedChords) && shownText == nil && shownChords == nil) {
             return "Changes do not persist"
         }
         if shownText != nil || shownChords != nil {
@@ -224,6 +224,7 @@ struct SongPage: View {
                     selectionState: chordSelectionState,
                     songId: songId,
                     steps: $steps,
+                    chords: editingChords ? editChords : (shownChords ?? source?.chords ?? []),
                     onBack: { leaveSong() },
                     onEdit: beginLyricEdit,
                     onEditChords: beginChordEdit,
@@ -425,6 +426,9 @@ private struct SongChromeDock: UIViewRepresentable {
     var selectionState: SongChordSelectionState
     var songId: Int
     @Binding var steps: Int
+    /// The chords the page is showing. Transposing does nothing to a song with no
+    /// recognized chord, so Reset stays dimmed for it.
+    var chords: [SongChord]
     var onBack: () -> Void
     var onEdit: () -> Void
     var onEditChords: () -> Void
@@ -446,6 +450,7 @@ private struct SongChromeDock: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.songId = songId
         coordinator.steps = $steps
+        coordinator.chords = chords
         coordinator.applyTransposeState()
         coordinator.editing = editing
         coordinator.chordMode = chordMode
@@ -480,6 +485,7 @@ private struct SongChromeDock: UIViewRepresentable {
     final class Coordinator: NSObject {
         var songId = 0
         var steps: Binding<Int> = .constant(0)
+        var chords: [SongChord] = []
         var editing = false
         var chordMode = false
         var selectionState = SongChordSelectionState.none
@@ -536,7 +542,7 @@ private struct SongChromeDock: UIViewRepresentable {
         /// was loaded in this session. Up then Down by the same amount is 0 again, and so
         /// is a whole octave (12), which shows the same chords.
         func applyTransposeState() {
-            resetTransposeButton?.isEnabled = SongTranspose.changesChords(steps.wrappedValue)
+            resetTransposeButton?.isEnabled = SongTranspose.changesChords(steps.wrappedValue, in: chords)
         }
 
         func applyEditing() {
@@ -684,7 +690,7 @@ private struct SongChromeDock: UIViewRepresentable {
             config.cornerStyle = .capsule
             let button = UIButton(configuration: config)
             button.accessibilityLabel = "Reset transpose"
-            button.isEnabled = SongTranspose.changesChords(steps.wrappedValue)
+            button.isEnabled = SongTranspose.changesChords(steps.wrappedValue, in: chords)
             button.addTarget(self, action: #selector(resetTransposeTapped), for: .touchUpInside)
             return button
         }
@@ -1164,6 +1170,8 @@ private final class SongLyricTextView: UITextView {
         ?? UIFont(name: "ArialUnicodeMS", size: 12)
         ?? .boldSystemFont(ofSize: 12)
     private let chordColor = UIColor(red: 0, green: 0, blue: 1, alpha: 1)
+    /// Text in a chord position that is not a chord.
+    private let unrecognizedChordColor = UIColor(red: 1, green: 0, blue: 0, alpha: 1)
 
     /// Shown chords. The page replaces this list, so a drag has to change
     /// the page's characterNum for the move to stick.
@@ -1179,7 +1187,7 @@ private final class SongLyricTextView: UITextView {
     private var preparedText: String?
     private var preparedWidth: CGFloat = -1
     private var gapSignature: [Bool] = []
-    private var chordAnchors: [(characterNum: Int, text: String)] = []
+    private var chordAnchors: [(characterNum: Int, text: String, unrecognized: Bool)] = []
     /// Painted bounds in caret coordinates. A drag starts inside one of these.
     private var drawnChords: [DrawnChord] = []
     private var drawnRevision = ""
@@ -1187,6 +1195,7 @@ private final class SongLyricTextView: UITextView {
 
     private struct DrawnChord: Equatable {
         var text: String
+        var unrecognized: Bool
         var box: SongChordBoxes.Box
     }
 
@@ -1273,13 +1282,14 @@ private final class SongLyricTextView: UITextView {
     func refreshChordLayout() {
         let source = text ?? ""
         let lines = SongText.sheet(text: source, chords: displayChords)
-        var placed: [(characterNum: Int, text: String)] = []
+        var placed: [(characterNum: Int, text: String, unrecognized: Bool)] = []
         var gaps: [Bool] = []
         var scalar = 0
         for line in lines {
             gaps.append(!line.chords.isEmpty)
             for chord in line.chords {
-                placed.append((characterNum: scalar + chord.anchor, text: chord.text))
+                placed.append((
+                    characterNum: scalar + chord.anchor, text: chord.text, unrecognized: chord.unrecognized))
             }
             scalar += line.lyric.unicodeScalars.count + 1
         }
@@ -1327,6 +1337,7 @@ private final class SongLyricTextView: UITextView {
             }
             built.append(DrawnChord(
                 text: anchor.text,
+                unrecognized: anchor.unrecognized,
                 box: SongChordBoxes.Box(characterNum: anchor.characterNum, rect: rect)))
         }
         let changed = built != drawnChords
@@ -1340,7 +1351,7 @@ private final class SongLyricTextView: UITextView {
     private func drawnRevisionKey() -> String {
         var key = "\(containerWidth)|\(contentSize.width)|\(contentSize.height)|\(textContainerInset.top)|\(text ?? "")"
         for anchor in chordAnchors {
-            key.append("|\(anchor.characterNum):\(anchor.text)")
+            key.append("|\(anchor.characterNum):\(anchor.text):\(anchor.unrecognized)")
         }
         return key
     }
@@ -1380,7 +1391,8 @@ private final class SongLyricTextView: UITextView {
             let normalBaseline = rect.maxY - (0.2 * metrics.chordsHeight)
             let raisedBaseline = normalBaseline - (metrics.chordsHeight / 10)
             drawChord(
-                drawn.text, midX: rect.midX, baseline: normalBaseline, raisedBaseline: raisedBaseline)
+                drawn.text, midX: rect.midX, baseline: normalBaseline, raisedBaseline: raisedBaseline,
+                color: drawn.unrecognized ? unrecognizedChordColor : chordColor)
         }
     }
 
@@ -1395,7 +1407,7 @@ private final class SongLyricTextView: UITextView {
     }
 
     private func drawChord(
-        _ text: String, midX: CGFloat, baseline: CGFloat, raisedBaseline: CGFloat
+        _ text: String, midX: CGFloat, baseline: CGFloat, raisedBaseline: CGFloat, color: UIColor
     ) {
         let widths = chordLetterWidths(text)
         let width = widths.reduce(CGFloat(0)) { $0 + $1.width }
@@ -1409,7 +1421,7 @@ private final class SongLyricTextView: UITextView {
                 at: CGPoint(x: x, y: y),
                 withAttributes: [
                     .font: font,
-                    .foregroundColor: chordColor,
+                    .foregroundColor: color,
                 ])
             x += letterWidth
         }

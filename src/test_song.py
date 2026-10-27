@@ -1887,6 +1887,52 @@ class TestAppRendering(unittest.TestCase):
         self.assertIs(calls[0].editor, self.app.editor)
         self.assertIs(calls[1].editor, self.app.editor)
 
+    def _count_pixels(self, image, test):
+        count = 0
+        for y in range(image.height()):
+            for x in range(image.width()):
+                color = QtGui.QColor(image.pixel(x, y))
+                if test(color.red(), color.green(), color.blue()):
+                    count += 1
+        return count
+
+    def test_unrecognized_chord_is_drawn_in_red_and_a_chord_in_blue(self):
+        song = self.app.current_song
+        chord = next(song.iterateAllChords())
+
+        def draw():
+            image = QtGui.QImage(400, 300, QtGui.QImage.Format.Format_ARGB32)
+            image.fill(QtCore.Qt.GlobalColor.white)
+            painter = QtGui.QPainter(image)
+            try:
+                self.app.drawSongToRect(song, painter, self.app.editor,
+                                        QtCore.QRectF(0, 0, 400, 300),
+                                        exporting=True)
+            finally:
+                painter.end()
+            red = self._count_pixels(
+                image, lambda r, g, b: r > 180 and g < 90 and b < 90)
+            blue = self._count_pixels(
+                image, lambda r, g, b: b > 180 and r < 90 and g < 90)
+            return red, blue
+
+        red, blue = draw()
+        self.assertEqual(red, 0)
+        self.assertGreater(blue, 0)
+
+        chord.set_unknown("asdf")
+        layout = SongLayout.place(QtDocumentLayout(self.app.editor), [chord],
+                                  self.app.getHeightsWithChords,
+                                  self.app.getChordWidth,
+                                  lambda item: item.getChordText())
+        placed = layout.placed[0]
+        self.assertEqual(placed.chord_text, "asdf")
+        self.assertTrue(placed.unrecognized)
+        self.assertEqual(self.app.chordColorFor(placed).name(), "#ff0000")
+        red, blue = draw()
+        self.assertGreater(red, 0)
+        self.assertEqual(blue, 0)
+
     def test_draw_song_to_rect_exporting_headers(self):
         """When exporting=True, song number/title/key should be considered in layout."""
         if not self.app.current_song:
@@ -3132,6 +3178,34 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(self.app.undo_stack.undoText(), "renumber songs")
         self.app.undo_stack.undo()
         self.assertEqual(self._song_numbers(), [9, 4])
+
+    def test_a_song_of_only_unrecognized_chords_has_nothing_to_transpose(self):
+        insert_and_select_song(self.app, with_chord=True)
+        song = self.app.current_song
+        next(song.iterateAllChords()).set_unknown("N.C.")
+        self.assertFalse(song.has_transposable_chords())
+
+        self.app.transposeUp()
+        self.assertEqual(song.transposed_steps, 0)
+        self.assertFalse(self.app.undo_stack.canUndo())
+        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertEqual(next(song.iterateAllChords()).getChordText(), "N.C.")
+        # Even a direct transpose does not count steps for a song that cannot move.
+        song.transpose(3)
+        self.assertEqual(song.transposed_steps, 0)
+
+    def test_unrecognized_chords_stay_put_when_the_others_are_transposed(self):
+        insert_and_select_song(self.app, with_chord=True)
+        song = self.app.current_song
+        song.addChord(SongChord.unknown_chord(song, 5, "abcdefghij"))
+        self.app.transposeUp()
+        self.assertEqual(song.transposed_steps, 1)
+        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertEqual(song.getChordAtPosition(0).note_id, 1)
+        self.assertEqual(song.getChordAtPosition(5).getChordText(), "abcdefg")
+        self.app.undo_stack.undo()
+        self.assertEqual(song.transposed_steps, 0)
+        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
 
     def test_reset_transpose_is_dimmed_until_the_song_is_transposed(self):
         insert_and_select_song(self.app, with_chord=True)
@@ -4728,7 +4802,12 @@ class TestChordVectors(unittest.TestCase):
                 if case["unknown"]:
                     self.assertEqual(softchord_chords_string(parsed),
                                      case["canonical"])
+                    self.assertEqual(parsed.display, case["display"])
+                    self.assertEqual(
+                        softchord_chords.unrecognized_chord_display(
+                            case["input"]), case["display"])
                     continue
+                self.assertNotIn("display", case)
                 self.assertEqual(parsed.root_text, case["root"])
                 self.assertEqual(parsed.note_id, case["note_id"])
                 self.assertEqual(
@@ -4830,15 +4909,31 @@ class TestSongChordFromString(unittest.TestCase):
         chord.transpose(2)
         self.assertEqual(chord.getStoredText(), "Bm(add9)/F♯")
 
-    def test_unknown_chord_is_kept_drawn_as_question_mark_and_does_not_move(self):
+    def test_unrecognized_chord_shows_its_own_text_and_does_not_move(self):
         chord = self.chord("N.C.")
         self.assertTrue(chord.unknown)
-        self.assertEqual(chord.getChordText(), "?")
+        self.assertEqual(chord.getChordText(), "N.C.")
         self.assertEqual(chord.getStoredText(), "N.C.")
         chord.transpose(5)
+        self.assertEqual(chord.getChordText(), "N.C.")
         self.assertEqual(chord.getStoredText(), "N.C.")
 
-    def test_empty_or_question_mark_is_written_as_question_mark(self):
+    def test_unrecognized_chord_shows_only_its_first_seven_characters(self):
+        chord = self.chord("abcdefghij")
+        self.assertEqual(chord.getChordText(), "abcdefg")
+        # What is saved is the whole text.
+        self.assertEqual(chord.getStoredText(), "abcdefghij")
+        self.assertEqual(self.chord("Пожалуйста").getChordText(), "Пожалуй")
+        self.assertEqual(self.chord("abcdefg").getChordText(), "abcdefg")
+
+    def test_a_long_recognized_chord_is_not_shortened(self):
+        chord = self.chord("Cmaj7sus4add9/F#")
+        self.assertFalse(chord.unknown)
+        self.assertEqual(chord.getChordText(), "Cmaj7sus4add9/F♯")
+
+    def test_empty_or_question_mark_is_a_question_mark(self):
+        self.assertEqual(self.chord("").getChordText(), "?")
+        self.assertEqual(self.chord("?").getChordText(), "?")
         self.assertEqual(self.chord("").getStoredText(), "?")
         self.assertEqual(self.chord("?").getStoredText(), "?")
 
@@ -4892,10 +4987,10 @@ class TestChordStringsInTheEditor(unittest.TestCase):
         self.app.sendCurrentSongToDatabase()
         self.assertEqual(self.stored(), ["Cmaj9", "Xyz", "(1:Am/G)"])
 
-    def test_unknown_chord_is_drawn_as_a_question_mark(self):
+    def test_unrecognized_chord_is_drawn_as_its_text(self):
         chord = self.app.current_song.getChordAtPosition(3)
         self.assertTrue(chord.unknown)
-        self.assertEqual(chord.getChordText(), "?")
+        self.assertEqual(chord.getChordText(), "Xyz")
 
     def _run_dialog(self, chord, text):
         dialog = softchord.ChordDialog(self.app)

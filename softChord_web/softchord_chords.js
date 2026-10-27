@@ -25,7 +25,11 @@
     "", "m", "sus4", "M7", "m7", "7", "9", "aug", "6", "m6", "11", "°", "°7",
   ];
   var MINOR_TYPE_IDS = { 1: true, 4: true, 9: true };
+  // Shown, in red, for a chord whose text is empty. Other text that is not a chord
+  // (for example "asdf" or "N.C.") is shown as it is, up to UNRECOGNIZED_MAX_LENGTH
+  // characters, in red. A recognized chord is never shortened.
   var UNKNOWN_CHORD_TEXT = "?";
+  var UNRECOGNIZED_MAX_LENGTH = 7;
   // Alternative names for a type. Mirror: alternative_type_names.
   var ALTERNATIVE_TYPE_NAMES = {
     "sus": "sus4", "s4": "sus4", "maj7": "M7", "2": "9", "(7)": "7", "dim": "°", "dim7": "°7",
@@ -267,12 +271,24 @@
     return { letter: letter, accidental: accidental, rest: rest, noteId: noteId };
   }
 
+  // What to draw for text that is not a chord: its first 7 characters. Characters
+  // are code points, so a Russian word or an emoji counts as one each. Empty text is
+  // "?". Mirror: softchord_chords.py unrecognized_chord_display.
+  function unrecognizedChordDisplay(raw) {
+    var text = raw == null ? "" : String(raw).trim();
+    if (text === "") {
+      return UNKNOWN_CHORD_TEXT;
+    }
+    return Array.from(text).slice(0, UNRECOGNIZED_MAX_LENGTH).join("");
+  }
+
   // Parse a chord string. Tolerant: never fails, even for garbage.
   // Mirror: softchord_chords.py parse_chord.
   function parseChord(text) {
     var parsed = {
       unknown: true,
       raw: UNKNOWN_CHORD_TEXT,
+      display: UNKNOWN_CHORD_TEXT,
       marker: "",
       inParentheses: false,
       rootText: "",
@@ -286,6 +302,7 @@
     };
     var raw = text == null ? "" : String(text).trim();
     parsed.raw = raw === "" ? UNKNOWN_CHORD_TEXT : raw;
+    parsed.display = unrecognizedChordDisplay(raw);
 
     var body = Array.from(raw);
     var parens = body.length >= 2 && body[0] === "(" && body[body.length - 1] === ")";
@@ -363,7 +380,7 @@
   }
 
   // A chord from its stored string. Never fails: text that cannot be read
-  // becomes an unknown chord. Mirror: softchord_song.py SongChord.from_text.
+  // becomes an unrecognized chord. Mirror: softchord_song.py SongChord.from_text.
   function chordFromText(text, characterNum) {
     var parsed = parseChord(text);
     if (parsed.unknown) {
@@ -396,10 +413,11 @@
     };
   }
 
-  // Mirror: softchord_song.py SongChord.getChordText. An unknown chord is "?".
+  // Mirror: softchord_song.py SongChord.getChordText. An unrecognized chord is its
+  // first 7 characters ("?" when empty).
   function chordText(chord, prefer) {
     if (chord.unknown) {
-      return UNKNOWN_CHORD_TEXT;
+      return unrecognizedChordDisplay(chord.raw);
     }
     var note = chord.rootText || noteString(chord.noteId, prefer);
     var type = chord.suffix != null
@@ -412,6 +430,19 @@
       bass = chord.bassText || noteString(chord.bassNoteId, prefer);
     }
     return chordString(chord.marker || "", note, type, bass, !!chord.inParentheses);
+  }
+
+  // True when transposing by steps changes what is shown. A whole octave (12) shows
+  // the same chords, and so does any number of steps when no chord has a root, because
+  // unrecognized chords do not move. Reset and the "changes do not persist" note use
+  // this one rule. Mirror: softchord_chords.swift SongTranspose.changesChords.
+  function changesChords(chords, steps) {
+    if (transposeNote(0, steps) === 0) {
+      return false;
+    }
+    return chords.some(function (chord) {
+      return !chord.unknown;
+    });
   }
 
   function shifted(chords, steps) {
@@ -453,8 +484,11 @@
       parsedChordString: parsedChordString,
       chordFromText: chordFromText,
       unknownChordText: UNKNOWN_CHORD_TEXT,
+      unrecognizedChordMaxLength: UNRECOGNIZED_MAX_LENGTH,
+      unrecognizedChordDisplay: unrecognizedChordDisplay,
     },
     SongTranspose: {
+      changesChords: changesChords,
       shifted: shifted,
     },
   };

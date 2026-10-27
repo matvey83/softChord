@@ -152,6 +152,49 @@ test("a line longer than the page wraps when printed, chords stay over their let
   });
 });
 
+test("text that is not a chord shows in red, cut to 7 characters, and stays put when transposed", { skip: skip }, function () {
+  var songs = [{
+    title: "Odd",
+    text: "Hello world again",
+    chords: [[0, "C"], [6, "abcdefghij"], [12, "Пожалуйста"]],
+  }];
+  return inSong("unrecognized", songs, async function (page) {
+    await openSong(page, 1);
+    var read = "Array.from(document.querySelectorAll('#sheet .chord')).map(function (c) {" +
+      "return { text: c.textContent, red: c.classList.contains('unrecognized')," +
+      " color: getComputedStyle(c).color, style: getComputedStyle(c).fontStyle }; })";
+    var chords = await page.eval(read);
+    assert.deepEqual(chords.map(function (c) { return c.text; }), ["C", "abcdefg", "Пожалуй"]);
+    assert.deepEqual(chords.map(function (c) { return c.red; }), [false, true, true]);
+    assert.equal(chords[0].color, "rgb(0, 0, 255)");
+    assert.equal(chords[1].color, "rgb(255, 0, 0)");
+
+    await click(page, "transpose-up");
+    chords = await page.eval(read);
+    assert.deepEqual(chords.map(function (c) { return c.text; }), ["D♭", "abcdefg", "Пожалуй"]);
+
+    // In print the text is also italic, since red may print as grey.
+    await page.send("Emulation.setEmulatedMedia", { media: "print" });
+    chords = await page.eval(read);
+    assert.equal(chords[1].style, "italic");
+    assert.equal(chords[0].style, "normal");
+  });
+});
+
+test("Reset stays dimmed for a song with only text that is not a chord", { skip: skip }, function () {
+  var songs = [{ title: "Only odd", text: "Hello world", chords: [[0, "N.C."], [6, "asdf"]] }];
+  return inSong("only unrecognized", songs, async function (page) {
+    await openSong(page, 1);
+    assert.equal(await state(page, "transpose-reset"), true);
+    await click(page, "transpose-up");
+    assert.equal(await state(page, "transpose-reset"), true);
+    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
+    var texts = await page.eval(
+      "Array.from(document.querySelectorAll('#sheet .chord')).map(function (c) { return c.textContent; })");
+    assert.deepEqual(texts, ["N.C.", "asdf"]);
+  });
+});
+
 test("printed pages keep a white border even when the browser's margins are None", { skip: skip }, function () {
   return inSong("print margins", SONGS, async function (page) {
     await openSong(page, 1);

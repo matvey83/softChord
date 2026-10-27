@@ -799,11 +799,11 @@ struct softChord_ViewerTests {
         let shownRich = SongTranspose.shifted(rich, by: 2)
         #expect(SongText.displayedChordText(text: text, chords: shownRich, characterNum: 6) == "Bmaj9/F♯")
 
-        // Text that is not a chord is the unknown chord, and no step changes it.
+        // Text that is not a chord is an unrecognized chord that keeps its text, and no step changes it.
         let unknown = SongLyricChords.replaced(stored, at: 6, withText: "N.C.", steps: 5)
         #expect(unknown[1].unknown)
         #expect(SongText.displayedChordText(
-            text: text, chords: SongTranspose.shifted(unknown, by: 5), characterNum: 6) == "?")
+            text: text, chords: SongTranspose.shifted(unknown, by: 5), characterNum: 6) == "N.C.")
     }
 
     @Test func movingAChordWhileTransposedKeepsItsStoredName() {
@@ -836,7 +836,7 @@ struct softChord_ViewerTests {
             #expect(entry.canSave, "\(text)")
             #expect(entry.footer.hasPrefix("Shown as "), "\(text)")
         }
-        // An existing unknown chord opens showing "?", so it opens red.
+        // An empty chord shows "?", so it opens red.
         #expect(SongLyricChords.ChordEntry(text: "?").showsRed)
     }
 
@@ -1006,11 +1006,11 @@ struct SongTransposeTests {
         ]
         for steps in [0, 12, -12, 24, -24, 36] {
             #expect(SongTranspose.shifted(chords, by: steps) == chords, "\(steps)")
-            #expect(!SongTranspose.changesChords(steps), "\(steps)")
+            #expect(!SongTranspose.changesChords(steps, in: chords), "\(steps)")
         }
         for steps in [1, 2, 7, -3, 11, -11, 13, -13] {
             #expect(SongTranspose.shifted(chords, by: steps) != chords, "\(steps)")
-            #expect(SongTranspose.changesChords(steps), "\(steps)")
+            #expect(SongTranspose.changesChords(steps, in: chords), "\(steps)")
         }
         #expect(SongTranspose.shifted(chords, by: 13) == SongTranspose.shifted(chords, by: 1))
     }
@@ -1289,7 +1289,7 @@ struct SongbookReadTests {
         #expect(source.chords[1].raw == "N.C.")
         #expect(source.chords.dropFirst().allSatisfy { $0.unknown })
         let text = try Songbook.songText(id: 2, includeChords: true, in: url)
-        #expect(text.contains("?"))
+        #expect(text.contains("N."))
         // Moving an unknown chord keeps it unknown.
         let moved = SongLyricChords.reattached(source.chords, from: 6, to: 3)
         #expect(moved.contains { $0.characterNum == 3 && $0.unknown })
@@ -1314,8 +1314,14 @@ struct ChordParserTests {
             #expect(parsed.unknown == unknown, "\(input)")
             #expect(SoftchordChords.parsedChordString(parsed) == item["canonical"] as? String, "\(input)")
             if unknown {
+                let display = item["display"] as? String
+                #expect(parsed.display == display, "\(input)")
+                #expect(SoftchordChords.unrecognizedChordDisplay(input) == display, "\(input)")
+                let made = SongChord.from(text: input, characterNum: 0)
+                #expect(SoftchordChords.chordText(made, prefer: 0) == display, "\(input)")
                 continue
             }
+            #expect(item["display"] == nil, "\(input)")
             #expect(parsed.rootText == item["root"] as? String, "\(input)")
             #expect(parsed.noteId == item["note_id"] as? Int, "\(input)")
             #expect((parsed.isMinor ? "minor" : "major") == item["quality"] as? String, "\(input)")
@@ -1378,7 +1384,51 @@ struct ChordParserTests {
         #expect(SoftchordChords.chordText(up[0], prefer: 0) == "Bm7add13/A")
         let unknown = SongChord.from(text: "N.C.", characterNum: 0)
         #expect(SongTranspose.shifted([unknown], by: 2) == [unknown])
-        #expect(SoftchordChords.chordText(unknown, prefer: 0) == "?")
+        #expect(SoftchordChords.chordText(unknown, prefer: 0) == "N.C.")
+    }
+
+    @Test func onlyTextThatIsNotAChordIsCutToSevenCharacters() {
+        func shown(_ text: String) -> String {
+            SoftchordChords.chordText(SongChord.from(text: text, characterNum: 0), prefer: 0)
+        }
+        #expect(shown("abcdefghij") == "abcdefg")
+        #expect(shown("  asdf ") == "asdf")
+        #expect(shown("Пожалуйста") == "Пожалуй")
+        #expect(shown("🎵🎵🎵🎵🎵🎵🎵🎵") == "🎵🎵🎵🎵🎵🎵🎵")
+        #expect(shown("") == "?")
+        #expect(shown("?") == "?")
+        // A real chord is shown in full, spelled as it is.
+        #expect(shown("Cmaj7sus4add9/F#") == "Cmaj7sus4add9/F♯")
+    }
+
+    @Test func unrecognizedChordsAreRedInTheSheetAndTheImage() {
+        let chords = [
+            SongChord.from(text: "C", characterNum: 0),
+            SongChord.from(text: "abcdefghij", characterNum: 4),
+        ]
+        let sheet = SongText.sheet(text: "abc def", chords: chords)
+        #expect(sheet[0].chords.map(\.text) == ["C", "abcdefg"])
+        #expect(sheet[0].chords.map(\.unrecognized) == [false, true])
+        let drawing = SongSheetLayout.drawing(for: sheet)
+        func color(of letter: String) -> [CGFloat]? {
+            drawing.glyphs.first { $0.text == letter && $0.baseline < drawing.glyphs[0].baseline }
+                .flatMap { $0.color.components }
+        }
+        #expect(color(of: "C") == [0, 0, 1, 1])
+        #expect(color(of: "a") == [1, 0, 0, 1])
+        #expect(color(of: "g") == [1, 0, 0, 1])
+        #expect(!drawing.glyphs.contains { $0.text == "h" })
+    }
+
+    @Test func transposingASongWithNoMovableChordChangesNothing() {
+        let unrecognized = SongChord.from(text: "N.C.", characterNum: 0)
+        let real = SongChord.from(text: "Am", characterNum: 4)
+        #expect(!SongTranspose.changesChords(1, in: [unrecognized]))
+        #expect(!SongTranspose.changesChords(1, in: []))
+        #expect(SongTranspose.changesChords(1, in: [unrecognized, real]))
+        #expect(!SongTranspose.changesChords(12, in: [unrecognized, real]))
+        #expect(!SongTranspose.changesChords(-24, in: [unrecognized, real]))
+        #expect(SongTranspose.changesChords(13, in: [real]))
     }
 
     @Test func unknownChordsDoNotChangeTheKeyOrCrashRendering() {
@@ -1387,10 +1437,10 @@ struct ChordParserTests {
             SongChord.from(text: "C", characterNum: 2),
         ]
         let text = SongText.render(text: "abc def", chords: chords, includeChords: true)
-        #expect(text.contains("?"))
+        #expect(text.contains("N.C."))
         #expect(text.contains("C"))
         let sheet = SongText.sheet(text: "abc def", chords: chords)
-        #expect(sheet.first?.chords.map(\.text) == ["?", "C"])
+        #expect(sheet.first?.chords.map(\.text) == ["N.C.", "C"])
     }
 }
 

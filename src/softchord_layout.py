@@ -13,9 +13,12 @@ from PyQt6 import QtCore, QtGui
 class PlacedChord:
     """One chord and the lyric character it sits on, in editor coordinates."""
 
-    def __init__(self, character_num, chord_text, char_rect, chord_rect):
+    def __init__(self, character_num, chord_text, char_rect, chord_rect,
+                 unrecognized=False):
         self.character_num = character_num
         self.chord_text = chord_text
+        # Text that is not a chord. It is drawn in red.
+        self.unrecognized = unrecognized
         self.char_rect = char_rect
         self.chord_rect = chord_rect
 
@@ -42,7 +45,8 @@ class SongLayout:
                 chord.character_num, text, chords_height, line_height,
                 chord_width_of(text))
             placed.append(
-                PlacedChord(chord.character_num, text, char_rect, chord_rect))
+                PlacedChord(chord.character_num, text, char_rect, chord_rect,
+                            unrecognized=bool(getattr(chord, "unknown", False))))
         return SongLayout(placed)
 
 

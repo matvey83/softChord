@@ -65,10 +65,10 @@ test("sheet anchors chords on their letters", function () {
     "Test line two",
   ]);
   assert.deepEqual(lines[0].chords, [
-    { anchor: 0, text: "C" },
-    { anchor: 5, text: "Am" },
+    { anchor: 0, text: "C", unrecognized: false },
+    { anchor: 5, text: "Am", unrecognized: false },
   ]);
-  assert.deepEqual(lines[1].chords, [{ anchor: 12, text: "G" }]);
+  assert.deepEqual(lines[1].chords, [{ anchor: 12, text: "G", unrecognized: false }]);
 });
 
 test("chord text keeps marker bass and parentheses", function () {
@@ -214,8 +214,8 @@ test("a songbook file is read in id order", async function () {
   assert.equal(alpha.chords[0].marker, "");
   assert.equal(alpha.chords[0].bassNoteId, -1);
   assert.deepEqual(Songbook.sheet(1)[0].chords, [
-    { anchor: 4, text: "Am" },
-    { anchor: 0, text: "C" },
+    { anchor: 4, text: "Am", unrecognized: false },
+    { anchor: 0, text: "C", unrecognized: false },
   ]);
   assert.equal(Songbook.songText(2, true), "(1:C/E)\r\nHello world");
   alpha.chords[0].noteId = 99;
@@ -320,7 +320,7 @@ test("the repo songbooks have the current schema and the viewer reads all their 
   });
 });
 
-test("unreadable chord strings load as unknown chords drawn as ?", async function () {
+test("unreadable chord strings load as unrecognized chords drawn as their text", async function () {
   var SQL = await initSqlJs({
     locateFile: function (file) {
       return path.join(__dirname, "..", file);
@@ -347,7 +347,9 @@ test("unreadable chord strings load as unknown chords drawn as ?", async functio
   assert.deepEqual(chords.map(function (c) { return c.unknown; }), [true, true, true, false]);
   assert.equal(chords[0].raw, "N.C.");
   assert.deepEqual(Songbook.sheet(1)[0].chords.map(function (c) { return c.text; }),
-    ["?", "?", "?", "Am7add13/G"]);
+    ["N.C.", "?", "?", "Am7add13/G"]);
+  assert.deepEqual(Songbook.sheet(1)[0].chords.map(function (c) { return c.unrecognized; }),
+    [true, true, true, false]);
   var up = SongTranspose.shifted(chords, 2);
   assert.equal(up[0], chords[0]);
   assert.equal(SoftchordChords.chordText(up[3], 0), "Bm7add13/A");
@@ -363,8 +365,14 @@ test("shared chord vectors", function () {
     assert.equal(parsed.unknown, item.unknown, label);
     assert.equal(SoftchordChords.parsedChordString(parsed), item.canonical, label);
     if (item.unknown) {
+      assert.equal(parsed.display, item.display, label);
+      assert.equal(SoftchordChords.unrecognizedChordDisplay(item.input), item.display, label);
+      // The drawn text of a chord made from this string.
+      var made = SoftchordChords.chordFromText(item.input, 0);
+      assert.equal(SoftchordChords.chordText(made, 0), item.display, label);
       return;
     }
+    assert.equal(Object.prototype.hasOwnProperty.call(item, "display"), false, label);
     assert.equal(parsed.rootText, item.root, label);
     assert.equal(parsed.noteId, item.note_id, label);
     assert.equal(parsed.isMinor ? "minor" : "major", item.quality, label);
@@ -380,6 +388,36 @@ test("shared chord vectors", function () {
     var again = SoftchordChords.parseChord(item.canonical);
     assert.equal(SoftchordChords.parsedChordString(again), item.canonical, label);
   });
+});
+
+test("only text that is not a chord is cut to 7 characters", function () {
+  var shown = function (text) {
+    return SoftchordChords.chordText(SoftchordChords.chordFromText(text, 0), 0);
+  };
+  assert.equal(shown("abcdefghij"), "abcdefg");
+  assert.equal(shown("  asdf "), "asdf");
+  assert.equal(shown("Пожалуйста"), "Пожалуй");
+  assert.equal(shown("🎵🎵🎵🎵🎵🎵🎵🎵"), "🎵🎵🎵🎵🎵🎵🎵");
+  assert.equal(shown(""), "?");
+  assert.equal(shown("?"), "?");
+  assert.equal(shown(null), "?");
+  // A real chord is shown in full, spelled as it is.
+  assert.equal(shown("Cmaj7sus4add9/F#"), "Cmaj7sus4add9/F♯");
+});
+
+test("transposing a song with no chord that can move changes nothing", function () {
+  var unrecognized = SoftchordChords.chordFromText("N.C.", 0);
+  var real = SoftchordChords.chordFromText("Am", 4);
+  assert.equal(SongTranspose.changesChords([unrecognized], 1), false);
+  assert.equal(SongTranspose.changesChords([], 1), false);
+  assert.equal(SongTranspose.changesChords([unrecognized, real], 1), true);
+  assert.equal(SongTranspose.changesChords([unrecognized, real], 12), false);
+  assert.equal(SongTranspose.changesChords([unrecognized, real], -24), false);
+  assert.equal(SongTranspose.changesChords([real], 13), true);
+  // Unrecognized chords stay put and keep their text next to the moved ones.
+  var shifted = SongTranspose.shifted([unrecognized, real], 2);
+  assert.equal(shifted[0], unrecognized);
+  assert.equal(SoftchordChords.chordText(shifted[1], 0), "Bm");
 });
 
 test("shared chord validity vectors", function () {
@@ -432,6 +470,17 @@ test("sheet image puts the title first and each chord over its letter", function
   assert.ok(plain.baseline > hello.baseline);
   assert.ok(drawing.width >= 16 + 11 * 10 + 16);
   assert.ok(drawing.height > plain.baseline);
+});
+
+test("sheet image draws text that is not a chord in red, cut to 7 characters", function () {
+  var odd = SoftchordChords.chordFromText("abcdefghij", 3);
+  var lines = SongText.sheet("Hello world", [chord(0, 0), odd]);
+  var drawing = SheetImage.layout("", lines, fakeMeasure);
+  assert.equal(glyphsOf(drawing, "C")[0].color, "#00f");
+  ["a", "b", "c", "d", "e", "f", "g"].forEach(function (letter) {
+    assert.equal(glyphsOf(drawing, letter)[0].color, "#f00", letter);
+  });
+  assert.equal(glyphsOf(drawing, "h").length, 0, "the rest is cut");
 });
 
 test("sheet image gives a line more room only when it has chords", function () {
@@ -670,7 +719,7 @@ test("Reset transpose is wired to the transpose state in viewer.js", function ()
   // Starts dimmed in the page, then follows the steps after every paint.
   assert.ok(/id="transpose-reset"[^>]* disabled>/.test(html));
   assert.ok(html.indexOf("id=\"transpose-up\"") < html.indexOf("id=\"transpose-reset\""));
-  assert.ok(/var transposed = steps % 12 !== 0;/.test(code));
+  assert.ok(/var transposed = SongTranspose\.changesChords\(source\.chords, steps\);/.test(code));
   assert.ok(/transposeReset\.disabled = !transposed/.test(code));
   assert.ok(/persistNote\.hidden = !transposed/.test(code));
   assert.ok(/transposeReset\.addEventListener\("click"[\s\S]*?steps = 0;[\s\S]*?paintSong\(\)/.test(code));

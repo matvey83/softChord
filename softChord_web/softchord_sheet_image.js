@@ -26,6 +26,8 @@
   var TITLE_FONT = "bold " + TITLE_SIZE + "px " + SERIF;
   var BLACK = "#000";
   var BLUE = "#00f";
+  // Text in a chord position that is not a chord.
+  var RED = "#f00";
   // Canvas limits: Chrome and Firefox allow 16384 px on a side, and iPhone
   // Safari allows only 16 777 216 px (4096 x 4096) in all. Stay under both with a
   // little room, so a long song is drawn smaller instead of failing.
@@ -109,7 +111,7 @@
           glyphs.push({
             text: parts[p],
             font: accidental ? SYMBOLS_FONT : CHORDS_FONT,
-            color: BLUE,
+            color: chord.unrecognized ? RED : BLUE,
             x: x,
             baseline: accidental ? raisedBaseline : normalBaseline,
           });

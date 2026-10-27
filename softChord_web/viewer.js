@@ -321,7 +321,7 @@
             continue;
           }
           var chord = document.createElement("span");
-          chord.className = "chord";
+          chord.className = "chord" + (line.chords[c].unrecognized ? " unrecognized" : "");
           appendChord(chord, line.chords[c].text);
           span.appendChild(chord);
         }
@@ -355,8 +355,9 @@
     var chords = SongTranspose.shifted(source.chords, steps);
     paintSheet(SongText.sheet(source.text, chords));
     // The note and Reset follow the same rule: a whole octave (12) shows the
-    // same chords, so it counts as not transposed.
-    var transposed = steps % 12 !== 0;
+    // same chords, so it counts as not transposed. So does a song with no chord
+    // that can move (text that is not a chord stays as it is).
+    var transposed = SongTranspose.changesChords(source.chords, steps);
     persistNote.hidden = !transposed;
     // Dimmed until the song has been transposed. Up then down by the same
     // amount brings steps back to 0, which dims it again, and so does a whole
@@ -488,7 +489,8 @@
   });
 
   transposeReset.addEventListener("click", function () {
-    if (steps % 12 === 0) {
+    // paintSong dims the button when nothing is changed (see changesChords).
+    if (transposeReset.disabled) {
       return;
     }
     steps = 0;

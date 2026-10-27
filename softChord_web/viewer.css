@@ -237,6 +237,9 @@ main {
   line-height: 1;
 }
 
+/* Text in a chord position that is not a chord (cut to 7 characters). */
+.chord.unrecognized { color: red; }
+
 .accidental {
   font-family: Arial, "Arial Unicode MS", sans-serif;
   position: relative;
@@ -384,4 +387,6 @@ main {
   }
 
   .chord { color: #000; }
+  /* Red may print as grey, so the text is also in italics. */
+  .chord.unrecognized { color: #c00; font-style: italic; }
 }
