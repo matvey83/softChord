@@ -10,6 +10,7 @@ from softchord_chords import (
     PREFER_NEITHER,
     PREFER_SHARPS,
     UNKNOWN_CHORD_TEXT,
+    unrecognized_chord_display,
     chord_string,
     classify_suffix,
     key_regions,
@@ -190,12 +191,13 @@ class TransposeSongCommand(QtGui.QUndoCommand):
         self.setText(text)
         self.song = song
         self.steps = steps
+        self._counted = True
         self._notes = [(chord, chord.note_id, chord.bass_note_id,
                         chord._root_text, chord._bass_text)
                        for chord in song.iterateAllChords()]
 
     def redo(self):
-        self.song.transpose(self.steps)
+        self._counted = self.song.transpose(self.steps)
         self._save()
 
     def undo(self):
@@ -206,8 +208,10 @@ class TransposeSongCommand(QtGui.QUndoCommand):
             chord._bass_text = bass_text
         self.song.updateSharpsOrFlats()
         # The notes are back as they were, so the count of steps since the song
-        # was loaded goes back too. (Song.transpose adds the steps on redo.)
-        self.song.add_transposed_steps(-self.steps)
+        # was loaded goes back too. (Song.transpose adds the steps on redo,
+        # unless the song had only unrecognized chords.)
+        if self._counted:
+            self.song.add_transposed_steps(-self.steps)
         self._save()
 
     def _save(self):
@@ -470,7 +474,8 @@ class SongChord:
     only its base quality (0 major, 1 minor). Setting chord_type_id replaces
     the suffix with the type's own text.
 
-    An unknown chord has no root. It is drawn as "?" and written back as raw.
+    An unknown (unrecognized) chord has no root. It is drawn in red as its first
+    7 characters, and written back as raw.
 
     Setting note_id or bass_note_id drops the spelling read from the file, and
     the song's key picks sharps or flats again.
@@ -595,11 +600,11 @@ class SongChord:
     def getChordText(self):
         """Return this chord as text, for example "Fm" or "Bbsus4".
 
-        An unknown chord is "?". Mirror: softchord_chords.swift
-        SoftchordChords.chordText.
+        An unrecognized chord is its first 7 characters (or "?" when empty).
+        Mirror: softchord_chords.swift SoftchordChords.chordText.
         """
         if self.unknown:
-            return UNKNOWN_CHORD_TEXT
+            return unrecognized_chord_display(self.raw)
 
         note_str = self._root_text or self.song._getNoteString(
             self.note_id, self.character_num)
@@ -945,11 +950,20 @@ class Song:
         Mirror: softchord_chords.swift SongTranspose.shifted, which keeps
         the shifted chords in memory only.
         """
+        counted = self.has_transposable_chords()
         for chord in self.iterateAllChords():
             chord.transpose(steps)
 
-        self.add_transposed_steps(steps)
+        # Unrecognized chords do not move, so a song of only those has not
+        # changed key and Reset has nothing to undo.
+        if counted:
+            self.add_transposed_steps(steps)
         self.updateSharpsOrFlats()
+        return counted
+
+    def has_transposable_chords(self):
+        """True when at least one chord has a root, so transposing changes it."""
+        return any(not chord.unknown for chord in self.iterateAllChords())
 
     def updateSharpsOrFlats(self):
         """Infer key regions and the accidental style of each.

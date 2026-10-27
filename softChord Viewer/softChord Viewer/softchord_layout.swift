@@ -92,6 +92,8 @@ enum SongSheetLayout {
         let padding: CGFloat = 16
         let black = CGColor(gray: 0, alpha: 1)
         let blue = CGColor(red: 0, green: 0, blue: 1, alpha: 1)
+        // Text in a chord position that is not a chord.
+        let red = CGColor(red: 1, green: 0, blue: 0, alpha: 1)
 
         var glyphs: [Glyph] = []
         var letters: [Letter] = []
@@ -147,7 +149,7 @@ enum SongSheetLayout {
                     glyphs.append(Glyph(
                         text: String(letter),
                         font: letterFont,
-                        color: blue,
+                        color: chord.unrecognized ? red : blue,
                         x: letterX,
                         baseline: letterBaseline))
                     letterX += advance(letter, font: letterFont)

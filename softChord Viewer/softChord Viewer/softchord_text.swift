@@ -11,8 +11,8 @@ import Foundation
 ///
 /// A chord whose suffix is not a known type (for example "maj9") keeps that
 /// text in `suffix`, and `chordTypeId` is then only its base quality (0 major,
-/// 1 minor). An unknown chord has no root: it is drawn as "?" and `raw` is its
-/// original text. `rootText` and `bassText` are the spellings read from the
+/// 1 minor). An unknown (unrecognized) chord has no root: it is drawn in red as the
+/// first 7 characters of `raw`, its original text ("?" when empty). `rootText` and `bassText` are the spellings read from the
 /// songbook. Changing the note drops them (see SongTranspose.shifted).
 ///
 /// Mirror: softchord_song.py SongChord.
@@ -49,6 +49,8 @@ nonisolated struct SongChord: Equatable {
 nonisolated struct SongSheetChord: Equatable {
     var anchor: Int
     var text: String
+    /// Text that is not a chord. It is drawn in red.
+    var unrecognized: Bool = false
 }
 
 nonisolated struct SongSheetLine: Equatable {
@@ -150,7 +152,8 @@ enum SongText {
                 }
                 let prefer = prefer(for: chord.characterNum, regions: spelling)
                 placed.append(SongSheetChord(
-                    anchor: anchor, text: SoftchordChords.chordText(chord, prefer: prefer)))
+                    anchor: anchor, text: SoftchordChords.chordText(chord, prefer: prefer),
+                    unrecognized: chord.unknown))
             }
             return SongSheetLine(lyric: String(String.UnicodeScalarView(line)), chords: placed)
         }
@@ -256,7 +259,7 @@ enum SongLyricChords {
     /// The chord typed for a letter. It replaces the chord there, or is added.
     /// The page shows chords shifted by `steps` but keeps them as stored, so the
     /// typed name is shifted back by the same steps before it is kept.
-    /// Text that is not a chord becomes the unknown "?" chord and keeps the typed text.
+    /// Text that is not a chord becomes an unrecognized chord and keeps the typed text.
     nonisolated static func replaced(_ chords: [SongChord], at characterNum: Int, withText text: String, steps: Int) -> [SongChord] {
         let typed = SongChord.from(text: text, characterNum: characterNum)
         let stored = SongTranspose.shifted([typed], by: -steps)[0]

@@ -153,7 +153,8 @@ enum Songbook {
             if chordStep != SQLITE_ROW {
                 throw SongbookError.queryFailed(String(cString: sqlite3_errmsg(db)))
             }
-            // A chord string this app cannot read is an unknown chord, drawn as "?".
+            // A chord string this app cannot read is an unrecognized chord, drawn in
+            // red as its first 7 characters.
             chords.append(SongChord.from(
                 text: columnText(links, 1),
                 characterNum: Int(sqlite3_column_int64(links, 0))))

@@ -24,7 +24,8 @@
   // The songbook format this viewer reads. See docs/chord_format.md.
   var FORMAT_VERSION = 2;
 
-  // A chord string this viewer cannot read becomes an unknown chord, drawn as "?".
+  // A chord string this viewer cannot read becomes an unrecognized chord. It is drawn
+  // in red as its first 7 characters.
   function normalizeChord(row) {
     return SoftchordChords.chordFromText(row.chord, row.character_num);
   }

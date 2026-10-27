@@ -23,7 +23,7 @@ chord   = [ "(" ] [ marker ":" ] root suffix [ "/" bass ] [ ")" ]
 root    = A-G [ "♯" | "♭" ]
 bass    = A-G [ "♯" | "♭" ]
 suffix  = any text without a valid bass note after its last "/"
-unknown = "?"
+unrecognized = any other text (it has no root)
 ```
 
 * Outer parentheses wrap everything: `(1:Am7/G)`.
@@ -32,7 +32,8 @@ unknown = "?"
 * Suffix examples: empty (major), `m`, `sus4`, `M7`, `m7`, `7`, `9`, `11`,
   `6`, `m6`, `°`, `°7`, `aug`. Alternative names (`sus`, `s4`, `maj7`, `2`,
   `(7)`, `dim`, `dim7`) are read and written as the printed type.
-* An unknown chord (no usable root) is written as `?`, or as its original text.
+* Text with no usable root (`asdf`, `N.C.`, an empty string) is an unrecognized chord.
+  It is stored exactly as typed or read. See "Unrecognized chords" below.
 
 ## Tolerant parser
 
@@ -50,12 +51,35 @@ file `tests/chord_vectors.json` is run by the Python, Swift and JS tests.
    starts with `m`, `min`, `mi` or `-` (but not `ma`/`maj`), else major.
    **The original suffix text is kept and written back unchanged**, so
    `Cmaj9` opened in an older version is still `Cmaj9` when saved.
-4. No valid root means an unknown chord. It is drawn as `?` and keeps its
-   original text, which is written back unchanged. The editors do not let the
-   user save such text: a chord is **valid** (`is_valid_chord_text`,
+4. No valid root means an unrecognized chord. It keeps its original text, which
+   is written back unchanged, and it is drawn as described under "Unrecognized
+   chords". The editors do not let the user save such text: a chord is **valid** (`is_valid_chord_text`,
    `SoftchordChords.isValidChordText`) only when the parser finds a root, so
    transposing changes it. Typing `asdf`, `?` or nothing turns the field red
    and blocks OK, Enter and Save. An unusual suffix after a valid root is fine.
+
+## Unrecognized chords
+
+A chord position whose text has no root (older or hand-edited songbooks can
+have them, and so can rows converted from version 1) is still shown, so the
+lyrics keep their place and nothing is lost:
+
+* It is drawn in **red** (desktop, iPhone and web, including the copied image).
+  The web print view shows it in red italics, since red may print as grey.
+* Only the first **7 characters** are drawn (characters are Unicode code points,
+  so a Russian word or an emoji counts one each). `abcdefghij` shows as
+  `abcdefg`. Empty text (or just `?`) shows as `?`. Leading and trailing
+  spaces are ignored.
+* A **recognized** chord is never cut, however long its suffix is.
+* The stored text is never changed or cut, so saving the song writes it back as
+  it was. "Copy text with chords" and the desktop text export write the 7
+  characters that are shown.
+* It is not transposed, and it takes no part in key detection. A song that has
+  only unrecognized chords has nothing to transpose, so Reset transpose and the
+  "Changes do not persist" note stay off.
+
+`tests/chord_vectors.json` lists the shown text (`display`) for each
+unrecognized case, and all three languages test it.
 
 Transposing changes only the root and bass. The suffix is kept as it is. The
 base quality is used for key detection and colouring.

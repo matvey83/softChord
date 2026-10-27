@@ -42,7 +42,9 @@ deleted_songs(uuid TEXT PRIMARY KEY, deleted_at INTEGER NOT NULL)
 ### song_chord_link
 
 One row per chord. `character_num` is the position of the lyric character the
-chord sits on, `chord` is the chord string. Rows are removed with their song
+chord sits on, `chord` is the chord string. Text that is not a chord is kept
+as it is and shown in red, cut to its first 7 characters (see
+[chord_format.md](chord_format.md)). Rows are removed with their song
 (`ON DELETE CASCADE`). The editor turns on `PRAGMA foreign_keys` and also
 deletes the rows itself.
 

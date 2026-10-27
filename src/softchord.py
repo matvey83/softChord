@@ -132,6 +132,7 @@ _SESSION_FIELDS = (
     "symbols_font",
     "symbols_font_metrics",
     "chords_color",
+    "unrecognized_chords_color",
     "white_color",
 )
 

@@ -1,5 +1,5 @@
 {
- "description": "Shared chord parser cases. Python, Swift and JS tests all read this file. input is the chord string; the other fields are the expected parse. canonical is the string written back. Regenerate nothing by hand without updating docs/chord_format.md.",
+ "description": "Shared chord parser cases. Python, Swift and JS tests all read this file. input is the chord string; the other fields are the expected parse. canonical is the string written back. display is set only for text that is not a chord (unknown is true): the first 7 characters of the trimmed text, or ? for empty text. A recognized chord is never shortened. Regenerate nothing by hand without updating docs/chord_format.md.",
  "cases": [
   {
    "input": "C",
@@ -1304,7 +1304,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "N.C."
+   "canonical": "N.C.",
+   "display": "N.C."
   },
   {
    "input": "?",
@@ -1319,7 +1320,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "?"
+   "canonical": "?",
+   "display": "?"
   },
   {
    "input": "",
@@ -1334,7 +1336,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "?"
+   "canonical": "?",
+   "display": "?"
   },
   {
    "input": "  ",
@@ -1349,7 +1352,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "?"
+   "canonical": "?",
+   "display": "?"
   },
   {
    "input": "   Am  ",
@@ -1379,7 +1383,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "Xyz"
+   "canonical": "Xyz",
+   "display": "Xyz"
   },
   {
    "input": "m",
@@ -1394,7 +1399,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "m"
+   "canonical": "m",
+   "display": "m"
   },
   {
    "input": "/E",
@@ -1409,7 +1415,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "/E"
+   "canonical": "/E",
+   "display": "/E"
   },
   {
    "input": "am",
@@ -1424,7 +1431,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "am"
+   "canonical": "am",
+   "display": "am"
   },
   {
    "input": "c",
@@ -1439,7 +1447,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "c"
+   "canonical": "c",
+   "display": "c"
   },
   {
    "input": "a",
@@ -1454,7 +1463,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "a"
+   "canonical": "a",
+   "display": "a"
   },
   {
    "input": "x2",
@@ -1469,7 +1479,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "x2"
+   "canonical": "x2",
+   "display": "x2"
   },
   {
    "input": "%",
@@ -1484,7 +1495,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "%"
+   "canonical": "%",
+   "display": "%"
   },
   {
    "input": "|",
@@ -1499,7 +1511,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "|"
+   "canonical": "|",
+   "display": "|"
   },
   {
    "input": "1:",
@@ -1514,7 +1527,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "1:"
+   "canonical": "1:",
+   "display": "1:"
   },
   {
    "input": "1:?",
@@ -1529,7 +1543,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "1:?"
+   "canonical": "1:?",
+   "display": "1:?"
   },
   {
    "input": "Am7:",
@@ -1544,7 +1559,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "Am7:"
+   "canonical": "Am7:",
+   "display": "Am7:"
   },
   {
    "input": "(",
@@ -1559,7 +1575,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "("
+   "canonical": "(",
+   "display": "("
   },
   {
    "input": "()",
@@ -1574,7 +1591,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "()"
+   "canonical": "()",
+   "display": "()"
   },
   {
    "input": ")",
@@ -1589,7 +1607,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": ")"
+   "canonical": ")",
+   "display": ")"
   },
   {
    "input": "(?)",
@@ -1604,7 +1623,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "(?)"
+   "canonical": "(?)",
+   "display": "(?)"
   },
   {
    "input": "1:N.C.",
@@ -1619,7 +1639,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "1:N.C."
+   "canonical": "1:N.C.",
+   "display": "1:N.C."
   },
   {
    "input": "(N.C.)",
@@ -1634,7 +1655,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "(N.C.)"
+   "canonical": "(N.C.)",
+   "display": "(N.C.)"
   },
   {
    "input": "H/",
@@ -1949,7 +1971,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "(Am"
+   "canonical": "(Am",
+   "display": "(Am"
   },
   {
    "input": "Am)",
@@ -1979,7 +2002,8 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "1:2:Am"
+   "canonical": "1:2:Am",
+   "display": "1:2:Am"
   },
   {
    "input": "C/G/E",
@@ -2009,7 +2033,183 @@
    "bass_id": null,
    "marker": "",
    "parens": false,
-   "canonical": "∑"
+   "canonical": "∑",
+   "display": "∑"
+  },
+  {
+   "input": "asdf",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "asdf",
+   "display": "asdf"
+  },
+  {
+   "input": "abcdefg",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "abcdefg",
+   "display": "abcdefg"
+  },
+  {
+   "input": "abcdefgh",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "abcdefgh",
+   "display": "abcdefg"
+  },
+  {
+   "input": "abcdefghij",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "abcdefghij",
+   "display": "abcdefg"
+  },
+  {
+   "input": "  abcdefghij  ",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "abcdefghij",
+   "display": "abcdefg"
+  },
+  {
+   "input": "Пожалуйста",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "Пожалуйста",
+   "display": "Пожалуй"
+  },
+  {
+   "input": "Припев",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "Припев",
+   "display": "Припев"
+  },
+  {
+   "input": "🎵🎵🎵🎵🎵🎵🎵🎵🎵",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "🎵🎵🎵🎵🎵🎵🎵🎵🎵",
+   "display": "🎵🎵🎵🎵🎵🎵🎵"
+  },
+  {
+   "input": "1:abcdefghij",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "1:abcdefghij",
+   "display": "1:abcde"
+  },
+  {
+   "input": "(abcdefghij)",
+   "unknown": true,
+   "root": null,
+   "note_id": null,
+   "quality": null,
+   "type_id": null,
+   "known_type": false,
+   "suffix": "",
+   "bass": null,
+   "bass_id": null,
+   "marker": "",
+   "parens": false,
+   "canonical": "(abcdefghij)",
+   "display": "(abcdef"
+  },
+  {
+   "input": "Cmaj7sus4add9/F#",
+   "unknown": false,
+   "root": "C",
+   "note_id": 0,
+   "quality": "major",
+   "type_id": 0,
+   "known_type": false,
+   "suffix": "maj7sus4add9",
+   "bass": "F♯",
+   "bass_id": 6,
+   "marker": "",
+   "parens": false,
+   "canonical": "Cmaj7sus4add9/F♯"
   }
  ],
  "validity": {

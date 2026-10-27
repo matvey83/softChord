@@ -301,7 +301,26 @@ def transpose_note(note_id, steps):
 # Chord strings
 # ---------------------------------------------------------------------------
 
+# Shown, in red, for a chord whose text is empty. Any other text that is not
+# a chord (for example "asdf" or "N.C.") is shown as it is, up to
+# UNRECOGNIZED_CHORD_MAX_LENGTH characters, in red. A recognized chord is
+# never shortened.
 UNKNOWN_CHORD_TEXT = "?"
+UNRECOGNIZED_CHORD_MAX_LENGTH = 7
+
+
+def unrecognized_chord_display(raw):
+    """What to draw for text that is not a chord: its first 7 characters.
+
+    Characters are code points, so a Russian word or an emoji counts as one each.
+    Empty text is drawn as "?". Mirror: softchord_chords.swift
+    SoftchordChords.unrecognizedChordDisplay and softchord_chords.js
+    unrecognizedChordDisplay.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return UNKNOWN_CHORD_TEXT
+    return text[:UNRECOGNIZED_CHORD_MAX_LENGTH]
 
 # Semitone of each natural note name. The pitch of "E♯" or "C♭" comes from
 # this, so spellings that are not in global_notes_list still parse.
@@ -376,7 +395,8 @@ def _read_note(text):
 class ParsedChord:
     """The fields of one chord string. Mirror: SoftchordChords.ParsedChord.
 
-    unknown chords have no root; raw is the text to write back unchanged.
+    unknown (unrecognized) chords have no root; raw is the text to write back
+    unchanged and display is the shortened text that is drawn, in red.
     note_id and bass_note_id are 0-11 (bass_note_id is -1 for none).
     chord_type_id is the chord_types_list id; when is_known_type is False it
     is only the base quality (0 major, 1 minor) and suffix holds the
@@ -386,6 +406,7 @@ class ParsedChord:
     def __init__(self):
         self.unknown = True
         self.raw = UNKNOWN_CHORD_TEXT
+        self.display = UNKNOWN_CHORD_TEXT
         self.marker = ""
         self.in_parentheses = False
         self.root_text = ""
@@ -408,13 +429,15 @@ def parse_chord(text):
     a valid slash bass note; the root must be A-G with an optional accidental
     (look-alike Russian letters are fixed, # and b become ♯ and ♭); the rest
     is the suffix. A suffix that is not a known type keeps its text. With no
-    valid root the chord is unknown and keeps the raw text.
+    valid root the chord is unrecognized: it keeps the raw text, and display is
+    the first 7 characters of it.
 
     Mirror: softchord_chords.swift SoftchordChords.parseChord.
     """
     parsed = ParsedChord()
     raw = (text or "").strip()
     parsed.raw = raw if raw else UNKNOWN_CHORD_TEXT
+    parsed.display = unrecognized_chord_display(raw)
 
     body = raw
     parens = len(body) >= 2 and body.startswith("(") and body.endswith(")")

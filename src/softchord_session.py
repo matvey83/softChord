@@ -90,6 +90,9 @@ else:
 
 CHORDS_COLOR = "BLACK"
 CHORDS_COLOR = "BLUE"
+# Text in a chord position that is not a chord (the editor will not save it,
+# but a songbook made elsewhere can hold it).
+UNRECOGNIZED_CHORDS_COLOR = "RED"
 
 if not os.path.basename(sys.executable).lower().startswith("python"):
     exec_dir = os.path.dirname(sys.executable)
@@ -238,12 +241,12 @@ class CustomTextEdit(QtWidgets.QTextEdit):
     def paintChordLayer(self, painter):
         """Draw chords for the current song using the shared song layout."""
         painter.setFont(self.app.chords_font)
-        painter.setPen(self.app.chords_color)
         layout = SongLayout.place(
             QtDocumentLayout(self), self.app.current_song.iterateAllChords(),
             self.app.getHeightsWithChords, self.app.getChordWidth,
             lambda chord: chord.getChordText())
         for placed in layout.placed:
+            painter.setPen(self.app.chordColorFor(placed))
             self.app.drawChord(painter, placed.chord_rect, placed.chord_text)
 
     def leaveEvent(self, event):
@@ -687,7 +690,7 @@ class ChordDialog(QtWidgets.QDialog):
             self.ui.chord_text_ef.setText(self._initial_text)
         finally:
             self._updating_chord = False
-        # An unknown chord ("?") shows red until a valid chord is typed.
+        # Text that is not a chord shows red until a valid chord is typed.
         self._refreshChordValidity()
 
     def display(self, chord):
@@ -1282,6 +1285,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         # BLUE is ideal for songbook printing:
         self.chords_color = QtGui.QColor(CHORDS_COLOR)
+        self.unrecognized_chords_color = QtGui.QColor(UNRECOGNIZED_CHORDS_COLOR)
         self.white_color = QtGui.QColor("WHITE")
         self.editor.setFont(self.lyrics_font)
 
@@ -1996,7 +2000,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
 
         song = self.current_song
-        if song is None or not list(song.iterateAllChords()):
+        if song is None or not song.has_transposable_chords():
             return
         self.undo_stack.push(TransposeSongCommand(song, steps))
 
@@ -3203,6 +3207,12 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         return QtDocumentLayout(editor).character_and_chord_boxes(
             song_char_num, chord_text, chords_height, line_height, chord_width)
 
+    def chordColorFor(self, placed):
+        """Blue for a chord, red for text that is not a chord."""
+        if placed.unrecognized:
+            return self.unrecognized_chords_color
+        return self.chords_color
+
     def getChordWidth(self, chord_text):
 
         width = 0.0
@@ -3317,7 +3327,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             #if chord.character_num == self.selected_char_num and self.on_windows:
             #    painter.setPen(self.white_color)
             #else:
-            painter.setPen(self.chords_color)
+            painter.setPen(self.chordColorFor(placed))
 
             if placed.chord_rect:
                 self.drawChord(

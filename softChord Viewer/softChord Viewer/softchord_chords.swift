@@ -39,7 +39,11 @@ nonisolated enum SoftchordChords {
     private static let accidentalSymbols: [Unicode.Scalar: String] = [
         "#": "♯", "b": "♭", "♯": "♯", "♭": "♭",
     ]
+    /// Shown, in red, for a chord whose text is empty. Other text that is not a chord
+    /// (for example "asdf" or "N.C.") is shown as it is, up to `unrecognizedMaxLength`
+    /// characters, in red. A recognized chord is never shortened.
     static let unknownChordText = "?"
+    static let unrecognizedMaxLength = 7
     private static let sharpMajorTonics: Set<Int> = [7, 2, 9, 4, 11, 6]
     private static let flatMajorTonics: Set<Int> = [5, 10, 3, 8, 1]
     private static let majorScale = [0, 2, 4, 5, 7, 9, 11]
@@ -201,10 +205,22 @@ nonisolated enum SoftchordChords {
         mod12(noteId + steps)
     }
 
+    /// What to draw for text that is not a chord: its first 7 characters. A character
+    /// is a Unicode scalar, as in the other versions, so a Russian word or an emoji
+    /// counts one each. Empty text is "?". Mirror: softchord_chords.py unrecognized_chord_display.
+    static func unrecognizedChordDisplay(_ raw: String) -> String {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty {
+            return unknownChordText
+        }
+        return String(String.UnicodeScalarView(text.unicodeScalars.prefix(unrecognizedMaxLength)))
+    }
+
     /// The fields of one chord string. Mirror: softchord_chords.py ParsedChord.
     struct ParsedChord: Equatable {
         var unknown = true
         var raw = SoftchordChords.unknownChordText
+        var display = SoftchordChords.unknownChordText
         var marker = ""
         var inParentheses = false
         var rootText = ""
@@ -267,6 +283,7 @@ nonisolated enum SoftchordChords {
         var parsed = ParsedChord()
         let raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         parsed.raw = raw.isEmpty ? unknownChordText : raw
+        parsed.display = unrecognizedChordDisplay(raw)
 
         var body = Array(raw.unicodeScalars)[...]
         let parens = body.count >= 2 && body.first == "(" && body.last == ")"
@@ -344,10 +361,11 @@ nonisolated enum SoftchordChords {
             bassText: parsed.bassText, inParentheses: parsed.inParentheses)
     }
 
-    /// Mirror: softchord_song.py SongChord.getChordText. An unknown chord is "?".
+    /// Mirror: softchord_song.py SongChord.getChordText. An unrecognized chord is its
+    /// first 7 characters ("?" when empty).
     static func chordText(_ chord: SongChord, prefer: Int) -> String {
         if chord.unknown {
-            return unknownChordText
+            return unrecognizedChordDisplay(chord.raw)
         }
         let note = chord.rootText ?? noteString(chord.noteId, prefer: prefer)
         let type = chord.suffix
@@ -391,10 +409,12 @@ nonisolated enum SoftchordChords {
 /// Half-step shifts for the open song. Nothing here is written to the songbook.
 nonisolated enum SongTranspose {
     /// True when `steps` changes the chords. A whole octave (12 half steps, up or
-    /// down) shows the same chords, so it counts as not transposed. Reset
-    /// transpose and the "Changes do not persist" note both use this one rule.
-    nonisolated static func changesChords(_ steps: Int) -> Bool {
-        steps % 12 != 0
+    /// down) shows the same chords, so it counts as not transposed. So does any
+    /// number of steps when no chord has a root, because unrecognized chords do not
+    /// move. Reset transpose and the "Changes do not persist" note both use this one
+    /// rule. Mirror: softchord_song.py Song.has_transposable_chords.
+    nonisolated static func changesChords(_ steps: Int, in chords: [SongChord]) -> Bool {
+        steps % 12 != 0 && chords.contains { !$0.unknown }
     }
 
     /// Mirror: softchord_song.py Song.transpose.

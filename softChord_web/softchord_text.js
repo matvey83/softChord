@@ -163,6 +163,7 @@
         placed.push({
           anchor: found[1],
           text: SoftchordChords.chordText(chords[i], prefer),
+          unrecognized: !!chords[i].unknown,
         });
       }
       return { lyric: line.join(""), chords: placed };
