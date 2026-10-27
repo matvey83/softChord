@@ -3847,6 +3847,16 @@ class TestTransposeNote(unittest.TestCase):
         self.assertEqual(transpose_note(0, 12), 0)
         self.assertEqual(transpose_note(0, -12), 0)
 
+    def test_steps_of_more_than_an_octave(self):
+        self.assertEqual(transpose_note(11, 13), 0)
+        self.assertEqual(transpose_note(0, -13), 11)
+        self.assertEqual(transpose_note(3, -15), 0)
+        self.assertEqual(transpose_note(5, 25), 6)
+        self.assertEqual(transpose_note(5, -25), 4)
+        for note_id in range(12):
+            for steps in range(-40, 41):
+                self.assertEqual(transpose_note(note_id, steps), (note_id + steps) % 12)
+
 
 class TestReplaceRussianCharacters(unittest.TestCase):
     """Look-alike letters used when pasting chords from Russian sheets."""
