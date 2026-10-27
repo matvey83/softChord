@@ -501,6 +501,7 @@ test("the song toolbar has a labelled button for every action", function () {
     "zoom-out": "Zoom out",
     "zoom-reset": "Reset zoom (100%)",
     "zoom-in": "Zoom in",
+    "print": "Print / Save as PDF",
   };
   var order = [];
   Object.keys(expected).forEach(function (id) {
@@ -512,7 +513,7 @@ test("the song toolbar has a labelled button for every action", function () {
     order.push(html.indexOf("id=\"" + id + "\""));
   });
   var sorted = order.slice().sort(function (a, b) { return a - b; });
-  assert.deepEqual(order, sorted, "copy, then transpose, then zoom buttons");
+  assert.deepEqual(order, sorted, "copy, then transpose, then zoom, then print buttons");
   assert.ok(html.indexOf("id=\"back\"") < order[0]);
   assert.ok(html.includes("softchord_sheet_image.js"));
   assert.ok(html.indexOf("<!--") < html.indexOf("<html"), "README link comment stays at the top");
@@ -629,4 +630,35 @@ test("the Reset zoom button sits between Zoom out and Zoom in and is wired in vi
   assert.ok(/zoomResetButton\.disabled = SongZoom\.isDefault\(zoomPercent\)/.test(code));
   assert.ok(/zoomResetButton\.addEventListener\("click", resetZoom\)/.test(code));
   assert.ok(/function resetZoom[\s\S]*?zoomPercent = SongZoom\.DEFAULT[\s\S]*?SongZoom\.save/.test(code));
+});
+
+test("the Print button calls the browser print dialog", function () {
+  var code = fs.readFileSync(path.join(__dirname, "..", "viewer.js"), "utf8");
+  assert.ok(/printButton\.addEventListener\("click", function \(\) \{\s*window\.print\(\);/.test(code));
+});
+
+test("print styles keep only the song, in black on white, at a fixed size", function () {
+  var css = fs.readFileSync(path.join(__dirname, "..", "viewer.css"), "utf8");
+  var at = css.indexOf("@media print");
+  assert.ok(at > 0, "print rules exist");
+  assert.ok(/@page \{ margin: [^}]+\}/.test(css), "page margins");
+  var print = css.slice(at);
+  // The chrome around the song is not printed.
+  var hide = /([^{}]*)\{\s*display: none !important;\s*\}/.exec(print)[1];
+  ["#back", ".toolbar-actions", "#persist-note", "#toast", "#menu", "#notice"].forEach(function (sel) {
+    assert.ok(hide.includes(sel), sel + " is hidden when printing");
+  });
+  assert.equal(hide.includes("#song-title"), false, "the title is printed");
+  assert.equal(hide.includes("#sheet"), false, "the song is printed");
+  // The song area is not a scroll box, so every page gets printed.
+  assert.ok(/#sheet-scroll \{[^}]*overflow: visible/.test(print));
+  // Fixed size (the on-screen zoom is not used), black chords, white page.
+  assert.ok(/#sheet \{[^}]*font-size: 12pt/.test(print));
+  assert.equal(print.includes("var("), false);
+  assert.ok(/\.chord \{ color: #000; \}/.test(print));
+  assert.ok(/body[\s\S]*?background: #fff/.test(print));
+  // A chord line and its lyric line stay on one page, and the room for the
+  // chords is padding so it is not lost at the top of a page.
+  assert.ok(/\.line \{[^}]*break-inside: avoid/.test(print));
+  assert.ok(/\.line\.has-chords \{[^}]*margin-top: 0;[^}]*padding-top: 1\.15em/.test(print));
 });

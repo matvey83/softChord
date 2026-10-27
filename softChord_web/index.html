@@ -29,7 +29,7 @@
       <!-- The toolbar icons are drawn for this app (24 px grid, round stroke,
            currentColor; Up and Down are plain arrows like the SF Symbols arrow.up
            and arrow.down in the iOS app; Zoom out and Zoom in are a magnifying
-           glass with a minus, an equals sign (back to 100%) or a plus), so they need no licence note or network fetch. -->
+           glass with a minus, an equals sign (back to 100%) or a plus; Print is a printer), so they need no licence note or network fetch. -->
       <div class="toolbar-actions">
         <div class="tool-group" role="group" aria-label="Copy song">
           <button id="copy-text" class="tool" type="button" title="Copy song text" aria-label="Copy song text">
@@ -61,6 +61,12 @@
           </button>
           <button id="zoom-in" class="tool" type="button" title="Zoom in" aria-label="Zoom in">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4 21 21M7.5 10.5h6M10.5 7.5v6"/></svg>
+          </button>
+        </div>
+        <span class="tool-sep" aria-hidden="true"></span>
+        <div class="tool-group" role="group" aria-label="Print">
+          <button id="print" class="tool" type="button" title="Print / Save as PDF" aria-label="Print / Save as PDF">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M7 9V3.5h10V9"/><rect x="3" y="9" width="18" height="8" rx="2"/><rect x="7" y="14" width="10" height="6.5" rx="1"/><path d="M17.5 12h.01"/></svg>
           </button>
         </div>
       </div>

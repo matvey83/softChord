@@ -20,6 +20,7 @@
   var copyChordsButton = document.getElementById("copy-chords");
   var copyImageButton = document.getElementById("copy-image");
   var zoomOutButton = document.getElementById("zoom-out");
+  var printButton = document.getElementById("print");
   var zoomResetButton = document.getElementById("zoom-reset");
   var zoomInButton = document.getElementById("zoom-in");
   var toast = document.getElementById("toast");
@@ -444,6 +445,13 @@
   zoomOutButton.addEventListener("click", function () { zoomBy(-1); });
 
   zoomResetButton.addEventListener("click", resetZoom);
+
+  // The browser's print dialog also offers "Save as PDF". What is printed is
+  // decided by the @media print rules in viewer.css (the song as shown, with its
+  // current transpose, at a fixed size that ignores the on-screen zoom).
+  printButton.addEventListener("click", function () {
+    window.print();
+  });
 
   zoomInButton.addEventListener("click", function () { zoomBy(1); });
 

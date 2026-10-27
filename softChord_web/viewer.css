@@ -157,19 +157,30 @@ main {
   border-radius: 4px;
 }
 
-/* Phone width: Back and the buttons share the first row, and the title
-   gets a row of its own so it is not squeezed to nothing. */
-@media (max-width: 560px) {
-  .toolbar { flex-wrap: wrap; row-gap: 0; padding: 6px 8px; }
+/* Phone width: Back and the title share the first row, and the buttons get a
+   row of their own, spread across its full width, so none are pushed off the
+   screen. On the narrowest phones (320 px) the buttons shrink a little to still
+   fit on that one row. */
+@media (max-width: 640px) {
+  .toolbar { flex-wrap: wrap; row-gap: 2px; padding: 6px 8px; }
   #back { order: 1; }
-  .toolbar-actions { order: 2; margin-left: auto; gap: 3px; }
-  .tool { width: 34px; height: 34px; }
   #song-title {
+    order: 2;
+    font-size: 16px;
+    padding-right: 44px; /* keeps the title centred, balancing the Back button */
+  }
+  .toolbar-actions {
     order: 3;
     flex: 1 1 100%;
-    padding: 0 4px 4px;
-    font-size: 16px;
+    justify-content: space-between;
+    gap: 0;
   }
+  .tool-group { gap: 0; }
+  .tool { width: 34px; height: 34px; }
+}
+
+@media (max-width: 360px) {
+  .tool { width: 30px; height: 30px; }
 }
 
 #toast {
@@ -295,4 +306,82 @@ main {
 #notice button {
   font: inherit;
   float: right;
+}
+
+/* Printing and "Save as PDF": only the song is printed (title, lyrics and chords),
+   black on white. The size is fixed (12 pt lyrics, chords 0.6 times that) and
+   ignores the on-screen zoom, so a page looks the same however the screen was
+   zoomed. The song is printed as it is shown, so a transposed song prints
+   transposed. A chord line and its lyric line are kept together on one page.
+   The white border is set twice. @page is the browser's page margin, and it is
+   ignored when the print dialog says Margins: None (the text then touched the
+   paper's edge). So the printed content also has its own padding, repeated on
+   every page. With the browser's default margins the two add up, a little wider
+   than either alone, which is fine on paper. */
+@page { margin: 10mm; }
+
+@media print {
+  html, body, main {
+    height: auto;
+    background: #fff;
+    color: #000;
+  }
+
+  #list-view, #back, .toolbar-actions, #persist-note, #toast, #menu, #notice,
+  #song-error {
+    display: none !important;
+  }
+
+  main {
+    display: block;
+    padding: 10mm;
+    /* Each page gets the padding at its top and bottom, not only the first
+       and last. */
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
+  .toolbar {
+    display: block;
+    padding: 0 0 8pt;
+    border: 0;
+  }
+
+  #song-title {
+    margin: 0;
+    font-family: "Times New Roman", Times, serif;
+    font-size: 18pt;
+    text-align: left;
+    white-space: normal;
+    overflow: visible;
+    break-after: avoid;
+  }
+
+  #sheet-scroll {
+    overflow: visible;
+    flex: none;
+  }
+
+  #sheet {
+    padding: 0;
+    font-size: 12pt;
+  }
+
+  /* The chords sit above their line, so give the room as padding inside the line
+     (a margin would be dropped at the top of a page and cut the chords off). */
+  /* A line longer than the page wraps (the screen scrolls sideways instead). Each
+     letter is a flex item, so it wraps between letters. The chords of a wrapped
+     row sit in the gap above it, so the gap is the same room as the padding. */
+  .line {
+    break-inside: avoid;
+    flex-wrap: wrap;
+  }
+
+  .line.has-chords {
+    margin-top: 0;
+    padding-top: 1.15em;
+    row-gap: 1.15em;
+  }
+
+  .chord { color: #000; }
 }
