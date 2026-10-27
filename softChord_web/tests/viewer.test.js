@@ -498,6 +498,7 @@ test("the song toolbar has a labelled button for every action", function () {
     "copy-image": "Copy song as image",
     "transpose-down": "Transpose down",
     "transpose-up": "Transpose up",
+    "transpose-reset": "Reset transpose",
     "zoom-out": "Zoom out",
     "zoom-reset": "Reset zoom (100%)",
     "zoom-in": "Zoom in",
@@ -661,4 +662,37 @@ test("print styles keep only the song, in black on white, at a fixed size", func
   // chords is padding so it is not lost at the top of a page.
   assert.ok(/\.line \{[^}]*break-inside: avoid/.test(print));
   assert.ok(/\.line\.has-chords \{[^}]*margin-top: 0;[^}]*padding-top: 1\.15em/.test(print));
+});
+
+test("Reset transpose is wired to the transpose state in viewer.js", function () {
+  var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  var code = fs.readFileSync(path.join(__dirname, "..", "viewer.js"), "utf8");
+  // Starts dimmed in the page, then follows the steps after every paint.
+  assert.ok(/id="transpose-reset"[^>]* disabled>/.test(html));
+  assert.ok(html.indexOf("id=\"transpose-up\"") < html.indexOf("id=\"transpose-reset\""));
+  assert.ok(/var transposed = steps % 12 !== 0;/.test(code));
+  assert.ok(/transposeReset\.disabled = !transposed/.test(code));
+  assert.ok(/persistNote\.hidden = !transposed/.test(code));
+  assert.ok(/transposeReset\.addEventListener\("click"[\s\S]*?steps = 0;[\s\S]*?paintSong\(\)/.test(code));
+  // Opening a song starts from 0 again, so "original" means as opened.
+  assert.ok(/openId = id;\s*steps = 0;/.test(code));
+});
+
+test("a whole octave of steps shows exactly the chords as opened", function () {
+  var chords = [chord(0, 0), chord(5, 9, 1), chord(26, 7)];
+  var shown = function (steps) {
+    return JSON.stringify(
+      SongText.sheet("Test line one\nTest line two", SongTranspose.shifted(chords, steps)));
+  };
+  var original = shown(0);
+  // Reset is dimmed at 0 and at every whole octave, because these show the opened chords.
+  [12, -12, 24, -24, 36].forEach(function (n) {
+    assert.equal(shown(n), original, String(n));
+  });
+  // Anything between is a different key, and 13 is the same as 1.
+  [1, 2, 5, -3, 11, -11, 13].forEach(function (n) {
+    assert.notEqual(shown(n), original, String(n));
+  });
+  assert.equal(shown(13), shown(1));
+  assert.equal(shown(-13), shown(-1));
 });

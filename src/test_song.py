@@ -3087,6 +3087,142 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(song.getChordAtPosition(0).note_id, 0)
         self.assertEqual(self._stored_note_id(), 0)
 
+    def test_reset_transpose_is_dimmed_until_the_song_is_transposed(self):
+        insert_and_select_song(self.app, with_chord=True)
+        song = self.app.current_song
+        button = self.app.ui.transpose_reset_button
+        self.assertFalse(button.isEnabled())
+        self.assertEqual(song.transposed_steps, 0)
+
+        self.app.transposeUp()
+        self.assertTrue(button.isEnabled())
+        # Up then Down by the same amount is the key it was loaded in: dimmed again.
+        self.app.transposeDown()
+        self.assertFalse(button.isEnabled())
+        self.assertEqual(song.transposed_steps, 0)
+
+        # Reset with nothing to undo does nothing, and adds no undo step.
+        steps_before = self.app.undo_stack.count()
+        self.app.transposeReset()
+        self.assertEqual(self.app.undo_stack.count(), steps_before)
+
+    def test_reset_transpose_goes_back_to_the_key_the_song_was_loaded_in(self):
+        insert_and_select_song(self.app, with_chord=True)
+        song = self.app.current_song
+        button = self.app.ui.transpose_reset_button
+
+        self.app.transposeUp()
+        self.app.transposeUp()
+        self.app.transposeUp()
+        self.app.transposeDown()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 2)
+        self.assertTrue(button.isEnabled())
+
+        self.app.ui.transpose_reset_button.click()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertEqual(self._stored_note_id(), 0)
+        self.assertEqual(song.transposed_steps, 0)
+        self.assertFalse(button.isEnabled())
+        # One undo step, named so the Edit menu says what it undoes.
+        self.assertEqual(self.app.undo_stack.undoText(), "reset transpose")
+
+        # Undo brings the transposed song back, and Reset is available again.
+        self.app.undo_stack.undo()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 2)
+        self.assertEqual(song.transposed_steps, 2)
+        self.assertTrue(button.isEnabled())
+        self.app.undo_stack.redo()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertFalse(button.isEnabled())
+
+        # Undoing the transposes themselves tracks the count too: the reset is
+        # undone first (2 up), then Down (3 up), then each Up.
+        self.app.undo_stack.undo()
+        self.app.undo_stack.undo()
+        self.assertEqual(song.transposed_steps, 3)
+        self.app.undo_stack.undo()
+        self.app.undo_stack.undo()
+        self.assertEqual(song.transposed_steps, 1)
+        self.assertTrue(button.isEnabled())
+        self.app.undo_stack.undo()
+        self.assertEqual(song.transposed_steps, 0)
+        self.assertFalse(button.isEnabled())
+
+    def test_reset_transpose_goes_the_other_way_for_a_song_moved_down(self):
+        insert_and_select_song(self.app, with_chord=True)
+        song = self.app.current_song
+        for _ in range(14):
+            self.app.transposeDown()
+        # Fourteen down is two down once the octave is dropped.
+        self.assertEqual(song.transposed_steps, -2)
+        self.assertEqual(song.getChordAtPosition(0).note_id, 10)
+        self.app.transposeReset()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertEqual(song.transposed_steps, 0)
+
+    def test_reset_transpose_is_dimmed_after_a_whole_octave(self):
+        insert_and_select_song(self.app, with_chord=True)
+        for _ in range(12):
+            self.app.transposeUp()
+        self.assertEqual(self.app.current_song.getChordAtPosition(0).note_id, 0)
+        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        # A tritone and more resets the short way round, either way.
+        for steps in (7, 8, 11):
+            for _ in range(steps):
+                self.app.transposeUp()
+            self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+            self.app.transposeReset()
+            self.assertEqual(self.app.current_song.getChordAtPosition(0).note_id, 0)
+            self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+
+    def test_reset_transpose_keeps_chords_added_after_transposing(self):
+        insert_and_select_song(self.app, with_chord=True)
+        song = self.app.current_song
+        self.app.transposeUp()
+        self.app.transposeUp()
+        # A chord typed at the transposed key (D, note 2) is moved back with the rest.
+        song.addChord(SongChord(song, 1, 2, 0, -1, "", 0))
+        self.assertEqual(song.transposed_steps, 2)
+        self.app.transposeReset()
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(1).note_id, 0)
+        # Nothing was thrown away.
+        self.assertEqual(len(list(song.iterateAllChords())), 2)
+        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+
+    def test_reset_transpose_counts_from_when_the_song_was_loaded(self):
+        insert_and_select_song(self.app, with_chord=True)
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, updated_at) "
+            "VALUES (1, 2, 'Zed', '', 'Other song', lower(hex(randomblob(16))), 1700000000)")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+
+        self.app.transposeUp()
+        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        # A song with no chords has nothing to reset.
+        self.app.setCurrentSong(Song(self.app, 1))
+        self.assertEqual(self.app.current_song.id, 1)
+        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        # Opening the first song again loads it as the songbook has it (one step
+        # up, which was saved), so that is now the key it was loaded in.
+        self.app.setCurrentSong(Song(self.app, 0))
+        self.assertEqual(self.app.current_song.getChordAtPosition(0).note_id, 1)
+        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.app.transposeUp()
+        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        self.app.transposeReset()
+        self.assertEqual(self.app.current_song.getChordAtPosition(0).note_id, 1)
+
+    def test_reset_transpose_is_dimmed_with_no_song_open(self):
+        insert_and_select_song(self.app, with_chord=True)
+        self.app.transposeUp()
+        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        self.app.setCurrentSong(None)
+        self.app.updateStates()
+        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.app.transposeReset()  # no song: nothing happens, and no error
+
     def test_remove_trailing_spaces_undo_restores_a_dropped_chord(self):
         self._open_empty_temp_songbook()
         self.app.curs.execute(

@@ -177,9 +177,9 @@ class SongTextSnapshot:
 class TransposeSongCommand(QtGui.QUndoCommand):
     """One transpose of every chord in the song."""
 
-    def __init__(self, song, steps):
+    def __init__(self, song, steps, text="transpose"):
         QtGui.QUndoCommand.__init__(self)
-        self.setText("transpose")
+        self.setText(text)
         self.song = song
         self.steps = steps
         self._notes = [(chord, chord.note_id, chord.bass_note_id,
@@ -197,6 +197,9 @@ class TransposeSongCommand(QtGui.QUndoCommand):
             chord._root_text = root_text
             chord._bass_text = bass_text
         self.song.updateSharpsOrFlats()
+        # The notes are back as they were, so the count of steps since the song
+        # was loaded goes back too. (Song.transpose adds the steps on redo.)
+        self.song.add_transposed_steps(-self.steps)
         self._save()
 
     def _save(self):
@@ -207,6 +210,8 @@ class TransposeSongCommand(QtGui.QUndoCommand):
             session.editor.viewport().update()
         finally:
             session.restoreCursor()
+        # Reset is on only while the song is away from the key it was loaded in.
+        session.updateTransposeResetButton()
 
 
 class RemoveTrailingSpacesCommand(QtGui.QUndoCommand):
@@ -639,6 +644,13 @@ class Song:
         self._regions = []  # (start_char, prefer, key_label)
         self.text = ""
         self.doc = None
+        # Half steps this song has been transposed by since this Song was loaded
+        # from the songbook (what Reset transpose undoes), folded into -5..6.
+        # Up then Down is 0 again, and so is a whole octave (12 steps), which gives
+        # the same chords. Chord edits do not change it, so a chord typed after
+        # transposing is moved back with the rest. Reloading the text from the
+        # songbook keeps it, because the stored chords are still the transposed ones.
+        self.transposed_steps = 0
 
         self.updateSongFromDatabase()
         self.updateSharpsOrFlats()
@@ -913,6 +925,11 @@ class Song:
 
         return converted_text
 
+    def add_transposed_steps(self, steps):
+        """Count a transpose (or an undone one), folded so 12 steps is 0."""
+        folded = (self.transposed_steps + steps) % 12
+        self.transposed_steps = folded - 12 if folded > 6 else folded
+
     def transpose(self, steps):
         """Move every chord up by the given number of half steps.
 
@@ -923,6 +940,7 @@ class Song:
         for chord in self.iterateAllChords():
             chord.transpose(steps)
 
+        self.add_transposed_steps(steps)
         self.updateSharpsOrFlats()
 
     def updateSharpsOrFlats(self):

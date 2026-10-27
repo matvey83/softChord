@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>softChord Viewer</title>
-  <link rel="stylesheet" href="viewer.css">
+  <link rel="stylesheet" href="viewer.css?v=2026-10-27">
 </head>
 <body>
   <main id="list-view">
@@ -29,7 +29,7 @@
       <!-- The toolbar icons are drawn for this app (24 px grid, round stroke,
            currentColor; Up and Down are plain arrows like the SF Symbols arrow.up
            and arrow.down in the iOS app; Zoom out and Zoom in are a magnifying
-           glass with a minus, an equals sign (back to 100%) or a plus; Print is a printer), so they need no licence note or network fetch. -->
+           glass with a minus, an equals sign (back to 100%) or a plus; Reset transpose is a counterclockwise arrow; Print is a printer), so they need no licence note or network fetch. -->
       <div class="toolbar-actions">
         <div class="tool-group" role="group" aria-label="Copy song">
           <button id="copy-text" class="tool" type="button" title="Copy song text" aria-label="Copy song text">
@@ -49,6 +49,9 @@
           </button>
           <button id="transpose-up" class="tool" type="button" title="Transpose up" aria-label="Transpose up">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M12 20V4M6 10l6-6 6 6"/></svg>
+          </button>
+          <button id="transpose-reset" class="tool" type="button" title="Reset transpose" aria-label="Reset transpose" disabled>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4.6 12a7.4 7.4 0 1 0 2.2-5.2"/><path d="M4.4 3.8v4.4h4.4"/></svg>
           </button>
         </div>
         <span class="tool-sep" aria-hidden="true"></span>
@@ -91,13 +94,17 @@
     <form method="dialog"><button type="submit">OK</button></form>
   </dialog>
 
+  <!-- Release version: every script and the style sheet below ends in ?v=.
+       Change the date (in all of them) whenever you release a change to this
+       folder, so a browser that kept an old index.html does not mix it with new
+       scripts, or the other way round. sql-wasm.js never changes, so it has none. -->
   <script src="sql-wasm.js"></script>
-  <script src="softchord_chords.js"></script>
-  <script src="softchord_text.js"></script>
-  <script src="song_filter.js"></script>
-  <script src="songbook.js"></script>
-  <script src="softchord_zoom.js"></script>
-  <script src="softchord_sheet_image.js"></script>
-  <script src="viewer.js"></script>
+  <script src="softchord_chords.js?v=2026-10-27"></script>
+  <script src="softchord_text.js?v=2026-10-27"></script>
+  <script src="song_filter.js?v=2026-10-27"></script>
+  <script src="songbook.js?v=2026-10-27"></script>
+  <script src="softchord_zoom.js?v=2026-10-27"></script>
+  <script src="softchord_sheet_image.js?v=2026-10-27"></script>
+  <script src="viewer.js?v=2026-10-27"></script>
 </body>
 </html>

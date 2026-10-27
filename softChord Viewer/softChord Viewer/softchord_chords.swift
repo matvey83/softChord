@@ -390,6 +390,13 @@ nonisolated enum SoftchordChords {
 
 /// Half-step shifts for the open song. Nothing here is written to the songbook.
 nonisolated enum SongTranspose {
+    /// True when `steps` changes the chords. A whole octave (12 half steps, up or
+    /// down) shows the same chords, so it counts as not transposed. Reset
+    /// transpose and the "Changes do not persist" note both use this one rule.
+    nonisolated static func changesChords(_ steps: Int) -> Bool {
+        steps % 12 != 0
+    }
+
     /// Mirror: softchord_song.py Song.transpose.
     /// The desktop saves the new chords. This copy stays in memory until the song is closed.
     nonisolated static func shifted(_ chords: [SongChord], by steps: Int) -> [SongChord] {

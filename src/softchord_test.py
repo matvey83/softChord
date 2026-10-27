@@ -128,6 +128,34 @@ class SoftChordEditorTest(unittest.TestCase):
         # Cleanup
         self.app.deleteSelectedSongs()
 
+    def test_reset_transpose_button(self):
+        """Reset transpose is dimmed until the song is moved, then restores the opened key."""
+        self.app.importTextFiles(["test_тест_song.txt"])
+        last_row = self.app.songs_model.rowCount() - 1
+        self.app.ui.songs_view.selectRow(last_row)
+        button = self.app.ui.transpose_reset_button
+
+        original_text = self.app.current_song.getAsText(include_chords=True)
+        self.assertFalse(button.isEnabled())
+
+        self.app.transposeUp()
+        self.app.transposeUp()
+        self.assertTrue(button.isEnabled())
+        self.app.transposeDown()
+        self.app.transposeDown()
+        self.assertFalse(button.isEnabled())
+
+        self.app.transposeDown()
+        self.app.transposeDown()
+        self.app.transposeDown()
+        self.assertTrue(button.isEnabled())
+        button.click()
+        self.assertEqual(self.app.current_song.getAsText(include_chords=True), original_text)
+        self.assertFalse(button.isEnabled())
+
+        # Cleanup
+        self.app.deleteSelectedSongs()
+
     def test_export_to_chordpro(self):
         """Test exporting the current song to ChordPro format via the App."""
         self.app.importTextFiles(["test_тест_song.txt"])
