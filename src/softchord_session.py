@@ -1151,6 +1151,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.ui.transpose_up_button.clicked.connect(self.transposeUp)
         self.ui.transpose_down_button.clicked.connect(self.transposeDown)
+        self.ui.transpose_reset_button.clicked.connect(self.transposeReset)
         self.ui.new_song_button.clicked.connect(self.createNewSong)
         self.ui.delete_song_button.clicked.connect(self.deleteSelectedSongs)
 
@@ -1865,6 +1866,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self._updateAutoDetectedKeyLabel()
         self.ui.transpose_up_button.setEnabled(self.current_song != None)
         self.ui.transpose_down_button.setEnabled(self.current_song != None)
+        self.updateTransposeResetButton()
 
         self.ui.delete_song_button.setEnabled(num_selected > 0)
         self.ui.actionDeleteSongs.setEnabled(num_selected > 0)
@@ -1929,6 +1931,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.current_song = None
             self.previous_song_text = None
             self.ui.song_num_ef.setText("")
+            self.updateTransposeResetButton()
 
             # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
             QtDocumentLayout.show_document(self.editor, self.empty_doc)
@@ -1938,6 +1941,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         else:
             self.current_song = song
             self._updateAutoDetectedKeyLabel()
+            self.updateTransposeResetButton()
 
             if not self.ignore_song_text_changed:
                 song_text = self.current_song.getAllText()
@@ -1974,6 +1978,28 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if song is None or not list(song.iterateAllChords()):
             return
         self.undo_stack.push(TransposeSongCommand(song, steps))
+
+    def updateTransposeResetButton(self):
+        """Reset is on only when the open song is not in the key it was loaded in."""
+        song = self.current_song
+        self.ui.transpose_reset_button.setEnabled(
+            song is not None and song.transposed_steps != 0)
+
+    def transposeReset(self):
+        """Transpose the open song back to the key it had when it was loaded.
+
+        "Loaded" is when the song was last selected in the list (each selection reads
+        the song from the songbook). The song counts its net steps since then, so
+        this is one transpose by the opposite number of steps. It is one undo step.
+        Chords that were added or retyped after transposing are moved with the rest,
+        and chord edits do not change the count, so Reset always means "the whole
+        song as many half steps back as it was moved", and never throws edits away.
+        """
+        song = self.current_song
+        if song is None or song.transposed_steps == 0:
+            return
+        self.undo_stack.push(
+            TransposeSongCommand(song, -song.transposed_steps, "reset transpose"))
 
     def _onLyricUndoCommandAdded(self):
         # Undo and redo do not emit this. A document that is no longer shown

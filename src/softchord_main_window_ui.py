@@ -126,6 +126,10 @@ class Ui_MainWindow(object):
         self.transpose_up_button = QtWidgets.QPushButton(parent=self.layoutWidget1)
         self.transpose_up_button.setObjectName("transpose_up_button")
         self.horizontalLayout_6.addWidget(self.transpose_up_button)
+        self.transpose_reset_button = QtWidgets.QPushButton(parent=self.layoutWidget1)
+        self.transpose_reset_button.setEnabled(False)
+        self.transpose_reset_button.setObjectName("transpose_reset_button")
+        self.horizontalLayout_6.addWidget(self.transpose_reset_button)
         self.verticalLayout.addLayout(self.horizontalLayout_6)
         self.chords_editor_label = QtWidgets.QLabel(parent=self.layoutWidget1)
         self.chords_editor_label.setWordWrap(True)
@@ -354,6 +358,8 @@ class Ui_MainWindow(object):
         self.transpose_down_button.setText(_translate("MainWindow", "Down"))
         self.transpose_up_button.setToolTip(_translate("MainWindow", "Transpose the whole song one half-step up."))
         self.transpose_up_button.setText(_translate("MainWindow", "Up"))
+        self.transpose_reset_button.setToolTip(_translate("MainWindow", "Transpose the song back to the key it had when it was opened. Dimmed until the song has been transposed."))
+        self.transpose_reset_button.setText(_translate("MainWindow", "Reset"))
         self.chords_editor_label.setToolTip(_translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
 "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
 "p, li { white-space: pre-wrap; }\n"

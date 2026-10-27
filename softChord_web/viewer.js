@@ -12,18 +12,25 @@
   var songError = document.getElementById("song-error");
   var sheet = document.getElementById("sheet");
   var sheetScroll = document.getElementById("sheet-scroll");
-  var persistNote = document.getElementById("persist-note");
-  var transposeDown = document.getElementById("transpose-down");
-  var transposeUp = document.getElementById("transpose-up");
-  var toolbarActions = document.querySelector(".toolbar-actions");
-  var copyTextButton = document.getElementById("copy-text");
-  var copyChordsButton = document.getElementById("copy-chords");
-  var copyImageButton = document.getElementById("copy-image");
-  var zoomOutButton = document.getElementById("zoom-out");
-  var printButton = document.getElementById("print");
-  var zoomResetButton = document.getElementById("zoom-reset");
-  var zoomInButton = document.getElementById("zoom-in");
-  var toast = document.getElementById("toast");
+  // Toolbar parts the page may not have (an older cached index.html, or a
+  // trimmed page): a missing one becomes a detached stand-in, so the song list
+  // and the song still work and nothing throws.
+  function optional(id) {
+    return document.getElementById(id) || document.createElement("button");
+  }
+  var persistNote = optional("persist-note");
+  var transposeDown = optional("transpose-down");
+  var transposeUp = optional("transpose-up");
+  var transposeReset = optional("transpose-reset");
+  var toolbarActions = document.querySelector(".toolbar-actions") || document.createElement("div");
+  var copyTextButton = optional("copy-text");
+  var copyChordsButton = optional("copy-chords");
+  var copyImageButton = optional("copy-image");
+  var zoomOutButton = optional("zoom-out");
+  var printButton = optional("print");
+  var zoomResetButton = optional("zoom-reset");
+  var zoomInButton = optional("zoom-in");
+  var toast = optional("toast");
   var menu = document.getElementById("menu");
   var notice = document.getElementById("notice");
   var noticeTitle = document.getElementById("notice-title");
@@ -35,6 +42,9 @@
   var allTitles = [];
   var loadError = null;
   var openId = null;
+  // Half steps the open song is shifted from how it was when it was opened.
+  // Opening a song always starts at 0, so 0 is the key the song had when it
+  // was loaded in this session, and Reset transpose goes back to it.
   var steps = 0;
   // Song area zoom in percent. It stays when another song is opened and is
   // remembered in this browser. It never touches the toolbar or the copied image.
@@ -51,8 +61,12 @@
   function notify(title, message) {
     noticeTitle.textContent = title;
     noticeMessage.textContent = message;
-    if (typeof notice.showModal === "function" && !notice.open) {
-      notice.showModal();
+    if (typeof notice.showModal === "function") {
+      if (!notice.open) {
+        notice.showModal();
+      }
+    } else {
+      window.alert(title + "\n" + message);
     }
   }
 
@@ -330,6 +344,7 @@
       sheet.replaceChildren();
       persistNote.hidden = true;
       toolbarActions.hidden = true;
+      transposeReset.disabled = true;
       document.title = "softChord Viewer";
       return;
     }
@@ -339,7 +354,14 @@
     document.title = source.title;
     var chords = SongTranspose.shifted(source.chords, steps);
     paintSheet(SongText.sheet(source.text, chords));
-    persistNote.hidden = steps === 0;
+    // The note and Reset follow the same rule: a whole octave (12) shows the
+    // same chords, so it counts as not transposed.
+    var transposed = steps % 12 !== 0;
+    persistNote.hidden = !transposed;
+    // Dimmed until the song has been transposed. Up then down by the same
+    // amount brings steps back to 0, which dims it again, and so does a whole
+    // octave (12), which shows the same chords.
+    transposeReset.disabled = !transposed;
   }
 
   function songIdFromHash() {
@@ -463,6 +485,15 @@
   transposeUp.addEventListener("click", function () {
     steps += 1;
     paintSong();
+  });
+
+  transposeReset.addEventListener("click", function () {
+    if (steps % 12 === 0) {
+      return;
+    }
+    steps = 0;
+    paintSong();
+    showToast("Transpose reset");
   });
 
   document.addEventListener("keydown", function (event) {

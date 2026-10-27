@@ -112,6 +112,68 @@ struct softChord_ViewerTests {
         window.isHidden = true
     }
 
+    /// Reset transpose sits with Down and Up. It is dimmed until the song has been
+    /// moved, brings the song back to the key it had when it was opened, and is
+    /// dimmed again when Up and Down cancel out.
+    @Test @MainActor func resetTransposeIsDimmedUntilTheSongIsMoved() async throws {
+        let song = try Songbook.titles().first
+        let title = try #require(song)
+        let controller = UIHostingController(rootView: NavigationStack(path: .constant([title])) {
+            Text("Songs")
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: SongTitle.self) { song in
+                    SongPage(song: song)
+                }
+        })
+        let window = show(controller)
+        await settle()
+        window.layoutIfNeeded()
+        func reset() throws -> UIButton {
+            try #require(window.descendants(of: UIButton.self).first {
+                $0.accessibilityLabel == "Reset transpose"
+            })
+        }
+        let down = try #require(window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Down" })
+        let resetButton = try reset()
+        // Same row as Down and Up, after them.
+        let up = try #require(window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Up" })
+        let upFrame = up.convert(up.bounds, to: nil)
+        let resetFrame = resetButton.convert(resetButton.bounds, to: nil)
+        #expect(abs(upFrame.midY - resetFrame.midY) < 1)
+        #expect(resetFrame.minX >= upFrame.maxX)
+        #expect(down.convert(down.bounds, to: nil).maxX <= upFrame.minX)
+        // Untouched song: dimmed.
+        #expect(try reset().isEnabled == false)
+        // Moved: on.
+        pressButton("Up", in: window)
+        await settle()
+        #expect(try reset().isEnabled)
+        // A press anywhere on the live button reaches it.
+        let live = try reset().convert(try reset().bounds, to: window).insetBy(dx: 1, dy: 1)
+        for point in [CGPoint(x: live.minX, y: live.minY), CGPoint(x: live.midX, y: live.midY),
+                      CGPoint(x: live.maxX, y: live.maxY)] {
+            #expect(window.hitTest(point, with: nil) === (try reset()))
+        }
+        // Up then Down by the same amount is the opened key again: dimmed.
+        pressButton("Down", in: window)
+        await settle()
+        #expect(try reset().isEnabled == false)
+        // Several steps, then Reset goes straight back, and a second press does nothing.
+        pressButton("Down", in: window)
+        pressButton("Down", in: window)
+        pressButton("Down", in: window)
+        await settle()
+        #expect(try reset().isEnabled)
+        pressButton("Reset transpose", in: window)
+        await settle()
+        #expect(try reset().isEnabled == false)
+        // A whole octave shows the same chords, so that is the loaded key too.
+        for _ in 0..<12 { pressButton("Up", in: window) }
+        await settle()
+        #expect(try reset().isEnabled == false)
+        window.isHidden = true
+    }
+
     /// Edit chord and Delete chord sit under Discard and Save, one row each, on one
     /// line, and the chord view starts below them.
     @Test @MainActor func chordButtonsSitBelowSaveAndTheTextStartsBelowThem() async throws {
@@ -440,7 +502,7 @@ struct softChord_ViewerTests {
                 continuation.resume()
             }
         }
-        for name in ["Menu", "Down", "Up"] {
+        for name in ["Menu", "Down", "Up", "Reset transpose"] {
             let button = try #require(window.descendants(of: UIButton.self).first {
                 $0.accessibilityLabel == name
             })
@@ -467,7 +529,9 @@ struct softChord_ViewerTests {
                 CGPoint(x: area.midX, y: area.maxY),
                 CGPoint(x: area.maxX, y: area.maxY),
             ]
-            for point in samples {
+            // A dimmed button (Reset transpose before the song is moved) takes no
+            // press, so only a live button is hit tested.
+            for point in samples where button.isEnabled {
                 #expect(window.hitTest(point, with: nil) === button)
             }
         }
@@ -931,6 +995,24 @@ struct SongTransposeTests {
         #expect(SongTranspose.shifted([chord], by: 12) == [chord])
         #expect(SongTranspose.shifted([chord], by: -12) == [chord])
         #expect(SongTranspose.shifted([chord], by: 0) == [chord])
+    }
+
+    /// Reset transpose goes back to the chords as they were opened. Shifting by 0 or by
+    /// a whole octave (12, -12, 24) gives those same chords, and anything between does not.
+    @Test func zeroAndWholeOctavesAreTheChordsAsOpened() {
+        let chords = [
+            SongChord(characterNum: 0, noteId: 4, chordTypeId: 1, bassNoteId: -1, marker: "", inParentheses: false),
+            SongChord(characterNum: 5, noteId: 9, chordTypeId: 0, bassNoteId: 0, marker: "1", inParentheses: true),
+        ]
+        for steps in [0, 12, -12, 24, -24, 36] {
+            #expect(SongTranspose.shifted(chords, by: steps) == chords, "\(steps)")
+            #expect(!SongTranspose.changesChords(steps), "\(steps)")
+        }
+        for steps in [1, 2, 7, -3, 11, -11, 13, -13] {
+            #expect(SongTranspose.shifted(chords, by: steps) != chords, "\(steps)")
+            #expect(SongTranspose.changesChords(steps), "\(steps)")
+        }
+        #expect(SongTranspose.shifted(chords, by: 13) == SongTranspose.shifted(chords, by: 1))
     }
 
     @Test func transposedChordsSpellTheNewKey() {

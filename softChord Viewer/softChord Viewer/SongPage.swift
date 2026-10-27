@@ -104,7 +104,7 @@ struct SongPage: View {
         let storedText = shownText ?? source.text
         let storedChords = shownChords ?? source.chords
         let dirtyDraft = (editing || editingChords) && (draft != storedText || editChords != storedChords)
-        if dirtyDraft || (steps != 0 && shownText == nil && shownChords == nil) {
+        if dirtyDraft || (SongTranspose.changesChords(steps) && shownText == nil && shownChords == nil) {
             return "Changes do not persist"
         }
         if shownText != nil || shownChords != nil {
@@ -210,7 +210,7 @@ struct SongPage: View {
             if source != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Color.clear
-                        .frame(width: editing || editingChords ? 170 : 100, height: 1)
+                        .frame(width: editing || editingChords ? 170 : 140, height: 1)
                         .accessibilityHidden(true)
                 }
                 .sharedBackgroundVisibility(.hidden)
@@ -446,6 +446,7 @@ private struct SongChromeDock: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.songId = songId
         coordinator.steps = $steps
+        coordinator.applyTransposeState()
         coordinator.editing = editing
         coordinator.chordMode = chordMode
         coordinator.selectionState = selectionState
@@ -499,6 +500,7 @@ private struct SongChromeDock: UIViewRepresentable {
         private var viewControls: UIView?
         private var editControls: UIView?
         private var chordTools: UIView?
+        private var resetTransposeButton: UIButton?
         private var editChordButton: UIButton?
         private var deleteChordButton: UIButton?
 
@@ -529,6 +531,14 @@ private struct SongChromeDock: UIViewRepresentable {
             applyEditing()
         }
 
+        /// Reset transpose is dimmed until the song has been moved. The page starts
+        /// at 0 steps each time a song is opened, so 0 is the key it had when it
+        /// was loaded in this session. Up then Down by the same amount is 0 again, and so
+        /// is a whole octave (12), which shows the same chords.
+        func applyTransposeState() {
+            resetTransposeButton?.isEnabled = SongTranspose.changesChords(steps.wrappedValue)
+        }
+
         func applyEditing() {
             viewControls?.isHidden = editing
             editControls?.isHidden = !editing
@@ -553,10 +563,14 @@ private struct SongChromeDock: UIViewRepresentable {
                 })
             menuButton.accessibilityLabel = "Menu"
 
-            // Mirror: softchord_session.py transposeDown and transposeUp.
+            // Mirror: softchord_session.py transposeDown and transposeUp, and the
+            // Reset transpose button next to them.
+            let reset = resetTransposeConfiguredButton()
+            resetTransposeButton = reset
             let row = UIStackView(arrangedSubviews: [
                 arrowButton("arrow.down", name: "Down", delta: -1),
                 arrowButton("arrow.up", name: "Up", delta: 1),
+                reset,
             ])
             row.axis = .horizontal
             row.spacing = 6
@@ -663,6 +677,18 @@ private struct SongChromeDock: UIViewRepresentable {
             return button
         }
 
+        private func resetTransposeConfiguredButton() -> UIButton {
+            var config = UIButton.Configuration.bordered()
+            config.image = UIImage(systemName: "arrow.counterclockwise")
+            config.buttonSize = .small
+            config.cornerStyle = .capsule
+            let button = UIButton(configuration: config)
+            button.accessibilityLabel = "Reset transpose"
+            button.isEnabled = SongTranspose.changesChords(steps.wrappedValue)
+            button.addTarget(self, action: #selector(resetTransposeTapped), for: .touchUpInside)
+            return button
+        }
+
         private func textButton(_ title: String, prominent: Bool, action: Selector) -> UIButton {
             var config = prominent ? UIButton.Configuration.filled() : .bordered()
             config.title = title
@@ -685,6 +711,10 @@ private struct SongChromeDock: UIViewRepresentable {
 
         @objc private func transposeTapped(_ sender: UIButton) {
             steps.wrappedValue += sender.tag
+        }
+
+        @objc private func resetTransposeTapped() {
+            steps.wrappedValue = 0
         }
 
         @objc private func editChordTapped() {
