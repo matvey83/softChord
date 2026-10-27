@@ -97,17 +97,95 @@ main {
 .toolbar-actions {
   flex: none;
   display: flex;
+  align-items: center;
   gap: 6px;
 }
 
-.toolbar-actions button {
-  font: inherit;
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid #c7c7cc;
-  background: #fff;
+.tool-group {
+  display: flex;
+  gap: 2px;
+}
+
+.tool-sep {
+  width: 1px;
+  height: 22px;
+  background: #d1d1d6;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: #1c1c1e;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tool svg {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tool:hover { background: #f2f2f7; border-color: #d1d1d6; }
+
+.tool:active { background: #e5e5ea; }
+
+.tool:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 1px;
+}
+
+#transpose-down:hover, #transpose-up:hover { color: #007aff; }
+
+.tool:disabled { opacity: 0.35; cursor: default; }
+
+.tool:disabled:hover { background: none; border-color: transparent; color: #1c1c1e; }
+
+#back:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Phone width: Back and the buttons share the first row, and the title
+   gets a row of its own so it is not squeezed to nothing. */
+@media (max-width: 560px) {
+  .toolbar { flex-wrap: wrap; row-gap: 0; padding: 6px 8px; }
+  #back { order: 1; }
+  .toolbar-actions { order: 2; margin-left: auto; gap: 3px; }
+  .tool { width: 34px; height: 34px; }
+  #song-title {
+    order: 3;
+    flex: 1 1 100%;
+    padding: 0 4px 4px;
+    font-size: 16px;
+  }
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: rgba(28, 28, 30, 0.92);
+  color: #fff;
+  font-size: 14px;
+  text-align: center;
+  pointer-events: none;
 }
 
 #sheet-scroll {
@@ -119,7 +197,9 @@ main {
 #sheet {
   padding: 16px 32px 40px;
   font-family: "Times New Roman", Times, serif;
-  font-size: 20px;
+  /* Zoom changes only this font size. The chords and the line gaps are in em,
+     so they scale with it and stay over their letters. */
+  font-size: calc(20px * var(--zoom, 1));
   line-height: 1.2;
   color: #000;
 }
@@ -140,7 +220,7 @@ main {
   bottom: calc(100% + 1px);
   transform: translateX(-50%);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 0.6em;
   color: blue;
   white-space: nowrap;
   line-height: 1;

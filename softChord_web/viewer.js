@@ -15,6 +15,14 @@
   var persistNote = document.getElementById("persist-note");
   var transposeDown = document.getElementById("transpose-down");
   var transposeUp = document.getElementById("transpose-up");
+  var toolbarActions = document.querySelector(".toolbar-actions");
+  var copyTextButton = document.getElementById("copy-text");
+  var copyChordsButton = document.getElementById("copy-chords");
+  var copyImageButton = document.getElementById("copy-image");
+  var zoomOutButton = document.getElementById("zoom-out");
+  var zoomResetButton = document.getElementById("zoom-reset");
+  var zoomInButton = document.getElementById("zoom-in");
+  var toast = document.getElementById("toast");
   var menu = document.getElementById("menu");
   var notice = document.getElementById("notice");
   var noticeTitle = document.getElementById("notice-title");
@@ -27,7 +35,17 @@
   var loadError = null;
   var openId = null;
   var steps = 0;
+  // Song area zoom in percent. It stays when another song is opened and is
+  // remembered in this browser. It never touches the toolbar or the copied image.
+  var zoomStorage = null;
+  try {
+    zoomStorage = window.localStorage;
+  } catch (error) {
+    // Blocked storage: zoom still works, it is just not remembered.
+  }
+  var zoomPercent = SongZoom.load(zoomStorage);
   var menuSongId = null;
+  var toastTimer = null;
 
   function notify(title, message) {
     noticeTitle.textContent = title;
@@ -37,7 +55,24 @@
     }
   }
 
+  // Returns a promise. The async clipboard comes first, and the old
+  // select-and-copy way is the fallback where it is missing or refused.
   function copyText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function" &&
+        window.isSecureContext !== false) {
+      return navigator.clipboard.writeText(text).catch(function () {
+        copyTextOldWay(text);
+      });
+    }
+    try {
+      copyTextOldWay(text);
+      return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+
+  function copyTextOldWay(text) {
     var area = document.createElement("textarea");
     area.value = text;
     area.setAttribute("readonly", "");
@@ -50,6 +85,155 @@
     if (!ok) {
       throw new Error("The song could not be copied.");
     }
+  }
+
+  // A short message that fades on its own. Failures use the notice dialog.
+  function showToast(message) {
+    toast.textContent = message;
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toast.hidden = true;
+    }, 2200);
+  }
+
+  // The open song as shown now: its text and chords at the current transpose.
+  function shownSong() {
+    var source = Songbook.source(openId);
+    return {
+      title: source.title,
+      text: source.text,
+      chords: SongTranspose.shifted(source.chords, steps),
+    };
+  }
+
+  function copyShownText(includeChords, doneMessage) {
+    var done;
+    try {
+      var song = shownSong();
+      done = copyText(SongText.render(song.text, song.chords, includeChords));
+    } catch (error) {
+      done = Promise.reject(error);
+    }
+    return done.then(function () {
+      showToast(doneMessage);
+    }, function (error) {
+      notify("Could not copy the song", String(error.message || error));
+    });
+  }
+
+  function measureWith(ctx) {
+    return function (font, text) {
+      ctx.font = font;
+      var m = ctx.measureText(text);
+      var size = parseFloat(/(\d+(?:\.\d+)?)px/.exec(font)[1]);
+      return {
+        width: m.width,
+        ascent: m.fontBoundingBoxAscent != null ? m.fontBoundingBoxAscent : size * 0.891,
+        descent: m.fontBoundingBoxDescent != null ? m.fontBoundingBoxDescent : size * 0.216,
+      };
+    };
+  }
+
+  // Draws the shown song, title first, and gives back a promise of a PNG blob.
+  function renderSongImage() {
+    return new Promise(function (resolve, reject) {
+      try {
+        var song = shownSong();
+        var canvas = document.createElement("canvas");
+        var ctx = canvas.getContext("2d");
+        var drawing = SheetImage.layout(
+          song.title, SongText.sheet(song.text, song.chords), measureWith(ctx));
+        // Sharp enough to paste into a document, even on a 1x screen.
+        var scale = SheetImage.scaleFor(drawing, Math.max(2, window.devicePixelRatio || 1));
+        var pixels = SheetImage.pixelSize(drawing, scale);
+        canvas.width = pixels.width;
+        canvas.height = pixels.height;
+        SheetImage.paint(canvas.getContext("2d"), drawing, scale, pixels);
+        canvas.toBlob(function (blob) {
+          if (blob) {
+            resolve({ blob: blob, name: SheetImage.fileName(song.title) });
+          } else {
+            reject(new Error("The picture could not be made."));
+          }
+        }, "image/png");
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  function downloadBlob(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+
+  // Copies the picture to the clipboard. Where the browser cannot (no image
+  // clipboard, a page that is not secure, or permission refused) the picture
+  // is saved as a file instead and the notice says so.
+  function copyShownImage() {
+    var made = renderSongImage();
+    var canCopy = window.isSecureContext !== false &&
+      typeof ClipboardItem !== "undefined" &&
+      navigator.clipboard && typeof navigator.clipboard.write === "function";
+    var copied = Promise.resolve(false);
+    if (canCopy) {
+      // The blob is passed as a promise so Safari still sees the click.
+      var item = new ClipboardItem({
+        "image/png": made.then(function (result) { return result.blob; }),
+      });
+      copied = navigator.clipboard.write([item]).then(function () {
+        return true;
+      }, function () {
+        return false;
+      });
+    }
+    return Promise.all([made, copied]).then(function (results) {
+      if (results[1]) {
+        showToast("Copied song as image");
+        return;
+      }
+      downloadBlob(results[0].blob, results[0].name);
+      notify("Image saved as a file",
+        "This browser would not copy the picture to the clipboard, so it was saved as " +
+        results[0].name + " instead.");
+    }, function (error) {
+      notify("Could not copy the song as an image", String(error.message || error));
+    });
+  }
+
+  function applyZoom() {
+    sheet.style.setProperty("--zoom", String(zoomPercent / 100));
+    zoomOutButton.disabled = zoomPercent <= SongZoom.MIN;
+    zoomInButton.disabled = zoomPercent >= SongZoom.MAX;
+    zoomResetButton.disabled = SongZoom.isDefault(zoomPercent);
+  }
+
+  function zoomBy(direction) {
+    var next = SongZoom.stepped(zoomPercent, direction);
+    if (next === zoomPercent) {
+      return;
+    }
+    zoomPercent = next;
+    SongZoom.save(zoomStorage, zoomPercent);
+    applyZoom();
+    showToast("Zoom " + zoomPercent + "%");
+  }
+
+  function resetZoom() {
+    if (zoomPercent === SongZoom.DEFAULT) {
+      return;
+    }
+    zoomPercent = SongZoom.DEFAULT;
+    SongZoom.save(zoomStorage, zoomPercent);
+    applyZoom();
+    showToast("Zoom " + zoomPercent + "%");
   }
 
   function showListMessage(text, isError) {
@@ -98,7 +282,7 @@
   // TODO: Show the subtitle and "Auto-detected key: ..." under the title.
   // Paint with the same measurements as SongSheetLayout.drawing (gap, chord
   // center, accidental raise, padding 16, left shift) instead of the CSS
-  // approximation. Then pinch and Ctrl-scroll zoom, and Copy as image.
+  // approximation. Then pinch and Ctrl-scroll zoom (they can reuse zoomBy).
   // The editor keeps drawing with Qt.
   function paintSheet(lines) {
     var songChar = 0;
@@ -144,14 +328,12 @@
       songError.textContent = String(error.message || error);
       sheet.replaceChildren();
       persistNote.hidden = true;
-      transposeDown.hidden = true;
-      transposeUp.hidden = true;
+      toolbarActions.hidden = true;
       document.title = "softChord Viewer";
       return;
     }
     songError.hidden = true;
-    transposeDown.hidden = false;
-    transposeUp.hidden = false;
+    toolbarActions.hidden = false;
     songTitle.textContent = source.title;
     document.title = source.title;
     var chords = SongTranspose.shifted(source.chords, steps);
@@ -202,8 +384,7 @@
     location.hash = "#/song/" + button.dataset.id;
   });
 
-  // TODO: Open this menu on a long press, and add Copy as image once the
-  // sheet uses the shared measurements.
+  // TODO: Open this menu on a long press. The open song has toolbar buttons.
   songList.addEventListener("contextmenu", function (event) {
     var button = event.target.closest("button");
     if (!button) {
@@ -229,11 +410,15 @@
       return;
     }
     menu.hidden = true;
+    var done;
     try {
-      copyText(Songbook.songText(menuSongId, action.dataset.action === "chords"));
+      done = copyText(Songbook.songText(menuSongId, action.dataset.action === "chords"));
     } catch (error) {
-      notify("Could not copy the song", String(error.message || error));
+      done = Promise.reject(error);
     }
+    done.catch(function (error) {
+      notify("Could not copy the song", String(error.message || error));
+    });
   });
 
   document.addEventListener("click", function (event) {
@@ -245,6 +430,22 @@
   document.getElementById("back").addEventListener("click", function () {
     location.hash = "#/";
   });
+
+  copyTextButton.addEventListener("click", function () {
+    copyShownText(false, "Copied song text");
+  });
+
+  copyChordsButton.addEventListener("click", function () {
+    copyShownText(true, "Copied song text with chords");
+  });
+
+  copyImageButton.addEventListener("click", copyShownImage);
+
+  zoomOutButton.addEventListener("click", function () { zoomBy(-1); });
+
+  zoomResetButton.addEventListener("click", resetZoom);
+
+  zoomInButton.addEventListener("click", function () { zoomBy(1); });
 
   transposeDown.addEventListener("click", function () {
     steps -= 1;
@@ -260,6 +461,10 @@
     if (event.key !== "Escape") {
       return;
     }
+    // Escape closes the notice dialog itself. It must not also leave the song.
+    if (event.defaultPrevented || notice.open) {
+      return;
+    }
     if (!menu.hidden) {
       menu.hidden = true;
       return;
@@ -269,6 +474,7 @@
     }
   });
 
+  applyZoom();
   window.addEventListener("hashchange", showFromHash);
   showListMessage("Opening songbook…", false);
   Songbook.load(songbookUrl).then(function () {
