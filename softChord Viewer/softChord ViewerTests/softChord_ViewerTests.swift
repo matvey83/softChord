@@ -1647,7 +1647,7 @@ struct LyricChordMoveTests {
     }
 
     @Test func randomEditsKeepTheRules() {
-        var generator = SystemRandomNumberGenerator()
+        var generator = SeededGenerator(seed: 20261028)
         let alphabet: [Character] = ["a", "b", "\n", "Ж", "😀", " "]
         func randomText(_ count: Int) -> String {
             String((0..<count).map { _ in alphabet.randomElement(using: &generator)! })
@@ -1722,7 +1722,7 @@ struct ChordJumpTests {
     }
 
     @Test func aJumpLandsOnAFreeLetterOfTheSameLine() {
-        var generator = SystemRandomNumberGenerator()
+        var generator = SeededGenerator(seed: 20261028)
         for _ in 0..<1000 {
             let letters = (0..<Int.random(in: 0...9, using: &generator)).map { _ in
                 ["a", "b", "\n"].randomElement(using: &generator)!
@@ -1761,23 +1761,19 @@ struct ChordJumpTests {
     @Test func draggingOverSeveralChordsAndBackFollowsTheFinger() {
         // The page drives a drag like this: the finger is over a letter, the chord
         // lands on the next free letter, and the finger stays on the occupied one.
+        // draggedChord is the rule the page's moveSelectedChord uses.
         let text = "0123456789"
         var chords = [chord(1, note: 1), chord(2, note: 2), chord(3, note: 3)]
         var chordAt = 1
         var finger = 1
         func drag(to target: Int) {
-            guard target != finger else {
+            guard let step = SongLyricChords.draggedChord(
+                chords, in: text, chordAt: chordAt, finger: finger, target: target) else {
                 return
             }
-            let occupied = Set(chords.map(\.characterNum)).subtracting([chordAt])
-            let direction = SongLyricChords.dragDirection(in: text, chord: chordAt, previous: finger, target: target)
-            finger = target
-            if let to = SongLyricChords.nextFreeCharacter(
-                in: text, target: target, direction: direction, occupied: occupied, allowOtherDirection: true),
-               to != chordAt {
-                chords = SongLyricChords.reattached(chords, from: chordAt, to: to)
-                chordAt = to
-            }
+            finger = step.finger
+            chordAt = step.chordAt
+            chords = step.chords
         }
         drag(to: 2)
         #expect(chordAt == 4)
@@ -1791,5 +1787,23 @@ struct ChordJumpTests {
         #expect(chordAt == 1)
         #expect(chords.map(\.characterNum).sorted() == [1, 2, 3])
         #expect(Set(chords.map(\.noteId)) == [1, 2, 3])
+    }
+}
+
+/// A random generator that gives the same numbers every run (SplitMix64), so a
+/// failing random test can be run again. Change the seed to try other cases.
+struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }

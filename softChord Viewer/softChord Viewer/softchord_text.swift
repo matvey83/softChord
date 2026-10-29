@@ -327,6 +327,43 @@ enum SongLyricChords {
         return target < previous ? -1 : 1
     }
 
+    /// One step of a chord drag: where the chord and the finger are after the finger
+    /// moved onto the letter `target`.
+    struct ChordDragStep: Equatable {
+        /// The letter the finger is over now. A chord that jumped over a letter with a
+        /// chord leaves the finger on that letter, and staying there moves nothing.
+        var finger: Int
+        /// The letter the dragged chord is on now. The same as before if it did not move.
+        var chordAt: Int
+        var chords: [SongChord]
+    }
+
+    /// The finger moved from the letter `finger` to `target` while dragging the chord
+    /// on `chordAt`. Nil when the finger is still on the same letter. The chord lands
+    /// on the next free letter of its line in the direction of the drag, and the
+    /// chords are never lost. This is the whole drag rule: the song page's
+    /// moveSelectedChord only adds the selection and the callbacks.
+    /// Mirror: the chord drag in softchord_session.py.
+    nonisolated static func draggedChord(
+        _ chords: [SongChord], in text: String, chordAt from: Int, finger previous: Int, target: Int
+    ) -> ChordDragStep? {
+        guard target != previous else {
+            return nil
+        }
+        let occupied = Set(chords.map(\.characterNum)).subtracting([from])
+        let direction = dragDirection(in: text, chord: from, previous: previous, target: target)
+        guard let to = nextFreeCharacter(
+            in: text, target: target, direction: direction, occupied: occupied, allowOtherDirection: true),
+              to != from else {
+            return ChordDragStep(finger: target, chordAt: from, chords: chords)
+        }
+        let next = reattached(chords, from: from, to: to)
+        guard next != chords else {
+            return ChordDragStep(finger: target, chordAt: from, chords: chords)
+        }
+        return ChordDragStep(finger: target, chordAt: to, chords: next)
+    }
+
     /// The chord typed for a letter. It replaces the chord there, or is added.
     /// The page shows chords shifted by `steps` but keeps them as stored, so the
     /// typed name is shifted back by the same steps before it is kept.
