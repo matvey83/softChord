@@ -157,6 +157,9 @@ class App(QtWidgets.QApplication):
         super().__init__(args)
         self.session = SongbookSession()
         self.focusChanged.connect(self.session.updateEditMenu)
+        # Logout or shutdown: no dialog can be shown, so an edit is saved.
+        self.commitDataRequest.connect(self.session.commitDataForLogout)
+        self.aboutToQuit.connect(self.session.commitDataForLogout)
         # On the class, so a later App() sees it and this shell is not collected.
         App._singleton = self
 

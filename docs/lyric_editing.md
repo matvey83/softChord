@@ -146,3 +146,12 @@ both layers to keep them equal.
 
 The browser tests need Chrome. Without it they are skipped with a loud warning,
 and `SOFTCHORD_REQUIRE_BROWSER=1` makes a missing Chrome a failure (see the README).
+
+## Desktop: Edit Text…
+
+**Edit > Edit Text…** (⌘L) or the text button starts a text edit of the open song
+in the desktop app. It works like Edit Chords… (Save and Discard buttons, ⌘S, Esc,
+the draft, the Save dialog when leaving; see
+[chord_editing.md](chord_editing.md#desktop-edit-chords)). The chords follow the
+text by the rule above while you type, and both are written together on Save.
+Undo covers the typing of this edit only. A new song opens in a text edit.

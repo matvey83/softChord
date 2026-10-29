@@ -218,7 +218,8 @@ class TransposeSongCommand(QtGui.QUndoCommand):
         session = self.song.session
         session.setWaitCursor()
         try:
-            session.sendCurrentSongToDatabase()
+            # During an edit this writes nothing until Save.
+            session._flushCurrentSong()
             session.editor.viewport().update()
         finally:
             session.restoreCursor()
@@ -375,9 +376,20 @@ class SongsTableModel(QtCore.QAbstractTableModel):
                     return rowobj.number
 
             elif col == 1:
+                # A dot while the song has an edit that is not saved.
+                marked = getattr(self.session, "songHasUnsavedEdit", None)
+                if marked is not None and marked(rowobj.id):
+                    return (rowobj.title or "") + " \u2022"
                 return rowobj.title
 
         return None
+
+    def sortValue(self, index):
+        """The number or title to sort by, without the unsaved-edit dot."""
+        rowobj = self._data[index.row()]
+        if index.column() == 0:
+            return None if rowobj.number == -1 else rowobj.number
+        return rowobj.title
 
     def headerData(self, section, orientation, role):
         """
@@ -454,8 +466,10 @@ class SongsProxyModel(QtCore.QSortFilterProxyModel):
         return False
 
     def lessThan(self, left, right):
-        leftData = self.sourceModel().data(left)
-        rightData = self.sourceModel().data(right)
+        model = self.sourceModel()
+        value = getattr(model, "sortValue", None) or model.data
+        leftData = value(left)
+        rightData = value(right)
         if leftData is not None and rightData is not None:
             return leftData < rightData
         return False
