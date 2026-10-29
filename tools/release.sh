@@ -62,5 +62,9 @@ git tag -a "$TAG" -m "softChord $VER"
 git push -q origin "$TAG"
 
 echo
-echo "Started. Watch the build:  gh run watch \$(gh run list --workflow build.yml -L1 --json databaseId -q '.[0].databaseId')"
+sleep 5
+RUN="$(gh run list --workflow build.yml --event push --branch "$TAG" -L1 --json databaseId -q '.[0].databaseId' || true)"
+echo "Started. Watch the build:  gh run watch ${RUN:-<run id from gh run list --workflow build.yml>}"
+echo "If only notarization fails (401 = wrong Apple ID or app-specific password):"
+echo "  tools/setup_mac_signing_secrets.sh --notary-only && gh run rerun --failed ${RUN:-<run id>}"
 echo "Then check the assets and publish: gh release edit $TAG --draft=false   (or on github.com)"
