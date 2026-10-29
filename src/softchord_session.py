@@ -1635,37 +1635,24 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if self.selected_char_num == None:
             return False
 
-        if key in [
-                Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up,
-                Qt.Key.Key_Down
-        ]:
-            # Move or transpose the selected chord. A chord that is moved
-            # onto a letter that has a chord jumps over it, so a letter never
-            # has two chords. (Old songs may still have two. The one created
-            # last is the one that moves.)
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            # Move the selected chord. A chord that is moved onto a letter
+            # that has a chord jumps over it, so a letter never has two
+            # chords. (Old songs may still have two. The one created last is
+            # the one that moves.) Up and Down do nothing.
             prev_chord = self.current_song.getChordAtPosition(self.selected_char_num)
 
             if prev_chord:
-                # A chord is selected
+                # A letter that has a chord is jumped over. No free letter on
+                # the line that way (or a line break) means the chord stays.
                 new_chord = copy.copy(prev_chord)
-                if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
-                    # A letter that has a chord is jumped over. No free
-                    # letter on the line that way (or a line break) means
-                    # the chord stays.
-                    direction = -1 if key == Qt.Key.Key_Left else 1
-                    landing = self.freeCharacterForChord(
-                        prev_chord, prev_chord.character_num + direction,
-                        direction, False)
-                    if landing is None:
-                        return False
-                    new_chord.character_num = landing
-                elif key == Qt.Key.Key_Up:
-                    new_chord.transpose(1)
-                elif key == Qt.Key.Key_Down:
-                    new_chord.transpose(-1)
-                else:
-                    raise ValueError("Invalid key pressed")
-
+                direction = -1 if key == Qt.Key.Key_Left else 1
+                landing = self.freeCharacterForChord(
+                    prev_chord, prev_chord.character_num + direction,
+                    direction, False)
+                if landing is None:
+                    return False
+                new_chord.character_num = landing
                 self.current_song.replaceChord(prev_chord, new_chord)
                 return True
 

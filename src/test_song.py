@@ -1499,8 +1499,8 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.app.processKeyPressed(Qt.Key.Key_Left)
         self.assertEqual(song.getChordAtPosition(3).character_num, 3)
 
-    def test_process_key_pressed_arrow_transpose(self):
-        """Up/Down arrows should transpose the selected chord."""
+    def test_process_key_pressed_up_down_do_nothing(self):
+        """Up/Down arrows leave the selected chord alone."""
         song = create_test_song(self.app, song_id=10003, text="Test")
         self.app.current_song = song
         self.app.selected_char_num = 0
@@ -1509,11 +1509,10 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.app.processKeyPressed(Qt.Key.Key_C)
         self.assertEqual(song.getChordAtPosition(0).note_id, 0)
 
-        self.app.processKeyPressed(Qt.Key.Key_Up)  # C -> C#
-        self.assertEqual(song.getChordAtPosition(0).note_id, 1)
-
-        self.app.processKeyPressed(Qt.Key.Key_Down)  # C# -> C
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Up))
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Down))
         self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertEqual(self.app.selected_char_num, 0)
 
     def _select_chords_at(self, text, positions, notes, song_id=10020):
         song = create_test_song(self.app, song_id=song_id, text=text)
