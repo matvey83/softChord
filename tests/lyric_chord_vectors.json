@@ -1,0 +1,325 @@
+{
+ "description": "Shared cases for moving chords when the lyric text is edited. Python, Swift and JS tests all read this file. chords_in are character indices (Unicode code points, not UTF-16) on old, with one chord on every letter; kept lists which of those chords survive, and chords_out are their indices on new, in the same order. A chord whose letter was deleted is dropped, and no two chords may share a letter. The unchanged start and the unchanged end of the text keep their letters, and the end never reaches into the start.",
+ "cases": [
+  {
+   "name": "Hello to Helo: the two l letters are one",
+   "old": "Hello",
+   "new": "Helo",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 2, 4],
+   "chords_out": [0, 1, 2, 3]
+  },
+  {
+   "name": "aab to ab",
+   "old": "aab",
+   "new": "ab",
+   "chords_in": [0, 1, 2],
+   "kept": [0, 2],
+   "chords_out": [0, 1]
+  },
+  {
+   "name": "aa to aaa",
+   "old": "aa",
+   "new": "aaa",
+   "chords_in": [0, 1],
+   "kept": [0, 1],
+   "chords_out": [0, 1]
+  },
+  {
+   "name": "aaa to aa",
+   "old": "aaa",
+   "new": "aa",
+   "chords_in": [0, 1, 2],
+   "kept": [0, 1],
+   "chords_out": [0, 1]
+  },
+  {
+   "name": "a to aa",
+   "old": "a",
+   "new": "aa",
+   "chords_in": [0],
+   "kept": [0],
+   "chords_out": [0]
+  },
+  {
+   "name": "aa to a",
+   "old": "aa",
+   "new": "a",
+   "chords_in": [0, 1],
+   "kept": [0],
+   "chords_out": [0]
+  },
+  {
+   "name": "abab to ab",
+   "old": "abab",
+   "new": "ab",
+   "chords_in": [0, 1, 2, 3],
+   "kept": [0, 1],
+   "chords_out": [0, 1]
+  },
+  {
+   "name": "abcabc to abc",
+   "old": "abcabc",
+   "new": "abc",
+   "chords_in": [0, 1, 2, 3, 4, 5],
+   "kept": [0, 1, 2],
+   "chords_out": [0, 1, 2]
+  },
+  {
+   "name": "abc to abcabc",
+   "old": "abc",
+   "new": "abcabc",
+   "chords_in": [0, 1, 2],
+   "kept": [0, 1, 2],
+   "chords_out": [0, 1, 2]
+  },
+  {
+   "name": "insert at the start",
+   "old": "Hello",
+   "new": "xHello",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 2, 3, 4],
+   "chords_out": [1, 2, 3, 4, 5]
+  },
+  {
+   "name": "insert in the middle",
+   "old": "Hello",
+   "new": "Hexllo",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 2, 3, 4],
+   "chords_out": [0, 1, 3, 4, 5]
+  },
+  {
+   "name": "insert at the end",
+   "old": "Hello",
+   "new": "Hellox",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 2, 3, 4],
+   "chords_out": [0, 1, 2, 3, 4]
+  },
+  {
+   "name": "type a letter next to the same letter",
+   "old": "Hello",
+   "new": "Helllo",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 2, 3, 4],
+   "chords_out": [0, 1, 2, 3, 5]
+  },
+  {
+   "name": "delete the first letter",
+   "old": "Hello",
+   "new": "ello",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [1, 2, 3, 4],
+   "chords_out": [0, 1, 2, 3]
+  },
+  {
+   "name": "delete a different middle letter",
+   "old": "Hello",
+   "new": "Hllo",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 2, 3, 4],
+   "chords_out": [0, 1, 2, 3]
+  },
+  {
+   "name": "delete the last letter",
+   "old": "Hello",
+   "new": "Hell",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 2, 3],
+   "chords_out": [0, 1, 2, 3]
+  },
+  {
+   "name": "replace the whole text",
+   "old": "Hello",
+   "new": "World",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [],
+   "chords_out": []
+  },
+  {
+   "name": "replace a selection in the middle",
+   "old": "Hello world",
+   "new": "Hello there",
+   "chords_in": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "kept": [0, 1, 2, 3, 4, 5],
+   "chords_out": [0, 1, 2, 3, 4, 5]
+  },
+  {
+   "name": "replace a selection with a shorter text",
+   "old": "Hello world",
+   "new": "Hi world",
+   "chords_in": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "kept": [0, 5, 6, 7, 8, 9, 10],
+   "chords_out": [0, 2, 3, 4, 5, 6, 7]
+  },
+  {
+   "name": "replace a selection with a longer text",
+   "old": "Hello world",
+   "new": "Hello big wide world",
+   "chords_in": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "kept": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "chords_out": [0, 1, 2, 3, 4, 5, 15, 16, 17, 18, 19]
+  },
+  {
+   "name": "replace one letter",
+   "old": "Hello",
+   "new": "Hezlo",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 3, 4],
+   "chords_out": [0, 1, 3, 4]
+  },
+  {
+   "name": "paste several lines in the middle",
+   "old": "ab",
+   "new": "a\nx\nb",
+   "chords_in": [0, 1],
+   "kept": [0, 1],
+   "chords_out": [0, 4]
+  },
+  {
+   "name": "Cyrillic delete",
+   "old": "Привет",
+   "new": "Приет",
+   "chords_in": [0, 1, 2, 3, 4, 5],
+   "kept": [0, 1, 2, 4, 5],
+   "chords_out": [0, 1, 2, 3, 4]
+  },
+  {
+   "name": "Cyrillic insert a repeated letter",
+   "old": "Привет",
+   "new": "Приивет",
+   "chords_in": [0, 1, 2, 3, 4, 5],
+   "kept": [0, 1, 2, 3, 4, 5],
+   "chords_out": [0, 1, 2, 4, 5, 6]
+  },
+  {
+   "name": "Cyrillic replace",
+   "old": "Привет мир",
+   "new": "Привет друг",
+   "chords_in": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+   "kept": [0, 1, 2, 3, 4, 5, 6],
+   "chords_out": [0, 1, 2, 3, 4, 5, 6]
+  },
+  {
+   "name": "emoji deleted",
+   "old": "a😀b",
+   "new": "ab",
+   "chords_in": [0, 1, 2],
+   "kept": [0, 2],
+   "chords_out": [0, 1]
+  },
+  {
+   "name": "emoji inserted",
+   "old": "ab",
+   "new": "a😀b",
+   "chords_in": [0, 1],
+   "kept": [0, 1],
+   "chords_out": [0, 2]
+  },
+  {
+   "name": "repeated emoji",
+   "old": "😀😀😀",
+   "new": "😀😀",
+   "chords_in": [0, 1, 2],
+   "kept": [0, 1],
+   "chords_out": [0, 1]
+  },
+  {
+   "name": "newline inserted",
+   "old": "ab",
+   "new": "a\nb",
+   "chords_in": [0, 1],
+   "kept": [0, 1],
+   "chords_out": [0, 2]
+  },
+  {
+   "name": "newline removed",
+   "old": "a\nb",
+   "new": "ab",
+   "chords_in": [0, 1, 2],
+   "kept": [0, 2],
+   "chords_out": [0, 1]
+  },
+  {
+   "name": "Enter at the start",
+   "old": "Hello\nworld",
+   "new": "\nHello\nworld",
+   "chords_in": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "kept": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "chords_out": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+  },
+  {
+   "name": "Enter at the end of a line",
+   "old": "Hello\nworld",
+   "new": "Hello\n\nworld",
+   "chords_in": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "kept": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "chords_out": [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11]
+  },
+  {
+   "name": "Backspace joins two lines",
+   "old": "Hello\nworld",
+   "new": "Helloworld",
+   "chords_in": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+   "kept": [0, 1, 2, 3, 4, 6, 7, 8, 9, 10],
+   "chords_out": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  },
+  {
+   "name": "two newlines to one",
+   "old": "a\n\nb",
+   "new": "a\nb",
+   "chords_in": [0, 1, 2, 3],
+   "kept": [0, 1, 3],
+   "chords_out": [0, 1, 2]
+  },
+  {
+   "name": "empty to text",
+   "old": "",
+   "new": "Hello",
+   "chords_in": [],
+   "kept": [],
+   "chords_out": []
+  },
+  {
+   "name": "text to empty",
+   "old": "Hello",
+   "new": "",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [],
+   "chords_out": []
+  },
+  {
+   "name": "empty to empty",
+   "old": "",
+   "new": "",
+   "chords_in": [],
+   "kept": [],
+   "chords_out": []
+  },
+  {
+   "name": "no change",
+   "old": "Hello",
+   "new": "Hello",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 2, 3, 4],
+   "chords_out": [0, 1, 2, 3, 4]
+  },
+  {
+   "name": "one letter to another",
+   "old": "a",
+   "new": "b",
+   "chords_in": [0],
+   "kept": [],
+   "chords_out": []
+  },
+  {
+   "name": "trailing space added",
+   "old": "Hello",
+   "new": "Hello ",
+   "chords_in": [0, 1, 2, 3, 4],
+   "kept": [0, 1, 2, 3, 4],
+   "chords_out": [0, 1, 2, 3, 4]
+  }
+ ]
+}

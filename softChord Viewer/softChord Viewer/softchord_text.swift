@@ -218,7 +218,7 @@ enum SongText {
 }
 
 /// Chords follow the letters while the lyrics are edited.
-/// Mirror: softchord_session.py _lyric_renumber_map and _renumber_lyric_chords.
+/// Mirror: softchord_session.py _renumber_lyric_chords and softchord_text.py lyric_renumber_map.
 enum SongLyricChords {
     nonisolated static func moved(_ chords: [SongChord], from previous: String, to text: String) -> [SongChord] {
         if previous == text || chords.isEmpty {
@@ -299,26 +299,23 @@ enum SongLyricChords {
 
     /// Old letter index to the index of that same letter after the edit.
     /// A letter that was deleted has no entry, so the chord on it is dropped.
-    /// The walk from the end overwrites the walk from the start where they meet,
-    /// matching the desktop map.
-    private nonisolated static func renumberMap(from previous: String, to text: String) -> [Int: Int] {
+    /// The unchanged end never reaches into the unchanged start, so two old letters
+    /// never map to one new letter (Hello to Helo keeps one l).
+    /// Mirror: softchord_text.py lyric_renumber_map.
+    nonisolated static func renumberMap(from previous: String, to text: String) -> [Int: Int] {
         let old = Array(previous.unicodeScalars)
         let new = Array(text.unicodeScalars)
+        let shortest = min(old.count, new.count)
         var map: [Int: Int] = [:]
-        var index = 0
-        while index < old.count && index < new.count && old[index] == new[index] {
-            map[index] = index
-            index += 1
+        var prefix = 0
+        while prefix < shortest && old[prefix] == new[prefix] {
+            map[prefix] = prefix
+            prefix += 1
         }
-        var back = 1
-        while back <= old.count && back <= new.count {
-            let oldIndex = old.count - back
-            let newIndex = new.count - back
-            if old[oldIndex] != new[newIndex] {
-                break
-            }
-            map[oldIndex] = newIndex
-            back += 1
+        var suffix = 0
+        while suffix < shortest - prefix && old[old.count - 1 - suffix] == new[new.count - 1 - suffix] {
+            map[old.count - 1 - suffix] = new.count - 1 - suffix
+            suffix += 1
         }
         return map
     }
