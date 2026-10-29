@@ -8,9 +8,13 @@ Windows: dist/softChord.exe
 Usage:
     ./build_softChord.py
     python build_softChord.py
+    python build_softChord.py --version   # print the version and exit
+
+The version is __version__ in src/softchord_version.py.
 """
 
 import os
+import re
 import sys
 import subprocess
 from pathlib import Path
@@ -28,6 +32,16 @@ else:
 REQUIREMENTS_FILE = PROJECT_ROOT / "requirements.txt"
 BUILD_REQUIREMENTS_FILE = PROJECT_ROOT / "requirements-build.txt"
 SPEC_FILE = PROJECT_ROOT / "softchord.spec"
+VERSION_FILE = PROJECT_ROOT / "src" / "softchord_version.py"
+
+
+def read_version() -> str:
+    """Return __version__ from src/softchord_version.py without importing it."""
+    text = VERSION_FILE.read_text(encoding="utf-8")
+    match = re.search(r'^__version__\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    if not match:
+        raise SystemExit(f"ERROR: no __version__ in {VERSION_FILE}")
+    return match.group(1)
 
 
 def is_running_in_venv() -> bool:
@@ -52,6 +66,10 @@ def pip_install(requirements: Path):
 
 
 def main():
+    if "--version" in sys.argv[1:]:
+        print(read_version())
+        return
+
     if not is_running_in_venv():
         ensure_venv()
         if not VENV_PYTHON.exists():
@@ -66,6 +84,7 @@ def main():
     pip_install(REQUIREMENTS_FILE)
     pip_install(BUILD_REQUIREMENTS_FILE)
 
+    print("Building softChord", read_version())
     cmd = [
         sys.executable,
         "-m",
