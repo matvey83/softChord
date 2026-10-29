@@ -1548,3 +1548,84 @@ private func exec(_ db: OpaquePointer, _ sql: String) throws {
         throw SongbookError.queryFailed(message)
     }
 }
+
+struct LyricChordMoveTests {
+    private func chord(_ index: Int) -> SongChord {
+        SongChord(
+            characterNum: index, noteId: index % 12, chordTypeId: 0, bassNoteId: -1, marker: "",
+            inParentheses: false)
+    }
+
+    private func indices(_ chords: [SongChord]) -> [Int] {
+        chords.map(\.characterNum)
+    }
+
+    @Test func deletingOneOfTwoRepeatedLettersKeepsOneChordPerLetter() {
+        let all = (0..<5).map(chord)
+        let moved = SongLyricChords.moved(all, from: "Hello", to: "Helo")
+        #expect(indices(moved) == [0, 1, 2, 3])
+        #expect(moved.map(\.noteId) == [0, 1, 2, 4])
+
+        let aab = SongLyricChords.moved((0..<3).map(chord), from: "aab", to: "ab")
+        #expect(indices(aab) == [0, 1])
+        #expect(aab.map(\.noteId) == [0, 2])
+    }
+
+    @Test func typingARepeatedLetterKeepsEveryChord() {
+        #expect(indices(SongLyricChords.moved((0..<2).map(chord), from: "aa", to: "aaa")) == [0, 1])
+        #expect(indices(SongLyricChords.moved((0..<5).map(chord), from: "Hello", to: "Helllo")) == [0, 1, 2, 3, 5])
+    }
+
+    @Test func sharedLyricChordVectors() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tests/lyric_chord_vectors.json")
+        let root = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let cases = try #require(root["cases"] as? [[String: Any]])
+        #expect(cases.count > 30)
+        for item in cases {
+            let name = item["name"] as? String ?? ""
+            let old = item["old"] as? String ?? ""
+            let new = item["new"] as? String ?? ""
+            let chordsIn = item["chords_in"] as? [Int] ?? []
+            let kept = item["kept"] as? [Int] ?? []
+            let expected = item["chords_out"] as? [Int] ?? []
+            let moved = SongLyricChords.moved(chordsIn.map(chord), from: old, to: new)
+            #expect(indices(moved) == expected, "\(name)")
+            // The chord that is kept is the one that was on that letter.
+            #expect(moved.map(\.noteId) == kept.map { $0 % 12 }, "\(name)")
+        }
+    }
+
+    @Test func randomEditsKeepTheRules() {
+        var generator = SystemRandomNumberGenerator()
+        let alphabet: [Character] = ["a", "b", "\n", "Ж", "😀", " "]
+        func randomText(_ count: Int) -> String {
+            String((0..<count).map { _ in alphabet.randomElement(using: &generator)! })
+        }
+        for _ in 0..<1000 {
+            let old = randomText(Int.random(in: 0...9, using: &generator))
+            let oldScalars = Array(old.unicodeScalars)
+            let start = Int.random(in: 0...oldScalars.count, using: &generator)
+            let end = Int.random(in: start...oldScalars.count, using: &generator)
+            var scalars = oldScalars
+            scalars.replaceSubrange(start..<end, with: Array(randomText(Int.random(in: 0...4, using: &generator)).unicodeScalars))
+            var view = String.UnicodeScalarView()
+            view.append(contentsOf: scalars)
+            let new = String(view)
+            let newScalars = Array(new.unicodeScalars)
+            let moved = SongLyricChords.moved((0..<oldScalars.count).map(chord), from: old, to: new)
+            let targets = indices(moved)
+            #expect(Set(targets).count == targets.count, "\(old) -> \(new)")
+            #expect(targets == targets.sorted(), "\(old) -> \(new)")
+            for chord in moved {
+                // Old text is at most 9 letters, so the note id is the old index.
+                #expect(chord.characterNum < newScalars.count, "\(old) -> \(new)")
+                #expect(oldScalars[chord.noteId] == newScalars[chord.characterNum], "\(old) -> \(new)")
+            }
+            #expect(moved.count >= oldScalars.count - (end - start), "\(old) -> \(new)")
+        }
+    }
+}

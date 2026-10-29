@@ -63,6 +63,7 @@ from softchord_store import (
     readonly_database_error,
 )
 from softchord_layout import QtDocumentLayout, SongLayout
+from softchord_text import lyric_renumber_map
 from softchord_io import (
     SQLITE_HEADER,
     SONGS_TABLE_SQL,
@@ -2072,33 +2073,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
     def _lyric_renumber_map(self, song_text):
         # For each character: key: old position, value: new position
-        renumber_map = {}
-        previous = self.previous_song_text
-
-        i = -1
-        while True:
-            i += 1
-            try:
-                if song_text[i] != previous[i]:
-                    break
-                else:
-                    renumber_map[i] = i
-            except IndexError:
-                # Reached end-of-line of either string
-                break
-
-        i = 0
-        while True:
-            i -= 1
-            try:
-                if song_text[i] != previous[i]:
-                    break
-                else:
-                    renumber_map[len(previous) + i] = len(song_text) + i
-            except IndexError:
-                # Reached end-of-line of either string
-                break
-        return renumber_map
+        return lyric_renumber_map(self.previous_song_text, song_text)
 
     def _remap_lyric_selection(self, renumber_map):
         if self.selected_char_num != None:

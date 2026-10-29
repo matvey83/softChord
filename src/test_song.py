@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import random
 
 from PyQt6 import QtCore, QtGui, QtWidgets, QtPrintSupport
 from PyQt6.QtCore import Qt
@@ -27,6 +28,7 @@ from PyQt6.QtTest import QTest
 
 import softchord
 import softchord_chords
+from softchord_text import lyric_renumber_map
 from softchord_layout import QtDocumentLayout, SongLayout
 from softchord_io import (
     _chord_tokens,
@@ -2762,6 +2764,26 @@ class TestMoreAppOperations(unittest.TestCase):
 
         self.assertEqual(list(song.iterateAllChords()), [])
 
+    def test_lyric_edit_over_repeated_letters_keeps_one_chord_per_letter(self):
+        # Hello -> Helo: the two l letters used to map onto one letter.
+        song = self._song_ready_for_lyric_edit(
+            "Hello", [(i, i) for i in range(5)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(4)
+        cursor.deletePreviousChar()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Helo")
+        self.assertEqual(
+            [(c.character_num, c.note_id) for c in song.iterateAllChords()],
+            [(0, 0), (1, 1), (2, 2), (3, 4)])
+
+        self.app.editor.undo()
+
+        self.assertEqual(self.app.editor.toPlainText(), "Hello")
+        self.assertEqual(
+            [(c.character_num, c.note_id) for c in song.iterateAllChords()],
+            [(i, i) for i in range(5)])
+
     def _song_ready_for_lyric_edit(self, text, chords):
         """Show text in the lyric editor with chords already on it.
 
@@ -4836,6 +4858,71 @@ class TestChordVectors(unittest.TestCase):
             with self.subTest(text=text):
                 parsed = softchord.parse_chord(text)
                 softchord_chords_string(parsed)
+
+
+class TestLyricChordVectors(unittest.TestCase):
+    """The same cases are run by the Swift and JS tests."""
+
+    PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "tests",
+        "lyric_chord_vectors.json")
+
+    @classmethod
+    def setUpClass(cls):
+        with open(cls.PATH, encoding="utf-8") as fh:
+            cls.cases = json.load(fh)["cases"]
+
+    def test_vectors_are_not_empty(self):
+        self.assertGreater(len(self.cases), 30)
+
+    def test_every_vector(self):
+        for case in self.cases:
+            with self.subTest(name=case["name"]):
+                renumber_map = lyric_renumber_map(case["old"], case["new"])
+                kept = [i for i in case["chords_in"] if i in renumber_map]
+                self.assertEqual(kept, case["kept"])
+                self.assertEqual([renumber_map[i] for i in kept],
+                                 case["chords_out"])
+
+    def test_vectors_never_put_two_chords_on_one_letter(self):
+        for case in self.cases:
+            with self.subTest(name=case["name"]):
+                out = case["chords_out"]
+                self.assertEqual(out, sorted(set(out)))
+                for i in out:
+                    self.assertLess(i, len(case["new"]))
+
+    def test_a_kept_chord_stays_on_the_same_letter(self):
+        for case in self.cases:
+            with self.subTest(name=case["name"]):
+                for old, new in zip(case["kept"], case["chords_out"]):
+                    self.assertEqual(case["old"][old], case["new"][new])
+
+    def test_random_edits_keep_the_rules(self):
+        rng = random.Random(20261028)
+        alphabet = "ab\nЖ😀 "
+        for _ in range(3000):
+            old = "".join(rng.choice(alphabet)
+                          for _ in range(rng.randint(0, 9)))
+            start = rng.randint(0, len(old))
+            end = rng.randint(start, len(old))
+            inserted = "".join(rng.choice(alphabet)
+                               for _ in range(rng.randint(0, 4)))
+            new = old[:start] + inserted + old[end:]
+            renumber_map = lyric_renumber_map(old, new)
+            targets = list(renumber_map.values())
+            with self.subTest(old=old, new=new):
+                self.assertEqual(len(targets), len(set(targets)))
+                for old_index, new_index in renumber_map.items():
+                    self.assertLess(old_index, len(old))
+                    self.assertLess(new_index, len(new))
+                    self.assertEqual(old[old_index], new[new_index])
+                # Order is kept, and nothing outside the edit is lost.
+                kept = sorted(renumber_map)
+                self.assertEqual([renumber_map[i] for i in kept],
+                                 sorted(targets))
+                self.assertGreaterEqual(len(renumber_map),
+                                        len(old) - (end - start))
 
 
 class TestChordTextValidity(unittest.TestCase):

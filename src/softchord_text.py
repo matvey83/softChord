@@ -54,3 +54,29 @@ def format_song_text(lines, include_chords, line_has_chords, chords_on_line):
         song_text = song_text[:-1]
 
     return song_text.replace('\n', '\r\n')
+
+
+def lyric_renumber_map(previous, text):
+    """Old letter index to the index of that same letter after a text edit.
+
+    The unchanged start and the unchanged end of the text keep their letters.
+    A letter that was deleted or replaced has no entry, so the chord on it is
+    dropped. The end is never allowed to reach into the start, so two old
+    letters never map to one new letter (Hello -> Helo keeps one l).
+
+    Mirror: softchord_text.swift SongLyricChords.renumberMap.
+    """
+    renumber_map = {}
+    shortest = min(len(previous), len(text))
+
+    prefix = 0
+    while prefix < shortest and previous[prefix] == text[prefix]:
+        renumber_map[prefix] = prefix
+        prefix += 1
+
+    suffix = 0
+    while (suffix < shortest - prefix
+           and previous[-1 - suffix] == text[-1 - suffix]):
+        renumber_map[len(previous) - 1 - suffix] = len(text) - 1 - suffix
+        suffix += 1
+    return renumber_map
