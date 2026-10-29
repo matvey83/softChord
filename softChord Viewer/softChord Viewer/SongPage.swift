@@ -1663,9 +1663,9 @@ private class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureR
         sheet.drawing
     }
 
-    /// Light rectangles behind the sheet, in song coordinates.
-    func setHighlights(_ rects: [CGRect]) {
-        sheet.highlights = rects
+    /// The selected letter and chord, drawn behind the sheet (song coordinates).
+    func setSelection(_ selection: SongSheetSelection) {
+        sheet.selection = selection
     }
 
     func setLines(_ lines: [SongSheetLine]) {
@@ -1774,9 +1774,9 @@ private final class SongSheetUIView: UIView {
         }
     }
 
-    var highlights: [CGRect] = [] {
+    var selection = SongSheetSelection.none {
         didSet {
-            if highlights != oldValue {
+            if selection != oldValue {
                 setNeedsDisplay()
             }
         }
@@ -1789,7 +1789,7 @@ private final class SongSheetUIView: UIView {
     }
 
     override func draw(_ rect: CGRect) {
-        SongSheetImage.draw(drawing, zoom: zoom, origin: contentOrigin, clip: bounds, highlights: highlights)
+        SongSheetImage.draw(drawing, zoom: zoom, origin: contentOrigin, clip: bounds, selection: selection)
     }
 }
 
@@ -2073,12 +2073,12 @@ private final class SongChordZoomView: SongZoomScrollView {
     /// Light blue behind the letter, and behind its chord if it has one.
     private func showSelection() {
         guard let selected = selectedCharacterNum else {
-            setHighlights([])
+            setSelection(.none)
             return
         }
         let drawing = sheetDrawing
         let letter = drawing.letters.first { $0.characterNum == selected }?.rect
         let chord = drawing.chordBoxes.first { $0.characterNum == selected }?.rect
-        setHighlights([letter, chord].compactMap { $0 })
+        setSelection(SongSheetSelection(letter: letter, chord: chord))
     }
 }

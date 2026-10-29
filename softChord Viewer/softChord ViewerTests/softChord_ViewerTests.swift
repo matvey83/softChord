@@ -1235,6 +1235,35 @@ struct SongSheetImageTests {
         #expect(pixels.contains { $0.x < 40 && $0.y < 40 && $0.z < 40 })
         #expect(pixels.contains { $0.x < 80 && $0.y < 80 && $0.z > 180 })
     }
+
+    /// The same selection as the web app's: a 20% #007aff letter box, and a 25% halo
+    /// 2pt past the chord with a 1pt #007aff line around it.
+    @Test func selectionIsTheWebAppsBlueHalo() {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let size = CGSize(width: 120, height: 80)
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            SongSheetImage.draw(
+                SongSheetLayout.drawing(for: []), zoom: 1, origin: .zero,
+                clip: CGRect(origin: .zero, size: size),
+                selection: SongSheetSelection(
+                    letter: CGRect(x: 40, y: 50, width: 10, height: 20),
+                    chord: CGRect(x: 40, y: 20, width: 30, height: 16)))
+        }
+        let pixels = pixels(of: image)
+        func at(_ x: Int, _ y: Int) -> SIMD3<Int> {
+            SIMD3<Int>(truncatingIfNeeded: pixels[y * 120 + x])
+        }
+        func near(_ a: SIMD3<Int>, _ b: SIMD3<Int>) -> Bool {
+            abs(a.x - b.x) <= 4 && abs(a.y - b.y) <= 4 && abs(a.z - b.z) <= 4
+        }
+        #expect(near(at(55, 28), SIMD3(191, 222, 255)), "the halo, inside the chord")
+        #expect(near(at(55, 19), SIMD3(191, 222, 255)), "the halo, 1pt above the chord")
+        #expect(at(55, 17).x < 60 && at(55, 17).z > 240, "the 1pt line")
+        #expect(near(at(55, 15), SIMD3(255, 255, 255)), "nothing past the line")
+        #expect(near(at(45, 60), SIMD3(204, 228, 255)), "the letter")
+    }
 }
 
 struct SongbookReadTests {
