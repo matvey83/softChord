@@ -6,12 +6,17 @@
 #
 # Writes dist/softChord-VERSION-macos-ARCH.dmg (softChord.app + Applications link).
 #
-# Optional environment (GitHub Actions secrets):
+# Optional environment (GitHub Actions secrets; NOTARY_PROFILE locally):
 #   MACOS_CERT_P12       base64 of a .p12 with the "Developer ID Application" cert and key
 #   MACOS_CERT_PASSWORD  password of that .p12
 #   APPLE_ID             Apple ID email used for notarization
 #   APPLE_APP_PASSWORD   app-specific password of that Apple ID
 #   APPLE_TEAM_ID        Apple developer team ID (BP4KJ52H3T)
+#   NOTARY_PROFILE       notarytool keychain profile instead of the three above
+#   NOTARY_WAIT_SECONDS  how long to wait for Apple (default 600). If it is
+#                        still pending, the DMG is kept signed but unstapled,
+#                        with NAME.dmg.notarization-pending holding the
+#                        submission ID, and the build only warns.
 #
 # Without the certificate the app keeps PyInstaller's ad-hoc signature and the
 # DMG is unsigned: it works, but Gatekeeper asks the user to allow it. Without
@@ -24,6 +29,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="$ROOT/dist/softChord.app"
 DMG="$ROOT/dist/softChord-$VER-macos-$ARCH.dmg"
 ENT="$ROOT/packaging/macos/entitlements.plist"
+# shellcheck source=packaging/macos/notary.sh
+. "$ROOT/packaging/macos/notary.sh"
 WORK="$(mktemp -d)"
 KC=""
 
@@ -89,17 +96,42 @@ ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
 hdiutil create -volname "softChord $VER" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 
+PENDING="$DMG.notarization-pending"
+rm -f "$PENDING"
 if [ -n "$IDENTITY" ]; then
   codesign --force --timestamp --sign "$IDENTITY" "$DMG"
-  if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
-    echo "Notarizing (this usually takes a few minutes)"
-    xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
-      --team-id "$APPLE_TEAM_ID" --wait --timeout 30m
-    xcrun stapler staple "$DMG"
-    xcrun stapler validate "$DMG"
-    spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG" || true
+  if notary_available; then
+    echo "Submitting for notarization"
+    SUB_ID="$(notary_submit "$DMG")" || SUB_ID=""
+    if [ -n "$SUB_ID" ]; then
+      echo "Submission ID: $SUB_ID"
+      STATUS="$(notary_poll "$SUB_ID" "${NOTARY_WAIT_SECONDS:-600}")"
+    else
+      STATUS="not submitted"
+    fi
+    case "$STATUS" in
+      Accepted)
+        xcrun stapler staple "$DMG"
+        xcrun stapler validate "$DMG"
+        ;;
+      Invalid|Rejected)
+        notary_fail_log "$SUB_ID"
+        echo "ERROR: Apple rejected the DMG ($STATUS)" >&2
+        exit 1
+        ;;
+      "not submitted")
+        notary_warn "Could not submit $(basename "$DMG") for notarization; it is signed but not notarized"
+        ;;
+      *)
+        # Signed but not stapled yet. It still opens without a warning once
+        # Apple accepts it (Gatekeeper checks online). The staple workflow
+        # (or tools/release.sh --staple) staples it later.
+        echo "$SUB_ID" > "$PENDING"
+        notary_warn "Notarization of $(basename "$DMG") still ${STATUS:-pending} (submission $SUB_ID). Run the Staple workflow later."
+        ;;
+    esac
   else
-    warn "APPLE_ID/APPLE_APP_PASSWORD/APPLE_TEAM_ID not set; the DMG is signed but not notarized"
+    notary_warn "APPLE_ID/APPLE_APP_PASSWORD/APPLE_TEAM_ID (or NOTARY_PROFILE) not set; the DMG is signed but not notarized"
   fi
 fi
 
