@@ -338,9 +338,14 @@ class QtDocumentLayout:
         if song.doc is None:
             return
 
-        chords_by_char = {}
+        # A chord on a line break or past the end has no letter and is not
+        # drawn, so it makes no room for itself (same rule as painting and
+        # Copy text: Song.letterLineAndColumn).
+        chord_lines = set()
         for chord in song._chords:
-            chords_by_char[chord.character_num] = True
+            found = song.letterLineAndColumn(chord.character_num)
+            if found is not None:
+                chord_lines.add(found[0])
 
         _chords_height, lyrics_height, line_height = session.getHeightsWithChords(
         )
@@ -351,14 +356,9 @@ class QtDocumentLayout:
         # avoids a few layout problems when it is not.
         chord_blocks = set()
         block = song.doc.begin()
-        line_start_char = 0
         while block.isValid():
-            line_end_char = line_start_char + len(block.text())
-            for chord_num in chords_by_char:
-                if line_start_char <= chord_num <= line_end_char:
-                    chord_blocks.add(block.blockNumber())
-                    break
-            line_start_char = line_end_char + 1
+            if block.blockNumber() in chord_lines:
+                chord_blocks.add(block.blockNumber())
             block = block.next()
 
         layout = song.doc.documentLayout()

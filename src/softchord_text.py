@@ -15,6 +15,8 @@ def place_chord_on_line(cells, anchor, chord_text):
     Mirror: softchord_text.swift SongText.place.
     """
     chord_len = len(chord_text)
+    if chord_len == 0 or not cells:
+        return
     chord_left = anchor - (chord_len // 2)
     if not (chord_len % 2):
         chord_left += 1
@@ -28,8 +30,14 @@ def place_chord_on_line(cells, anchor, chord_text):
         chord_right -= 1
         chord_left -= 1
 
+    # A name longer than the line wraps round its start, and what does not
+    # fit is left out, as in the Swift and JavaScript versions.
     for i, char in enumerate(chord_text):
-        cells[i + chord_left] = char
+        index = i + chord_left
+        if index < 0:
+            index += len(cells)
+        if 0 <= index < len(cells):
+            cells[index] = char
 
 
 def format_song_text(lines, include_chords, line_has_chords, chords_on_line):

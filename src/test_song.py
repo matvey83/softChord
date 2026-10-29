@@ -685,6 +685,48 @@ class TestSong(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.song.songCharToLineChar(999)
         with self.assertRaises(RuntimeError):
+            self.song.songCharToLineChar(13)  # the line break
+        with self.assertRaises(RuntimeError):
+            self.song.songCharToLineChar(-1)
+        self.assertIsNone(self.song.letterLineAndColumn(13))
+        self.assertEqual(self.song.letterLineAndColumn(14), (1, 0))
+
+    def test_chords_with_no_letter_do_not_stop_the_song_from_being_copied(self):
+        text = self.song.getAllText()
+        line_break = text.index("\n")
+        for song_id, stray in enumerate((line_break, len(text), len(text) + 50),
+                                        start=70):
+            song = create_test_song(self.app, song_id=song_id, text=text)
+            song._addChord(SongChord(song, 0, 0, 0, -1, "", 0))
+            song._addChord(SongChord(song, stray, 3, 0, -1, "", 0))
+            with_chords = song.getAsText(include_chords=True)
+            self.assertEqual(with_chords.split("\r\n")[0], "C")
+            self.assertTrue(song.getLineHasChords(0))
+            self.assertFalse(song.getLineHasChords(1))
+
+    def test_chords_on_letters_is_the_chords_letter_line_and_column_finds(self):
+        for song_id, text in enumerate(
+            ("", "a", "ab\ncd", "\n\n", "one\n\ntwo\n"), start=60):
+            song = create_test_song(self.app, song_id=song_id, text=text)
+            for number in range(-2, len(text) + 4):
+                song._addChord(SongChord(song, number, 0, 0, -1, "", 0))
+            expected = [
+                chord for chord in song.iterateAllChords()
+                if song.letterLineAndColumn(chord.character_num) is not None
+            ]
+            self.assertEqual(song.chordsOnLetters(), expected, repr(text))
+            for chord in song.chordsOnLetters():
+                self.assertNotEqual(text[chord.character_num], "\n")
+            self.assertEqual(len(song.chordsOnLetters()), len(text.replace("\n", "")))
+
+    def test_a_chord_name_longer_than_its_line_does_not_crash_the_copy(self):
+        song = create_test_song(self.app, song_id=79, text="Oh\nNo")
+        song._addChord(SongChord(song, 0, 0, 11, -1, "", 0))
+        song.getAsText(include_chords=True)
+        cells = list(" ")
+        place_chord_on_line(cells, 0, "Cmaj7/G")
+        place_chord_on_line([], 0, "C")
+        with self.assertRaises(RuntimeError):
             self.song.lineCharToSongChar(9, 0)
 
     def test_line_heights_follow_whether_the_line_has_chords(self):
@@ -2086,6 +2128,77 @@ class TestAppRendering(unittest.TestCase):
                 if test(color.red(), color.green(), color.blue()):
                     count += 1
         return count
+
+    def _draw_exported(self, song):
+        image = QtGui.QImage(400, 300, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtCore.Qt.GlobalColor.white)
+        painter = QtGui.QPainter(image)
+        try:
+            self.app.drawSongToRect(song, painter, self.app.editor,
+                                    QtCore.QRectF(0, 0, 400, 300),
+                                    exporting=True)
+        finally:
+            painter.end()
+        return image
+
+    def _draw_chord_layer(self):
+        image = QtGui.QImage(400, 300, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtCore.Qt.GlobalColor.white)
+        painter = QtGui.QPainter(image)
+        try:
+            self.app.editor.paintChordLayer(painter)
+        finally:
+            painter.end()
+        return image
+
+    def test_chords_on_a_line_break_or_past_the_end_are_not_painted(self):
+        """The same rule as Copy text: no letter, so no chord and no room for it."""
+        song = self.app.current_song
+        text = song.getAllText()
+        before_export = self._draw_exported(song)
+        before_layer = self._draw_chord_layer()
+        before_blocks = set(song.doc.documentLayout()._chord_blocks)
+        self.assertEqual(before_blocks, {0})
+
+        line_break = text.index("\n")
+        for stray in (line_break, len(text), len(text) + 50):
+            # The same chord as the one on the first letter, so the key shown in
+            # the header stays the same and only the painting could differ.
+            song._addChord(SongChord(song, stray, 0, 0, -1, "", 0))
+        QtDocumentLayout.apply_margins(song, self.app)
+
+        # The last line has only a stray chord, and gets no room for chords.
+        self.assertEqual(set(song.doc.documentLayout()._chord_blocks),
+                         before_blocks)
+        self.assertEqual(self._draw_exported(song), before_export)
+        self.assertEqual(self._draw_chord_layer(), before_layer)
+
+        # Every painting path hands only the chords with a letter to the layout.
+        seen = []
+        original = SongLayout.place
+
+        def place(layout, chords, *args, **kwargs):
+            seen.append([chord.character_num for chord in chords])
+            return original(layout, chords, *args, **kwargs)
+
+        SongLayout.place = staticmethod(place)
+        try:
+            self._draw_chord_layer()
+            self._draw_exported(song)
+            screen = QtGui.QImage(400, 300, QtGui.QImage.Format.Format_ARGB32)
+            painter = QtGui.QPainter(screen)
+            try:
+                self.app.drawSongToRect(song, painter, self.app.editor,
+                                        QtCore.QRectF(0, 0, 400, 300),
+                                        exporting=False)
+            finally:
+                painter.end()
+            self.app._songSheetBounds(song, self.app.editor)
+        finally:
+            SongLayout.place = staticmethod(original)
+        self.assertGreaterEqual(len(seen), 4)
+        for numbers in seen:
+            self.assertEqual(numbers, [0])
 
     def test_unrecognized_chord_is_drawn_in_red_and_a_chord_in_blue(self):
         song = self.app.current_song
