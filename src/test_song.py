@@ -176,6 +176,10 @@ class MinimalTestApp:
         # Provide the methods Song calls on self.app
         self._setup_method_stubs()
 
+    def chordEditing(self):
+        # The editor tests here act as during a chord edit.
+        return True
+
     def _create_minimal_tables(self):
         create_schema(self.curs)
         self.curs.commit()
@@ -328,6 +332,17 @@ def create_test_song(app,
 
 # The suite shares one App. Another QApplication crashes when the process exits.
 _test_app = None
+
+
+def _unexpected_message_box(box):
+    # A real dialog would wait forever offscreen. Tests that expect the
+    # Save dialog patch exec themselves; anything else is reported and
+    # answered with Don't Save.
+    sys.stderr.write("UNEXPECTED DIALOG: %s\n" % box.text())
+    return QtWidgets.QMessageBox.StandardButton.Discard
+
+
+QtWidgets.QMessageBox.exec = _unexpected_message_box
 _test_app_fonts = None
 
 
@@ -356,9 +371,11 @@ def test_app():
         session.chords_font_size = chords_size
         session.symbols_font = QtGui.QFont(symbols)
         session.updateEditorFonts()
-        if session.editor.lyric_editor_mode:
-            session.chordEditorSelected()
     session = _test_app.session
+    # Each test starts viewing, with no edit left from the one before.
+    if session.edit_session is not None:
+        session._endEdit()
+    session._pending_song_selection = None
     session.selected_chord_nums = set()
     session.selected_char_num = None
     session.editor.cancelChordMarquee()
@@ -2590,6 +2607,7 @@ class TestPrintingPdfFontClipboard(unittest.TestCase):
         pos = first_chord.character_num
         original_count = len(list(self.app.current_song.iterateAllChords()))
 
+        self.app.chordEditorSelected()
         self.app.selected_char_num = pos
         self.app.cutSelected()
 
@@ -2632,10 +2650,13 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
         # Check in-memory song object
         self.assertEqual(self.app.current_song.title, new_title)
 
-        # Check it propagated to the table model
+        # The table model keeps the saved title until Save.
         row_num = self.app.songs_model.getSongsRow(self.app.current_song)
-        rowobj = self.app.songs_model.getRow(row_num)
-        self.assertEqual(rowobj.title, new_title)
+        self.assertEqual(self.app.songs_model.getRow(row_num).title,
+                         original_title)
+        self.assertTrue(self.app.saveEdit())
+        row_num = self.app.songs_model.getSongsRow(self.app.current_song)
+        self.assertEqual(self.app.songs_model.getRow(row_num).title, new_title)
 
     def test_title_edit_on_readonly_songbook_reverts_and_explains(self):
         previous = self.app.current_song.title
@@ -2643,7 +2664,12 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
         errors = []
         self.app.error = lambda text: errors.append(text)
 
+        # The new title is a change; Save is what writes it, and fails.
         self.app.currentSongTitleEdited("Nope")
+        self.assertEqual(errors, [])
+        self.assertFalse(self.app.saveEdit())
+        self.assertTrue(self.app.editing())
+        self.app.discardEdit()
 
         self.assertEqual(self.app.current_song.title, previous)
         self.assertEqual(self.app.ui.song_title_ef.text(), previous)
@@ -2656,6 +2682,7 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
         self.assertEqual(saved, previous)
 
         self.app.currentSongTitleEdited("Still nope")
+        self.app.discardEdit()
         self.assertEqual(len(errors), 1)
         self.assertEqual(self.app.current_song.title, previous)
 
@@ -2668,6 +2695,7 @@ class TestSongMetadataAndSongbookOps(unittest.TestCase):
         self.app.error = lambda text: errors.append(text)
 
         self.app.currentSongTitleEdited("After replace")
+        self.assertTrue(self.app.saveEdit())
 
         self.assertEqual(errors, [])
         self.assertEqual(self.app.current_song.title, "After replace")
@@ -3561,11 +3589,12 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.transposeUp()
         self.assertEqual(song.getChordAtPosition(0).note_id, 2)
         self.assertEqual(self.app.undo_stack.undoText(), "transpose")
-        self.assertEqual(self._stored_note_id(), 2)
+        # A change to Save or Discard: the songbook is not written yet.
+        self.assertEqual(self._stored_note_id(), 0)
 
         self.app.undo_stack.undo()
         self.assertEqual(song.getChordAtPosition(0).note_id, 1)
-        self.assertEqual(self._stored_note_id(), 1)
+        self.assertEqual(self._stored_note_id(), 0)
 
         self.app.undo_stack.redo()
         self.assertEqual(song.getChordAtPosition(0).note_id, 2)
@@ -3585,8 +3614,9 @@ class TestMoreAppOperations(unittest.TestCase):
 
         self.app.transposeUp()
         self.assertTrue(self.app.undo_stack.canUndo())
-        self.assertEqual(self._stored_note_id(), 1)
+        self.assertEqual(self._stored_note_id(), 0)
 
+        # Shown another song without asking: the change is saved.
         self.app.setCurrentSong(Song(self.app, 1))
         other = self.app.current_song
         self.assertEqual(other.id, 1)
@@ -3901,10 +3931,13 @@ class TestMoreAppOperations(unittest.TestCase):
 
     def test_edit_menu_undo_follows_lyric_edits(self):
         insert_and_select_song(self.app, with_chord=True)
+        self.app.chordEditorSelected()
         song = self.app.current_song
         song.addChord(SongChord(song, 1, 5, 0, -1, "", 0))
-        chord_index = self.app.undo_stack.index()
+        self.assertTrue(self.app.ui.actionUndo.isEnabled())
+        self.app.saveEdit()
 
+        # Each edit has its own history.
         self.app.lyricEditorSelected()
         self.assertFalse(self.app.ui.actionUndo.isEnabled())
 
@@ -3918,17 +3951,14 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.ui.actionUndo.trigger()
 
         self.assertFalse(self.app.editor.toPlainText().endswith("!"))
-        self.assertEqual(self.app.undo_stack.index(), chord_index)
+        self.assertFalse(self.app.editChanged())
         self.assertTrue(self.app.ui.actionRedo.isEnabled())
 
         self.app.ui.actionRedo.trigger()
         self.assertTrue(self.app.editor.toPlainText().endswith("!"))
-
-        self.app.chordEditorSelected()
-        self.assertTrue(self.app.ui.actionUndo.isEnabled())
-        self.app.ui.actionUndo.trigger()
-        self.assertEqual(self.app.undo_stack.index(), chord_index - 1)
-        self.assertIsNone(song.getChordAtPosition(1))
+        self.app.discardEdit()
+        self.assertIsNotNone(song.getChordAtPosition(1))
+        self.assertFalse(self.app.editor.toPlainText().endswith("!"))
 
     def _stored_note_id(self):
         """Note id of the first stored chord string (root only)."""
@@ -4834,46 +4864,61 @@ class TestSongsContextMenu(unittest.TestCase):
 
 
 class TestEditorModeMenu(unittest.TestCase):
-    """Edit menu check marks stay in sync with the editor mode buttons."""
+    """Edit Chords… and Edit Text… start edits; the buttons show which."""
 
     @classmethod
     def setUpClass(cls):
         cls.app = test_app()
 
-    def test_chord_mode_is_checked_at_startup(self):
-        self.app.chordEditorSelected()
-        self.assertTrue(self.app.ui.actionChordEditorMode.isCheckable())
-        self.assertTrue(self.app.ui.actionLyricEditorMode.isCheckable())
-        self.assertTrue(self.app.ui.actionChordEditorMode.isChecked())
-        self.assertFalse(self.app.ui.actionLyricEditorMode.isChecked())
-        self.assertTrue(self.app.ui.chord_editor_button.isDown())
+    def setUp(self):
+        self.app = test_app()
+        self.td = open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, with_chord=True)
+
+    def tearDown(self):
+        if self.app.edit_session is not None:
+            self.app._endEdit()
+        self.app.setCurrentSongbook(None)
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    def test_viewing_at_startup(self):
+        self.assertFalse(self.app.ui.actionChordEditorMode.isCheckable())
+        self.assertFalse(self.app.ui.actionLyricEditorMode.isCheckable())
+        self.assertFalse(self.app.ui.chord_editor_button.isDown())
         self.assertFalse(self.app.ui.lyric_editor_button.isDown())
         self.assertFalse(self.app.editor.lyric_editor_mode)
+        self.assertFalse(self.app.editing())
 
-    def test_menu_and_buttons_follow_the_active_mode(self):
+    def test_menu_and_buttons_start_edits(self):
         self.app.ui.actionLyricEditorMode.trigger()
-        self.assertTrue(self.app.ui.actionLyricEditorMode.isChecked())
-        self.assertFalse(self.app.ui.actionChordEditorMode.isChecked())
+        self.assertTrue(self.app.textEditing())
         self.assertTrue(self.app.ui.lyric_editor_button.isDown())
         self.assertFalse(self.app.ui.chord_editor_button.isDown())
         self.assertTrue(self.app.editor.lyric_editor_mode)
 
+        # Nothing changed, so the other kind starts without asking.
         self.app.ui.chord_editor_button.click()
-        self.assertTrue(self.app.ui.actionChordEditorMode.isChecked())
-        self.assertFalse(self.app.ui.actionLyricEditorMode.isChecked())
+        self.assertTrue(self.app.chordEditing())
         self.assertTrue(self.app.ui.chord_editor_button.isDown())
         self.assertFalse(self.app.ui.lyric_editor_button.isDown())
         self.assertFalse(self.app.editor.lyric_editor_mode)
 
         self.app.ui.lyric_editor_button.click()
-        self.assertTrue(self.app.ui.actionLyricEditorMode.isChecked())
-        self.assertFalse(self.app.ui.actionChordEditorMode.isChecked())
         self.assertTrue(self.app.editor.lyric_editor_mode)
 
         self.app.ui.actionChordEditorMode.trigger()
-        self.assertTrue(self.app.ui.actionChordEditorMode.isChecked())
         self.assertTrue(self.app.ui.chord_editor_button.isDown())
         self.assertFalse(self.app.editor.lyric_editor_mode)
+
+        self.app.ui.discard_edit_button.click()
+        self.assertFalse(self.app.editing())
+        self.assertFalse(self.app.ui.chord_editor_button.isDown())
+
+    def test_edit_needs_an_open_song(self):
+        self.app.setCurrentSong(None)
+        self.app.updateStates()
+        self.assertFalse(self.app.ui.actionChordEditorMode.isEnabled())
+        self.assertFalse(self.app.ui.actionLyricEditorMode.isEnabled())
 
 
 # Chord-sheet round trips.
@@ -6288,6 +6333,7 @@ class TestSongUuidUpdatedAtAndTombstones(unittest.TestCase):
         td = open_empty_temp_songbook(app)
         self.addCleanup(shutil.rmtree, td, True)
         app.createNewSong()
+        app.discardEdit()   # a new song opens a text edit
         song_id = app.current_song.id
         app.curs.execute("UPDATE songs SET updated_at=1000 WHERE id=?",
                          (song_id,))
@@ -6953,6 +6999,618 @@ class TestSongFilterKeepsTheOpenSong(unittest.TestCase):
         self.app.songFilterEdited("Test")
         self.assertEqual(self.app.current_song.transposed_steps, 1)
         self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        # The transpose is a change while viewing. Keep it, so closing asks nothing.
+        self.assertTrue(self.app.saveEdit())
+
+
+class _SaveDialogAnswers:
+    """Patches QMessageBox.exec: pops one answer per dialog and records it."""
+
+    def __init__(self, test):
+        self.answers = []
+        self.asked = []
+        original = QtWidgets.QMessageBox.exec
+
+        def exec_(box):
+            self.asked.append(box.text())
+            if not self.answers:
+                raise AssertionError("dialog with no answer: %s" % box.text())
+            return self.answers.pop(0)
+
+        QtWidgets.QMessageBox.exec = exec_
+        test.addCleanup(setattr, QtWidgets.QMessageBox, "exec", original)
+
+
+_SB = QtWidgets.QMessageBox.StandardButton
+
+
+class TestSaveAndDiscard(unittest.TestCase):
+    """Edit Chords… / Edit Text… keep a draft until Save or Discard."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = test_app()
+
+    def setUp(self):
+        self.app = test_app()
+        self.td = open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, with_chord=True)
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, "
+            "updated_at) VALUES (1, 2, 'Second', '', 'Other text', "
+            "lower(hex(randomblob(16))), 1700000000)")
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.select_song(0)
+        self.song = self.app.current_song
+        self.dialog = _SaveDialogAnswers(self)
+
+    def tearDown(self):
+        if self.app.edit_session is not None:
+            self.app._endEdit()
+        self.app._pending_song_selection = None
+        self.app.clearFilterClicked()
+        self.app.setCurrentSongbook(None)
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    # Helpers
+
+    def row_of(self, song_id):
+        model = self.app.ui.songs_view.model()
+        for row in range(model.rowCount()):
+            source = model.mapToSource(model.index(row, 0))
+            if self.app.songs_model.getRowSongID(source.row()) == song_id:
+                return row
+        raise AssertionError("no row for song %s" % song_id)
+
+    def select_song(self, song_id, wait=False):
+        self.app.ui.songs_view.selectRow(self.row_of(song_id))
+        if wait:
+            QTest.qWait(20)
+
+    def db_song(self, song_id=0):
+        title, number, text = self.app.curs.execute(
+            "SELECT title, number, text FROM songs WHERE id=?",
+            (song_id,)).fetchone()
+        chords = sorted(self.app.curs.execute(
+            "SELECT character_num, chord FROM song_chord_link "
+            "WHERE song_id=?", (song_id,)).fetchall())
+        return title, number, text, chords
+
+    def add_chord_edit(self, position=3):
+        """Start a chord edit and put a G on a letter (3 unless given)."""
+        self.app.chordEditorSelected()
+        self.app.selected_char_num = position
+        self.app.processKeyPressed(Qt.Key.Key_G)
+        self.assertTrue(self.app.editChanged())
+
+    def row_title(self, song_id):
+        model = self.app.ui.songs_view.model()
+        return model.index(self.row_of(song_id), 1).data()
+
+    # Viewing and the edit bar
+
+    def test_viewing_is_the_default(self):
+        self.assertFalse(self.app.editing())
+        self.assertFalse(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
+        self.assertFalse(self.app.ui.discard_edit_button.isVisibleTo(self.app.win))
+        self.assertFalse(self.app.ui.actionSaveEdit.isEnabled())
+        self.assertFalse(self.app.ui.actionChordEditorMode.isCheckable())
+        self.assertFalse(self.app.ui.actionLyricEditorMode.isCheckable())
+        self.assertEqual(self.app.ui.actionChordEditorMode.text(),
+                         "Edit Chords\u2026")
+        self.assertEqual(self.app.ui.actionLyricEditorMode.text(),
+                         "Edit Text\u2026")
+
+    def test_edit_shows_the_bar_and_save_hides_it(self):
+        self.app.ui.actionChordEditorMode.trigger()
+        self.assertTrue(self.app.chordEditing())
+        self.assertTrue(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
+        self.assertTrue(self.app.ui.discard_edit_button.isVisibleTo(self.app.win))
+        self.assertTrue(self.app.ui.actionSaveEdit.isEnabled())
+        self.app.ui.save_edit_button.click()
+        self.assertFalse(self.app.editing())
+        self.assertFalse(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
+        self.assertFalse(self.app.ui.discard_edit_button.isVisibleTo(self.app.win))
+
+    def test_save_and_discard_sit_right_of_edit_text(self):
+        layout = self.app.ui.horizontalLayout_6
+        widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
+        at = widgets.index(self.app.ui.lyric_editor_button)
+        self.assertEqual(widgets[at + 1:at + 3],
+                         [self.app.ui.discard_edit_button,
+                          self.app.ui.save_edit_button])
+        self.assertFalse(hasattr(self.app.ui, "edit_bar_label"))
+
+    # Chords are selected only in Edit Chords
+
+    def press_on(self, letter, is_chord, x=5):
+        self.app.session.determineClickedLetter = (
+            lambda px, py, dragging: (is_chord, letter))
+        pos = QtCore.QPointF(x, 5)
+        for kind, handler in (
+                (QtCore.QEvent.Type.MouseButtonPress,
+                 self.app.editor.mousePressEvent),
+                (QtCore.QEvent.Type.MouseMove, self.app.editor.mouseMoveEvent),
+                (QtCore.QEvent.Type.MouseButtonRelease,
+                 self.app.editor.mouseReleaseEvent)):
+            handler(QtGui.QMouseEvent(
+                kind, pos, pos, Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+        del self.app.session.__dict__["determineClickedLetter"]
+
+    def test_viewing_selects_nothing(self):
+        self.press_on(0, True)
+        self.assertIsNone(self.app.selected_char_num)
+        self.assertIsNone(self.app.hover_char_num)
+        self.assertIsNone(self.app.editor.dragging_chord)
+        self.assertIsNone(self.app.editor.marquee_origin)
+        QTest.keyClick(self.app.editor, Qt.Key.Key_Right)
+        self.assertIsNone(self.app.selected_char_num)
+
+    def test_only_edit_chords_selects(self):
+        self.app.chordEditorSelected()
+        self.press_on(2, False)
+        self.assertEqual(self.app.selected_char_num, 2)
+        self.app.selected_chord_nums = {0}
+        # A text edit and viewing drop the chord selection.
+        self.app.lyricEditorSelected()
+        self.assertIsNone(self.app.selected_char_num)
+        self.assertEqual(self.app.selected_chord_nums, set())
+        self.app.discardEdit()
+        self.app.chordEditorSelected()
+        self.press_on(2, False)
+        self.app.discardEdit()
+        self.assertIsNone(self.app.selected_char_num)
+
+    # The draft
+
+    def test_no_songbook_change_until_save(self):
+        before = self.db_song()
+        self.add_chord_edit()
+        self.app.transposeUp()
+        self.app.currentSongTitleEdited("New title")
+        self.assertEqual(self.db_song(), before)
+        self.app.ui.actionSaveEdit.trigger()
+        title, _, _, chords = self.db_song()
+        self.assertEqual(title, "New title")
+        self.assertEqual(chords, [(0, "D\u266d"), (3, "A\u266d")])
+
+    def test_discard_restores_exactly(self):
+        before = self.db_song()
+        self.add_chord_edit()
+        self.app.transposeUp()
+        self.app.currentSongTitleEdited("New title")
+        self.app.currentSongNumberEdited("42")
+        self.app.ui.discard_edit_button.click()
+        self.assertFalse(self.app.editing())
+        song = self.app.current_song
+        self.assertEqual(song.title, "Test Song")
+        self.assertEqual(song.number, 1)
+        self.assertEqual(song.transposed_steps, 0)
+        self.assertEqual([(c.character_num, c.getChordText())
+                          for c in song.iterateAllChords()], [(0, "C")])
+        self.assertEqual(self.app.ui.song_title_ef.text(), "Test Song")
+        self.assertEqual(self.db_song(), before)
+        self.assertFalse(self.app.win.isWindowModified())
+
+    def test_change_then_undo_is_unchanged(self):
+        self.add_chord_edit()
+        self.app.undo_stack.undo()
+        self.assertFalse(self.app.editChanged())
+        self.assertFalse(self.app.win.isWindowModified())
+        # Esc has nothing to ask about.
+        self.app.ui.actionDiscardEdit.trigger()
+        self.assertFalse(self.app.editing())
+        self.assertEqual(self.dialog.asked, [])
+
+    def test_text_edit_saves_text_and_moves_chords(self):
+        self.app.lyricEditorSelected()
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.insertText("Hi ")
+        self.assertTrue(self.app.editChanged())
+        self.assertEqual(self.db_song()[2], "Amazing grace\nHow sweet the sound")
+        self.app.ui.actionSaveEdit.trigger()
+        _, _, text, chords = self.db_song()
+        self.assertTrue(text.startswith("Hi Amazing"))
+        self.assertEqual(chords, [(3, "C")])
+
+    def test_dot_and_window_modified_follow_the_change(self):
+        self.assertNotIn("\u2022", self.row_title(0))
+        self.add_chord_edit()
+        self.assertTrue(self.app.win.isWindowModified())
+        self.assertEqual(self.row_title(0), "Test Song \u2022")
+        self.assertEqual(self.row_title(1), "Second")
+        self.app.undo_stack.undo()
+        self.assertEqual(self.row_title(0), "Test Song")
+        self.app.undo_stack.redo()
+        self.app.saveEdit()
+        self.assertFalse(self.app.win.isWindowModified())
+        self.assertEqual(self.row_title(0), "Test Song")
+
+    def test_save_and_esc_shortcuts(self):
+        self.assertEqual(self.app.ui.actionSaveEdit.shortcut(),
+                         QtGui.QKeySequence("Ctrl+S"))
+        self.assertEqual(self.app.ui.actionDiscardEdit.shortcut(),
+                         QtGui.QKeySequence("Esc"))
+
+    def test_esc_asks_only_when_changed(self):
+        before = self.db_song()
+        self.add_chord_edit()
+        self.addCleanup(self.app.session.__dict__.pop, "question", None)
+        self.app.session.question = lambda *a, **k: False   # Keep Editing
+        self.app.ui.actionDiscardEdit.trigger()
+        self.assertTrue(self.app.editing())
+        self.app.session.question = lambda *a, **k: True    # Discard
+        self.app.ui.actionDiscardEdit.trigger()
+        self.assertFalse(self.app.editing())
+        self.assertEqual(self.db_song(), before)
+        del self.app.session.__dict__["question"]
+
+    def test_esc_cancels_a_chord_drag_first(self):
+        self.app.chordEditorSelected()
+        editor = self.app.editor
+
+        def mouse(kind, x):
+            pos = QtCore.QPointF(x, 5)
+            button = (Qt.MouseButton.NoButton
+                      if kind == QtCore.QEvent.Type.MouseMove
+                      else Qt.MouseButton.LeftButton)
+            return QtGui.QMouseEvent(kind, pos, pos, button,
+                                     Qt.MouseButton.LeftButton,
+                                     Qt.KeyboardModifier.NoModifier)
+
+        self.app.session.determineClickedLetter = lambda x, y, dragging: (True, 0)
+        self.addCleanup(self.app.session.__dict__.pop, "determineClickedLetter", None)
+        editor.mousePressEvent(mouse(QtCore.QEvent.Type.MouseButtonPress, 5))
+        self.assertIsNotNone(editor.dragging_chord)
+        self.app.session.determineClickedLetter = lambda x, y, dragging: (False, 3)
+        editor.mouseMoveEvent(mouse(QtCore.QEvent.Type.MouseMove, 40))
+        QTest.keyClick(editor, Qt.Key.Key_Escape)
+        self.assertIsNone(editor.dragging_chord)
+        self.assertTrue(self.app.chordEditing())
+        self.assertEqual([(c.character_num, c.getChordText()) for c in
+                          self.app.current_song.iterateAllChords()],
+                         [(0, "C")])
+        self.assertFalse(self.app.editChanged())
+
+    # The Save dialog on a song switch
+
+    def test_switch_song_save(self):
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Save)
+        self.select_song(1, wait=True)
+        self.assertEqual(len(self.dialog.asked), 1)
+        self.assertIn("Test Song", self.dialog.asked[0])
+        self.assertFalse(self.app.editing())
+        self.assertEqual(self.app.current_song.id, 1)
+        self.assertEqual(self.db_song()[3], [(0, "C"), (3, "G")])
+
+    def test_switch_song_dont_save(self):
+        before = self.db_song()
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Discard)
+        self.select_song(1, wait=True)
+        self.assertFalse(self.app.editing())
+        self.assertEqual(self.app.current_song.id, 1)
+        self.assertEqual(self.app.getSelectedSongIds(), [1])
+        self.assertEqual(self.db_song(), before)
+
+    def test_switch_song_cancel_keeps_the_edit_and_selection(self):
+        before = self.db_song()
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Cancel)
+        self.select_song(1)
+        # The edited song is shown selected again before the dialog.
+        self.assertEqual(self.app.getSelectedSongIds(), [0])
+        QTest.qWait(20)
+        self.assertEqual(len(self.dialog.asked), 1)
+        self.assertTrue(self.app.chordEditing())
+        self.assertIs(self.app.current_song, self.song)
+        self.assertEqual(self.app.getSelectedSongIds(), [0])
+        self.assertTrue(self.app.editChanged())
+        self.assertEqual(self.db_song(), before)
+
+    def test_multi_select_asks(self):
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Cancel)
+        view = self.app.ui.songs_view
+        model = view.model()
+        view.selectionModel().select(
+            model.index(self.row_of(1), 0),
+            QtCore.QItemSelectionModel.SelectionFlag.Select
+            | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+        QTest.qWait(20)
+        self.assertEqual(len(self.dialog.asked), 1)
+        self.assertEqual(self.app.getSelectedSongIds(), [0])
+        self.assertTrue(self.app.editing())
+
+    def test_unchanged_edit_switches_without_asking(self):
+        self.app.chordEditorSelected()
+        self.select_song(1, wait=True)
+        self.assertEqual(self.dialog.asked, [])
+        self.assertFalse(self.app.editing())
+        self.assertEqual(self.app.current_song.id, 1)
+
+    def test_switching_edit_kind_asks(self):
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Cancel)
+        self.app.lyricEditorSelected()
+        self.assertTrue(self.app.chordEditing())
+        self.dialog.answers.append(_SB.Save)
+        self.app.lyricEditorSelected()
+        self.assertTrue(self.app.textEditing())
+        self.assertEqual(self.db_song()[3], [(0, "C"), (3, "G")])
+
+    def test_filter_keeps_the_draft(self):
+        self.add_chord_edit()
+        self.app.songFilterEdited("nothing matches this")
+        self.app.clearFilterClicked()
+        self.assertEqual(self.dialog.asked, [])
+        self.assertTrue(self.app.chordEditing())
+        self.assertIs(self.app.current_song, self.song)
+        self.assertTrue(self.app.editChanged())
+
+    # Other ways out
+
+    def test_close_cancel_keeps_the_window(self):
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Cancel)
+        event = QtGui.QCloseEvent()
+        self.app.closeEvent(event)
+        self.assertFalse(event.isAccepted())
+        self.assertTrue(self.app.editing())
+
+    def test_close_dont_save_closes(self):
+        before = self.db_song()
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Discard)
+        event = QtGui.QCloseEvent()
+        self.app.closeEvent(event)
+        self.assertTrue(event.isAccepted())
+        self.assertFalse(self.app.editing())
+        self.assertEqual(self.db_song(), before)
+
+    def test_songbook_actions_ask(self):
+        for position, action in ((4, self.app.newSongbook),
+                                 (5, self.app.openSongbook),
+                                 (6, self.app.closeSongbook)):
+            self.add_chord_edit(position)
+            self.dialog.answers.append(_SB.Cancel)
+            action()
+            self.assertTrue(self.app.editing(), action.__name__)
+            self.assertTrue(self.app.store.is_open, action.__name__)
+            self.app.saveEdit()
+        self.assertEqual(len(self.dialog.asked), 3)
+
+    def test_open_from_the_finder_asks(self):
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Cancel)
+        self.assertFalse(self.app.setCurrentSongbook(None))
+        self.assertTrue(self.app.store.is_open)
+        self.assertTrue(self.app.editing())
+
+    def test_new_song_asks(self):
+        self.add_chord_edit()
+        self.dialog.answers.append(_SB.Cancel)
+        self.app.createNewSong()
+        self.assertIs(self.app.current_song, self.song)
+        self.dialog.answers.append(_SB.Save)
+        self.app.createNewSong()
+        self.assertIsNot(self.app.current_song, self.song)
+        self.assertTrue(self.app.textEditing())
+
+    def test_logout_saves_silently(self):
+        self.add_chord_edit()
+        self.app.commitDataForLogout(None)
+        self.assertEqual(self.dialog.asked, [])
+        self.assertFalse(self.app.editing())
+        self.assertEqual(self.db_song()[3], [(0, "C"), (3, "G")])
+
+    # Output during an edit uses the draft and does not write
+
+    def test_export_uses_the_draft_without_writing(self):
+        before = self.db_song()
+        self.add_chord_edit()
+        self.app.currentSongTitleEdited("Draft title")
+        out = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, out, True)
+        text_path = os.path.join(out, "song.txt")
+        self.app.exportToText(text_path)
+        self.app.exportToChordPro(os.path.join(out, "song.chordpro"))
+        self.app.exportToSinglePdf(os.path.join(out, "song.pdf"))
+        with open(text_path, encoding="utf-8-sig") as fh:
+            exported = fh.read()
+        self.assertIn("G", exported)
+        with open(os.path.join(out, "song.chordpro"),
+                  encoding="utf-8-sig") as fh:
+            self.assertIn("Draft title", fh.read())
+        self.assertTrue(os.path.getsize(os.path.join(out, "song.pdf")) > 0)
+        self.assertEqual(self.db_song(), before)
+        self.assertTrue(self.app.editChanged())
+
+    def test_print_uses_the_draft_without_writing(self):
+        before = self.db_song()
+        self.add_chord_edit()
+        out = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, out, True)
+        printer = QtPrintSupport.QPrinter()
+        printer.setOutputFormat(QtPrintSupport.QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(os.path.join(out, "print.pdf"))
+        self.app.printSongsToPrinter([0], printer, "Printing")
+        self.assertEqual(self.db_song(), before)
+        self.assertTrue(self.app.editChanged())
+
+    # Changes while viewing: a transpose, the title, number or notes
+
+    def stored_chords(self):
+        return self.db_song()[3]
+
+    def test_transpose_while_viewing_is_a_change(self):
+        before = self.db_song()
+        self.app.transposeUp()
+        self.assertTrue(self.app.editing())
+        self.assertFalse(self.app.chordEditing())
+        self.assertFalse(self.app.textEditing())
+        self.assertTrue(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
+        self.assertTrue(self.app.ui.discard_edit_button.isVisibleTo(self.app.win))
+        self.assertEqual(self.row_title(0), "Test Song \u2022")
+        self.assertTrue(self.app.win.isWindowModified())
+        self.assertEqual(self.db_song(), before)
+        self.app.ui.save_edit_button.click()
+        self.assertFalse(self.app.editing())
+        self.assertNotEqual(self.stored_chords(), before[3])
+        self.assertEqual(self.row_title(0), "Test Song")
+        self.assertFalse(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
+
+    def test_transposing_back_is_no_change(self):
+        for back in (self.app.transposeDown, self.app.transposeReset):
+            self.app.transposeUp()
+            self.app.transposeUp()
+            self.assertTrue(self.app.editChanged())
+            back()
+            if back == self.app.transposeDown:
+                back()
+            self.assertFalse(self.app.editChanged())
+            self.assertFalse(
+                self.app.ui.save_edit_button.isVisibleTo(self.app.win))
+            self.assertEqual(self.row_title(0), "Test Song")
+            QTest.qWait(20)
+            self.assertFalse(self.app.editing(), back.__name__)
+
+    def test_a_whole_octave_is_no_change(self):
+        for _ in range(12):
+            self.app.transposeUp()
+        self.assertFalse(self.app.editChanged())
+        QTest.qWait(20)
+        self.assertFalse(self.app.editing())
+
+    def test_transposing_back_keeps_how_a_chord_was_typed(self):
+        self.app.curs.execute(
+            "UPDATE song_chord_link SET chord='A#' WHERE song_id=0")
+        self.app.curs.commit()
+        self.app.setCurrentSong(Song(self.app, 0))
+        song = self.app.current_song
+        typed = song.getChordAtPosition(0).getStoredText()
+        self.app.transposeUp()
+        self.app.transposeDown()
+        self.assertFalse(self.app.editChanged())
+        QTest.qWait(20)
+        self.assertFalse(self.app.editing())
+        self.assertEqual(song.getChordAtPosition(0).getStoredText(), typed)
+
+    def test_discard_puts_the_key_back(self):
+        before = self.db_song()
+        self.app.transposeUp()
+        self.app.discardEdit()
+        self.assertEqual(self.song.getChordAtPosition(0).note_id, 0)
+        self.assertEqual(self.song.transposed_steps, 0)
+        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertEqual(self.db_song(), before)
+
+    def test_undo_while_viewing_never_writes(self):
+        before = self.db_song()
+        self.app.transposeUp()
+        self.app.transposeUp()
+        self.app.undo()
+        self.assertEqual(self.db_song(), before)
+        self.app.saveEdit()
+        saved = self.db_song()
+        # The transposes went with the edit: nothing of this song is left
+        # on the songbook's own stack, and Undo writes nothing.
+        stack = self.app.undo_stack
+        self.assertFalse(any(
+            getattr(stack.command(index), "song_scoped", False)
+            for index in range(stack.count())))
+        self.app.undo()
+        self.assertEqual(self.db_song(), saved)
+
+    def test_title_number_and_notes_while_viewing_are_a_change(self):
+        before = self.db_song()
+        self.app.currentSongTitleEdited("New Title")
+        self.app.currentSongNumberEdited("7")
+        self.app.subtitleEdited("Notes")
+        self.assertTrue(self.app.editing())
+        self.assertFalse(self.app.chordEditing())
+        # The list keeps the saved title until Save, with the dot.
+        self.assertEqual(self.row_title(0), "Test Song \u2022")
+        self.assertEqual(self.db_song(), before)
+        self.app.discardEdit()
+        self.assertEqual(self.row_title(0), "Test Song")
+        self.assertEqual(self.song.title, "Test Song")
+        self.assertEqual(self.app.ui.song_title_ef.text(), "Test Song")
+        self.assertEqual(self.db_song(), before)
+
+        self.app.currentSongTitleEdited("New Title")
+        self.app.currentSongNumberEdited("7")
+        self.app.saveEdit()
+        title, number, _, _ = self.db_song()
+        self.assertEqual((title, number), ("New Title", 7))
+        self.assertEqual(self.row_title(0), "New Title")
+
+    def number_shown(self, song_id):
+        model = self.app.ui.songs_view.model()
+        return model.index(self.row_of(song_id), 0).data()
+
+    def test_list_does_not_sort_or_filter_by_a_draft(self):
+        self.app.ui.songs_view.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        order = (self.row_of(0), self.row_of(1))
+        self.assertLess(order[0], order[1])
+        number = self.number_shown(0)
+        self.app.songFilterEdited("Test")
+        self.assertEqual(self.app.ui.songs_view.model().rowCount(), 1)
+        # A title that no longer matches the filter, and a number after Second.
+        self.app.currentSongTitleEdited("Zebra")
+        self.app.currentSongNumberEdited("9")
+        self.assertTrue(self.app.editChanged())
+        model = self.app.ui.songs_view.model()
+        self.assertEqual(model.rowCount(), 1)
+        self.assertEqual(self.row_title(0), "Test Song \u2022")
+        self.assertEqual(self.number_shown(0), number)
+        self.app.clearFilterClicked()
+        self.assertEqual((self.row_of(0), self.row_of(1)), order)
+        self.assertTrue(self.app.saveEdit())
+        self.assertEqual(self.row_title(0), "Zebra")
+        self.assertGreater(self.row_of(0), self.row_of(1))
+
+    def test_discarding_a_title_and_number_leaves_the_list_as_it_was(self):
+        self.app.ui.songs_view.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        order = (self.row_of(0), self.row_of(1))
+        number = self.number_shown(0)
+        self.app.currentSongNumberEdited("9")
+        self.app.currentSongTitleEdited("Zebra")
+        self.app.discardEdit()
+        self.assertEqual((self.row_of(0), self.row_of(1)), order)
+        self.assertEqual(self.row_title(0), "Test Song")
+        self.assertEqual(self.number_shown(0), number)
+        self.assertEqual(self.app.ui.song_title_ef.text(), "Test Song")
+
+    def test_title_typed_back_is_no_change(self):
+        self.app.currentSongTitleEdited("Test Son")
+        self.assertTrue(self.app.editChanged())
+        self.app.currentSongTitleEdited("Test Song")
+        QTest.qWait(20)
+        self.assertFalse(self.app.editing())
+
+    def test_edit_chords_after_a_transpose_is_the_same_edit(self):
+        self.app.transposeUp()
+        # No dialog: the edit goes on (an unexpected dialog would fail).
+        self.assertTrue(self.app.chordEditorSelected())
+        self.assertTrue(self.app.chordEditing())
+        self.assertTrue(self.app.editChanged())
+        self.app.discardEdit()
+        self.assertFalse(self.app.editing())
+        self.assertEqual(self.song.getChordAtPosition(0).note_id, 0)
+
+    def test_switching_song_after_a_transpose_asks(self):
+        before = self.db_song()
+        self.app.transposeUp()
+        self.dialog.answers.append(_SB.Discard)
+        self.select_song(1, wait=True)
+        self.assertEqual(len(self.dialog.asked), 1)
+        self.assertEqual(self.app.current_song.id, 1)
+        self.assertEqual(self.db_song(), before)
 
 
 if __name__ == "__main__":

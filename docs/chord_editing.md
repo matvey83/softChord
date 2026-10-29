@@ -83,3 +83,46 @@ touch, desktop width, 375px and 320px), and the pure rules in
 `tests/chord_edit.test.js`. A 600-chord song moves a chord in under 1 ms a step
 (median). Not tried: Safari, Firefox, a real iPhone or Android phone, IME input in
 the chord field.
+
+## Desktop: Edit Chords…
+
+A song opened in the desktop app is only viewed: nothing can be selected or
+dragged, and the chord keys, double-click and paste do nothing. Chords can be
+selected (click, rectangle, arrow keys) only in Edit Chords…. **Edit > Edit Chords…** (⌘K) or
+the chords button starts an edit; **Edit Text…** (⌘L) is the same for the text
+(see [lyric_editing.md](lyric_editing.md)). While editing, **Discard** and **Save**
+buttons are shown right of the Edit Text button, and the Edit menu has Save Changes (⌘S) and
+Discard Changes (Esc).
+
+- The edit is a draft. The songbook is written only on Save. Title, number,
+  subtitle and transpose (Reset too) are part of the draft and go back on Discard.
+  The song list keeps showing the saved title and number (with the dot), and does
+  not sort or filter by the draft, until Save.
+- Changing one of those while viewing is a change as well: transposing, Reset
+  transpose, or typing in the title, number or notes field starts a draft, and
+  Save and Discard appear (the song stays in viewing, nothing becomes
+  selectable). Edit Chords… or Edit Text… after it go on with the same draft.
+  Transposing back to the key the song had (also a whole octave, or Reset), or
+  typing the title back, is no change: Save and Discard go away and the draft
+  ends. A chord typed as A# that came back as B♭ is shown as A# again.
+- Undo and redo cover only the edit, and are dropped on Save or Discard. A change
+  undone back to the start counts as no change. Nothing of a song is left on the
+  songbook's own undo stack, so Undo while viewing never writes a song (only
+  songbook steps such as delete, import, renumber and remove trailing spaces are
+  undone there).
+- With changes, the window shows it is modified and the song's row in the list
+  has a • after the title.
+- Esc during a chord drag puts the chord back. Otherwise it discards, asking
+  first only if something changed. The Discard button does not ask.
+- Print, export (PDF, text, ChordPro) and copy use the draft and do not save it.
+- Choosing another song, the other kind of edit, closing the window, Quit, a new,
+  opened, closed or saved-as songbook, opening one from the Finder, appending a
+  songbook, a new, imported or pasted song, delete, renumber, remove trailing
+  spaces and the song list's menu ask "Do you want to save the changes…?" with
+  Save (the default), Don't Save and Cancel (Esc). On Cancel the edited song stays
+  selected. An edit without changes ends without asking.
+- Typing in the filter keeps the edit, even when the filter hides the song.
+- At logout or shutdown, where no dialog can be shown, the edit is saved.
+
+Tested offscreen (`TestSaveAndDiscard` in `src/test_song.py`, the dialog mocked).
+Not tried by hand: a real ⌘Q, logout and shutdown, and the dialog as a sheet.

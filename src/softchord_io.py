@@ -331,7 +331,7 @@ class SongbookIO:
         Exports the selected song (one) to a TEXT file.
         """
 
-        self.sendCurrentSongToDatabase()
+        self._flushCurrentSong()
 
         self.setWaitCursor(
         )  # For some reason, without this line, the selection is not updated yet when running softchord_test.py
@@ -361,7 +361,7 @@ class SongbookIO:
                 with open(text_file, 'w', encoding='utf-8-sig') as fh:
                     for song_id in self.getSelectedSongIds():
                         # NOTE for now there will always be only one song exported.
-                        song = Song(self, song_id)
+                        song = self._songForOutput(song_id)
                         song_text = song.getAsText()
                         fh.write(song_text)
             finally:
@@ -372,7 +372,7 @@ class SongbookIO:
         Exports the selected song (one) to a ChordPro format.
         """
 
-        self.sendCurrentSongToDatabase()
+        self._flushCurrentSong()
 
         self.setWaitCursor(
         )  # For some reason, without this line, the selection is not updated yet when running softchord_test.py
@@ -402,7 +402,7 @@ class SongbookIO:
                 with open(filename, 'w', encoding='utf-8-sig') as fh:
                     for song_id in self.getSelectedSongIds():
                         # NOTE for now there will always be only one song exported.
-                        song = Song(self, song_id)
+                        song = self._songForOutput(song_id)
 
                         song_text = song.getAsChordProText()
 
@@ -417,6 +417,8 @@ class SongbookIO:
         """
         Lets the user select a ChordPro file to import.
         """
+        if not self.confirmLeaveEdit():
+            return
         if not filename:
             filter_string = "ChordPro format (%s)" % ' '.join(
                 ['*' + ext for ext in chordpro_extensions])
@@ -449,6 +451,8 @@ class SongbookIO:
         """
         Paste text from clipboard as a new song.
         """
+        if not self.confirmLeaveEdit():
+            return
 
         if self.current_songbook_filename == None:
             self.warning("Please open/create a song book first")
@@ -480,6 +484,8 @@ class SongbookIO:
         """
         Lets the user select a text file to import.
         """
+        if not self.confirmLeaveEdit():
+            return
         text_files, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self.win,
             "Select a text file to import",
@@ -490,6 +496,8 @@ class SongbookIO:
             self.importTextFiles(text_files)
 
     def importTextFiles(self, text_files):
+        if not self.confirmLeaveEdit():
+            return
         song_ids = []
         self.setWaitCursor()
         try:
@@ -740,6 +748,11 @@ class SongbookIO:
         return convert_chord_from_string(chord_str)
 
     def setCurrentSongbook(self, filename, conn=None):
+        # Opening from the Finder comes here directly.
+        if not self.confirmLeaveEdit():
+            if conn is not None:
+                conn.close()
+            return False
         opened = None
         original_path = None
         if filename is not None:
@@ -773,18 +786,18 @@ class SongbookIO:
         # that could not be changed. Save Songbook As keeps the work.
         self.songbook_original_path = original_path
         if filename is None:
-            self.win.setWindowTitle("softChord")
+            self.win.setWindowTitle("softChord[*]")
         elif original_path is not None:
             songbook_name = os.path.splitext(
                 os.path.basename(original_path))[0]
             self.win.setWindowTitle(
-                "softChord - %s (converted copy, not saved)" % songbook_name)
+                "softChord - %s (converted copy, not saved)[*]" % songbook_name)
         else:
             songbook_name = os.path.splitext(os.path.basename(filename))[0]
             suffix = ""
             if opened is not None and opened.read_only:
                 suffix = " (read-only)"
-            self.win.setWindowTitle("softChord - %s%s" %
+            self.win.setWindowTitle("softChord - %s%s[*]" %
                                     (songbook_name, suffix))
 
         self.songs_model.updateFromDatabase()
@@ -803,6 +816,8 @@ class SongbookIO:
         """
         Append the given songbook to the currently open songbook.
         """
+        if not self.confirmLeaveEdit():
+            return
 
         self.setWaitCursor()
         try:
@@ -841,6 +856,8 @@ class SongbookIO:
             source_cleanup()
 
     def newSongbook(self):
+        if not self.confirmLeaveEdit():
+            return
         songbook_file, _ = QtWidgets.QFileDialog.getSaveFileName(
             self.win,
             "Save songbook as:",
@@ -857,6 +874,8 @@ class SongbookIO:
             self.setCurrentSongbook(songbook_file, conn=conn)
 
     def openSongbook(self):
+        if not self.confirmLeaveEdit():
+            return
         initial_dir = QtCore.QDir.home().path()
         songbook_file, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.win,
@@ -868,12 +887,16 @@ class SongbookIO:
             self.setCurrentSongbook(songbook_file)
 
     def closeSongbook(self):
+        if not self.confirmLeaveEdit():
+            return
         if self.current_song:
             # Send the current song to the database:
             self.setCurrentSong(None)
         self.setCurrentSongbook(None)
 
     def saveSongbook(self):
+        if not self.confirmLeaveEdit():
+            return
 
         if self.current_song:
             # Send the current song to the database:
@@ -920,6 +943,8 @@ class SongbookIO:
         """
         Append a user-selected songbook to the currently opened songbook.
         """
+        if not self.confirmLeaveEdit():
+            return
 
         songbook_file, _ = QtWidgets.QFileDialog.getOpenFileName(
             self.win,

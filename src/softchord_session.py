@@ -3,7 +3,7 @@
 Not a QApplication. softchord.App is the process shell and forwards here.
 """
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets, sip
 from PyQt6.QtCore import Qt
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
 from PyQt6.QtGui import QPageSize
@@ -143,6 +143,83 @@ paper_sizes_list = [
     (PageSizeId.Ledger, "Ledger (432 x 279 mm)"),
     (PageSizeId.Tabloid, "Tabloid (279 x 432 mm)"),
 ]
+
+
+class SongDraft:
+    """The parts of a song an edit can change, as they were at one moment.
+
+    Title, number and subtitle are in it, and so is the transposition: during
+    an edit those are held back until Save as well.
+    """
+
+    def __init__(self, text, chords, title, number, subtitle,
+                 transposed_steps, key):
+        self.text = text
+        # Copies, so later edits and transposes do not change them.
+        self.chords = chords
+        self.title = title
+        self.number = number
+        self.subtitle = subtitle
+        self.transposed_steps = transposed_steps
+        # What "changed" compares: text, stored chord strings, metadata.
+        self.key = key
+
+    @staticmethod
+    def key_of(text, chords, title, number, subtitle):
+        stored = sorted(
+            (chord.character_num, chord.getStoredText()) for chord in chords)
+        return (text or "", tuple(stored), title or "", number,
+                subtitle or "")
+
+    def respelledKey(self, session, song):
+        """key, with the chords spelled as the song's key spells them.
+
+        A transpose forgets how a chord was typed (A# or Bb). Taken away and
+        back, the song has the same notes and this key.
+        """
+        chords = []
+        for chord in self.chords:
+            chord = copy.copy(chord)
+            if not chord.unknown:
+                chord.note_id = chord.note_id
+                if chord.bass_note_id != -1:
+                    chord.bass_note_id = chord.bass_note_id
+            chords.append(chord)
+        return self.key_of(self.text, chords, self.title, self.number,
+                           self.subtitle)
+
+    @classmethod
+    def capture(cls, session, song):
+        text = session._currentSongText()
+        chords = list(song.iterateAllChords())
+        return cls(text, [copy.copy(chord) for chord in chords], song.title,
+                   song.number, song.subtitle, song.transposed_steps,
+                   cls.key_of(text, chords, song.title, song.number,
+                              song.subtitle))
+
+
+class EditSession:
+    """One edit of the open song, until Save or Discard.
+
+    Edit Chords and Edit Text are edits, and so is a change made while
+    viewing (VIEW): a transpose, or a new title, number or notes. Nothing is
+    written to the songbook while it lasts. Its undo steps are on their own
+    stack, which goes away with the edit.
+    """
+
+    CHORDS = "chords"
+    TEXT = "text"
+    # A change made while viewing. Save and Discard show only while it
+    # changes the song; going back (transposing to the key it had) ends it.
+    # Edit Chords or Edit Text go on with it as the same edit.
+    VIEW = "view"
+
+    def __init__(self, mode, song, start, main_undo_stack):
+        self.mode = mode
+        self.song = song
+        self.start = start
+        # The songbook's undo stack, put back when the edit ends.
+        self.main_undo_stack = main_undo_stack
 
 
 class CustomTextEdit(QtWidgets.QTextEdit):
@@ -308,6 +385,9 @@ class CustomTextEdit(QtWidgets.QTextEdit):
         if self.lyric_editor_mode:
             super().mouseMoveEvent(event)
             return
+        if not self.app.chordEditing():
+            # Viewing: no hover highlight, nothing to select.
+            return
 
         if self.dragging_chord is None and self.marquee_origin is not None:
             self.marquee_current = event.pos()
@@ -369,6 +449,10 @@ class CustomTextEdit(QtWidgets.QTextEdit):
 
         if self.lyric_editor_mode:
             super().mousePressEvent(event)
+            return
+
+        if not self.app.chordEditing():
+            # Viewing: nothing can be selected or dragged.
             return
 
         if event.button() == Qt.MouseButton.LeftButton:
@@ -451,6 +535,8 @@ class CustomTextEdit(QtWidgets.QTextEdit):
         if self.lyric_editor_mode:
             super().mouseDoubleClickEvent(event)
             return
+        if not self.app.chordEditing():
+            return
 
         if event.button() == Qt.MouseButton.LeftButton:
             localx = event.pos().x()
@@ -468,7 +554,28 @@ class CustomTextEdit(QtWidgets.QTextEdit):
 
             self.viewport().update()
 
+    def cancelChordDrag(self):
+        """Esc while dragging: the chord goes back where it was."""
+        if self.dragging_chord is None:
+            return False
+        self.dragging_chord = None
+        self.dragging_chord_orig_position = -1
+        self.dragging_mouse_char = -1
+        self.original_chord = None
+        self.app.undo_stack.endMacro()
+        self.app.undo_stack.undo()
+        self.app.selected_char_num = None
+        self.viewport().update()
+        return True
+
     def event(self, event):
+        # Esc during a chord drag cancels the drag. Without a drag it is the
+        # Discard Changes shortcut.
+        if (event.type() == QtCore.QEvent.Type.ShortcutOverride
+                and self.dragging_chord is not None
+                and event.key() == Qt.Key.Key_Escape):
+            event.accept()
+            return True
         # QTextEdit handles Undo and Redo before keyPressEvent, and accepts
         # the shortcut so the Edit menu action does not run. While chords are
         # edited, those keys belong to the chord undo stack.
@@ -494,6 +601,18 @@ class CustomTextEdit(QtWidgets.QTextEdit):
             return
 
         key = event.key()
+        if key == Qt.Key.Key_Escape and self.cancelChordDrag():
+            return
+
+        if not self.app.chordEditing():
+            # Viewing: Copy works, keys that would change the song do not.
+            if (key == Qt.Key.Key_C and bool(
+                    event.modifiers() & Qt.KeyboardModifier.ControlModifier)):
+                self.app.ui.actionCopy.trigger()
+                return
+            self.app.win.keyPressEvent(event)
+            return
+
         if key == Qt.Key.Key_Alt:
             self.optionKeyToggled(True)
 
@@ -1131,6 +1250,13 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         # True while the song list selection is put back by code. The open
         # song does not change then.
         self._holding_song_selection = False
+        # The edit in progress (Edit Chords or Edit Text), or None: viewing.
+        self.edit_session = None
+        # Whether that edit differs from the song as it was when it started.
+        self._edit_changed = False
+        # A song picked in the list during a changed edit. The list shows the
+        # edited song again, and the Save dialog runs right after.
+        self._pending_song_selection = None
 
         self.songs_model = SongsTableModel(self)
         self.songs_proxy_model = SongsProxyModel(self)
@@ -1226,14 +1352,19 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.actionPasteAsNewSong.triggered.connect(self.pasteAsNewSong)
         self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
 
+        # Edit Chords... and Edit Text... start an edit. They are actions,
+        # not modes: the song is only viewed until one of them is chosen.
         self.ui.actionChordEditorMode.triggered.connect(
             self.chordEditorSelected)
         self.ui.actionLyricEditorMode.triggered.connect(
             self.lyricEditorSelected)
-        self.editor_mode_action_group = QtGui.QActionGroup(self.win)
-        self.editor_mode_action_group.setExclusive(True)
-        self.editor_mode_action_group.addAction(self.ui.actionChordEditorMode)
-        self.editor_mode_action_group.addAction(self.ui.actionLyricEditorMode)
+        self.ui.actionSaveEdit.triggered.connect(self.saveEdit)
+        self.ui.actionDiscardEdit.triggered.connect(self.requestDiscardEdit)
+        self.ui.save_edit_button.clicked.connect(self.saveEdit)
+        self.ui.discard_edit_button.clicked.connect(self.discardEdit)
+        self.ui.save_edit_button.setDefault(False)
+        self.ui.save_edit_button.setAutoDefault(False)
+        self.ui.discard_edit_button.setAutoDefault(False)
 
         self.ui.actionZoomIn.triggered.connect(self.zoomIn)
         self.ui.actionZoomOut.triggered.connect(self.zoomOut)
@@ -1317,7 +1448,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.lyric_editor_button.clicked.connect(self.lyricEditorSelected)
         self.ui.chord_editor_button.clicked.connect(self.chordEditorSelected)
 
-        self.chordEditorSelected()
+        # The song is viewed until Edit Chords or Edit Text is chosen.
+        self._applyEditorMode(None)
 
         self.updateZoomWidgets()
 
@@ -1387,42 +1519,345 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.songFilterEdited("")
 
     def lyricEditorSelected(self):
-
-        self.ui.lyric_editor_button.setDown(True)
-        self.ui.chord_editor_button.setDown(False)
-        self.ui.actionLyricEditorMode.setChecked(True)
-        self.ui.actionChordEditorMode.setChecked(False)
-
-        self.editor.viewport().setCursor(Qt.CursorShape.IBeamCursor)
-
-        self.ui.chords_editor_label.hide()
-        self.ui.lyrics_editor_label.show()
-        entering = not self.editor.lyric_editor_mode
-        self.editor.lyric_editor_mode = True
-        self.editor.setUndoRedoEnabled(True)
-        # Chord edits use another undo stack. Coming back here starts the
-        # text undo history over, with the chords the song has now.
-        if entering:
-            self._reset_lyric_chord_history()
-
-        self.editor.viewport().update()
-        self.updateEditMenu()
+        """Edit Text...: start editing the lyrics of the open song."""
+        return self.startEdit(EditSession.TEXT)
 
     def chordEditorSelected(self):
+        """Edit Chords...: start editing the chords of the open song."""
+        return self.startEdit(EditSession.CHORDS)
 
-        self.editor.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+    # -- Edit sessions -------------------------------------------------------
 
-        self.ui.lyric_editor_button.setDown(False)
-        self.ui.chord_editor_button.setDown(True)
-        self.ui.actionLyricEditorMode.setChecked(False)
-        self.ui.actionChordEditorMode.setChecked(True)
+    def editing(self):
+        """True between Edit Chords/Edit Text and Save or Discard."""
+        return self.edit_session is not None
 
-        self.ui.lyrics_editor_label.hide()
-        self.ui.chords_editor_label.show()
-        self.editor.lyric_editor_mode = False
-        self.editor.setUndoRedoEnabled(False)
-        self._reset_lyric_chord_history()
+    def chordEditing(self):
+        session = self.edit_session
+        return session is not None and session.mode == EditSession.CHORDS
 
+    def textEditing(self):
+        session = self.edit_session
+        return session is not None and session.mode == EditSession.TEXT
+
+    def _currentSongText(self):
+        song = self.current_song
+        if song is None:
+            return ""
+        # Lyric edits can sit in the editor before the song has them.
+        if self.editor.document() is song.doc:
+            return self.editor.toPlainText()
+        return song.getAllText()
+
+    def editChanged(self):
+        """True when the edit differs from the song as it was at its start.
+
+        A change that was undone again does not count.
+        """
+        session = self.edit_session
+        if session is None or session.song is not self.current_song:
+            return False
+        song = session.song
+        key = SongDraft.key_of(self._currentSongText(),
+                               song.iterateAllChords(), song.title,
+                               song.number, song.subtitle)
+        if key == session.start.key:
+            return False
+        if (session.mode == EditSession.VIEW
+                and song.transposed_steps == session.start.transposed_steps):
+            # Transposed away and back: the same notes, though a chord typed
+            # as A# may now read Bb. That is the key it had, so no change.
+            return key != session.start.respelledKey(self, song)
+        return True
+
+    def startEdit(self, mode):
+        """Start an edit of the open song. False when it did not start."""
+        song = self.current_song
+        if song is None:
+            self._applyEditorMode(None)
+            return False
+        session = self.edit_session
+        if session is not None:
+            if session.mode == mode or mode == EditSession.VIEW:
+                # A change while viewing joins the edit that is open.
+                self._applyEditorMode(session.mode)
+                return True
+            if session.mode == EditSession.VIEW:
+                # Edit Chords or Edit Text after a transpose (or a new
+                # title): the same edit goes on, one Save or Discard for all.
+                session.mode = mode
+                self._applyEditorMode(mode)
+                self._updateEditChanged()
+                self.updateStates()
+                return True
+            # The other kind of edit: save or discard this one first.
+            if not self.confirmLeaveEdit():
+                self._applyEditorMode(session.mode)
+                return False
+
+        # Steps for another Song object must not be undone in this edit.
+        self._dropSongEditSteps()
+
+        stack = QtGui.QUndoStack(self)
+        stack.canUndoChanged.connect(self.updateEditMenu)
+        stack.canRedoChanged.connect(self.updateEditMenu)
+        stack.indexChanged.connect(self._updateEditChanged)
+        self.edit_session = EditSession(mode, song,
+                                        SongDraft.capture(self, song),
+                                        self.undo_stack)
+        self.undo_stack = stack
+        self._applyEditorMode(mode)
+        self._updateEditChanged()
+        self.updateStates()
+        return True
+
+    def saveEdit(self, checked=False, report=True):
+        """Save: write the edit to the songbook and go back to viewing.
+
+        False when the songbook could not be written. The edit then goes on.
+        """
+        session = self.edit_session
+        if session is None:
+            return True
+        if session.song is self.current_song and self.editChanged():
+            if not self._writeCurrentSong(report=report):
+                return False
+            self._refreshSongList()
+        self._endEdit()
+        return True
+
+    def discardEdit(self, checked=False):
+        """Discard: put the song back as it was and go back to viewing."""
+        session = self.edit_session
+        if session is None:
+            return
+        song = session.song
+        if song is self.current_song and self.editChanged():
+            self._restoreSongDraft(song, session.start)
+        self._endEdit()
+
+    def requestDiscardEdit(self, checked=False):
+        """Esc: discard the edit, asking first only when something changed."""
+        if self.edit_session is None:
+            return
+        if self.editChanged() and not self.question(
+                "Discard the changes to this song?",
+                button1="Discard",
+                button2="Keep Editing"):
+            return
+        self.discardEdit()
+
+    def confirmLeaveEdit(self):
+        """Ask before anything that leaves the edit. True to go on.
+
+        Save, Don't Save or Cancel. An edit with no changes just ends.
+        """
+        if self.edit_session is None:
+            return True
+        if not self.editChanged():
+            self._endEdit()
+            return True
+        answer = self._askSaveChanges()
+        if answer == "save":
+            return self.saveEdit()
+        if answer == "discard":
+            self.discardEdit()
+            return True
+        return False
+
+    def _leaveEditMessageBox(self):
+        """The Save / Don't Save / Cancel dialog (a sheet on macOS)."""
+        song = self.edit_session.song if self.edit_session else None
+        title = (song.title if song is not None else "") or "Untitled"
+        box = QtWidgets.QMessageBox(self.win)
+        box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+        box.setWindowTitle("softChord")
+        box.setText("Do you want to save the changes you made to \u201c%s\u201d?"
+                    % title)
+        box.setInformativeText(
+            "Your changes will be lost if you don\u2019t save them.")
+        buttons = QtWidgets.QMessageBox.StandardButton
+        box.setStandardButtons(buttons.Save | buttons.Discard | buttons.Cancel)
+        box.button(buttons.Discard).setText("Don\u2019t Save")
+        box.setDefaultButton(buttons.Save)
+        box.setEscapeButton(buttons.Cancel)
+        box.setWindowModality(Qt.WindowModality.WindowModal)
+        return box
+
+    def _askSaveChanges(self):
+        """"save", "discard" or "cancel"."""
+        box = self._leaveEditMessageBox()
+        result = box.exec()
+        buttons = QtWidgets.QMessageBox.StandardButton
+        try:
+            result = buttons(result)
+        except (TypeError, ValueError):
+            return "cancel"
+        if result == buttons.Save:
+            return "save"
+        if result == buttons.Discard:
+            return "discard"
+        return "cancel"
+
+    def commitDataForLogout(self, manager=None):
+        """Logout or shutdown: no dialog can be shown, so the edit is saved."""
+        self._leaveEditSilently()
+
+    def _leaveEditSilently(self):
+        """End the edit without asking: save it, or drop it if it can't be.
+
+        For a logout or shutdown, where no dialog can be shown, and as the
+        safety net when another song is shown without asking.
+        """
+        if self.edit_session is None:
+            return
+        if not self.saveEdit(report=False):
+            self._endEdit()
+
+    def _viewDraft(self):
+        """Make a change while viewing part of an edit. True when it is."""
+        if self.edit_session is not None:
+            return True
+        return self.startEdit(EditSession.VIEW)
+
+    def _endUnchangedViewDraft(self):
+        """A change while viewing that was taken back ends by itself."""
+        session = self.edit_session
+        if (session is None or session.mode != EditSession.VIEW
+                or self.editChanged()):
+            return
+        song = session.song
+        if song is self.current_song:
+            key = SongDraft.key_of(self._currentSongText(),
+                                   song.iterateAllChords(), song.title,
+                                   song.number, song.subtitle)
+            if key != session.start.key:
+                # Only spelled another way (A# came back as Bb): show it
+                # as it was.
+                self._restoreSongDraft(song, session.start)
+        self._endEdit()
+
+    def _endEdit(self):
+        session = self.edit_session
+        if session is None:
+            return
+        self.edit_session = None
+        old_stack = self.undo_stack
+        self.undo_stack = session.main_undo_stack
+        # The edit's history goes with it. Quiet, so that deleting it does
+        # not update a menu that may be gone already.
+        old_stack.blockSignals(True)
+        old_stack.clear()
+        old_stack.deleteLater()
+        self.selected_chord_nums = set()
+        self.editor.cancelChordMarquee()
+        self._applyEditorMode(None)
+        self._updateEditChanged()
+        self.updateStates()
+
+    def _restoreSongDraft(self, song, start):
+        song.title = start.title
+        song.number = start.number
+        song.subtitle = start.subtitle
+        song.transposed_steps = start.transposed_steps
+        self.ignore_song_text_changed = True
+        try:
+            song.setAllText(start.text,
+                            [copy.copy(chord) for chord in start.chords])
+            QtDocumentLayout.show_document(self.editor, song.doc)
+            self.previous_song_text = song.getAllText()
+        finally:
+            self.ignore_song_text_changed = False
+        self.selected_char_num = None
+        self.selected_chord_nums = set()
+        self._showSongFields(song)
+        self._updateAutoDetectedKeyLabel()
+        self.updateTransposeResetButton()
+        self.editor.viewport().update()
+
+    def _showSongFields(self, song):
+        self.ui.song_title_ef.setText(song.title or "")
+        self.ui.song_subtitle_ef.setText(song.subtitle or "")
+        if song.number == -1:
+            self.ui.song_num_ef.setText("")
+        else:
+            self.ui.song_num_ef.setText(str(song.number))
+
+    def _refreshSongList(self):
+        """Read the list again after a save. The same songs stay selected."""
+        selected = self.getSelectedSongIds()
+        self._holding_song_selection = True
+        try:
+            self.songs_model.updateFromDatabase()
+            self.ui.songs_view.selectionModel().clear()
+            self._selectSongIds(selected)
+        finally:
+            self._holding_song_selection = False
+
+    def _updateEditChanged(self, ignored=None):
+        """Mark the window and the song's row while the edit is not saved."""
+        changed = self.editChanged()
+        was = self._edit_changed
+        self._edit_changed = changed
+        self.win.setWindowModified(changed)
+        session = self.edit_session
+        if session is not None and session.mode == EditSession.VIEW:
+            self._showSaveAndDiscard(session.mode)
+            if not changed:
+                # Not now: this may run inside the edit's own undo stack.
+                QtCore.QTimer.singleShot(0, self._endUnchangedViewDraft)
+        song = session.song if session is not None else self.current_song
+        if changed != was and song is not None:
+            try:
+                row_num = self.songs_model.getSongsRow(song)
+            except ValueError:
+                pass
+            else:
+                self.songs_model.dataChanged.emit(
+                    self.songs_model.index(row_num, 1),
+                    self.songs_model.index(row_num, 1))
+
+    def _showSaveAndDiscard(self, mode):
+        """While editing. A change made while viewing shows them once it
+        changes something."""
+        shown = mode is not None and (
+            mode != EditSession.VIEW or self.editChanged())
+        self.ui.discard_edit_button.setVisible(shown)
+        self.ui.save_edit_button.setVisible(shown)
+
+    def songHasUnsavedEdit(self, song_id):
+        """The song list shows a dot on this song's row."""
+        session = self.edit_session
+        return (session is not None and self._edit_changed
+                and session.song.id == song_id)
+
+    def _applyEditorMode(self, mode):
+        """Show viewing (mode None), Edit Chords or Edit Text."""
+        lyric = mode == EditSession.TEXT
+        entering_lyric = lyric and not self.editor.lyric_editor_mode
+
+        self.ui.chord_editor_button.setDown(mode == EditSession.CHORDS)
+        self.ui.lyric_editor_button.setDown(lyric)
+        self.editor.viewport().setCursor(
+            Qt.CursorShape.IBeamCursor if lyric else Qt.CursorShape.ArrowCursor)
+        self.ui.chords_editor_label.setVisible(mode == EditSession.CHORDS)
+        self.ui.lyrics_editor_label.setVisible(lyric)
+        self._showSaveAndDiscard(mode)
+        if mode != EditSession.CHORDS:
+            # Chords can be selected only in Edit Chords.
+            self.selected_char_num = None
+            self.selected_chord_nums = set()
+            self.hover_char_num = None
+            self.editor.cancelChordMarquee()
+
+        self.editor.lyric_editor_mode = lyric
+        self.editor.setUndoRedoEnabled(lyric)
+        # The text undo history starts over with the chords the song has now.
+        if entering_lyric or not lyric:
+            self._reset_lyric_chord_history()
+
+        self.ui.actionSaveEdit.setEnabled(mode is not None)
+        self.ui.actionDiscardEdit.setEnabled(mode is not None)
         self.editor.viewport().update()
         self.updateEditMenu()
 
@@ -1443,7 +1878,11 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         label.setMinimumWidth(label.fontMetrics().horizontalAdvance(text) + 12)
 
     def closeEvent(self, event):
-        self.sendCurrentSongToDatabase()
+        # Quit, Command-Q and the close button all come here.
+        if not self.confirmLeaveEdit():
+            event.ignore()
+            return
+        self._flushCurrentSong()
         if not self._confirm_close_of_converted_copy():
             event.ignore()
             return
@@ -1517,13 +1956,25 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 raise
         return False
 
+    def _flushCurrentSong(self):
+        """Write the open song before a switch, print or export.
+
+        Not during an edit: the edit is written only by Save.
+        """
+        if self.edit_session is not None:
+            return
+        self.sendCurrentSongToDatabase()
+
     def sendCurrentSongToDatabase(self):
         """
         Save the current song to the database.
         """
+        self._writeCurrentSong(report=False)
+
+    def _writeCurrentSong(self, report=False):
+        """Write the open song. False when the songbook was not written."""
         if not self.current_song:
-            return
-            # Update the current song in the database:
+            return True
         song = self.current_song
         # Lyric edits can sit in the editor until this save. Copy them into
         # the song first so getAllText() is the text about to be written.
@@ -1554,9 +2005,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.setWaitCursor()
         try:
-            # Do not report here. Song switches flush even when nothing changed,
-            # and a read-only file must stay browsable.
-            self._run_songbook_write(write, report=False)
+            # Song switches flush even when nothing changed, and a read-only
+            # file must stay browsable, so only Save reports a failure.
+            return self._run_songbook_write(write, report=report)
         finally:
             self.restoreCursor()
 
@@ -1771,6 +2222,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.editor.viewport().update()
 
     def updateEditMenu(self, ignored1=None, ignored2=None):
+        # An edit's undo history can outlive the window at exit.
+        if sip.isdeleted(self.ui.actionUndo):
+            return
 
         focus_widget = QtWidgets.QApplication.focusWidget()  # FIXME implement this properly
 
@@ -1790,6 +2244,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                     undo_possible = document.isUndoAvailable()
                     redo_possible = document.isRedoAvailable()
                     enable_paste = bool(text)
+                elif not self.chordEditing():
+                    undo_possible = self.undo_stack.canUndo()
+                    redo_possible = self.undo_stack.canRedo()
                 else:
                     # In chord editor
                     undo_possible = self.undo_stack.canUndo()
@@ -1870,6 +2327,23 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         if self._holding_song_selection:
             return
+        session = self.edit_session
+        if session is not None:
+            target = self.getSelectedSongIds()
+            if target == [session.song.id]:
+                return
+            if self.editChanged():
+                # Show the edited song selected again, then ask. Asking after
+                # this click or key press is done keeps the list's own
+                # handling of it out of the dialog.
+                self._putSongSelectionBack()
+                first = self._pending_song_selection is None
+                self._pending_song_selection = target
+                if first:
+                    QtCore.QTimer.singleShot(
+                        0, self._resolvePendingSongSelection)
+                return
+            self._endEdit()
 
         # Commit any changes in the current song:
         if self.store.is_open:
@@ -1897,7 +2371,33 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.updateStates()
         self.restoreCursor()
-        self.chordEditorSelected()
+
+    def _putSongSelectionBack(self):
+        song = self.edit_session.song if self.edit_session else self.current_song
+        self._holding_song_selection = True
+        try:
+            self.ui.songs_view.selectionModel().clear()
+            if song is not None:
+                self._selectSongIds([song.id])
+        finally:
+            self._holding_song_selection = False
+        self.ui.songs_view.viewport().update()
+
+    def _resolvePendingSongSelection(self):
+        """Ask about the edit, then select what was picked (unless Cancel)."""
+        target = self._pending_song_selection
+        self._pending_song_selection = None
+        if target is None:
+            return
+        if not self.confirmLeaveEdit():
+            return
+        self._holding_song_selection = True
+        try:
+            self.ui.songs_view.selectionModel().clear()
+            self._selectSongIds(target)
+        finally:
+            self._holding_song_selection = False
+        self.songsSelectionChangedCallback()
 
     def getSelectedSongIds(self):
         """
@@ -1910,6 +2410,28 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             song_id = self.songs_model.getRowSongID(index.row())
             selected_song_ids.append(song_id)
         return selected_song_ids
+
+    def _songForOutput(self, song_id):
+        """A song to print or export, as it is on screen.
+
+        During an edit the open song is the unsaved edit. Output uses it, and
+        the songbook is not written.
+        """
+        song = Song(self, song_id)
+        current = self.current_song
+        if (self.edit_session is not None and current is not None
+                and current.id == song_id):
+            song.title = current.title
+            song.number = current.number
+            song.subtitle = current.subtitle
+            song.transposed_steps = current.transposed_steps
+            chords = [
+                SongChord.from_text(song, chord.character_num,
+                                    chord.getStoredText())
+                for chord in current.iterateAllChords()
+            ]
+            song.setAllText(self._currentSongText(), chords)
+        return song
 
     def singleExportSong(self, song_ids):
         """The song being printed or exported, when there is exactly one."""
@@ -1939,6 +2461,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.transpose_up_button.setEnabled(self.current_song != None)
         self.ui.transpose_down_button.setEnabled(self.current_song != None)
         self.updateTransposeResetButton()
+        self.ui.actionChordEditorMode.setEnabled(self.current_song != None)
+        self.ui.actionLyricEditorMode.setEnabled(self.current_song != None)
+        self.ui.chord_editor_button.setEnabled(self.current_song != None)
+        self.ui.lyric_editor_button.setEnabled(self.current_song != None)
 
         self.ui.delete_song_button.setEnabled(num_selected > 0)
         self.ui.actionDeleteSongs.setEnabled(num_selected > 0)
@@ -1987,8 +2513,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if self.current_song == None and song == None:
             return
 
+        # Callers ask about an unsaved edit first. Never lose one here.
+        self._leaveEditSilently()
         self._dropSongEditSteps()
-        self.sendCurrentSongToDatabase()
+        self._flushCurrentSong()
 
         if self.current_song != None:
             # Clearing the shared document notifies the editor. That is not
@@ -2050,6 +2578,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         song = self.current_song
         if song is None or not song.has_transposable_chords():
             return
+        # While viewing, a transpose is a change to Save or Discard.
+        if not self._viewDraft():
+            return
         self.undo_stack.push(TransposeSongCommand(song, steps))
 
     def updateTransposeResetButton(self):
@@ -2070,6 +2601,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         song = self.current_song
         if song is None or song.transposed_steps == 0:
+            return
+        if not self._viewDraft():
             return
         self.undo_stack.push(
             TransposeSongCommand(song, -song.transposed_steps, "reset transpose"))
@@ -2222,6 +2755,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 QtDocumentLayout.apply_margins(self.current_song, self)
         finally:
             self.ignore_song_text_changed = False
+        if self.edit_session is not None:
+            self._updateEditChanged()
 
     def zoomIn(self):
         pos = self.ui.zoom_slider.sliderPosition()
@@ -2347,7 +2882,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         Bring up a print dialog box.
         """
 
-        self.sendCurrentSongToDatabase()
+        self._flushCurrentSong()
 
         if not self.songs_model.rowCount():
             self.error("There are no songs to print")
@@ -2464,7 +2999,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                         raise IOError(
                             "Failed to flush page to disk, disk full?")
 
-                song = Song(self, song_id)
+                song = self._songForOutput(song_id)
 
                 # Set this song's document (will be reset later):
                 # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
@@ -2602,7 +3137,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         Exports the selected songs to a PDF file.
         """
 
-        self.sendCurrentSongToDatabase()
+        self._flushCurrentSong()
 
         song_ids = self.getSelectedSongIds()
         if not song_ids:
@@ -2655,7 +3190,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         # TODO factor out duplication with printSongsToPrinter()
 
-        self.sendCurrentSongToDatabase()
+        self._flushCurrentSong()
 
         song_ids = self.getSelectedSongIds()
         if len(song_ids) == 0:
@@ -2695,7 +3230,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             if progress.wasCanceled():
                 break
 
-            song = Song(self, song_id)
+            song = self._songForOutput(song_id)
 
             # Set this song's document (will be reset later):
             # NOTE: Messing with this stuff may cause the app to crash on Windows (compiled)
@@ -2747,6 +3282,11 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         Cut the selected chord (if any) into the clipboard.
         """
+        if self.textEditing():
+            self.editor.cut()
+            return
+        if not self.chordEditing():
+            return
         chord = self.getSelectedChord()
         if chord:
             chord_text = chord.getChordText()
@@ -2769,6 +3309,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         if self.editor.lyric_editor_mode:
             self.editor.paste()
+            return
+        if not self.chordEditing():
             return
 
         if self.selected_char_num == None or not self.current_song:
@@ -2920,62 +3462,34 @@ class SongbookSession(SongbookIO, QtCore.QObject):
     def currentSongTitleEdited(self, new_title):
         """
         Called when the user modifies the selected song's title.
+
+        Part of an edit (one is started while viewing): saved by Save, put
+        back by Discard. The song list keeps the saved title and number (and
+        its sort and filter) until Save.
         """
-        if self.current_song:
-            new_title = new_title.strip()  # Remove any EOL characters, etc.
-            previous_title = self.current_song.title
-            self.current_song.title = new_title
-            self.setWaitCursor()
-            try:
-                saved = self._run_songbook_write(
-                    lambda: self.store.update_song_title(
-                        self.current_song.id, new_title))
-                if not saved:
-                    self.current_song.title = previous_title
-                    self.ui.song_title_ef.setText(
-                        "" if previous_title is None else previous_title)
-                    return
-
-                row_num = self.songs_model.getSongsRow(self.current_song)
-                rowobj = self.songs_model.getRow(row_num)
-
-                rowobj.title = new_title
-
-                self.songs_model.setRow(row_num, rowobj)
-
-            finally:
-                self.restoreCursor()
+        if self.current_song and self._viewDraft():
+            self.current_song.title = new_title.strip()
+            self._updateEditChanged()
 
     def subtitleEdited(self, new_note_str):
         """
         User has specified a new song note (comment).
+
+        Part of an edit, like the title.
         """
 
         if not self.current_song:
             raise ValueError("No current song")
 
-        previous_subtitle = self.current_song.subtitle
-        self.current_song.subtitle = new_note_str
-        self.setWaitCursor()
-        try:
-            saved = self._run_songbook_write(
-                lambda: self.store.update_song_subtitle(
-                    self.current_song.id, new_note_str))
-            if not saved:
-                self.current_song.subtitle = previous_subtitle
-                self.ui.song_subtitle_ef.setText(
-                    "" if previous_subtitle is None else previous_subtitle)
-                return
-
-            row_num = self.songs_model.getSongsRow(self.current_song)
-            rowobj = self.songs_model.getRow(row_num)
-            rowobj.subtitle = new_note_str
-        finally:
-            self.restoreCursor()
+        if self._viewDraft():
+            self.current_song.subtitle = new_note_str
+            self._updateEditChanged()
 
     def currentSongNumberEdited(self, new_num_str):
         """
         Called when the user modifies the selected song's number.
+
+        Part of an edit, like the title.
         """
         if self.current_song:
             if new_num_str == "":
@@ -2985,37 +3499,16 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             except:
                 self.error("Invalid song number")
             else:
-                previous_num = self.current_song.number
-                self.current_song.number = new_num
-                saved = self._run_songbook_write(
-                    lambda: self.store.update_song_number(
-                        self.current_song.id, new_num))
-                if not saved:
-                    self.current_song.number = previous_num
-                    if previous_num == -1:
-                        self.ui.song_num_ef.setText("")
-                    else:
-                        self.ui.song_num_ef.setText(str(previous_num))
-                    return
-
-                # Save the selection:
-                selected_row_num = self.songs_model.getSongsRow(
-                    self.current_song)
-
-                # Update the song table from database:
-                self.songs_model.updateFromDatabase()
-
-                # Re-select this song:
-                source_index = self.songs_model.index(selected_row_num, 0)
-                proxy_index = self.songs_proxy_model.mapFromSource(source_index)
-                self.ui.songs_view.selectRow(proxy_index.row())
-            finally:
-                self.restoreCursor()
+                if self._viewDraft():
+                    self.current_song.number = new_num
+                    self._updateEditChanged()
 
     def createNewSong(self):
         """
         Add a new song to the database and the songs table, and select it.
         """
+        if not self.confirmLeaveEdit():
+            return
 
         song_id = self.store.next_song_id()
         if not self._run_songbook_write(lambda: self.store.insert_song(
@@ -3041,6 +3534,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         Show the songs table context menu at a viewport position.
         """
         view = self.ui.songs_view
+        # The menu selects the clicked song first, and Delete acts on it.
+        if not self.confirmLeaveEdit():
+            return
         menu = self.buildSongsContextMenu(view.indexAt(pos))
         if menu is None:
             return
@@ -3097,6 +3593,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         Deletes the selected song(s).
         """
+        if not self.confirmLeaveEdit():
+            return
         selected_song_ids = self.getSelectedSongIds()
 
         # Will set the current song to None:
@@ -3107,8 +3605,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.updateEditMenu()
 
     def removeTrailingSpaces(self):
+        if not self.confirmLeaveEdit():
+            return
 
-        self.sendCurrentSongToDatabase()
+        self._flushCurrentSong()
 
         snapshots = []
         for song_id in self.getSelectedSongIds():
@@ -3175,6 +3675,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         Re-number all songs in the database (song number, not IDs).
         """
+        if not self.confirmLeaveEdit():
+            return
 
         if not self.question(
                 "All songs in the songbook will be renumbered consecutively starting with 1. Continue?"
