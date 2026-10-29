@@ -1310,6 +1310,37 @@ struct SongbookReadTests {
         let moved = SongLyricChords.reattached(source.chords, from: 6, to: 3)
         #expect(moved.contains { $0.characterNum == 3 && $0.unknown })
     }
+
+    @Test func theSameChordTwiceOnALetterIsReadOnce() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("songbook-\(UUID().uuidString).songbook")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try writeSongbook(at: url)
+        // Song 2 has '(1:C/E)' on letter 0. Add it again, and a C and a G twice.
+        try withTestDatabase(url) { db in
+            try exec(
+                db,
+                """
+                INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (2, 0, '(1:C/E)');
+                INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (2, 3, 'G');
+                INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (2, 3, 'Am');
+                INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (2, 3, 'G');
+                """)
+        }
+        let source = try Songbook.source(id: 2, in: url)
+        #expect(source.chords.map(\.characterNum) == [0, 3, 3])
+        #expect(source.chords.map(\.rootText) == ["C", "G", "A"])
+        // The rows in the file are still all there.
+        var count = 0
+        try withTestDatabase(url) { db in
+            var statement: OpaquePointer?
+            sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM song_chord_link WHERE song_id=2", -1, &statement, nil)
+            defer { sqlite3_finalize(statement) }
+            #expect(sqlite3_step(statement) == SQLITE_ROW)
+            count = Int(sqlite3_column_int64(statement, 0))
+        }
+        #expect(count == 5)
+    }
 }
 
 struct ChordParserTests {

@@ -62,10 +62,19 @@
     return found;
   }
 
+  // The same chord twice on the same letter of the same song (a stray duplicate row in
+  // some songbooks) is one chord. Two different chords on a letter are both kept.
+  // The file is not changed; the duplicate is only left out when it is read.
   function songsFromRows(songRows, chordRows) {
     var chordsBySong = new Map();
+    var seen = new Set();
     for (var i = 0; i < chordRows.length; i++) {
       var row = chordRows[i];
+      var identity = row.song_id + "\u0000" + row.character_num + "\u0000" + row.chord;
+      if (seen.has(identity)) {
+        continue;
+      }
+      seen.add(identity);
       var chords = chordsBySong.get(row.song_id);
       if (!chords) {
         chords = [];
