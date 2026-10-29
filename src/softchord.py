@@ -346,6 +346,17 @@ def register_songbook_file_association():
         pass
 
 
+def _set_app_icon(app):
+    """
+    The window and Dock icon. The PyInstaller build puts the icons folder next
+    to this file too (see softchord.spec).
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons",
+                        "softchord.png")
+    if os.path.exists(path):
+        app.setWindowIcon(QtGui.QIcon(path))
+
+
 def main():
     """
     The main event loop. This function is also run by the Windows executable.
@@ -356,6 +367,7 @@ def main():
     register_songbook_file_association()
 
     app = App(sys.argv)
+    _set_app_icon(app)
     app.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
 
     input_files = [filename for filename in sys.argv[1:]]
