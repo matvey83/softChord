@@ -6,12 +6,14 @@
 import SwiftUI
 import UIKit
 
-/// Letters and chords kept after Save, for this run of the app.
+/// Letters, chords and the transpose kept after Save, for this run of the app.
 /// The songbook file is not changed. Quit the app and the copy is gone.
 enum SongSessionEdits {
     struct Copy: Equatable {
         var text: String?
         var chords: [SongChord]?
+        /// The transpose kept with Save. The chords above are stored untransposed.
+        var steps = 0
     }
 
     private static var copies: [Int: Copy] = [:]
@@ -20,11 +22,11 @@ enum SongSessionEdits {
         copies[id]
     }
 
-    static func save(id: Int, text: String?, chords: [SongChord]?) {
-        if text == nil, chords == nil {
+    static func save(id: Int, text: String?, chords: [SongChord]?, steps: Int = 0) {
+        if text == nil, chords == nil, steps == 0 {
             copies[id] = nil
         } else {
-            copies[id] = Copy(text: text, chords: chords)
+            copies[id] = Copy(text: text, chords: chords, steps: steps)
         }
     }
 
@@ -32,13 +34,13 @@ enum SongSessionEdits {
         copies = [:]
     }
 
-    /// The song as the list shows it: the songbook's, with the copy saved for
-    /// this run in its place.
+    /// The song as it opens: the songbook's, with the copy saved for this run
+    /// in its place, at the transpose saved with it.
     static func shownSource(id: Int) throws -> SongSource {
         var song = try Songbook.source(id: id)
         if let copy = copies[id] {
             song.text = copy.text ?? song.text
-            song.chords = copy.chords ?? song.chords
+            song.chords = SongTranspose.shifted(copy.chords ?? song.chords, by: copy.steps)
         }
         return song
     }
@@ -46,7 +48,11 @@ enum SongSessionEdits {
 
 struct SongPage: View {
     @Environment(\.dismiss) private var dismiss
+    /// The transpose shown. A song opens at the transpose kept with Save.
     @State private var steps = 0
+    /// The transpose kept with Save. Steps that differ from it (by more than whole
+    /// octaves, see changesChords) are a change: Save and Discard show.
+    @State private var savedSteps = 0
     @State private var noticeTitle: String?
     @State private var noticeMessage: String?
     @State private var editing = false
@@ -65,6 +71,12 @@ struct SongPage: View {
     @State private var draft = ""
     /// Chord positions for the edit in progress. Note ids stay as stored.
     @State private var editChords: [SongChord] = []
+    /// Undo and Redo in chord editing: the chords before each change. A drag is
+    /// one change. Dropped on Save and Discard. Mirror: the desktop edit's undo.
+    @State private var chordUndo: [[SongChord]] = []
+    @State private var chordRedo: [[SongChord]] = []
+    /// Set when the first move of a drag has been put on the undo list.
+    @State private var dragRecorded = false
     /// Lyrics drawn after Save. Nil means the songbook text.
     /// Also kept for this run of the app, so opening the song again shows them.
     @State private var shownText: String?
@@ -85,6 +97,8 @@ struct SongPage: View {
         let kept = SongSessionEdits.copy(for: song.id)
         _shownText = State(initialValue: kept?.text)
         _shownChords = State(initialValue: kept?.chords)
+        _steps = State(initialValue: kept?.steps ?? 0)
+        _savedSteps = State(initialValue: kept?.steps ?? 0)
         do {
             source = try Songbook.source(id: song.id)
             errorMessage = nil
@@ -114,8 +128,16 @@ struct SongPage: View {
         return SongSource(text: lyricText, chords: SongTranspose.shifted(shownChords ?? source.chords, by: steps))
     }
 
-    /// Unsaved keystrokes and a transpose are still only on this page.
-    /// A saved edit stays for this run, but it is not in the songbook file.
+    /// True when the song is shown in another key than the one kept with Save.
+    private var stepsChanged: Bool {
+        guard let source else {
+            return false
+        }
+        return SongTranspose.changesChords(steps - savedSteps, in: shownChords ?? source.chords)
+    }
+
+    /// Unsaved keystrokes and a transpose not saved are still only on this page.
+    /// A saved edit or transpose stays for this run, but it is not in the songbook file.
     private var bannerText: String? {
         guard let source else {
             return nil
@@ -123,14 +145,14 @@ struct SongPage: View {
         let storedText = shownText ?? source.text
         let storedChords = shownChords ?? source.chords
         let dirtyDraft = (editing || editingChords) && (draft != storedText || editChords != storedChords)
-        let transposed = SongTranspose.changesChords(steps, in: storedChords)
-        let kept = shownText != nil || shownChords != nil
+        let transposed = stepsChanged
+        let kept = shownText != nil || shownChords != nil || SongTranspose.changesChords(savedSteps, in: storedChords)
         if dirtyDraft || (transposed && !kept) {
             return "Changes do not persist"
         }
         if kept {
-            // The saved edit stays for this run. The transpose does not, so a
-            // song with both says so for each.
+            // The saved edit stays for this run. A transpose not saved does
+            // not, so a song with both says so for each.
             return transposed ? "Not written to the songbook. Transpose does not persist." : "Not written to the songbook"
         }
         return nil
@@ -172,6 +194,7 @@ struct SongPage: View {
                         chords: SongTranspose.shifted(editChords, by: steps),
                         selection: $chordSelection,
                         onChordMoved: moveChord,
+                        onDragBegan: { dragRecorded = false },
                         onEditRequested: requestChordEdit
                     )
                 }
@@ -243,6 +266,7 @@ struct SongPage: View {
             if source != nil {
                 SongChromeDock(
                     editing: editing || editingChords,
+                    pending: stepsChanged,
                     chordMode: editingChords,
                     selectionState: chordSelectionState,
                     songId: songId,
@@ -253,8 +277,12 @@ struct SongPage: View {
                     onEditChords: beginChordEdit,
                     onEditChord: { requestChordEdit(chordSelection) },
                     onDeleteChord: deleteSelectedChord,
-                    onDiscard: { finishEditing(save: false) },
-                    onSave: { finishEditing(save: true) },
+                    canUndo: !chordUndo.isEmpty,
+                    canRedo: !chordRedo.isEmpty,
+                    onUndo: undoChordChange,
+                    onRedo: redoChordChange,
+                    onDiscard: { finish(save: false) },
+                    onSave: { finish(save: true) },
                     shownSong: { shownSong },
                     onPanelBottom: { panelBottom = $0 },
                     onNotice: { title, message in
@@ -310,11 +338,48 @@ struct SongPage: View {
         editChords = shownChords ?? source?.chords ?? []
         chordSelection = nil
         chordRequest = nil
+        chordUndo = []
+        chordRedo = []
         editingChords = true
     }
 
+    /// Puts the chords as they are now on the undo list, before a change.
+    private func setChords(_ chords: [SongChord]) {
+        guard chords != editChords else {
+            return
+        }
+        chordUndo.append(editChords)
+        chordRedo = []
+        editChords = chords
+    }
+
     private func moveChord(from: Int, to: Int) {
-        editChords = SongLyricChords.reattached(editChords, from: from, to: to)
+        let moved = SongLyricChords.reattached(editChords, from: from, to: to)
+        // Every step of one drag is the same change.
+        if dragRecorded {
+            editChords = moved
+        } else {
+            dragRecorded = true
+            setChords(moved)
+        }
+    }
+
+    private func undoChordChange() {
+        guard editingChords, let previous = chordUndo.popLast() else {
+            return
+        }
+        chordRedo.append(editChords)
+        editChords = previous
+        chordSelection = nil
+    }
+
+    private func redoChordChange() {
+        guard editingChords, let next = chordRedo.popLast() else {
+            return
+        }
+        chordUndo.append(editChords)
+        editChords = next
+        chordSelection = nil
     }
 
     /// What the buttons need to know: nothing picked, a letter, or a chord.
@@ -344,18 +409,45 @@ struct SongPage: View {
         if !request.isNew, text.trimmingCharacters(in: .whitespacesAndNewlines) == request.initialText {
             return
         }
-        editChords = SongLyricChords.replaced(
-            editChords, at: request.characterNum, withText: text, steps: steps)
+        setChords(SongLyricChords.replaced(
+            editChords, at: request.characterNum, withText: text, steps: steps))
     }
 
     private func deleteSelectedChord() {
         guard editingChords, let selected = chordSelection else {
             return
         }
-        editChords = SongLyricChords.deleted(editChords, at: selected)
+        setChords(SongLyricChords.deleted(editChords, at: selected))
+    }
+
+    /// Save and Discard: the edit, with a transpose made before it, or while
+    /// viewing only the transpose.
+    private func finish(save: Bool) {
+        if editing || editingChords {
+            finishEditing(save: save)
+        } else {
+            finishTranspose(save: save)
+        }
+    }
+
+    /// Save keeps the key for this run, like a saved edit. Discard goes back
+    /// to the key that was kept.
+    private func finishTranspose(save: Bool) {
+        if save {
+            savedSteps = steps
+            SongSessionEdits.save(id: songId, text: shownText, chords: shownChords, steps: savedSteps)
+        } else {
+            steps = savedSteps
+        }
     }
 
     private func finishEditing(save: Bool) {
+        // A transpose made before the edit is part of it.
+        if save {
+            savedSteps = steps
+        } else {
+            steps = savedSteps
+        }
         if editingChords {
             if save {
                 commitEdit()
@@ -363,6 +455,8 @@ struct SongPage: View {
             // No keyboard is up in this mode, so the page can leave it now.
             chordRequest = nil
             chordSelection = nil
+            chordUndo = []
+            chordRedo = []
             editingChords = false
         } else {
             closeLyricEditor(save: save)
@@ -374,7 +468,7 @@ struct SongPage: View {
         let sameChords = editChords == source?.chords
         shownText = sameText ? nil : draft
         shownChords = sameChords ? nil : editChords
-        SongSessionEdits.save(id: songId, text: shownText, chords: shownChords)
+        SongSessionEdits.save(id: songId, text: shownText, chords: shownChords, steps: savedSteps)
     }
 
     /// The field resigns before it leaves the screen. Removing it while the
@@ -446,6 +540,9 @@ struct SongPage: View {
 /// choice then waits. These buttons keep one menu for the life of the page.
 private struct SongChromeDock: UIViewRepresentable {
     var editing: Bool
+    /// A transpose not saved while viewing: Discard and Save show next to the
+    /// transpose buttons.
+    var pending: Bool
     var chordMode: Bool
     var selectionState: SongChordSelectionState
     var songId: Int
@@ -458,6 +555,10 @@ private struct SongChromeDock: UIViewRepresentable {
     var onEditChords: () -> Void
     var onEditChord: () -> Void
     var onDeleteChord: () -> Void
+    var canUndo: Bool
+    var canRedo: Bool
+    var onUndo: () -> Void
+    var onRedo: () -> Void
     var onDiscard: () -> Void
     var onSave: () -> Void
     var shownSong: () -> SongSource?
@@ -478,6 +579,7 @@ private struct SongChromeDock: UIViewRepresentable {
         coordinator.chords = chords
         coordinator.applyTransposeState()
         coordinator.editing = editing
+        coordinator.pending = pending
         coordinator.chordMode = chordMode
         coordinator.selectionState = selectionState
         coordinator.onBack = onBack
@@ -485,6 +587,10 @@ private struct SongChromeDock: UIViewRepresentable {
         coordinator.onEditChords = onEditChords
         coordinator.onEditChord = onEditChord
         coordinator.onDeleteChord = onDeleteChord
+        coordinator.canUndo = canUndo
+        coordinator.canRedo = canRedo
+        coordinator.onUndo = onUndo
+        coordinator.onRedo = onRedo
         coordinator.onDiscard = onDiscard
         coordinator.onSave = onSave
         coordinator.shownSong = shownSong
@@ -513,6 +619,7 @@ private struct SongChromeDock: UIViewRepresentable {
         var steps: Binding<Int> = .constant(0)
         var chords: [SongChord] = []
         var editing = false
+        var pending = false
         var chordMode = false
         var selectionState = SongChordSelectionState.none
         var onBack: () -> Void = {}
@@ -520,6 +627,10 @@ private struct SongChromeDock: UIViewRepresentable {
         var onEditChords: () -> Void = {}
         var onEditChord: () -> Void = {}
         var onDeleteChord: () -> Void = {}
+        var canUndo = false
+        var canRedo = false
+        var onUndo: () -> Void = {}
+        var onRedo: () -> Void = {}
         private weak var anchor: SongChromeAnchor?
         /// Set once the page drops the buttons, so a late update cannot put them
         /// back on the list.
@@ -536,6 +647,8 @@ private struct SongChromeDock: UIViewRepresentable {
         private var resetTransposeButton: UIButton?
         private var editChordButton: UIButton?
         private var deleteChordButton: UIButton?
+        private var undoButton: UIButton?
+        private var redoButton: UIButton?
 
         func install(on anchor: SongChromeAnchor) {
             // The bar's container covers the screen and takes presses that land
@@ -564,20 +677,22 @@ private struct SongChromeDock: UIViewRepresentable {
             applyEditing()
         }
 
-        /// Reset transpose is dimmed until the song has been moved. The page starts
-        /// at 0 steps each time a song is opened, so 0 is the key it had when it
-        /// was loaded in this session. Up then Down by the same amount is 0 again, and so
-        /// is a whole octave (12), which shows the same chords.
+        /// Reset transpose is dimmed while the song is in the songbook's key (0).
+        /// A song opens at the transpose saved for this run, 0 if none. Up then
+        /// Down by the same amount is back, and so is a whole octave (12), which
+        /// shows the same chords.
         func applyTransposeState() {
             resetTransposeButton?.isEnabled = SongTranspose.changesChords(steps.wrappedValue, in: chords)
         }
 
         func applyEditing() {
             viewControls?.isHidden = editing
-            editControls?.isHidden = !editing
+            editControls?.isHidden = !(editing || pending)
             chordTools?.isHidden = !(editing && chordMode)
             editChordButton?.isEnabled = selectionState != .none
             deleteChordButton?.isEnabled = selectionState == .chord
+            undoButton?.isEnabled = canUndo
+            redoButton?.isEnabled = canRedo
         }
 
         private func makePanel() -> SongChromePanel {
@@ -635,7 +750,15 @@ private struct SongChromeDock: UIViewRepresentable {
             let deleteChord = textButton("Delete chord", prominent: false, action: #selector(deleteChordTapped))
             editChordButton = editChord
             deleteChordButton = deleteChord
-            let tools = UIStackView(arrangedSubviews: [editChord, deleteChord])
+            // Mirror: the desktop edit's Undo and Redo.
+            let undo = symbolButton("arrow.uturn.backward", name: "Undo", action: #selector(undoTapped))
+            let redo = symbolButton("arrow.uturn.forward", name: "Redo", action: #selector(redoTapped))
+            undoButton = undo
+            redoButton = redo
+            let history = UIStackView(arrangedSubviews: [undo, redo])
+            history.axis = .horizontal
+            history.spacing = 6
+            let tools = UIStackView(arrangedSubviews: [editChord, deleteChord, history])
             tools.axis = .vertical
             tools.alignment = .trailing
             tools.spacing = 6
@@ -740,6 +863,18 @@ private struct SongChromeDock: UIViewRepresentable {
             return button
         }
 
+        private func symbolButton(_ symbol: String, name: String, action: Selector) -> UIButton {
+            var config = UIButton.Configuration.bordered()
+            config.image = UIImage(systemName: symbol)
+            config.buttonSize = .small
+            config.cornerStyle = .capsule
+            let button = UIButton(configuration: config)
+            button.accessibilityLabel = name
+            button.isEnabled = false
+            button.addTarget(self, action: action, for: .touchUpInside)
+            return button
+        }
+
         private func closeChrome() {
             closed = true
             anchor?.removePanel()
@@ -759,6 +894,14 @@ private struct SongChromeDock: UIViewRepresentable {
 
         @objc private func deleteChordTapped() {
             onDeleteChord()
+        }
+
+        @objc private func undoTapped() {
+            onUndo()
+        }
+
+        @objc private func redoTapped() {
+            onRedo()
         }
 
         @objc private func discardTapped() {
@@ -1831,6 +1974,7 @@ private struct SongChordEditor: UIViewRepresentable {
     var chords: [SongChord]
     @Binding var selection: Int?
     var onChordMoved: (Int, Int) -> Void
+    var onDragBegan: () -> Void
     var onEditRequested: (Int) -> Void
 
     func makeUIView(context: Context) -> SongChordZoomView {
@@ -1855,6 +1999,7 @@ private struct SongChordEditor: UIViewRepresentable {
         let binding = $selection
         view.onSelectionChanged = { binding.wrappedValue = $0 }
         view.onChordMoved = onChordMoved
+        view.onDragBegan = onDragBegan
         view.onEditRequested = onEditRequested
         view.chords = chords
         view.text = text
@@ -1912,6 +2057,7 @@ private final class SongChordPress: UIGestureRecognizer {
         case .drag?:
             mode = .drag
             zoomView.fingerLetter = zoomView.selectedCharacterNum
+            zoomView.onDragBegan()
         case let action?:
             mode = .release(action)
         case nil:
@@ -1983,6 +2129,8 @@ private final class SongChordPress: UIGestureRecognizer {
 private final class SongChordZoomView: SongZoomScrollView {
     var onSelectionChanged: (Int?) -> Void = { _ in }
     var onChordMoved: (Int, Int) -> Void = { _, _ in }
+    /// A press on the selected chord, before it moves. The moves of one drag are one undo step.
+    var onDragBegan: () -> Void = {}
     var onEditRequested: (Int) -> Void = { _ in }
     /// The chords as drawn, so a move can tell a drop on the same letter from a real one.
     var chords: [SongChord] = []

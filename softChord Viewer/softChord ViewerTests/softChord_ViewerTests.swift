@@ -27,16 +27,16 @@ struct softChord_ViewerTests {
     @Test func songPageMenuAddsEdit() {
         let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: {})
         let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
-        #expect(titles.last == "Edit song text...")
+        #expect(titles.last == "Edit Text…")
     }
 
     @Test func songPageMenuAddsEditChordsNextToEditText() {
         let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: {}, onEditChords: {})
         let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
-        #expect(Array(titles.suffix(2)) == ["Edit song text...", "Edit song chords..."])
+        #expect(Array(titles.suffix(2)) == ["Edit Text…", "Edit Chords…"])
         let listMenu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: nil)
         let listTitles = listMenu.children.compactMap { ($0 as? UIAction)?.title }
-        #expect(!listTitles.contains("Edit song chords..."))
+        #expect(!listTitles.contains("Edit Chords…"))
     }
 
     /// The list must not refresh a menu while it is closed. The cell gets one
@@ -174,8 +174,65 @@ struct softChord_ViewerTests {
         window.isHidden = true
     }
 
-    /// Edit chord and Delete chord sit under Discard and Save, one row each, on one
-    /// line, and the chord view starts below them.
+    /// A transpose while viewing is a change: Discard and Save show, unless the
+    /// song is back at the key it had. Save keeps the key for this run.
+    @Test @MainActor func aTransposeIsAChangeToSaveOrDiscard() async throws {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let title = try #require(try Songbook.titles().first)
+        let controller = UIHostingController(rootView: NavigationStack(path: .constant([title])) {
+            Text("Songs")
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: SongTitle.self) { song in
+                    SongPage(song: song)
+                }
+        })
+        let window = show(controller)
+        await settle()
+        func onScreen(_ name: String) -> Bool {
+            window.descendants(of: UIButton.self).contains { button in
+                guard button.configuration?.title == name else {
+                    return false
+                }
+                var view: UIView? = button
+                while let current = view {
+                    if current.isHidden {
+                        return false
+                    }
+                    view = current.superview
+                }
+                return true
+            }
+        }
+        #expect(!onScreen("Save"))
+        pressButton("Up", in: window)
+        await settle()
+        #expect(onScreen("Discard") && onScreen("Save"))
+        pressButton("Down", in: window)
+        await settle()
+        #expect(!onScreen("Save"))
+        pressButton("Up", in: window)
+        pressButton("Up", in: window)
+        await settle()
+        pressButton("Discard", in: window)
+        await settle()
+        #expect(!onScreen("Save"))
+        #expect(SongSessionEdits.copy(for: title.id) == nil)
+        pressButton("Up", in: window)
+        await settle()
+        pressButton("Save", in: window)
+        await settle()
+        #expect(!onScreen("Save"))
+        #expect(SongSessionEdits.copy(for: title.id)?.steps == 1)
+        // From the kept key, Reset is a change again.
+        pressButton("Reset transpose", in: window)
+        await settle()
+        #expect(onScreen("Save"))
+        window.isHidden = true
+    }
+
+    /// Edit chord, Delete chord, and Undo with Redo sit under Discard and Save, one
+    /// row each, on one line, and the chord view starts below them.
     @Test @MainActor func chordButtonsSitBelowSaveAndTheTextStartsBelowThem() async throws {
         let song = try Songbook.titles().first
         let title = try #require(song)
@@ -190,7 +247,7 @@ struct softChord_ViewerTests {
         await settle()
         let menu = try #require(window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Menu" })
         let action = try #require(menu.menu?.children.compactMap { $0 as? UIAction }.first {
-            $0.title == "Edit song chords..."
+            $0.title == "Edit Chords…"
         })
         action.performWithSender(nil, target: nil)
         await settle()
@@ -224,6 +281,16 @@ struct softChord_ViewerTests {
             })
             let chordsFrame = chords.convert(chords.bounds, to: window)
             #expect(chordsFrame.minY >= deleteFrame.maxY, "\(size) \(category) \(chordsFrame)")
+            // Undo and Redo are the row under them, dimmed until a chord changes.
+            for name in ["Undo", "Redo"] {
+                let history = try #require(window.descendants(of: UIButton.self).first {
+                    $0.accessibilityLabel == name
+                })
+                let frame = history.convert(history.bounds, to: window)
+                #expect(frame.minY >= deleteFrame.maxY, "\(name) \(size) \(category)")
+                #expect(chordsFrame.minY >= frame.maxY, "\(name) \(size) \(category)")
+                #expect(!history.isEnabled, "\(name)")
+            }
         }
         // The chord view zooms and scrolls like the song view.
         let sheet = try #require(window.descendants(of: UIScrollView.self).first {
@@ -457,7 +524,7 @@ struct softChord_ViewerTests {
     }
 
     @MainActor private func openEditor(in window: UIWindow) async throws {
-        try performMenuAction("Edit song text...", in: window)
+        try performMenuAction("Edit Text…", in: window)
         await waitUntil(in: window) { view in
             view.descendants(of: UITextView.self).isEmpty == false
         }

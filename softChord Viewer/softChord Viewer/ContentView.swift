@@ -256,13 +256,13 @@ enum SongShareMenu {
         ]
         if let onEdit {
             // Mirror: softchord_session.py lyricEditorSelected.
-            children.append(UIAction(title: "Edit song text...") { _ in
+            children.append(UIAction(title: "Edit Text…") { _ in
                 onEdit()
             })
         }
         if let onEditChords {
             // Mirror: softchord_session.py chordEditorSelected.
-            children.append(UIAction(title: "Edit song chords...") { _ in
+            children.append(UIAction(title: "Edit Chords…") { _ in
                 onEditChords()
             })
         }
