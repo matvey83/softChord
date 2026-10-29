@@ -28,7 +28,8 @@ from PyQt6.QtTest import QTest
 
 import softchord
 import softchord_chords
-from softchord_text import lyric_renumber_map
+from softchord_text import (chord_drag_direction, lyric_renumber_map,
+                            next_free_character)
 from softchord_layout import QtDocumentLayout, SongLayout
 from softchord_io import (
     _chord_tokens,
@@ -227,6 +228,9 @@ class MinimalTestApp:
 
     def processKeyPressed(self, key):
         return False
+
+    # The real jump-over rule, so mouse drags can be tested here.
+    freeCharacterForChord = softchord.SongbookSession.freeCharacterForChord
 
     def deleteSelectedChord(self):
         pass
@@ -1126,6 +1130,99 @@ class TestCustomTextEdit(unittest.TestCase):
             song.addChord(SongChord(song, position, 0, 0, -1, "", False))
         return song
 
+    def _drag_over(self, letters):
+        """Press on the chord on letters[0], move over the others, let go."""
+        current = [letters[0]]
+        self.app.determineClickedLetter = (
+            lambda x, y, dragging: (not dragging, current[0]))
+        self._press(3, 3)
+        for letter in letters[1:]:
+            current[0] = letter
+            self._move(3, 3)
+        self._release(3, 3)
+
+    def test_dragging_a_chord_jumps_over_a_chord(self):
+        song = self._song_with_chords_at([1, 2])
+
+        self._drag_over([1, 2])
+
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [2, 3])
+
+    def test_dragging_keeps_the_jump_while_the_mouse_stays_on_the_chord(self):
+        song = self._song_with_chords_at([1, 2])
+        self.app.determineClickedLetter = lambda x, y, dragging: (True, 1)
+        self._press(3, 3)
+        self.app.determineClickedLetter = lambda x, y, dragging: (False, 2)
+
+        self._move(3, 3)
+        self._move(4, 3)
+        self._move(5, 3)
+        self._release(5, 3)
+
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [2, 3])
+
+    def test_dragging_past_several_chords_and_back(self):
+        song = self._song_with_chords_at([1, 2, 3, 4])
+
+        self._drag_over([1, 2, 3, 4, 5])
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [2, 3, 4, 5])
+
+        # Back over the chords to the left, all the way to the first letter.
+        self._drag_over([5, 4, 3, 2, 1, 0])
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [0, 2, 3, 4])
+
+    def test_dragging_left_onto_a_chord_jumps_left(self):
+        song = self._song_with_chords_at([1, 5])
+
+        self._drag_over([5, 4, 3, 2, 1])
+
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [0, 1])
+
+    def test_dragging_the_only_free_letter_is_not_lost(self):
+        song = self._song_with_chords_at([0, 1, 3])
+
+        self._drag_over([3, 2, 1])
+
+        # The last letter before the chords on 0 and 1 is 2, so it stays there.
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [0, 1, 2])
+
+    def test_dragging_onto_a_full_line_leaves_the_chord_where_it_was(self):
+        song = create_test_song(self.app, song_id=51, text="01\n34")
+        self.app.current_song = song
+        for position in (0, 3, 4):
+            song.addChord(SongChord(song, position, 0, 0, -1, "", False))
+
+        self._drag_over([0, 3])
+
+        # Not onto the occupied letters, and not onto the line break.
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [0, 3, 4])
+
+    def test_dragging_onto_a_chord_on_another_line_jumps_forward(self):
+        song = create_test_song(self.app, song_id=52, text="01\n345")
+        self.app.current_song = song
+        for position in (0, 3):
+            song.addChord(SongChord(song, position, 0, 0, -1, "", False))
+
+        self._drag_over([0, 3])
+
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [3, 4])
+
     def test_click_clears_chord_rectangle_selection(self):
         self._song_with_chords_at([0, 4])
         self.app.selected_chord_nums = {0, 4}
@@ -1427,13 +1524,105 @@ class TestAppCoreFunctionality(unittest.TestCase):
         left_song = self._select_chords_at("0123456789", [0, 1],
                                            [Qt.Key.Key_C, Qt.Key.Key_E],
                                            song_id=10021)
-        # The chord on the first letter cannot move, so the next one joins it.
+        # The chord on the first letter cannot move, and the next one does not
+        # join it: a letter never gets two chords.
         self.app.processKeyPressed(Qt.Key.Key_Left)
         left_chords = list(left_song.iterateAllChords())
         self.assertEqual(sorted(chord.note_id for chord in left_chords),
                          [0, 4])
         self.assertEqual(sorted(chord.character_num for chord in left_chords),
-                         [0, 0])
+                         [0, 1])
+
+    def test_selected_chords_jump_over_a_chord_that_is_not_selected(self):
+        song = self._select_chords_at("0123456789", [2, 3],
+                                      [Qt.Key.Key_C, Qt.Key.Key_D])
+        self.app.selected_char_num = 4
+        self.app.processKeyPressed(Qt.Key.Key_E)
+        self.app.selected_char_num = None
+        self.app.selected_chord_nums = {2, 3}
+
+        self.app.processKeyPressed(Qt.Key.Key_Right)
+
+        # The chord on 3 jumps over the one on 4, and the chord on 2 follows.
+        self.assertEqual(song.getChordAtPosition(3).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(4).note_id, 4)
+        self.assertEqual(song.getChordAtPosition(5).note_id, 2)
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [3, 4, 5])
+        self.assertEqual(self.app.selected_chord_nums, {3, 5})
+
+    def test_selected_chords_never_share_a_letter_at_a_line_end(self):
+        song = self._select_chords_at("01\n3456", [0, 1],
+                                      [Qt.Key.Key_C, Qt.Key.Key_D])
+
+        self.app.processKeyPressed(Qt.Key.Key_Right)
+
+        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(1).note_id, 2)
+        self.assertEqual(len(list(song.iterateAllChords())), 2)
+
+    def _song_with_chords(self, text, notes_at, song_id=10030):
+        song = create_test_song(self.app, song_id=song_id, text=text)
+        self.app.current_song = song
+        self.app.previous_song_text = text
+        for position, key in notes_at:
+            self.app.selected_char_num = position
+            self.app.processKeyPressed(key)
+        return song
+
+    def test_arrow_key_jumps_over_a_chord_on_the_next_letter(self):
+        song = self._song_with_chords(
+            "0123456789", [(2, Qt.Key.Key_C), (3, Qt.Key.Key_D),
+                           (4, Qt.Key.Key_E)])
+        self.app.selected_char_num = 2
+
+        moved = self.app.processKeyPressed(Qt.Key.Key_Right)
+
+        self.assertTrue(moved)
+        self.assertEqual([c.character_num for c in song.iterateAllChords()
+                          if c.note_id == 0], [5])
+        self.assertEqual(self.app.selected_char_num, 5)
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [3, 4, 5])
+
+    def test_arrow_key_jumps_left_over_a_chord(self):
+        song = self._song_with_chords(
+            "0123456789", [(2, Qt.Key.Key_C), (3, Qt.Key.Key_D)],
+            song_id=10031)
+        self.app.selected_char_num = 3
+
+        self.app.processKeyPressed(Qt.Key.Key_Left)
+
+        self.assertEqual(song.getChordAtPosition(1).note_id, 2)
+        self.assertEqual(song.getChordAtPosition(2).note_id, 0)
+        self.assertEqual(len(list(song.iterateAllChords())), 2)
+
+    def test_arrow_key_stays_when_no_letter_is_free_that_way(self):
+        song = self._song_with_chords(
+            "0123\n567", [(2, Qt.Key.Key_C), (3, Qt.Key.Key_D)],
+            song_id=10032)
+        self.app.selected_char_num = 2
+        steps = self.app.undo_stack.index()
+
+        moved = self.app.processKeyPressed(Qt.Key.Key_Right)
+
+        self.assertFalse(moved)
+        self.assertEqual(self.app.undo_stack.index(), steps)
+        self.assertEqual(song.getChordAtPosition(2).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(3).note_id, 2)
+
+    def test_arrow_key_does_not_cross_a_line_break_or_the_start(self):
+        song = self._song_with_chords(
+            "01\n34", [(0, Qt.Key.Key_C), (1, Qt.Key.Key_D)], song_id=10033)
+        self.app.selected_char_num = 1
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Right))
+        self.app.selected_char_num = 0
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Left))
+        self.assertEqual(
+            sorted(chord.character_num for chord in song.iterateAllChords()),
+            [0, 1])
 
     def test_delete_removes_every_selected_chord_as_one_undo(self):
         song = self._select_chords_at("0123456789", [1, 4],
@@ -4923,6 +5112,63 @@ class TestLyricChordVectors(unittest.TestCase):
                                  sorted(targets))
                 self.assertGreaterEqual(len(renumber_map),
                                         len(old) - (end - start))
+
+
+class TestChordMoveVectors(unittest.TestCase):
+    """The same cases are run by the Swift and JS tests."""
+
+    PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "tests",
+        "chord_move_vectors.json")
+
+    @classmethod
+    def setUpClass(cls):
+        with open(cls.PATH, encoding="utf-8") as fh:
+            cls.vectors = json.load(fh)
+
+    def test_vectors_are_not_empty(self):
+        self.assertGreater(len(self.vectors["jumps"]), 20)
+        self.assertGreater(len(self.vectors["directions"]), 5)
+
+    def test_every_jump(self):
+        for case in self.vectors["jumps"]:
+            with self.subTest(name=case["name"]):
+                self.assertEqual(
+                    next_free_character(case["text"], case["target"],
+                                        case["direction"],
+                                        set(case["occupied"]),
+                                        case["allow_other_direction"]),
+                    case["expected"])
+
+    def test_every_direction(self):
+        for case in self.vectors["directions"]:
+            with self.subTest(name=case["name"]):
+                self.assertEqual(
+                    chord_drag_direction(case["text"], case["chord"],
+                                         case["previous"], case["target"]),
+                    case["expected"])
+
+    def test_a_jump_lands_on_a_free_letter_of_the_same_line(self):
+        rng = random.Random(7)
+        for _ in range(2000):
+            text = "".join(rng.choice("ab\n") for _ in range(rng.randint(0, 9)))
+            occupied = {i for i in range(len(text)) if rng.random() < 0.5}
+            target = rng.randint(-1, len(text))
+            direction = rng.choice([-1, 1])
+            other = rng.random() < 0.5
+            landing = next_free_character(text, target, direction, occupied,
+                                          other)
+            with self.subTest(text=text, target=target, occupied=occupied):
+                if landing is None:
+                    continue
+                self.assertNotIn(landing, occupied)
+                self.assertNotEqual(text[landing], "\n")
+                self.assertEqual(text.count("\n", min(landing, target),
+                                            max(landing, target)), 0)
+                # Nothing free was passed over on the way.
+                step = 1 if landing >= target else -1
+                for between in range(target, landing, step):
+                    self.assertIn(between, occupied)
 
 
 class TestChordTextValidity(unittest.TestCase):

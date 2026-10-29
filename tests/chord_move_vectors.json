@@ -1,0 +1,322 @@
+{
+ "description": "Shared cases for moving a chord onto a letter that already has a chord. Python, Swift and JS tests all read this file. Indices are Unicode code points. jumps: the letter the chord lands on (expected, null when the chord stays) when it is moved onto target going in direction (1 right, -1 left); occupied are the letters with another chord; allow_other_direction is true for a drag and false for an arrow key. directions: the direction (1 or -1) of a drag where the chord is on the letter chord, the mouse moved from the letter previous to the letter target.",
+ "jumps": [
+  {
+   "name": "target is free",
+   "text": "abcdef",
+   "target": 2,
+   "direction": 1,
+   "occupied": [],
+   "allow_other_direction": false,
+   "expected": 2
+  },
+  {
+   "name": "target is free, moving left",
+   "text": "abcdef",
+   "target": 2,
+   "direction": -1,
+   "occupied": [0, 5],
+   "allow_other_direction": false,
+   "expected": 2
+  },
+  {
+   "name": "jump over one chord to the right",
+   "text": "abcdef",
+   "target": 2,
+   "direction": 1,
+   "occupied": [2],
+   "allow_other_direction": false,
+   "expected": 3
+  },
+  {
+   "name": "jump over one chord to the left",
+   "text": "abcdef",
+   "target": 2,
+   "direction": -1,
+   "occupied": [2],
+   "allow_other_direction": false,
+   "expected": 1
+  },
+  {
+   "name": "jump over several chords to the right",
+   "text": "abcdef",
+   "target": 2,
+   "direction": 1,
+   "occupied": [2, 3, 4],
+   "allow_other_direction": false,
+   "expected": 5
+  },
+  {
+   "name": "jump over several chords to the left",
+   "text": "abcdef",
+   "target": 4,
+   "direction": -1,
+   "occupied": [2, 3, 4],
+   "allow_other_direction": false,
+   "expected": 1
+  },
+  {
+   "name": "a chord elsewhere on the line is ignored",
+   "text": "abcdef",
+   "target": 1,
+   "direction": 1,
+   "occupied": [5],
+   "allow_other_direction": false,
+   "expected": 1
+  },
+  {
+   "name": "no free letter to the right: arrow key stays",
+   "text": "abcd",
+   "target": 2,
+   "direction": 1,
+   "occupied": [2, 3],
+   "allow_other_direction": false,
+   "expected": null
+  },
+  {
+   "name": "no free letter to the right: drag turns around",
+   "text": "abcd",
+   "target": 2,
+   "direction": 1,
+   "occupied": [2, 3],
+   "allow_other_direction": true,
+   "expected": 1
+  },
+  {
+   "name": "no free letter to the left: arrow key stays",
+   "text": "abcd",
+   "target": 1,
+   "direction": -1,
+   "occupied": [0, 1],
+   "allow_other_direction": false,
+   "expected": null
+  },
+  {
+   "name": "no free letter to the left: drag turns around",
+   "text": "abcd",
+   "target": 1,
+   "direction": -1,
+   "occupied": [0, 1],
+   "allow_other_direction": true,
+   "expected": 2
+  },
+  {
+   "name": "jump stops at the first free letter",
+   "text": "abcdef",
+   "target": 0,
+   "direction": 1,
+   "occupied": [0, 1, 3],
+   "allow_other_direction": false,
+   "expected": 2
+  },
+  {
+   "name": "full line: nothing moves",
+   "text": "abc",
+   "target": 1,
+   "direction": 1,
+   "occupied": [0, 1, 2],
+   "allow_other_direction": true,
+   "expected": null
+  },
+  {
+   "name": "full line, arrow key",
+   "text": "abc",
+   "target": 1,
+   "direction": -1,
+   "occupied": [0, 1, 2],
+   "allow_other_direction": false,
+   "expected": null
+  },
+  {
+   "name": "target is a line break",
+   "text": "ab\ncd",
+   "target": 2,
+   "direction": 1,
+   "occupied": [],
+   "allow_other_direction": true,
+   "expected": null
+  },
+  {
+   "name": "jump does not leave the first line",
+   "text": "ab\ncd",
+   "target": 0,
+   "direction": 1,
+   "occupied": [0, 1],
+   "allow_other_direction": true,
+   "expected": null
+  },
+  {
+   "name": "jump does not leave the second line",
+   "text": "ab\ncd",
+   "target": 3,
+   "direction": -1,
+   "occupied": [3, 4],
+   "allow_other_direction": true,
+   "expected": null
+  },
+  {
+   "name": "chords on another line are ignored",
+   "text": "ab\ncde",
+   "target": 3,
+   "direction": 1,
+   "occupied": [0, 1, 3],
+   "allow_other_direction": false,
+   "expected": 4
+  },
+  {
+   "name": "second line, jump right",
+   "text": "ab\ncde",
+   "target": 3,
+   "direction": 1,
+   "occupied": [3, 4],
+   "allow_other_direction": false,
+   "expected": 5
+  },
+  {
+   "name": "last line has no trailing line break",
+   "text": "ab\ncd",
+   "target": 3,
+   "direction": 1,
+   "occupied": [3],
+   "allow_other_direction": false,
+   "expected": 4
+  },
+  {
+   "name": "blank line has no letters",
+   "text": "ab\n\ncd",
+   "target": 3,
+   "direction": 1,
+   "occupied": [],
+   "allow_other_direction": true,
+   "expected": null
+  },
+  {
+   "name": "target before the text",
+   "text": "abc",
+   "target": -1,
+   "direction": 1,
+   "occupied": [],
+   "allow_other_direction": true,
+   "expected": null
+  },
+  {
+   "name": "target after the text",
+   "text": "abc",
+   "target": 3,
+   "direction": -1,
+   "occupied": [],
+   "allow_other_direction": true,
+   "expected": null
+  },
+  {
+   "name": "empty text",
+   "text": "",
+   "target": 0,
+   "direction": 1,
+   "occupied": [],
+   "allow_other_direction": true,
+   "expected": null
+  },
+  {
+   "name": "Cyrillic letters count as one letter each",
+   "text": "Привет",
+   "target": 1,
+   "direction": 1,
+   "occupied": [1],
+   "allow_other_direction": false,
+   "expected": 2
+  },
+  {
+   "name": "emoji counts as one letter",
+   "text": "a😀b",
+   "target": 1,
+   "direction": 1,
+   "occupied": [1],
+   "allow_other_direction": false,
+   "expected": 2
+  },
+  {
+   "name": "emoji and a chord on the last letter",
+   "text": "a😀b",
+   "target": 1,
+   "direction": 1,
+   "occupied": [1, 2],
+   "allow_other_direction": true,
+   "expected": 0
+  }
+ ],
+ "directions": [
+  {
+   "name": "moving right",
+   "text": "abcdef",
+   "chord": 1,
+   "previous": 1,
+   "target": 3,
+   "expected": 1
+  },
+  {
+   "name": "moving left",
+   "text": "abcdef",
+   "chord": 4,
+   "previous": 4,
+   "target": 2,
+   "expected": -1
+  },
+  {
+   "name": "one letter right",
+   "text": "abcdef",
+   "chord": 1,
+   "previous": 1,
+   "target": 2,
+   "expected": 1
+  },
+  {
+   "name": "one letter left",
+   "text": "abcdef",
+   "chord": 2,
+   "previous": 2,
+   "target": 1,
+   "expected": -1
+  },
+  {
+   "name": "the chord jumped and the mouse moves back over the chord it jumped",
+   "text": "abcdef",
+   "chord": 4,
+   "previous": 3,
+   "target": 2,
+   "expected": -1
+  },
+  {
+   "name": "the chord jumped left and the mouse moves right",
+   "text": "abcdef",
+   "chord": 1,
+   "previous": 2,
+   "target": 3,
+   "expected": 1
+  },
+  {
+   "name": "no movement counts as right",
+   "text": "abcdef",
+   "chord": 2,
+   "previous": 2,
+   "target": 2,
+   "expected": 1
+  },
+  {
+   "name": "target on the next line",
+   "text": "ab\ncd",
+   "chord": 0,
+   "previous": 0,
+   "target": 3,
+   "expected": 1
+  },
+  {
+   "name": "target on the line above",
+   "text": "ab\ncd",
+   "chord": 3,
+   "previous": 3,
+   "target": 0,
+   "expected": 1
+  }
+ ]
+}

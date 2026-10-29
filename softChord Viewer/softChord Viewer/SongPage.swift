@@ -1827,6 +1827,7 @@ private struct SongChordEditor: UIViewRepresentable {
         view.onChordMoved = onChordMoved
         view.onEditRequested = onEditRequested
         view.chords = chords
+        view.text = text
         view.setLines(SongText.sheet(text: text, chords: chords))
         view.applySelection(selection)
     }
@@ -1880,6 +1881,7 @@ private final class SongChordPress: UIGestureRecognizer {
         switch zoomView.pick(at: touch.location(in: zoomView)) {
         case .drag?:
             mode = .drag
+            zoomView.fingerLetter = zoomView.selectedCharacterNum
         case let action?:
             mode = .release(action)
         case nil:
@@ -1954,6 +1956,8 @@ private final class SongChordZoomView: SongZoomScrollView {
     var onEditRequested: (Int) -> Void = { _ in }
     /// The chords as drawn, so a move can tell a drop on the same letter from a real one.
     var chords: [SongChord] = []
+    /// The letters, to keep a moved chord on its own line.
+    var text = ""
     private(set) var selectedCharacterNum: Int?
     private let press = SongChordPress()
 
@@ -2036,9 +2040,28 @@ private final class SongChordZoomView: SongZoomScrollView {
         onEditRequested(selected)
     }
 
+    /// The letter the finger was over at its last move while dragging. A chord that
+    /// jumped over a letter with a chord leaves the finger on that letter, and
+    /// staying there moves nothing.
+    var fingerLetter: Int?
+
+    /// A chord dragged onto a letter that has a chord jumps over it to the next free
+    /// letter on the line in the direction of the drag. Mirror: the chord drag in
+    /// softchord_session.py.
     func moveSelectedChord(at contentPoint: CGPoint) {
         guard let from = selectedCharacterNum,
-              let to = sheetDrawing.nearestLetter(at: songPoint(contentPoint)),
+              let target = sheetDrawing.nearestLetter(at: songPoint(contentPoint)) else {
+            return
+        }
+        let previous = fingerLetter ?? from
+        guard target != previous else {
+            return
+        }
+        fingerLetter = target
+        let occupied = Set(chords.map(\.characterNum)).subtracting([from])
+        let direction = SongLyricChords.dragDirection(in: text, chord: from, previous: previous, target: target)
+        guard let to = SongLyricChords.nextFreeCharacter(
+            in: text, target: target, direction: direction, occupied: occupied, allowOtherDirection: true),
               to != from else {
             return
         }
