@@ -1,7 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for softChord (macOS .app and Windows .exe)."""
 
+import os
 import sys
+
+# The version comes from src/softchord_version.py, the one place it is set.
+sys.path.insert(0, os.path.join(SPECPATH, "src"))
+from softchord_version import __version__  # noqa: E402
 
 # Document type used in the macOS Info.plist so Finder associates *.songbook.
 SONGBOOK_UTI = "com.matvey83.softchord.songbook"
@@ -12,8 +17,8 @@ info_plist = {
     "CFBundleGetInfoString": "softChord",
     "CFBundleIdentifier": "com.matvey83.softchord",
     "CFBundlePackageType": "APPL",
-    "CFBundleShortVersionString": "1.0.0",
-    "CFBundleVersion": "1.0.0",
+    "CFBundleShortVersionString": __version__,
+    "CFBundleVersion": __version__,
     "NSHighResolutionCapable": True,
     "NSPrincipalClass": "NSApplication",
     "LSSupportsOpeningDocumentsInPlace": True,
@@ -52,6 +57,7 @@ a = Analysis(
     binaries=[],
     datas=[("src/icons/softchord.png", "icons")],
     hiddenimports=[
+        "softchord_version",
         "softchord_chords",
         "softchord_song",
         "softchord_io",

@@ -15,6 +15,7 @@ import sqlite3
 import traceback
 import threading
 
+from softchord_version import __version__
 from softchord_chords import (
     PREFER_SHARPS,
     PREFER_FLATS,
@@ -155,6 +156,7 @@ class App(QtWidgets.QApplication):
         if App._singleton is not None:
             raise RuntimeError("softChord is already running")
         super().__init__(args)
+        self.setApplicationVersion(__version__)
         self.session = SongbookSession()
         self.focusChanged.connect(self.session.updateEditMenu)
         # Logout or shutdown: no dialog can be shown, so an edit is saved.
