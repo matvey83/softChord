@@ -50,7 +50,7 @@ a = Analysis(
     ["src/softchord.py"],
     pathex=["src"],
     binaries=[],
-    datas=[],
+    datas=[("src/icons/softchord.png", "icons")],
     hiddenimports=[
         "softchord_chords",
         "softchord_song",
@@ -114,7 +114,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="softChord.app",
-        icon=None,
+        icon="src/icons/softchord.icns",
         bundle_identifier="com.matvey83.softchord",
         info_plist=info_plist,
     )
@@ -127,6 +127,7 @@ else:
         a.datas,
         [],
         name="softChord",
+        icon="src/icons/softchord.ico",
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,
