@@ -95,6 +95,10 @@ CHORDS_COLOR = "BLUE"
 # Text in a chord position that is not a chord (the editor will not save it,
 # but a songbook made elsewhere can hold it).
 UNRECOGNIZED_CHORDS_COLOR = "RED"
+# The selection on screen, the same colours as the web app's (#007aff).
+SELECTED_LETTER_COLOR = QtGui.QColor(0, 122, 255, 51)  # 20%
+SELECTED_CHORD_HALO_COLOR = QtGui.QColor(0, 122, 255, 64)  # 25%
+SELECTED_CHORD_LINE_COLOR = QtGui.QColor(0, 122, 255)
 
 if not os.path.basename(sys.executable).lower().startswith("python"):
     exec_dir = os.path.dirname(sys.executable)
@@ -3212,6 +3216,30 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 width += self.chords_font_metrics.horizontalAdvance(letter)
         return width
 
+    def drawSelection(self, painter, char_rect, chord_rect):
+        """
+        The selection on screen (never in a PDF, a print or an image), the
+        same as the web app's: the letter gets a light blue box (#007aff at
+        20%, corners of 3px). Its chord gets a halo: #007aff at 25% reaching
+        2px past the chord, with a 1px #007aff line around it and rounded
+        corners.
+        """
+        painter.save()
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(SELECTED_LETTER_COLOR)
+        painter.drawRoundedRect(QtCore.QRectF(char_rect), 3.0, 3.0)
+        if chord_rect:
+            halo = QtCore.QRectF(chord_rect).adjusted(-2.0, -2.0, 2.0, 2.0)
+            painter.setBrush(SELECTED_CHORD_HALO_COLOR)
+            painter.drawRoundedRect(halo, 4.0, 4.0)
+            pen = QtGui.QPen(SELECTED_CHORD_LINE_COLOR)
+            pen.setWidthF(1.0)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(halo.adjusted(-0.5, -0.5, 0.5, 0.5), 4.5, 4.5)
+        painter.restore()
+
     def drawChord(self, painter, chord_rect, chord_text):
         """
         Draw the given chord to the given rect of the painter.
@@ -3265,12 +3293,6 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         # NOTE: Everything here is unscaled (original font sizes, etc)
 
         if not exporting:
-            # On Windows, don't use the default dark blue, as it will not work correctly
-            # With default chord and text colors (blue and black):
-            if self.on_windows:
-                selection_brush = QtGui.QColor("light blue")
-            else:
-                selection_brush = QtGui.QPalette().highlight()
             hover_brush = QtGui.QColor("light grey")
 
             # Draw any selection rects:
@@ -3290,10 +3312,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             for char_num in selected_nums:
                 char_rect, chord_rect = self.getCharRects(editor, char_num)
 
-                # Draw a selection rectangle:
-                painter.fillRect(char_rect, selection_brush)
-                if chord_rect:
-                    painter.fillRect(chord_rect, selection_brush)
+                # The selected letter and its chord, as in the web app.
+                self.drawSelection(painter, char_rect, chord_rect)
 
         # Chord boxes come from the editor viewport. Export draws the lyrics
         # at the document origin, so shift the boxes by the scroll offset.

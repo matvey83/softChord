@@ -2100,6 +2100,52 @@ class TestAppRendering(unittest.TestCase):
         painter.end()
         # Success = no crash
 
+    def test_selected_chord_halo_is_drawn_on_screen_only(self):
+        """The selected letter and chord get the web app's blue halo, never in an export."""
+        song = self.app.current_song
+        chord = next(song.iterateAllChords())
+        self.app.selected_char_num = chord.character_num
+        calls = []
+        session = self.app.session
+        real = session.drawSelection
+        session.drawSelection = lambda *args: (calls.append(args), real(*args))
+        try:
+            image = QtGui.QImage(400, 300, QtGui.QImage.Format.Format_ARGB32)
+            image.fill(QtCore.Qt.GlobalColor.white)
+            painter = QtGui.QPainter(image)
+            rect = QtCore.QRectF(0, 0, 400, 300)
+            self.app.drawSongToRect(song, painter, self.app.editor, rect,
+                                    exporting=True)
+            self.assertEqual(calls, [], "no selection in a PDF, print or image")
+            self.app.drawSongToRect(song, painter, self.app.editor, rect,
+                                    exporting=False)
+            painter.end()
+        finally:
+            del session.drawSelection
+            self.app.selected_char_num = None
+        self.assertEqual(len(calls), 1)
+        _painter, char_rect, chord_rect = calls[0]
+        self.assertTrue(chord_rect)
+
+        # The halo itself: 25% #007aff 2px past the chord, a 1px #007aff line.
+        image = QtGui.QImage(120, 80, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtCore.Qt.GlobalColor.white)
+        painter = QtGui.QPainter(image)
+        self.app.drawSelection(painter, QtCore.QRectF(40, 50, 10, 20),
+                               QtCore.QRectF(40, 20, 30, 16))
+        painter.end()
+        inside = image.pixelColor(55, 28)
+        self.assertEqual((inside.red(), inside.green(), inside.blue()),
+                         (191, 222, 255))
+        line = image.pixelColor(55, 17)
+        self.assertLess(line.red(), 60)
+        self.assertGreater(line.blue(), 240)
+        outside = image.pixelColor(55, 15)
+        self.assertEqual(outside.name(), "#ffffff")
+        letter = image.pixelColor(45, 60)
+        self.assertEqual((letter.red(), letter.green(), letter.blue()),
+                         (204, 228, 255))
+
     def test_editor_and_export_share_one_chord_layout(self):
         """Screen chords and exported chords come from SongLayout."""
         song = self.app.current_song
