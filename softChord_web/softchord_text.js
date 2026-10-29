@@ -62,12 +62,20 @@
     });
   }
 
+  // Line and column of a letter. A line break, a negative number and a number
+  // past the end have no letter, so a chord stored there is not drawn.
   function lineAndColumn(songChar, lines) {
+    if (songChar < 0) {
+      return null;
+    }
     var start = 0;
     for (var lineNum = 0; lineNum < lines.length; lineNum++) {
       var end = start + lines[lineNum].length + 1;
       if (songChar < end - 1) {
         return [lineNum, songChar - start];
+      }
+      if (songChar === end - 1) {
+        return null;
       }
       start = end;
     }

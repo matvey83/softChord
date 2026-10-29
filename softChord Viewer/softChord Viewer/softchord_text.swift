@@ -161,11 +161,18 @@ enum SongText {
 
     /// Mirror: softchord_song.py Song.songCharToLineChar.
     private nonisolated static func lineAndColumn(_ songChar: Int, lines: [[Unicode.Scalar]]) -> (Int, Int)? {
+        guard songChar >= 0 else {
+            return nil
+        }
         var start = 0
         for (lineNum, line) in lines.enumerated() {
             let end = start + line.count + 1
             if songChar < end - 1 {
                 return (lineNum, songChar - start)
+            }
+            if songChar == end - 1 {
+                // The line break has no letter, so nothing is drawn there.
+                return nil
             }
             start = end
         }
