@@ -2988,6 +2988,53 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.lyricEditorSelected()
         return song
 
+    def _lines_with_a_chord_gap(self, song):
+        """Numbers of the lines the layout leaves space above for chords."""
+        layout = song.doc.documentLayout()
+        return set(layout._chord_blocks)
+
+    def test_chord_gap_follows_the_chord_line_when_a_line_is_added(self):
+        song = self._song_ready_for_lyric_edit("ab\ncd\nef", [(3, 5)])
+        QtDocumentLayout.apply_margins(song, self.app)
+        self.assertEqual(self._lines_with_a_chord_gap(song), {1})
+
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.insertText("\n")
+
+        self.assertEqual(self.app.editor.toPlainText(), "\nab\ncd\nef")
+        self.assertEqual(song.getChordAtPosition(4).note_id, 5)
+        self.assertEqual(self._lines_with_a_chord_gap(song), {2})
+
+    def test_chord_gap_follows_the_chord_line_when_lines_are_joined(self):
+        song = self._song_ready_for_lyric_edit("ab\ncd\nef", [(6, 5)])
+        QtDocumentLayout.apply_margins(song, self.app)
+        self.assertEqual(self._lines_with_a_chord_gap(song), {2})
+
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(3)
+        cursor.deletePreviousChar()
+
+        self.assertEqual(self.app.editor.toPlainText(), "abcd\nef")
+        self.assertEqual(self._lines_with_a_chord_gap(song), {1})
+
+        self.app.editor.undo()
+
+        self.assertEqual(self.app.editor.toPlainText(), "ab\ncd\nef")
+        self.assertEqual(self._lines_with_a_chord_gap(song), {2})
+
+    def test_chord_gap_goes_when_the_chord_letter_is_deleted(self):
+        song = self._song_ready_for_lyric_edit("ab\ncd\nef", [(3, 5)])
+        QtDocumentLayout.apply_margins(song, self.app)
+
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(3)
+        cursor.setPosition(4, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+
+        self.assertEqual(list(song.iterateAllChords()), [])
+        self.assertEqual(self._lines_with_a_chord_gap(song), set())
+
     def test_undo_lyric_delete_restores_the_chord(self):
         song = self._song_ready_for_lyric_edit("Hello", [(1, 5), (4, 7)])
         cursor = self.app.editor.textCursor()

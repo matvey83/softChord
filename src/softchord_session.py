@@ -2186,9 +2186,14 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ignore_song_text_changed = True
         try:
             song_text = self.editor.toPlainText()
+            previous_text = self.previous_song_text
             self._sync_lyric_chords(new_command, song_text)
             self.current_song.text = song_text
             self.previous_song_text = song_text
+            # The lines that have chords may be other lines now (Enter, or
+            # joining two lines), and so the space above them has to move.
+            if song_text != previous_text:
+                QtDocumentLayout.apply_margins(self.current_song, self)
         finally:
             self.ignore_song_text_changed = False
 
