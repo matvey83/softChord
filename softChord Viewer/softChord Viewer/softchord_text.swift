@@ -237,23 +237,87 @@ enum SongLyricChords {
         return kept
     }
 
-    /// The chord that was on `from` now sits on `to`.
-    /// A chord that was already on `to` is dropped, so a letter keeps one chord.
+    /// The chord that was on `from` now sits on `to`. `to` has to be free: a
+    /// letter never gets two chords, so a move onto a letter that has a chord
+    /// changes nothing. Use nextFreeCharacter to find the letter to move to.
     nonisolated static func reattached(_ chords: [SongChord], from: Int, to: Int) -> [SongChord] {
-        guard from != to, chords.contains(where: { $0.characterNum == from }) else {
+        guard from != to,
+              chords.contains(where: { $0.characterNum == from }),
+              !chords.contains(where: { $0.characterNum == to }) else {
             return chords
         }
-        return chords.compactMap { chord in
-            if chord.characterNum == to {
-                return nil
+        return chords.map { chord in
+            guard chord.characterNum == from else {
+                return chord
             }
-            if chord.characterNum == from {
-                var moved = chord
-                moved.characterNum = to
-                return moved
-            }
-            return chord
+            var moved = chord
+            moved.characterNum = to
+            return moved
         }
+    }
+
+    /// First and last letter of the line that holds `index`. Nil for a line break
+    /// or an index outside the text. A chord only sits on a letter of its own line.
+    /// Mirror: softchord_text.py line_letter_range.
+    nonisolated static func letterRange(in text: String, at index: Int) -> ClosedRange<Int>? {
+        let letters = Array(text.unicodeScalars)
+        guard index >= 0, index < letters.count, letters[index] != "\n" else {
+            return nil
+        }
+        var first = index
+        while first > 0 && letters[first - 1] != "\n" {
+            first -= 1
+        }
+        var last = index
+        while last + 1 < letters.count && letters[last + 1] != "\n" {
+            last += 1
+        }
+        return first...last
+    }
+
+    /// The letter a chord lands on when it is moved onto `target`. A letter that has a
+    /// chord is jumped over, and so is every other one, to the next free letter of the
+    /// line in `direction` (1 right, -1 left). Chords are never lost and a letter never
+    /// gets two. With `allowOtherDirection` (a drag) a line with no free letter that way
+    /// is tried the other way. Nil means the chord stays. `occupied` holds the letters
+    /// that have a chord, without the chord that moves.
+    /// Mirror: softchord_text.py next_free_character.
+    nonisolated static func nextFreeCharacter(
+        in text: String, target: Int, direction: Int, occupied: Set<Int>, allowOtherDirection: Bool = false
+    ) -> Int? {
+        guard let range = letterRange(in: text, at: target) else {
+            return nil
+        }
+        let step = direction < 0 ? -1 : 1
+        for each in allowOtherDirection ? [step, -step] : [step] {
+            var position = target
+            while range.contains(position) {
+                if !occupied.contains(position) {
+                    return position
+                }
+                position += each
+            }
+        }
+        return nil
+    }
+
+    /// 1 or -1: which way a chord dragged onto `target` goes past a chord. The finger
+    /// moved from the letter `previous` to `target`. A target on another line than the
+    /// chord goes forward (1), as does no movement.
+    /// Mirror: softchord_text.py chord_drag_direction.
+    nonisolated static func dragDirection(in text: String, chord: Int, previous: Int, target: Int) -> Int {
+        let letters = Array(text.unicodeScalars)
+        func lineStart(_ index: Int) -> Int {
+            var start = max(0, min(index, letters.count))
+            while start > 0 && letters[start - 1] != "\n" {
+                start -= 1
+            }
+            return start
+        }
+        if lineStart(chord) != lineStart(target) {
+            return 1
+        }
+        return target < previous ? -1 : 1
     }
 
     /// The chord typed for a letter. It replaces the chord there, or is added.

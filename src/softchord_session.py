@@ -63,7 +63,8 @@ from softchord_store import (
     readonly_database_error,
 )
 from softchord_layout import QtDocumentLayout, SongLayout
-from softchord_text import lyric_renumber_map
+from softchord_text import (chord_drag_direction, lyric_renumber_map,
+                            next_free_character)
 from softchord_io import (
     SQLITE_HEADER,
     SONGS_TABLE_SQL,
@@ -150,6 +151,8 @@ class CustomTextEdit(QtWidgets.QTextEdit):
 
         self.dragging_chord_orig_position = -1
         self.dragging_chord = None
+        # The letter the mouse was over at its last move while dragging.
+        self.dragging_mouse_char = -1
         self.original_chord = None
         # Press point while a selection rectangle may be dragged.
         self.marquee_origin = None
@@ -325,17 +328,29 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                 # Dragging - A chord is being dragged
                 song = self.app.current_song
 
-                if song_char_num != self.dragging_chord.character_num:
-                    # The dragged chord was moved to a new position
+                if song_char_num != self.dragging_mouse_char:
+                    # The mouse is over a new letter. A chord that was moved
+                    # onto a letter with a chord jumps over that letter, so
+                    # the mouse still being over it moves nothing.
+                    song = self.app.current_song
+                    text = song.getAllText()
+                    chord = self.dragging_chord
+                    direction = chord_drag_direction(
+                        text, chord.character_num, self.dragging_mouse_char,
+                        song_char_num)
+                    self.dragging_mouse_char = song_char_num
+                    landing = self.app.freeCharacterForChord(
+                        chord, song_char_num, direction, True)
 
-                    new_chord = copy.copy(self.dragging_chord)
-                    new_chord.character_num = song_char_num
-                    song.replaceChord(self.dragging_chord, new_chord)
-                    self.dragging_chord = new_chord
+                    if landing is not None and landing != chord.character_num:
+                        new_chord = copy.copy(chord)
+                        new_chord.character_num = landing
+                        song.replaceChord(chord, new_chord)
+                        self.dragging_chord = new_chord
 
-                    # Show hover feedback on the new letter:
-                    self.app.hover_char_num = song_char_num
-                    self.app.selected_char_num = song_char_num
+                        # Show hover feedback on the new letter:
+                        self.app.hover_char_num = landing
+                        self.app.selected_char_num = landing
         else:
             # The mouse is NOT over a letter
             if not self.dragging_chord:
@@ -382,6 +397,7 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                         pass
                     else:
                         self.dragging_chord_orig_position = song_char_num
+                        self.dragging_mouse_char = song_char_num
 
                         self.app.undo_stack.beginMacro("chord dragged")
 
@@ -411,18 +427,11 @@ class CustomTextEdit(QtWidgets.QTextEdit):
             super().mouseReleaseEvent(event)
             return
 
-        # Stop dragging of the chord (it's already in the correct position):
+        # Stop dragging of the chord (it's already in the correct position,
+        # and no other chord was on that letter):
         if self.dragging_chord:
-            if self.dragging_chord.character_num != self.dragging_chord_orig_position:
-
-                # Delete the previous chord, if any:
-                for other_chord in self.app.current_song.iterateAllChords():
-                    if other_chord.character_num == self.dragging_chord.character_num and other_chord != self.dragging_chord:
-                        self.app.current_song.deleteChord(other_chord)
-                        break
-                self.app.editor.viewport().update()
-
             self.dragging_chord_orig_position = -1
+            self.dragging_mouse_char = -1
             self.dragging_chord = None
             self.app.undo_stack.endMacro()
         else:
@@ -1557,20 +1566,28 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.editor.viewport().update()
         return True
 
-    def _position_is_on_line(self, char_num):
-        text = self.previous_song_text
-        if char_num < 0 or not text:
-            return False
-        try:
-            return text[char_num] != "\n"
-        except IndexError:
-            return False
+    def freeCharacterForChord(self, chord, target, direction,
+                              allow_other_direction):
+        """The letter chord lands on when it is moved onto target.
+
+        A letter that has another chord is jumped over, so a chord is never
+        lost and a letter never has two. None means the chord stays.
+        """
+        occupied = {
+            other.character_num
+            for other in self.current_song.iterateAllChords()
+            if other is not chord
+        }
+        return next_free_character(self.current_song.getAllText(), target,
+                                   direction, occupied, allow_other_direction)
 
     def _nudgeSelectedChords(self, delta):
-        """Move every selected chord by one character, as one undo step.
+        """Move every selected chord by one letter, as one undo step.
 
         The chord furthest along the move goes first, so two neighbors do
         not land on each other. A chord that would leave its line stays put.
+        A letter that has a chord (selected or not) is jumped over, to the
+        next free letter on the line in the same direction.
         """
         song = self.current_song
         if song is None:
@@ -1581,12 +1598,19 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         ]
         if not chords:
             return
+        text = song.getAllText()
+        occupied = {chord.character_num for chord in song.iterateAllChords()}
         chords.sort(key=lambda chord: chord.character_num, reverse=delta > 0)
         moves = []
         for chord in chords:
-            new_num = chord.character_num + delta
-            if self._position_is_on_line(new_num):
-                moves.append((chord, new_num))
+            occupied.discard(chord.character_num)
+            new_num = next_free_character(text, chord.character_num + delta,
+                                          delta, occupied)
+            if new_num is None:
+                occupied.add(chord.character_num)
+                continue
+            occupied.add(new_num)
+            moves.append((chord, new_num))
         if not moves:
             return
         self.undo_stack.beginMacro("move chords")
@@ -1615,35 +1639,32 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up,
                 Qt.Key.Key_Down
         ]:
-            # Move or transpose the selected chord; giving priority the to
-            # chord that was created last (likely because it was already moved),
-            # fixes an issue where chords would get "swapped" when one chord
-            # gets moved to a position of an existing chord.
+            # Move or transpose the selected chord. A chord that is moved
+            # onto a letter that has a chord jumps over it, so a letter never
+            # has two chords. (Old songs may still have two. The one created
+            # last is the one that moves.)
             prev_chord = self.current_song.getChordAtPosition(self.selected_char_num)
 
             if prev_chord:
                 # A chord is selected
                 new_chord = copy.copy(prev_chord)
-                if key == Qt.Key.Key_Left:
-                    if new_chord.character_num > 0:
-                        new_chord.character_num -= 1
-                elif key == Qt.Key.Key_Right:
-                    new_chord.character_num += 1
+                if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+                    # A letter that has a chord is jumped over. No free
+                    # letter on the line that way (or a line break) means
+                    # the chord stays.
+                    direction = -1 if key == Qt.Key.Key_Left else 1
+                    landing = self.freeCharacterForChord(
+                        prev_chord, prev_chord.character_num + direction,
+                        direction, False)
+                    if landing is None:
+                        return False
+                    new_chord.character_num = landing
                 elif key == Qt.Key.Key_Up:
                     new_chord.transpose(1)
                 elif key == Qt.Key.Key_Down:
                     new_chord.transpose(-1)
                 else:
                     raise ValueError("Invalid key pressed")
-
-                # Make sure that the new chord is not off the line:
-                try:
-                    if self.previous_song_text[new_chord.character_num] == '\n':
-                        # On a line break
-                        return False
-                except IndexError:
-                    # Moved too far to the left or right
-                    return False
 
                 self.current_song.replaceChord(prev_chord, new_chord)
                 return True

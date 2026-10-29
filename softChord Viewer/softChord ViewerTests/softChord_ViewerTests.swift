@@ -722,10 +722,9 @@ struct softChord_ViewerTests {
             characterNum: 4, noteId: 7, chordTypeId: 1, bassNoteId: -1, marker: "", inParentheses: false)
         let moved = SongLyricChords.reattached([chord, other], from: 0, to: 2)
         #expect(moved.map(\.characterNum) == [2, 4])
-        let replaced = SongLyricChords.reattached([chord, other], from: 0, to: 4)
-        #expect(replaced.count == 1)
-        #expect(replaced.first?.characterNum == 4)
-        #expect(replaced.first?.noteId == 0)
+        // A letter never gets two chords, and no chord is dropped.
+        let occupied = SongLyricChords.reattached([chord, other], from: 0, to: 4)
+        #expect(occupied == [chord, other])
         #expect(SongLyricChords.reattached([chord], from: 0, to: 0).map(\.characterNum) == [0])
     }
 
@@ -1627,5 +1626,122 @@ struct LyricChordMoveTests {
             }
             #expect(moved.count >= oldScalars.count - (end - start), "\(old) -> \(new)")
         }
+    }
+}
+
+struct ChordJumpTests {
+    private func chord(_ index: Int, note: Int = 0) -> SongChord {
+        SongChord(
+            characterNum: index, noteId: note, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false)
+    }
+
+    private func vectors() throws -> [String: Any] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tests/chord_move_vectors.json")
+        return try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    }
+
+    @Test func sharedJumpVectors() throws {
+        let cases = try #require(vectors()["jumps"] as? [[String: Any]])
+        #expect(cases.count > 20)
+        for item in cases {
+            let name = item["name"] as? String ?? ""
+            let landing = SongLyricChords.nextFreeCharacter(
+                in: item["text"] as? String ?? "",
+                target: item["target"] as? Int ?? 0,
+                direction: item["direction"] as? Int ?? 1,
+                occupied: Set(item["occupied"] as? [Int] ?? []),
+                allowOtherDirection: item["allow_other_direction"] as? Bool ?? false)
+            #expect(landing == item["expected"] as? Int, "\(name)")
+        }
+    }
+
+    @Test func sharedDirectionVectors() throws {
+        let cases = try #require(vectors()["directions"] as? [[String: Any]])
+        #expect(cases.count > 5)
+        for item in cases {
+            let name = item["name"] as? String ?? ""
+            let direction = SongLyricChords.dragDirection(
+                in: item["text"] as? String ?? "",
+                chord: item["chord"] as? Int ?? 0,
+                previous: item["previous"] as? Int ?? 0,
+                target: item["target"] as? Int ?? 0)
+            #expect(direction == item["expected"] as? Int, "\(name)")
+        }
+    }
+
+    @Test func aJumpLandsOnAFreeLetterOfTheSameLine() {
+        var generator = SystemRandomNumberGenerator()
+        for _ in 0..<1000 {
+            let letters = (0..<Int.random(in: 0...9, using: &generator)).map { _ in
+                ["a", "b", "\n"].randomElement(using: &generator)!
+            }
+            let text = letters.joined()
+            let occupied = Set((0..<letters.count).filter { _ in Bool.random(using: &generator) })
+            let target = Int.random(in: -1...letters.count, using: &generator)
+            let direction = Bool.random(using: &generator) ? 1 : -1
+            let other = Bool.random(using: &generator)
+            guard let landing = SongLyricChords.nextFreeCharacter(
+                in: text, target: target, direction: direction, occupied: occupied, allowOtherDirection: other)
+            else {
+                continue
+            }
+            #expect(!occupied.contains(landing), "\(text)")
+            #expect(letters[landing] != "\n", "\(text)")
+            let low = min(landing, target)
+            let high = max(landing, target)
+            #expect(!letters[low..<high].contains("\n"), "\(text)")
+        }
+    }
+
+    @Test func aMovedChordNeverSharesALetterOrLosesAChord() {
+        let chords = [chord(1, note: 1), chord(2, note: 2), chord(4, note: 4)]
+        let landing = SongLyricChords.nextFreeCharacter(
+            in: "0123456789", target: 2, direction: 1, occupied: [2, 4], allowOtherDirection: true)
+        #expect(landing == 3)
+        let moved = SongLyricChords.reattached(chords, from: 1, to: landing ?? 1)
+        #expect(moved.map(\.characterNum) == [3, 2, 4])
+        #expect(moved.map(\.noteId) == [1, 2, 4])
+        // The first letter of a full line cannot take another chord.
+        let full = [chord(0), chord(1), chord(2)]
+        #expect(SongLyricChords.reattached(full, from: 0, to: 2) == full)
+    }
+
+    @Test func draggingOverSeveralChordsAndBackFollowsTheFinger() {
+        // The page drives a drag like this: the finger is over a letter, the chord
+        // lands on the next free letter, and the finger stays on the occupied one.
+        let text = "0123456789"
+        var chords = [chord(1, note: 1), chord(2, note: 2), chord(3, note: 3)]
+        var chordAt = 1
+        var finger = 1
+        func drag(to target: Int) {
+            guard target != finger else {
+                return
+            }
+            let occupied = Set(chords.map(\.characterNum)).subtracting([chordAt])
+            let direction = SongLyricChords.dragDirection(in: text, chord: chordAt, previous: finger, target: target)
+            finger = target
+            if let to = SongLyricChords.nextFreeCharacter(
+                in: text, target: target, direction: direction, occupied: occupied, allowOtherDirection: true),
+               to != chordAt {
+                chords = SongLyricChords.reattached(chords, from: chordAt, to: to)
+                chordAt = to
+            }
+        }
+        drag(to: 2)
+        #expect(chordAt == 4)
+        drag(to: 2)
+        #expect(chordAt == 4)
+        drag(to: 3)
+        #expect(chordAt == 4)
+        drag(to: 5)
+        #expect(chordAt == 5)
+        drag(to: 3)
+        #expect(chordAt == 1)
+        #expect(chords.map(\.characterNum).sorted() == [1, 2, 3])
+        #expect(Set(chords.map(\.noteId)) == [1, 2, 3])
     }
 }

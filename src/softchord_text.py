@@ -80,3 +80,67 @@ def lyric_renumber_map(previous, text):
         renumber_map[len(previous) - 1 - suffix] = len(text) - 1 - suffix
         suffix += 1
     return renumber_map
+
+
+def line_start_index(text, index):
+    """Index of the first character of the line that holds index."""
+    return text.rfind("\n", 0, max(index, 0)) + 1
+
+
+def line_letter_range(text, index):
+    """(first, last) letter indexes of the line that holds index, or None.
+
+    None when index is a line break, or is not in the text. A chord can only
+    sit on a letter of its own line.
+
+    Mirror: softchord_text.swift SongLyricChords.letterRange.
+    """
+    if index < 0 or index >= len(text) or text[index] == "\n":
+        return None
+    first = line_start_index(text, index)
+    line_break = text.find("\n", index)
+    last = len(text) - 1 if line_break < 0 else line_break - 1
+    return first, last
+
+
+def next_free_character(text, target, direction, occupied,
+                        allow_other_direction=False):
+    """The letter a chord lands on when it is moved onto target.
+
+    A chord that is moved onto a letter that has a chord jumps over it, and
+    over every other letter that has a chord, to the next free letter of the
+    line in direction (+1 right, -1 left). Chords are never lost and a letter
+    never gets two. When there is no free letter that way,
+    allow_other_direction tries the other way (a drag does, an arrow key does
+    not). None means the chord does not move.
+
+    occupied holds the letters that have a chord, without the chord that moves.
+
+    Mirror: softchord_text.swift SongLyricChords.nextFreeCharacter.
+    """
+    span = line_letter_range(text, target)
+    if span is None:
+        return None
+    first, last = span
+    step = -1 if direction < 0 else 1
+    steps = (step, -step) if allow_other_direction else (step, )
+    for each_step in steps:
+        position = target
+        while first <= position <= last:
+            if position not in occupied:
+                return position
+            position += each_step
+    return None
+
+
+def chord_drag_direction(text, chord_char, previous_char, target):
+    """+1 or -1: which way a chord dragged onto target goes past a chord.
+
+    The mouse moved from the letter previous_char to target. A target on a
+    different line than the chord goes forward (+1), as does no movement.
+
+    Mirror: softchord_text.swift SongLyricChords.dragDirection.
+    """
+    if line_start_index(text, chord_char) != line_start_index(text, target):
+        return 1
+    return -1 if target < previous_char else 1
