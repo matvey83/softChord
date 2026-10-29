@@ -145,10 +145,6 @@ enum Songbook {
         defer { sqlite3_finalize(links) }
         try bind(links, id: id, db: db)
         var chords: [SongChord] = []
-        // A songbook can hold the same chord twice on one letter (older imports did).
-        // The song keeps one of them. Different chords on a letter both stay, and the
-        // file is opened read-only, so it is not changed.
-        var seen = Set<String>()
         while true {
             let chordStep = sqlite3_step(links)
             if chordStep == SQLITE_DONE {
@@ -159,12 +155,9 @@ enum Songbook {
             }
             // A chord string this app cannot read is an unrecognized chord, drawn in
             // red as its first 7 characters.
-            let characterNum = Int(sqlite3_column_int64(links, 0))
-            let chordText = columnText(links, 1)
-            guard seen.insert("\(characterNum):\(chordText)").inserted else {
-                continue
-            }
-            chords.append(SongChord.from(text: chordText, characterNum: characterNum))
+            chords.append(SongChord.from(
+                text: columnText(links, 1),
+                characterNum: Int(sqlite3_column_int64(links, 0))))
         }
         return SongBody(text: text, chords: chords)
     }

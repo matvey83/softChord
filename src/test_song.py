@@ -704,12 +704,11 @@ class TestSong(unittest.TestCase):
             self.assertTrue(song.getLineHasChords(0))
             self.assertFalse(song.getLineHasChords(1))
 
-    def test_the_same_chord_twice_on_a_letter_loads_once_and_the_file_is_unchanged(self):
+    def test_the_same_chord_twice_on_a_letter_is_kept_and_the_file_is_unchanged(self):
         """Copy of a songbook with duplicate rows; no repository file is used."""
         song = create_test_song(self.app, song_id=70, text="Amazing grace")
         for chord_id, (number, chord) in enumerate(
-            [(0, "C"), (0, "C"), (0, "C"), (3, "G"), (3, "Am"), (3, "G")],
-                start=100):
+            [(0, "C"), (0, "C"), (3, "G"), (3, "Am")], start=100):
             self.app.curs.execute(
                 "INSERT INTO song_chord_link (id, song_id, character_num, chord) "
                 "VALUES (?, 70, ?, ?)", (chord_id, number, chord))
@@ -720,9 +719,11 @@ class TestSong(unittest.TestCase):
 
         song.updateSongFromDatabase()
 
-        self.assertEqual(
-            sorted((c.character_num, c.getStoredText()) for c in song.iterateAllChords()),
-            [(0, "C"), (3, "Am"), (3, "G")])
+        def chords():
+            return sorted((c.character_num, c.getStoredText())
+                          for c in song.iterateAllChords())
+
+        self.assertEqual(chords(), [(0, "C"), (0, "C"), (3, "Am"), (3, "G")])
         self.assertEqual(
             self.app.curs.execute(
                 "SELECT id, character_num, chord FROM song_chord_link "

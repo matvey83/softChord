@@ -1340,7 +1340,7 @@ struct SongbookReadTests {
         #expect(moved.contains { $0.characterNum == 3 && $0.unknown })
     }
 
-    @Test func theSameChordTwiceOnALetterIsReadOnce() throws {
+    @Test func theSameChordTwiceOnALetterIsReadAsStored() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("songbook-\(UUID().uuidString).songbook")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -1357,8 +1357,10 @@ struct SongbookReadTests {
                 """)
         }
         let source = try Songbook.source(id: 2, in: url)
-        #expect(source.chords.map(\.characterNum) == [0, 3, 3])
-        #expect(source.chords.map(\.rootText) == ["C", "G", "A"])
+        #expect(source.chords.map(\.characterNum) == [0, 0, 3, 3, 3])
+        #expect(source.chords.map(\.rootText) == ["C", "C", "G", "A", "G"])
+        // Both are drawn on the letter.
+        #expect(try Songbook.sheet(id: 2, in: url).first?.chords.filter { $0.anchor == 0 }.count == 2)
         // The rows in the file are still all there.
         var count = 0
         try withTestDatabase(url) { db in
