@@ -393,6 +393,19 @@ struct softChord_ViewerTests {
         tappedAway.isHidden = true
     }
 
+    /// Copy and Add to Photos from the list use the edit saved for this run.
+    @Test @MainActor func copiedSongUsesTheEditSavedForThisRun() throws {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let song = try #require(Songbook.titles().first)
+        let stored = try Songbook.source(id: song.id)
+        #expect(try SongSessionEdits.shownSource(id: song.id) == stored)
+        SongSessionEdits.save(id: song.id, text: stored.text + "§kept", chords: nil)
+        let shown = try SongSessionEdits.shownSource(id: song.id)
+        #expect(shown.text == stored.text + "§kept")
+        #expect(shown.chords == stored.chords)
+    }
+
     /// Save keeps the letters for this run. Opening the song again shows them.
     /// Saving the songbook text again drops that copy. The file is not written.
     @Test @MainActor func savedSongTextStaysForThisRun() async throws {

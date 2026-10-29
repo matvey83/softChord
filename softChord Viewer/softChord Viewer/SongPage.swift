@@ -31,6 +31,17 @@ enum SongSessionEdits {
     static func reset() {
         copies = [:]
     }
+
+    /// The song as the list shows it: the songbook's, with the copy saved for
+    /// this run in its place.
+    static func shownSource(id: Int) throws -> SongSource {
+        var song = try Songbook.source(id: id)
+        if let copy = copies[id] {
+            song.text = copy.text ?? song.text
+            song.chords = copy.chords ?? song.chords
+        }
+        return song
+    }
 }
 
 struct SongPage: View {
@@ -88,11 +99,19 @@ struct SongPage: View {
     }
 
     private var lines: [SongSheetLine] {
-        guard let source else {
+        guard let shown = shownSong else {
             return []
         }
-        let chords = SongTranspose.shifted(shownChords ?? source.chords, by: steps)
-        return SongText.sheet(text: lyricText, chords: chords)
+        return SongText.sheet(text: shown.text, chords: shown.chords)
+    }
+
+    /// The song as it is on screen while viewing: a saved edit, and the chords
+    /// at the current transpose. Copy and Add to Photos use this.
+    private var shownSong: SongSource? {
+        guard let source else {
+            return nil
+        }
+        return SongSource(text: lyricText, chords: SongTranspose.shifted(shownChords ?? source.chords, by: steps))
     }
 
     /// Unsaved keystrokes and a transpose are still only on this page.
@@ -236,6 +255,7 @@ struct SongPage: View {
                     onDeleteChord: deleteSelectedChord,
                     onDiscard: { finishEditing(save: false) },
                     onSave: { finishEditing(save: true) },
+                    shownSong: { shownSong },
                     onPanelBottom: { panelBottom = $0 },
                     onNotice: { title, message in
                         noticeTitle = title
@@ -440,6 +460,7 @@ private struct SongChromeDock: UIViewRepresentable {
     var onDeleteChord: () -> Void
     var onDiscard: () -> Void
     var onSave: () -> Void
+    var shownSong: () -> SongSource?
     var onPanelBottom: (CGFloat) -> Void
     var onNotice: (String, String) -> Void
 
@@ -466,6 +487,7 @@ private struct SongChromeDock: UIViewRepresentable {
         coordinator.onDeleteChord = onDeleteChord
         coordinator.onDiscard = onDiscard
         coordinator.onSave = onSave
+        coordinator.shownSong = shownSong
         coordinator.onPanelBottom = onPanelBottom
         coordinator.onNotice = onNotice
         view.onInstall = { [weak coordinator, weak view] in
@@ -504,6 +526,7 @@ private struct SongChromeDock: UIViewRepresentable {
         private var closed = false
         var onDiscard: () -> Void = {}
         var onSave: () -> Void = {}
+        var shownSong: () -> SongSource? = { nil }
         var onPanelBottom: (CGFloat) -> Void = { _ in }
         private var reportedBottom: CGFloat?
         var onNotice: (String, String) -> Void = { _, _ in }
@@ -570,6 +593,9 @@ private struct SongChromeDock: UIViewRepresentable {
                 },
                 onEditChords: { [weak self] in
                     self?.onEditChords()
+                },
+                shown: { [weak self] in
+                    self?.shownSong()
                 })
             menuButton.accessibilityLabel = "Menu"
 

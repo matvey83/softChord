@@ -223,25 +223,35 @@ private extension UIView {
 
 /// The song list menu and the song page menu share these items.
 /// Mirror: softchord_session.py copySongText, copySongTextWithChords, and copySongAsImage.
+/// They copy the song as it is shown: the song page passes `shown` (a saved edit
+/// and the transpose). Without it, or when it has nothing, the song is read as the
+/// list shows it, with the edit saved for this run (SongSessionEdits.shownSource).
 enum SongShareMenu {
     static func menu(
         songId: @escaping () -> Int,
         report: @escaping (String, String) -> Void,
         onEdit: (() -> Void)?,
-        onEditChords: (() -> Void)? = nil
+        onEditChords: (() -> Void)? = nil,
+        shown: (() -> SongSource?)? = nil
     ) -> UIMenu {
+        let song: () throws -> SongSource = {
+            if let onScreen = shown?() {
+                return onScreen
+            }
+            return try SongSessionEdits.shownSource(id: songId())
+        }
         var children: [UIMenuElement] = [
             UIAction(title: "Copy song text") { _ in
-                songShareCopy(songId: songId(), includeChords: false, report: report)
+                songShareCopy(song, includeChords: false, report: report)
             },
             UIAction(title: "Copy song text with chords") { _ in
-                songShareCopy(songId: songId(), includeChords: true, report: report)
+                songShareCopy(song, includeChords: true, report: report)
             },
             UIAction(title: "Copy as image") { _ in
-                copySongImage(songId: songId(), report: report)
+                copySongImage(song, report: report)
             },
             UIAction(title: "Add to Photos") { _ in
-                addSongToPhotos(songId: songId(), report: report)
+                addSongToPhotos(song, report: report)
             },
         ]
         if let onEdit {
@@ -260,9 +270,14 @@ enum SongShareMenu {
     }
 }
 
-private func copySongImage(songId: Int, report: @escaping (String, String) -> Void) {
+private func shownSheet(_ song: () throws -> SongSource) throws -> [SongSheetLine] {
+    let shown = try song()
+    return SongText.sheet(text: shown.text, chords: shown.chords)
+}
+
+private func copySongImage(_ song: () throws -> SongSource, report: @escaping (String, String) -> Void) {
     do {
-        let image = SongSheetImage.image(for: try Songbook.sheet(id: songId), scale: 2)
+        let image = SongSheetImage.image(for: try shownSheet(song), scale: 2)
         guard let data = image.pngData() else {
             report("Could not copy the song", "The song sheet could not be copied.")
             return
@@ -273,10 +288,18 @@ private func copySongImage(songId: Int, report: @escaping (String, String) -> Vo
     }
 }
 
-private func addSongToPhotos(songId: Int, report: @escaping (String, String) -> Void) {
+private func addSongToPhotos(_ song: () throws -> SongSource, report: @escaping (String, String) -> Void) {
+    // Read the song now, as it is shown when the item is chosen.
+    let sheet: [SongSheetLine]
+    do {
+        sheet = try shownSheet(song)
+    } catch {
+        report("Could not add the song to Photos", String(describing: error))
+        return
+    }
     Task {
         do {
-            let image = SongSheetImage.image(for: try Songbook.sheet(id: songId), scale: 2)
+            let image = SongSheetImage.image(for: sheet, scale: 2)
             try await SongPhotoLibrary.add(image)
         } catch {
             report("Could not add the song to Photos", String(describing: error))
@@ -284,9 +307,10 @@ private func addSongToPhotos(songId: Int, report: @escaping (String, String) -> 
     }
 }
 
-private func songShareCopy(songId: Int, includeChords: Bool, report: @escaping (String, String) -> Void) {
+private func songShareCopy(_ song: () throws -> SongSource, includeChords: Bool, report: @escaping (String, String) -> Void) {
     do {
-        UIPasteboard.general.string = try Songbook.songText(id: songId, includeChords: includeChords)
+        let shown = try song()
+        UIPasteboard.general.string = SongText.render(text: shown.text, chords: shown.chords, includeChords: includeChords)
     } catch {
         report("Could not copy the song", String(describing: error))
     }
