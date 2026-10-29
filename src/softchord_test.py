@@ -247,8 +247,8 @@ class SoftChordEditorTest(unittest.TestCase):
         self.app.processKeyPressed(Qt.Key.Key_Right)
         self.assertEqual(chord.character_num, 6)
 
-    def test_keyboard_transpose_selected_chord(self):
-        """Up/Down arrows should transpose the selected chord."""
+    def test_keyboard_up_does_not_transpose_selected_chord(self):
+        """Up/Down arrows do not change the selected chord."""
         if self.app.current_song is None:
             self.app.ui.songs_view.selectRow(0)
 
@@ -259,8 +259,9 @@ class SoftChordEditorTest(unittest.TestCase):
         chord = self.app.current_song.getChordAtPosition(5)
         original_note = chord.note_id
 
-        self.app.processKeyPressed(Qt.Key.Key_Up)
-        self.assertEqual(chord.note_id, (original_note + 1) % 12)
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Up))
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Down))
+        self.assertEqual(self.app.current_song.getChordAtPosition(5).note_id, original_note)
 
 
 if __name__ == "__main__":

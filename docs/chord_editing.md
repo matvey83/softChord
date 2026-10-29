@@ -44,7 +44,8 @@ untransposed, as in [lyric_editing.md](lyric_editing.md)).
 | Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z (also Ctrl+Y) | Undo, Redo |
 | Escape | Cancel a drag, else clear the selection. It never leaves the mode |
 
-Up and Down do nothing in this mode, and neither do Left and Right on a letter with
+Up and Down do nothing in this mode (as in the desktop editor, where they no longer
+transpose the selected chord), and neither do Left and Right on a letter with
 no chord: the browser gets those keys and can scroll the page. The selection moves
 only by click or tap. Letters with Ctrl, Cmd or Alt are left to the browser. The toolbar has the same
 actions: Add/Edit chord, Delete chord, Undo, Redo. A screen reader hears what was
