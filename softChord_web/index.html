@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>softChord Viewer</title>
-  <link rel="stylesheet" href="viewer.css?v=2026-10-27">
+  <link rel="stylesheet" href="viewer.css?v=2026-10-28b">
 </head>
 <body>
   <main id="list-view">
@@ -29,7 +29,7 @@
       <!-- The toolbar icons are drawn for this app (24 px grid, round stroke,
            currentColor; Up and Down are plain arrows like the SF Symbols arrow.up
            and arrow.down in the iOS app; Zoom out and Zoom in are a magnifying
-           glass with a minus, an equals sign (back to 100%) or a plus; Reset transpose is a counterclockwise arrow; Print is a printer), so they need no licence note or network fetch. -->
+           glass with a minus, an equals sign (back to 100%) or a plus; Reset transpose is a counterclockwise arrow; Print is a printer; Edit is a pencil), so they need no licence note or network fetch. -->
       <div class="toolbar-actions">
         <div class="tool-group" role="group" aria-label="Copy song">
           <button id="copy-text" class="tool" type="button" title="Copy song text" aria-label="Copy song text">
@@ -72,11 +72,26 @@
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M7 9V3.5h10V9"/><rect x="3" y="9" width="18" height="8" rx="2"/><rect x="7" y="14" width="10" height="6.5" rx="1"/><path d="M17.5 12h.01"/></svg>
           </button>
         </div>
+        <span class="tool-sep" aria-hidden="true"></span>
+        <div class="tool-group" role="group" aria-label="Edit">
+          <button id="edit-text" class="tool" type="button" title="Edit song text" aria-label="Edit song text">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 20l1-4.2L16.6 4.2a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.3l3.2 3.2"/></svg>
+          </button>
+        </div>
+        <div id="edit-actions" class="tool-group" role="group" aria-label="Finish editing" hidden>
+          <button id="edit-save" class="tool-text" type="button" title="Keep the edited text for now" aria-label="Save">Save</button>
+          <button id="edit-discard" class="tool-text" type="button" title="Throw the edits away" aria-label="Discard">Discard</button>
+        </div>
       </div>
     </header>
     <p id="song-error" class="error" hidden></p>
     <div id="sheet-scroll">
-      <article id="sheet"></article>
+      <!-- While editing, the textarea lies over the sheet. Its text is
+           see-through and the sheet's letters and chords show through it. -->
+      <div id="sheet-wrap">
+        <article id="sheet"></article>
+        <textarea id="sheet-editor" wrap="off" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" aria-label="Song text" hidden></textarea>
+      </div>
     </div>
     <p id="persist-note" hidden>Changes do not persist</p>
   </main>
@@ -99,12 +114,13 @@
        folder, so a browser that kept an old index.html does not mix it with new
        scripts, or the other way round. sql-wasm.js never changes, so it has none. -->
   <script src="sql-wasm.js"></script>
-  <script src="softchord_chords.js?v=2026-10-27"></script>
-  <script src="softchord_text.js?v=2026-10-27"></script>
-  <script src="song_filter.js?v=2026-10-27"></script>
-  <script src="songbook.js?v=2026-10-27"></script>
-  <script src="softchord_zoom.js?v=2026-10-27"></script>
-  <script src="softchord_sheet_image.js?v=2026-10-27"></script>
-  <script src="viewer.js?v=2026-10-27"></script>
+  <script src="softchord_chords.js?v=2026-10-28b"></script>
+  <script src="softchord_text.js?v=2026-10-28b"></script>
+  <script src="softchord_text_edit.js?v=2026-10-28b"></script>
+  <script src="song_filter.js?v=2026-10-28b"></script>
+  <script src="songbook.js?v=2026-10-28b"></script>
+  <script src="softchord_zoom.js?v=2026-10-28b"></script>
+  <script src="softchord_sheet_image.js?v=2026-10-28b"></script>
+  <script src="viewer.js?v=2026-10-28b"></script>
 </body>
 </html>

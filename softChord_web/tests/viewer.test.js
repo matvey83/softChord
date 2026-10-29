@@ -653,13 +653,20 @@ test("zoom changes only the song area font, and not the toolbar or the image", f
   var css = fs.readFileSync(path.join(__dirname, "..", "viewer.css"), "utf8");
   var code = fs.readFileSync(path.join(__dirname, "..", "viewer.js"), "utf8");
   var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
-  // --zoom is set on the sheet only and read only by the sheet's font size.
-  assert.ok(/sheet\.style\.setProperty\("--zoom"/.test(code));
-  assert.equal(css.split("--zoom").length - 1, 1);
-  assert.ok(/#sheet \{[^}]*font-size: calc\(20px \* var\(--zoom, 1\)\)/.test(css));
+  // --zoom is set on the sheet's parent only and read only by the font size of
+  // the sheet and of the editor lying over it.
+  assert.ok(/sheetWrap\.style\.setProperty\("--zoom"/.test(code));
+  // Twice: the font size of both, and the textarea's own copy of it that is never
+  // under 16px (see --boost).
+  assert.equal(css.split("--zoom").length - 1, 2);
+  assert.ok(/#sheet, #sheet-editor \{[^}]*font-size: calc\(20px \* var\(--zoom, 1\)\)/.test(css));
+  assert.ok(/#sheet-editor \{\s*font-size: max\(16px, calc\(20px \* var\(--zoom, 1\) \* var\(--boost, 1\)\)\)/.test(css));
   // Chords scale with the sheet, so they stay over their letters.
   assert.ok(/\.chord \{[^}]*font-size: 0\.6em/.test(css));
-  assert.equal(/transform: *scale|zoom: /.test(css), false);
+  // The only transform is the textarea's scale back down from its 16px font.
+  assert.equal(/zoom: /.test(css), false);
+  assert.equal(css.split(/transform: *scale/).length - 1, 1);
+  assert.ok(/#sheet-wrap\.boosted #sheet-editor \{\s*transform: scale\(calc\(1 \/ var\(--boost, 1\)\)\)/.test(css));
   // The picture is drawn from the song at its normal size.
   var imageCode = /function renderSongImage[\s\S]*?\n  \}\n/.exec(code)[0];
   assert.equal(imageCode.includes("zoom"), false);
@@ -714,7 +721,8 @@ test("print styles keep only the song, in black on white, at a fixed size", func
     assert.ok(hide.includes(sel), sel + " is hidden when printing");
   });
   assert.equal(hide.includes("#song-title"), false, "the title is printed");
-  assert.equal(hide.includes("#sheet"), false, "the song is printed");
+  assert.equal(/#sheet(?![-\w])/.test(hide), false, "the song is printed");
+  assert.ok(hide.includes("#sheet-editor"), "the editor is not printed");
   // The song area is not a scroll box, so every page gets printed.
   assert.ok(/#sheet-scroll \{[^}]*overflow: visible/.test(print));
   // Fixed size (the on-screen zoom is not used), black chords, white page.
@@ -736,7 +744,8 @@ test("Reset transpose is wired to the transpose state in viewer.js", function ()
   assert.ok(html.indexOf("id=\"transpose-up\"") < html.indexOf("id=\"transpose-reset\""));
   assert.ok(/var transposed = SongTranspose\.changesChords\(source\.chords, steps\);/.test(code));
   assert.ok(/transposeReset\.disabled = !transposed/.test(code));
-  assert.ok(/persistNote\.hidden = !transposed/.test(code));
+  // The note also stays after Save (savedEdit), see the Edit text tests.
+  assert.ok(/persistNote\.hidden = !\(transposed \|\| savedEdit\)/.test(code));
   assert.ok(/transposeReset\.addEventListener\("click"[\s\S]*?steps = 0;[\s\S]*?paintSong\(\)/.test(code));
   // Opening a song starts from 0 again, so "original" means as opened.
   assert.ok(/openId = id;\s*steps = 0;/.test(code));
@@ -759,4 +768,108 @@ test("a whole octave of steps shows exactly the chords as opened", function () {
   });
   assert.equal(shown(13), shown(1));
   assert.equal(shown(-13), shown(-1));
+});
+
+// Letters of several code points. Chords stay numbered by code point (as in the
+// songbook, the desktop editor and the iPhone app), but the sheet draws a letter
+// with its accents or joiners as one box.
+test("the sheet anchors a chord to the whole letter when it sits on an accent or a joiner", function () {
+  var family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+  var text = "e\u0301x " + family + " \u0438\u0306!";
+  // code points: e=0 accent=1 x=2 space=3 family=4..8 space=9 и=10 breve=11 !=12
+  var chords = [chord(1, 0), chord(2, 2), chord(6, 4), chord(11, 7)];
+  var line = SongText.sheet(text, chords)[0];
+  assert.deepEqual(SongText.letters(line.lyric),
+    ["e\u0301", "x", " ", family, " ", "\u0438\u0306", "!"]);
+  var anchors = line.chords.map(function (c) { return [c.anchor, c.span || 1]; });
+  assert.deepEqual(anchors, [[0, 2], [2, 1], [4, 5], [10, 2]]);
+});
+
+test("a song with only single code point letters has no span on its chords", function () {
+  var line = SongText.sheet("Hello", [chord(1, 0)])[0];
+  assert.deepEqual(line.chords.map(function (c) { return Object.keys(c).sort(); }),
+    [["anchor", "text", "unrecognized"]]);
+});
+
+test("the picture centres a chord over the whole letter, not over its accent", function () {
+  function measure(font, text) {
+    return { width: Array.from(text).length * 10, ascent: 9, descent: 3 };
+  }
+  // Letter 0 is two code points wide (20 px), so a chord on it is centred at 16 + 10.
+  var drawing = SheetImage.layout("", [{
+    lyric: "e\u0301x", chords: [{ anchor: 0, span: 2, text: "A", unrecognized: false }],
+  }], measure);
+  var glyph = drawing.glyphs.filter(function (g) { return g.text === "A"; })[0];
+  assert.equal(glyph.x, 16 + 10 - 5);
+});
+
+// A song of about 24 000 letters in 600 lines with a chord on every other line twice.
+function bigSong() {
+  var lines = [];
+  var chords = [];
+  var at = 0;
+  for (var i = 0; i < 600; i++) {
+    var text = "Line " + i + " of the long song, with words in";
+    lines.push(text);
+    if (i % 2 === 0) {
+      chords.push(chord(at + 2, 0));
+      chords.push(chord(at + 15, 9, 1));
+    }
+    at += text.length + 1;
+  }
+  return { text: lines.join("\n"), chords: chords };
+}
+
+test("sheet of a long song is fast enough to be painted on every keystroke", function () {
+  var song = bigSong();
+  assert.ok(song.text.length > 20000);
+  var typed = song.text.slice(0, 5000) + "x" + song.text.slice(5000);
+  var moved = song.chords.map(function (c) {
+    return Object.assign({}, c, { characterNum: c.characterNum >= 5000 ? c.characterNum + 1 : c.characterNum });
+  });
+  SongText.sheet(typed, moved);
+  var started = process.hrtime.bigint();
+  var lines;
+  for (var i = 0; i < 20; i++) {
+    lines = SongText.sheet(typed, moved);
+  }
+  var each = Number(process.hrtime.bigint() - started) / 1e6 / 20;
+  assert.equal(lines.length, 600);
+  assert.equal(lines.filter(function (l) { return l.chords.length === 2; }).length, 300);
+  // About 225 ms each before the search for a chord's line and the key detection
+  // were made cheaper, about 5 ms after. The limit leaves room for a slow machine.
+  assert.ok(each < 60, "one sheet took " + each.toFixed(1) + " ms");
+});
+
+test("the remembered key detection gives the same sheet and text as working it out again", function () {
+  function freshText() {
+    var name = require.resolve("../softchord_text");
+    delete require.cache[name];
+    return require("../softchord_text");
+  }
+  var seed = 12345;
+  function random(limit) {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed % limit;
+  }
+  var warm = SongText;
+  for (var round = 0; round < 40; round++) {
+    var lines = [];
+    for (var i = 0; i < 6 + random(10); i++) {
+      lines.push("Line number " + i);
+    }
+    var text = lines.join("\n");
+    var chords = [];
+    var count = 1 + random(26);
+    for (var c = 0; c < count; c++) {
+      chords.push(chord(random(text.length + 3), random(12), random(3)));
+    }
+    // The same chords again a letter later, as after typing, and then other chords.
+    var later = chords.map(function (item) { return Object.assign({}, item, { characterNum: item.characterNum + 1 }); });
+    [[text, chords], ["x" + text, later], [text, chords]].forEach(function (pair) {
+      var fresh = freshText();
+      assert.deepEqual(warm.sheet(pair[0], pair[1]), fresh.sheet(pair[0], pair[1]), "sheet, round " + round);
+      assert.equal(warm.render(pair[0], pair[1], true), fresh.render(pair[0], pair[1], true), "text, round " + round);
+    });
+  }
 });

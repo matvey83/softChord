@@ -372,6 +372,8 @@ enum SongLyricChords {
     /// A letter that was deleted has no entry, so the chord on it is dropped.
     /// The unchanged end never reaches into the unchanged start, so two old letters
     /// never map to one new letter (Hello to Helo keeps one l).
+    /// A chord past the end of the text (or below zero) has no entry either, so the
+    /// first edit drops it. One on a line break is kept.
     /// Mirror: softchord_text.py lyric_renumber_map.
     nonisolated static func renumberMap(from previous: String, to text: String) -> [Int: Int] {
         let old = Array(previous.unicodeScalars)

@@ -1,6 +1,7 @@
 // Drives the real web viewer in headless Chrome for tests (Chrome DevTools
 // protocol over the WebSocket built into Node). Tests skip when Chrome is not
-// installed: set CHROME_BIN to point at it.
+// installed, with a loud warning (see skipUnlessBrowser): set CHROME_BIN to point
+// at it, or set SOFTCHORD_REQUIRE_BROWSER=1 to make them fail instead of skip.
 //
 // The page is served from a throw-away server. The songbook it opens is built in
 // memory from the schema in src/songbook.sql. No repository .songbook is read.
@@ -144,7 +145,7 @@ function connect(url) {
 async function openViewer(songs, options) {
   var chrome = findChrome();
   if (!chrome) {
-    throw new Error("Chrome is not installed");
+    throw new Error("Chrome is not installed (set CHROME_BIN to its path)");
   }
   var viewport = (options && options.viewport) || { width: 1000, height: 900 };
   var server = await startServer(await songbookBytes(songs), options && options.html);
@@ -199,6 +200,30 @@ async function openViewer(songs, options) {
       await send("Input.dispatchKeyEvent", Object.assign({ type: "keyDown" }, info));
       await send("Input.dispatchKeyEvent", Object.assign({ type: "keyUp" }, info));
     },
+    // Types text into the focused element like the keyboard or a paste would
+    // (one input event, no key events).
+    insertText: function (text) {
+      return send("Input.insertText", { text: text });
+    },
+    // A key with a name the editor knows: Enter, Backspace, Delete, ArrowLeft,
+    // ArrowRight, Home, End. Extra CDP options (modifiers, commands) can be added.
+    key: async function (name, extra) {
+      var codes = { Enter: 13, Backspace: 8, Delete: 46, ArrowLeft: 37, ArrowRight: 39,
+        ArrowUp: 38, ArrowDown: 40, Home: 36, End: 35 };
+      var info = Object.assign({
+        key: name, code: name, windowsVirtualKeyCode: codes[name] || 0,
+      }, name === "Enter" ? { text: "\r" } : {}, extra || {});
+      await send("Input.dispatchKeyEvent", Object.assign({ type: info.text ? "keyDown" : "rawKeyDown" }, info));
+      await send("Input.dispatchKeyEvent", { type: "keyUp", key: info.key, code: info.code,
+        windowsVirtualKeyCode: info.windowsVirtualKeyCode });
+    },
+    // The browser's own undo and redo, as Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z do.
+    undo: function () {
+      return page.key("z", { code: "KeyZ", windowsVirtualKeyCode: 90, commands: ["undo"] });
+    },
+    redo: function () {
+      return page.key("z", { code: "KeyZ", windowsVirtualKeyCode: 90, commands: ["redo"] });
+    },
     printToPDF: async function () {
       var result = await send("Page.printToPDF", { preferCSSPageSize: true, printBackground: true });
       return Buffer.from(result.data, "base64");
@@ -212,7 +237,8 @@ async function openViewer(songs, options) {
       launched.child.kill("SIGKILL");
       server.close();
       server.closeAllConnections();
-      fs.rmSync(profile, { recursive: true, force: true });
+      // Chrome may still be writing into its profile for a moment after it is killed.
+      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     },
   };
   try {
@@ -224,4 +250,33 @@ async function openViewer(songs, options) {
   return page;
 }
 
-module.exports = { findChrome: findChrome, openViewer: openViewer };
+// What the browser tests pass as { skip }. false when Chrome is there. Without it
+// the browser tests do not run at all, which would look like a pass, so a warning is
+// printed (to stderr, once per test file) and the skip reason says so. With
+// SOFTCHORD_REQUIRE_BROWSER=1 (for a CI that must test the browser) nothing is
+// skipped: the tests run and fail because Chrome is missing.
+const MISSING = "Chrome is not installed (set CHROME_BIN), so the browser tests did NOT run";
+
+function skipReason(chrome, env, warn) {
+  if (chrome) {
+    return false;
+  }
+  if (env.SOFTCHORD_REQUIRE_BROWSER === "1") {
+    return false;
+  }
+  warn("\n!!! WARNING: " + MISSING + ".\n" +
+    "!!! A green run does not cover the browser. Install Chrome or set CHROME_BIN,\n" +
+    "!!! or set SOFTCHORD_REQUIRE_BROWSER=1 to make this a failure.\n\n");
+  return MISSING;
+}
+
+function skipUnlessBrowser() {
+  return skipReason(findChrome(), process.env, function (text) { process.stderr.write(text); });
+}
+
+module.exports = {
+  findChrome: findChrome,
+  openViewer: openViewer,
+  skipReason: skipReason,
+  skipUnlessBrowser: skipUnlessBrowser,
+};
