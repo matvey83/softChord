@@ -6915,5 +6915,45 @@ class TestUpgradeTools(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("upgrade_songbook_v2", text)
 
+
+class TestSongFilterKeepsTheOpenSong(unittest.TestCase):
+    """Typing in the filter must not close and read the open song again."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = test_app()
+
+    def setUp(self):
+        self.td = open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, with_chord=True)
+        self.song = self.app.current_song
+
+    def tearDown(self):
+        self.app.clearFilterClicked()
+        self.app.setCurrentSongbook(None)
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    def test_filter_keeps_the_same_song_object(self):
+        self.app.songFilterEdited("Test")
+        self.assertIs(self.app.current_song, self.song)
+        self.assertEqual(self.app.getSelectedSongIds(), [self.song.id])
+
+    def test_hidden_song_stays_open_and_comes_back_selected(self):
+        self.app.songFilterEdited("nothing matches this")
+        self.assertIs(self.app.current_song, self.song)
+        self.assertEqual(self.app.getSelectedSongIds(), [])
+        self.app.songFilterEdited("still nothing")
+        self.app.clearFilterClicked()
+        self.assertIs(self.app.current_song, self.song)
+        self.assertEqual(self.app.getSelectedSongIds(), [self.song.id])
+
+    def test_filter_keeps_the_reset_transpose_count(self):
+        self.app.transposeUp()
+        self.assertEqual(self.song.transposed_steps, 1)
+        self.app.songFilterEdited("Test")
+        self.assertEqual(self.app.current_song.transposed_steps, 1)
+        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
