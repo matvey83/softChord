@@ -48,7 +48,7 @@ letter.
 
 ## Web: Edit text
 
-The pencil button above the song (title "Edit song text") makes the whole song text
+The pencil button above the song (title "Edit Text…") makes the whole song text
 editable over the sheet. It works best on a large screen (laptop or desktop). On a
 phone the toolbar wraps onto more rows (Save and Discard stay on screen at 320px and
 up), and the textarea is never under 16px (see below), but it has been tried only in
@@ -103,6 +103,9 @@ a desktop browser with a phone-sized window, not on a real phone.
 - "Changes do not persist" is shown as soon as the editor opens, before anything is
   typed. When the editor closes it goes again, unless something is kept (see Save)
   or the song is transposed. So Discard, and Save with nothing changed, show no note.
+- The buttons are **Discard** then **Save**, the same names and order as in the
+  desktop and iPhone apps ("Edit Text…" and "Edit Chords…" are the edit buttons'
+  titles).
 - **Save** keeps the edited text and chords as the song's text for this page
   visit. Viewer, Copy and Print use them afterwards, and "Changes do not
   persist" stays shown. The songbook is never written. **Discard** throws the edit
@@ -128,6 +131,14 @@ a desktop browser with a phone-sized window, not on a real phone.
   kept as they are stored (not transposed) and shown shifted by the current
   transposition, as on iOS. So a song opened at +2 is edited at +2, and Save
   does not change the key.
+- **A transpose is a change too.** Transposing while viewing shows Save and Discard
+  (the edit buttons stay as they are). Save keeps the key for this page visit, like
+  a saved edit; Discard goes back to the key that was kept. Transposing back to that
+  key, or a whole octave away, is no change and the buttons go again. Leaving the
+  song (Back, the list, another song, Escape) with a transpose that was not saved
+  asks "Discard changes?" first. Edit text or Edit chords opened after a transpose
+  takes it into the edit: Save keeps both, Discard puts both back. Reset transpose
+  goes to the songbook's key, so after Save it is a change again.
 
 ### What was and was not checked
 

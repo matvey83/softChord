@@ -1,6 +1,7 @@
 // Song list and chord sheet.
 // The open song is kept in memory. Transpose draws a shifted copy and does
-// not write the songbook. Edit text changes the copy kept here (see the Edit
+// not write the songbook. Like an edit, a transpose is a change to Save or
+// Discard (see savedSteps). Edit text changes the copy kept here (see the Edit
 // text section below) and does not write the songbook either. Edit chords does
 // the same with the chords (see the Edit chords section).
 
@@ -57,6 +58,10 @@
   // Opening a song always starts at 0, so 0 is the key the song had when it
   // was loaded in this session, and Reset transpose goes back to it.
   var steps = 0;
+  // The transpose kept with Save, for the open song only, like savedEdit.
+  // steps different from it (by more than whole octaves, see changesChords) is
+  // a change: Save and Discard show, and leaving the song asks first.
+  var savedSteps = 0;
   // Song area zoom in percent. It stays when another song is opened and is
   // remembered in this browser. It never touches the toolbar or the copied image.
   var zoomStorage = null;
@@ -142,6 +147,18 @@
       });
     }
     return source;
+  }
+
+  // True when the song is shown in another key than the one kept (see savedSteps).
+  function stepsChanged() {
+    if (openId == null || steps === savedSteps) {
+      return false;
+    }
+    try {
+      return SongTranspose.changesChords(openSource().chords, steps - savedSteps);
+    } catch (error) {
+      return false;
+    }
   }
 
   // The open song as shown now: its text and chords at the current transpose.
@@ -518,6 +535,8 @@
     // that can move (text that is not a chord stays as it is).
     var transposed = SongTranspose.changesChords(source.chords, steps);
     persistNote.hidden = !(transposed || savedEdit);
+    // While viewing, Save and Discard show only for a transpose not yet kept.
+    editActions.hidden = !(draft || stepsChanged());
     // Dimmed until the song has been transposed. Up then down by the same
     // amount brings steps back to 0, which dims it again, and so does a whole
     // octave (12), which shows the same chords.
@@ -740,7 +759,14 @@
     }
     var kept = draft;
     var anchor = topLine();
+    var moved = stepsChanged();
     leaveEditing();
+    // A transpose made before the edit is part of it: kept or put back with it.
+    if (save) {
+      savedSteps = steps;
+    } else {
+      steps = savedSteps;
+    }
     if (save) {
       var original = Songbook.source(openId);
       var normal = SongTextEdit.normalizeSong(original.text, original.chords);
@@ -762,15 +788,46 @@
     // otherwise be left on the page itself. The button that began the edit is
     // where the user was.
     (kept.mode === "chords" ? editChordsButton : editButton).focus({ preventScroll: true });
-    if (save && savedEdit) {
+    if (save && (savedEdit || moved)) {
       showToast("Saved");
     }
   }
 
-  // True when the draft is not what the edit started from: leaving would lose
-  // something that nothing keeps.
+  // Save or Discard while viewing: keeps the transpose, or goes back to the
+  // key that was kept.
+  function finishTranspose(save) {
+    if (save) {
+      savedSteps = steps;
+    } else {
+      steps = savedSteps;
+    }
+    paintSong();
+    transposeUp.focus({ preventScroll: true });
+    if (save) {
+      showToast("Saved");
+    }
+  }
+
+  function finish(save) {
+    if (draft) {
+      finishEditing(save);
+    } else if (stepsChanged()) {
+      finishTranspose(save);
+    }
+  }
+
+  // True when the draft is not what the edit started from, or the song is
+  // transposed from the key that was kept: leaving would lose something that
+  // nothing keeps.
   function draftChanged() {
-    return !!draft && (draft.text !== draft.start.text || !sameChords(draft.chords, draft.start.chords));
+    return stepsChanged() ||
+      (!!draft && (draft.text !== draft.start.text || !sameChords(draft.chords, draft.start.chords)));
+  }
+
+  // Leaving the song after asking: the edit and the transpose not kept go.
+  function dropChanges() {
+    leaveEditing();
+    steps = savedSteps;
   }
 
   var leaveDialog = document.getElementById("leave-confirm");
@@ -815,6 +872,7 @@
 
   function forgetEdits() {
     savedEdit = null;
+    savedSteps = 0;
     leaveEditing();
   }
 
@@ -880,8 +938,8 @@
 
   editButton.addEventListener("click", function () { startEditing("text"); });
   editChordsButton.addEventListener("click", function () { startEditing("chords"); });
-  saveButton.addEventListener("click", function () { finishEditing(true); });
-  discardButton.addEventListener("click", function () { finishEditing(false); });
+  saveButton.addEventListener("click", function () { finish(true); });
+  discardButton.addEventListener("click", function () { finish(false); });
   window.addEventListener("resize", function () {
     if (draft && draft.mode === "text") {
       sizeEditor();
@@ -901,7 +959,7 @@
       var wanted = location.hash;
       history.replaceState(null, "", location.pathname + location.search + "#/song/" + openId);
       askBeforeLeaving(function () {
-        leaveEditing();
+        dropChanges();
         location.hash = wanted;
       });
       return;
@@ -995,7 +1053,7 @@
 
   document.getElementById("back").addEventListener("click", function () {
     askBeforeLeaving(function () {
-      leaveEditing();
+      dropChanges();
       location.hash = "#/";
     });
   });
@@ -1048,7 +1106,8 @@
       return;
     }
     // Escape closes the notice dialog itself. It must not also leave the song.
-    if (event.defaultPrevented || notice.open) {
+    // The same for the dialog that asks before leaving.
+    if (event.defaultPrevented || notice.open || leaveDialog.open) {
       return;
     }
     // Escape does nothing while the text is edited, so that a stray press does
@@ -1061,7 +1120,13 @@
       return;
     }
     if (!songView.hidden) {
-      location.hash = "#/";
+      // A transpose not kept is asked about first, as with Back. The dialog
+      // opens from this key press, so its Escape must not also close it.
+      event.preventDefault();
+      askBeforeLeaving(function () {
+        dropChanges();
+        location.hash = "#/";
+      });
     }
   });
 
