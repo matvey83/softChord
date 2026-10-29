@@ -816,9 +816,8 @@ class Song:
 
         chords_present = False
         for chord in self._chords:
-            chord_linenum, line_char_num = self.songCharToLineChar(
-                chord.character_num)
-            if chord_linenum == linenum:
+            found = self.letterLineAndColumn(chord.character_num)
+            if found is not None and found[0] == linenum:
                 chords_present = True
                 break
 
@@ -835,11 +834,42 @@ class Song:
         else:
             return self.session.getHeightsWithoutChords()
 
+    def letterLineAndColumn(self, song_char_num):
+        """Like songCharToLineChar, but None when there is no letter there.
+
+        A chord can be stored on a line break or past the end of the text.
+        It has no letter to sit on, so it is not drawn or copied, and it
+        must not stop the rest of the song from being shown.
+        """
+        try:
+            return self.songCharToLineChar(song_char_num)
+        except RuntimeError:
+            return None
+
+    def chordsOnLetters(self):
+        """The chords that have a letter to sit on, in their order.
+
+        A chord on a line break, past the end of the text, or below zero has
+        no letter (letterLineAndColumn is None for it). Painting, the line
+        spacing and Copy text leave such a chord out, so they all agree.
+        The text is split once, not once per chord.
+        """
+        text = self.getAllText()
+        return [chord for chord in self._chords
+                if 0 <= chord.character_num < len(text)
+                and text[chord.character_num] != "\n"]
+
     def songCharToLineChar(self, song_char_num):
-        """Return (line number, column) for a character in the song.
+        """Return (line number, column) for a letter in the song.
+
+        Raises RuntimeError for a line break, a negative number, and a
+        number past the end of the text.
 
         Mirror: softchord_text.swift SongText.lineAndColumn.
         """
+
+        if song_char_num < 0:
+            raise RuntimeError()
 
         line_global_start = 0
         line_global_end = 0
@@ -851,6 +881,9 @@ class Song:
                 # This character is in this line
                 line_char_num = song_char_num - line_global_start
                 return (linenum, line_char_num)
+            if song_char_num == line_global_end - 1:
+                # The line break at the end of this line has no letter.
+                raise RuntimeError()
             line_global_start += len(line_text) + 1
 
         raise RuntimeError()
@@ -891,10 +924,9 @@ class Song:
         def chords_on_line(linenum):
             found = []
             for chord in self.iterateAllChords():
-                chord_linenum, anchor = self.songCharToLineChar(
-                    chord.character_num)
-                if chord_linenum == linenum:
-                    found.append((anchor, chord.getChordText()))
+                where = self.letterLineAndColumn(chord.character_num)
+                if where is not None and where[0] == linenum:
+                    found.append((where[1], chord.getChordText()))
             return found
 
         return format_song_text(

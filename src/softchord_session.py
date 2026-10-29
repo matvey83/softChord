@@ -246,7 +246,7 @@ class CustomTextEdit(QtWidgets.QTextEdit):
         """Draw chords for the current song using the shared song layout."""
         painter.setFont(self.app.chords_font)
         layout = SongLayout.place(
-            QtDocumentLayout(self), self.app.current_song.iterateAllChords(),
+            QtDocumentLayout(self), self.app.current_song.chordsOnLetters(),
             self.app.getHeightsWithChords, self.app.getChordWidth,
             lambda chord: chord.getChordText())
         for placed in layout.placed:
@@ -2881,7 +2881,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         bounds = QtCore.QRectF(0.0, 0.0, right, bottom)
         scroll_x = editor.horizontalScrollBar().value()
         scroll_y = editor.verticalScrollBar().value()
-        layout = SongLayout.place(QtDocumentLayout(editor), song._chords,
+        layout = SongLayout.place(QtDocumentLayout(editor),
+                                  song.chordsOnLetters(),
                                   self.getHeightsWithChords, self.getChordWidth,
                                   lambda chord: chord.getChordText())
         for placed in layout.placed:
@@ -3318,7 +3319,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             scroll_y = editor.verticalScrollBar().value()
 
         doc_layout = QtDocumentLayout(editor)
-        layout = SongLayout.place(doc_layout, song._chords,
+        layout = SongLayout.place(doc_layout, song.chordsOnLetters(),
                                   self.getHeightsWithChords, self.getChordWidth,
                                   lambda chord: chord.getChordText())
         for placed in layout.placed:
