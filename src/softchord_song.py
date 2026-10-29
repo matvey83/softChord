@@ -687,8 +687,15 @@ class Song:
         if self.subtitle == None:
             self.subtitle = ""
 
+        # A songbook can hold the same chord twice on one letter (older imports
+        # did). The song keeps one of them, in memory only: the file is not
+        # rewritten until the song is. Different chords on a letter both stay.
         song_chords = []
+        seen = set()
         for link in record.chords:
+            if (link.character_num, link.chord) in seen:
+                continue
+            seen.add((link.character_num, link.chord))
             song_chords.append(
                 SongChord.from_text(self, link.character_num, link.chord))
 

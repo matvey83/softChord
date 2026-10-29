@@ -312,7 +312,9 @@ test("the repo songbooks have the current schema and the viewer reads all their 
     var bytes = fs.readFileSync(path.join(__dirname, "..", "..", name));
     var db = new SQL.Database(bytes);
     var songs = db.exec("SELECT COUNT(*) FROM songs")[0].values[0][0];
-    var chords = db.exec("SELECT COUNT(*) FROM song_chord_link")[0].values[0][0];
+    // The same chord twice on one letter of a song is read once (some songbooks have such rows).
+    var chords = db.exec("SELECT COUNT(*) FROM (SELECT DISTINCT song_id, character_num, chord " +
+      "FROM song_chord_link)")[0].values[0][0];
     var orphans = db.exec(
       "SELECT COUNT(*) FROM song_chord_link WHERE song_id NOT IN (SELECT id FROM songs)")[0].values[0][0];
     var uuids = db.exec("SELECT COUNT(DISTINCT uuid) FROM songs")[0].values[0][0];
@@ -872,4 +874,30 @@ test("the remembered key detection gives the same sheet and text as working it o
       assert.equal(warm.render(pair[0], pair[1], true), fresh.render(pair[0], pair[1], true), "text, round " + round);
     });
   }
+});
+
+test("a chord that is in the songbook twice on the same letter is read once, and two chords on a letter are both kept", async function () {
+  var SQL = await initSqlJs({
+    locateFile: function (file) {
+      return path.join(__dirname, "..", file);
+    },
+  });
+  var db = new SQL.Database();
+  db.run(schemaSql());
+  db.run("INSERT INTO songs (id, uuid, text, title, updated_at) VALUES " +
+    "(1, '5d1c3f0a-1c52-4a43-8f55-0a8d2f6f3a01', 'Hello world', 'Alpha', 1700000001)");
+  db.run("INSERT INTO songs (id, uuid, text, title, updated_at) VALUES " +
+    "(2, '2b0f0a5e-6f38-4d0b-9d6e-6c1d9a6e1b02', 'Hello', 'Beta', 1700000002)");
+  [[1, 0, "C"], [1, 0, "C"], [1, 6, "Am"], [1, 0, "G"], [1, 6, "Am"], [1, 0, "C"],
+    [2, 0, "C"], [2, 0, "C"]].forEach(function (row) {
+    db.run("INSERT INTO song_chord_link (song_id, character_num, chord) VALUES (?, ?, ?)", row);
+  });
+  var bytes = db.export();
+  db.close();
+  Songbook.openBytes(SQL, bytes);
+  // The first of each kind stays, in file order; the same chord on another song is another chord.
+  assert.deepEqual(Songbook.sheet(1)[0].chords.map(function (c) { return c.anchor + c.text; }),
+    ["0C", "6Am", "0G"]);
+  assert.equal(Songbook.source(1).chords.length, 3);
+  assert.equal(Songbook.source(2).chords.length, 1);
 });
