@@ -106,8 +106,11 @@ a desktop browser with a phone-sized window, not on a real phone.
 - **Save** keeps the edited text and chords as the song's text for this page
   visit. Viewer, Copy and Print use them afterwards, and "Changes do not
   persist" stays shown. The songbook is never written. **Discard** throws the edit
-  away without asking. The edit is also lost when the page goes back to the list,
-  opens another song, or is reloaded.
+  away without asking. Going back to the list or opening another song (also with
+  the browser's Back button) while the draft differs from the song as opened asks
+  "Discard changes?" first; Keep editing is the default. A reload does not ask, and
+  loses the edit. See [chord_editing.md](chord_editing.md) for the details, which
+  are the same for Edit chords.
 - While editing, Print, the three Copy buttons, Transpose down/up, Reset
   transpose and Edit text are disabled. Zoom stays on, because the textarea and the
   sheet take their size from the same variable.

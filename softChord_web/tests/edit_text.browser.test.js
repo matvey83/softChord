@@ -238,39 +238,100 @@ test("Save with nothing changed shows no note, and Discard throws the edit away"
   });
 });
 
-test("Escape does not leave the song while editing, Back and other songs drop the edit", { skip: skip }, function () {
+test("Escape does not leave the song while editing, and Back and other songs ask before they drop an edit", { skip: skip }, function () {
   return inEditor([HELLO, RUSSIAN], async function (page) {
+    var asking = "document.getElementById('leave-confirm').open";
     await startEditing(page);
     await page.insertText("Q");
     await page.pressKey("Escape");
     assert.equal(await page.eval("location.hash"), "#/song/1");
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), false);
     assert.equal((await editorValue(page)).startsWith("Q"), true, "the edit is still there");
-    // Back to the list drops the edit without asking.
+    // Back asks. Keep editing leaves everything as it was.
     await click(page, "back");
+    assert.equal(await page.eval(asking), true, "Back asks before it drops an edit");
+    assert.equal(await page.eval("document.getElementById('leave-confirm-title').textContent"), "Discard changes?");
+    assert.equal(await page.eval("document.activeElement.id"), "leave-confirm-keep", "Keep editing is the default");
+    await click(page, "leave-confirm-keep");
+    assert.equal(await page.eval(asking), false);
+    assert.equal(await page.eval("location.hash"), "#/song/1");
+    assert.equal((await editorValue(page)).startsWith("Q"), true);
+    // Escape in the dialog is Keep editing too.
+    await click(page, "back");
+    await page.pressKey("Escape");
+    assert.equal(await page.eval(asking), false);
+    assert.equal(await page.eval("document.getElementById('song-view').hidden"), false);
+    // Discard goes back to the list and the edit is gone.
+    await click(page, "back");
+    await click(page, "leave-confirm-discard");
     await page.waitFor("document.getElementById('song-view').hidden", "the list");
     await page.eval("location.hash = '#/song/1'");
     await page.waitFor("!document.getElementById('song-view').hidden", "the song");
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
     assert.equal(await sheetText(page), HELLO.text);
-    // A saved edit is lost the same way, and so is an edit when another song opens.
+    // A saved edit is lost without asking (it was kept on purpose, with its note), and
+    // so is it when another song opens.
     await startEditing(page);
     await page.insertText("Q");
     await click(page, "edit-save");
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false);
     await page.eval("location.hash = '#/song/2'");
     await page.waitFor("document.getElementById('song-title').textContent === 'Звуки неба'", "song 2");
+    assert.equal(await page.eval(asking), false);
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
+    // Another song with an edit in the draft: the address goes back and asks.
     await startEditing(page);
     await page.insertText("W");
     await page.eval("location.hash = '#/song/1'");
+    await page.waitFor(asking, "the question");
+    assert.equal(await page.eval("location.hash"), "#/song/2", "the address is put back while it asks");
+    assert.equal(await page.eval("document.getElementById('song-title').textContent"), "Звуки неба");
+    await click(page, "leave-confirm-keep");
+    assert.equal((await editorValue(page)).startsWith("W"), true);
+    await page.eval("location.hash = '#/song/1'");
+    await page.waitFor(asking, "the question again");
+    await click(page, "leave-confirm-discard");
     await page.waitFor("document.getElementById('song-title').textContent === 'Hello'", "song 1");
+    assert.equal(await page.eval("location.hash"), "#/song/1");
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
     assert.equal(await sheetText(page), HELLO.text);
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
+    // The same song's address in another form is not leaving.
+    await startEditing(page);
+    await page.insertText("E");
+    await page.eval("location.hash = '#/song/01'");
+    await new Promise(function (r) { setTimeout(r, 200); });
+    assert.equal(await page.eval(asking), false);
+    assert.equal((await editorValue(page)).startsWith("E"), true);
+    await click(page, "edit-discard");
     // Escape with no edit still leaves the song, as before.
     await page.pressKey("Escape");
     await page.waitFor("document.getElementById('song-view').hidden", "leaving the song");
+  });
+});
+
+test("Back and other songs do not ask when the edit changed nothing", { skip: skip }, function () {
+  return inEditor([HELLO, RUSSIAN], async function (page) {
+    await startEditing(page);
+    await click(page, "back");
+    assert.equal(await page.eval("document.getElementById('leave-confirm').open"), false);
+    await page.waitFor("document.getElementById('song-view').hidden", "the list");
+    await page.eval("location.hash = '#/song/1'");
+    await page.waitFor("!document.getElementById('song-view').hidden", "the song");
+    // A letter typed and taken away again is the same text: nothing to lose.
+    await startEditing(page);
+    await page.insertText("Q");
+    await page.key("Backspace");
+    await page.eval("location.hash = '#/song/2'");
+    await page.waitFor("document.getElementById('song-title').textContent === 'Звуки неба'", "song 2");
+    assert.equal(await page.eval("document.getElementById('leave-confirm').open"), false);
+    // A chord edit counts: the text is the same but a chord moved.
+    await startEditing(page);
+    await page.eval("document.getElementById('sheet-editor').setSelectionRange(0, 0)");
+    await page.insertText(" ");
+    await click(page, "back");
+    assert.equal(await page.eval("document.getElementById('leave-confirm').open"), true);
+    await click(page, "leave-confirm-keep");
   });
 });
 

@@ -8,8 +8,8 @@
 const assert = require("node:assert/strict");
 const helper = require("./browser_helper");
 
-async function inEditor(songs, run) {
-  var page = await helper.openViewer(songs);
+async function inEditor(songs, run, options) {
+  var page = await helper.openViewer(songs, options);
   try {
     await page.eval("location.hash = '#/song/1'");
     await page.waitFor("!document.getElementById('song-view').hidden", "the song page");
@@ -124,7 +124,25 @@ async function setZoom(page, percent) {
   throw new Error("could not reach zoom " + percent);
 }
 
+// The middle of a letter's box, a chord, or the room above a letter, in viewport pixels.
+// letter is the number the sheet gives the letter (code points from the start).
+async function point(page, letter, where) {
+  return page.eval("(function () {" +
+    "var box = document.querySelector('#sheet .char[data-song-char=\"" + letter + "\"]');" +
+    "var r = box.getBoundingClientRect(); var where = " + JSON.stringify(where || "letter") + ";" +
+    "if (where === 'chord') { var c = box.querySelector('.chord').getBoundingClientRect();" +
+    "return { x: (c.left + c.right) / 2, y: (c.top + c.bottom) / 2 }; }" +
+    "return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 }; })()");
+}
+
+// The chord labels as shown with the letter's number and whether it is selected.
+async function selectedLetter(page) {
+  return page.eval("(function () { var b = document.querySelector('#sheet .char.selected');" +
+    "return b ? Number(b.dataset.songChar) : null; })()");
+}
+
 module.exports = {
+  point: point, selectedLetter: selectedLetter,
   inEditor: inEditor, click: click, startEditing: startEditing, editorValue: editorValue,
   select: select, disabled: disabled, chordsShown: chordsShown, sheetText: sheetText,
   inkOffsets: inkOffsets, assertAligned: assertAligned, setZoom: setZoom,

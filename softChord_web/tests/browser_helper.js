@@ -217,6 +217,81 @@ async function openViewer(songs, options) {
       await send("Input.dispatchKeyEvent", { type: "keyUp", key: info.key, code: info.code,
         windowsVirtualKeyCode: info.windowsVirtualKeyCode });
     },
+    // A letter key as typed on a keyboard (keydown with text, so a keypress too).
+    // With modifiers (1 Alt, 2 Ctrl, 4 Meta, 8 Shift) it is a shortcut: no text.
+    type: async function (character, modifiers) {
+      var upper = character.toUpperCase();
+      var info = { key: character, code: "Key" + upper, windowsVirtualKeyCode: upper.charCodeAt(0),
+        modifiers: modifiers || 0 };
+      var shortcut = (info.modifiers & 7) !== 0;
+      await send("Input.dispatchKeyEvent", Object.assign({ type: shortcut ? "rawKeyDown" : "keyDown" },
+        info, shortcut ? {} : { text: character }));
+      await send("Input.dispatchKeyEvent", Object.assign({ type: "keyUp" }, info));
+    },
+    // The mouse, in page (viewport) pixels. clickCount 2 is the second click of a double click.
+    mouse: {
+      move: function (x, y, buttons) {
+        return send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x, y: y, button: buttons ? "left" : "none",
+          buttons: buttons || 0 });
+      },
+      down: function (x, y, clickCount) {
+        return send("Input.dispatchMouseEvent", { type: "mousePressed", x: x, y: y, button: "left", buttons: 1,
+          clickCount: clickCount || 1 });
+      },
+      up: function (x, y, clickCount) {
+        return send("Input.dispatchMouseEvent", { type: "mouseReleased", x: x, y: y, button: "left", buttons: 0,
+          clickCount: clickCount || 1 });
+      },
+      click: async function (x, y) {
+        await page.mouse.move(x, y);
+        await page.mouse.down(x, y);
+        await page.mouse.up(x, y);
+      },
+      doubleClick: async function (x, y) {
+        await page.mouse.move(x, y);
+        await page.mouse.down(x, y, 1);
+        await page.mouse.up(x, y, 1);
+        await page.mouse.down(x, y, 2);
+        await page.mouse.up(x, y, 2);
+      },
+      // Press at one point, move to the other in some steps, and let go unless release is false.
+      drag: async function (from, to, options) {
+        var steps = (options && options.steps) || 8;
+        await page.mouse.move(from.x, from.y);
+        await page.mouse.down(from.x, from.y);
+        for (var i = 1; i <= steps; i++) {
+          await page.mouse.move(from.x + (to.x - from.x) * i / steps, from.y + (to.y - from.y) * i / steps, 1);
+        }
+        if (!options || options.release !== false) {
+          await page.mouse.up(to.x, to.y);
+        }
+      },
+    },
+    // One finger. The first call turns touch emulation on (pointerType "touch").
+    touch: {
+      send: async function (type, points) {
+        await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+        return send("Input.dispatchTouchEvent", { type: type, touchPoints: points });
+      },
+      start: function (x, y) { return page.touch.send("touchStart", [{ x: x, y: y, id: 1 }]); },
+      move: function (x, y) { return page.touch.send("touchMove", [{ x: x, y: y, id: 1 }]); },
+      end: function () { return page.touch.send("touchEnd", []); },
+      cancel: function () { return page.touch.send("touchCancel", []); },
+      tap: async function (x, y) {
+        await page.touch.start(x, y);
+        await page.touch.end();
+      },
+      drag: async function (from, to, options) {
+        var steps = (options && options.steps) || 8;
+        await page.touch.start(from.x, from.y);
+        for (var i = 1; i <= steps; i++) {
+          await page.touch.move(from.x + (to.x - from.x) * i / steps, from.y + (to.y - from.y) * i / steps);
+        }
+        if (!options || options.release !== false) {
+          await page.touch.end();
+        }
+      },
+    },
     // The browser's own undo and redo, as Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z do.
     undo: function () {
       return page.key("z", { code: "KeyZ", windowsVirtualKeyCode: 90, commands: ["undo"] });
