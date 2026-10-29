@@ -926,6 +926,23 @@ struct softChord_ViewerTests {
         }
     }
 
+    @Test func chordsWithNoLetterAreNotDrawnAndDoNotCrash() {
+        // "ab\ncd": index 2 is the line break, 5 is the end, 99 is far past it.
+        let text = "ab\ncd"
+        let letters = [chord(at: 0, note: 0, type: 0), chord(at: 3, note: 7, type: 0)]
+        for stray in [2, 5, 99, -1] {
+            let chords = letters + [chord(at: stray, note: 3, type: 0)]
+            let lines = SongText.sheet(text: text, chords: chords)
+            #expect(lines[0].chords.map(\.anchor) == [0])
+            #expect(lines[1].chords.map(\.anchor) == [0])
+            let rendered = SongText.render(text: text, chords: chords, includeChords: true)
+            #expect(rendered == "C\r\nab\r\nG\r\ncd")
+        }
+        // A name longer than its line is kept inside it.
+        let long = SongText.render(text: "Oh", chords: [chord(at: 0, note: 0, type: 11)], includeChords: true)
+        #expect(long.contains("\r\nOh"))
+    }
+
     @Test func blankLinesStayInTheSheet() {
         let lines = SongText.sheet(text: "One\n\nTwo", chords: [])
         #expect(lines.map(\.lyric) == ["One", "", "Two"])

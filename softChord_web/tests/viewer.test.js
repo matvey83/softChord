@@ -90,6 +90,21 @@ test("blank lines stay in the sheet", function () {
   assert.deepEqual(lines.map(function (line) { return line.lyric; }), ["One", "", "Two"]);
 });
 
+test("chords with no letter are not drawn and do not crash", function () {
+  // "ab\ncd": index 2 is the line break, 5 is the end, 99 is far past it.
+  var text = "ab\ncd";
+  var letters = [chord(0, 0), chord(3, 7)];
+  [2, 5, 99, -1].forEach(function (stray) {
+    var chords = letters.concat([chord(stray, 3)]);
+    var lines = SongText.sheet(text, chords);
+    assert.deepEqual(lines[0].chords.map(function (c) { return c.anchor; }), [0]);
+    assert.deepEqual(lines[1].chords.map(function (c) { return c.anchor; }), [0]);
+    assert.equal(SongText.render(text, chords, true), "C\r\nab\r\nG\r\ncd");
+  });
+  var long = SongText.render("Oh", [chord(0, 0, 11)], true);
+  assert.ok(long.includes("\r\nOh"));
+});
+
 test("A major spells sharps", function () {
   var chords = progression([[9, 0], [4, 0], [6, 1], [2, 0]], 3);
   var rendered = SongText.render("x".repeat(80), chords, true);
