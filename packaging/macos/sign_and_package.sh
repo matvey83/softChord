@@ -78,7 +78,7 @@ if [ -n "$IDENTITY" ]; then
   while IFS= read -r -d '' fw; do sign "$fw"; done \
     < <(find "$APP/Contents" -type d -name '*.framework' -print0)
   sign --deep "$APP"
-  codesign --verify --deep --strict --verbose=2 "$APP"
+  codesign --verify --deep --strict "$APP" && echo "codesign --verify: OK"
 fi
 
 echo "Creating $DMG"

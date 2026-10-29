@@ -176,7 +176,7 @@ pyinstaller --noconfirm --clean softchord.spec
 | `APPLE_APP_PASSWORD` | an app-specific password for that Apple ID |
 | `APPLE_TEAM_ID` | `BP4KJ52H3T` |
 
-`tools/setup_mac_signing_secrets.sh` sets all five from a Mac that has the certificate in its login keychain (or pass a `.p12` you exported from Keychain Access). Without the secrets the build still succeeds with a warning: the app keeps PyInstaller's ad-hoc signature and the DMG is not notarized, so macOS asks the user to allow it under **System Settings → Privacy & Security → Open Anyway**.
+`tools/setup_mac_signing_secrets.sh` sets all five from a Mac that has the certificate in its login keychain (or pass a `.p12` you exported from Keychain Access). It checks the Apple ID and app-specific password with `notarytool` before storing them; `--notary-only` updates just the three Apple values (for example after a notarization 401 in the build, then `gh run rerun --failed <run id>`). Without the secrets the build still succeeds with a warning: the app keeps PyInstaller's ad-hoc signature and the DMG is not notarized, so macOS asks the user to allow it under **System Settings → Privacy & Security → Open Anyway**.
 
 **Windows.** The `.exe` is unsigned, so SmartScreen shows *Windows protected your PC* (**More info → Run anyway**); `packaging/windows/How to open softChord on Windows.txt` ships next to the exe in the zip. An Authenticode certificate would remove the warning.
 

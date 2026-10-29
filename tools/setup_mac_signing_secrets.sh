@@ -3,6 +3,10 @@
 #
 #   tools/setup_mac_signing_secrets.sh                 # export the cert from the login keychain
 #   tools/setup_mac_signing_secrets.sh ~/DeveloperID.p12   # use a .p12 you exported
+#   tools/setup_mac_signing_secrets.sh --notary-only       # only APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID
+#
+# The Apple ID and app-specific password are checked with notarytool before
+# anything is stored, so a typo fails here and not in the release build.
 #
 # Sets these repository secrets with gh secret set:
 #   MACOS_CERT_P12, MACOS_CERT_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD, APPLE_TEAM_ID
@@ -18,6 +22,37 @@ TEAM_ID_DEFAULT="BP4KJ52H3T"
 cd "$(git rev-parse --show-toplevel)"
 REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
 die() { echo "ERROR: $*" >&2; exit 1; }
+
+NOTARY_ONLY=0
+if [ "${1:-}" = "--notary-only" ]; then NOTARY_ONLY=1; shift; fi
+
+ask_notary() {
+  read -r -p "Apple ID email for notarization: " APPLE_ID
+  APPLE_ID="$(printf '%s' "$APPLE_ID" | tr -d '[:space:]')"
+  read -r -s -p "App-specific password for that Apple ID (xxxx-xxxx-xxxx-xxxx): " APPLE_APP_PASSWORD; echo
+  APPLE_APP_PASSWORD="$(printf '%s' "$APPLE_APP_PASSWORD" | tr -d '[:space:]')"
+  read -r -p "Team ID [$TEAM_ID_DEFAULT]: " TEAM_ID
+  TEAM_ID="${TEAM_ID:-$TEAM_ID_DEFAULT}"
+  echo "Checking the notarization credentials with Apple"
+  xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
+    --team-id "$TEAM_ID" >/dev/null \
+    || die "Apple rejected these credentials. Make a new app-specific password at
+  https://account.apple.com (Sign-In and Security → App-Specific Passwords) and try again."
+}
+
+set_notary_secrets() {
+  printf '%s' "$APPLE_ID" | gh secret set APPLE_ID -R "$REPO"
+  printf '%s' "$APPLE_APP_PASSWORD" | gh secret set APPLE_APP_PASSWORD -R "$REPO"
+  printf '%s' "$TEAM_ID" | gh secret set APPLE_TEAM_ID -R "$REPO"
+}
+
+if [ "$NOTARY_ONLY" = 1 ]; then
+  ask_notary
+  set_notary_secrets
+  unset APPLE_APP_PASSWORD
+  echo "Done. Notarization secrets updated on $REPO."
+  exit 0
+fi
 
 TMPD="$(mktemp -d)"
 trap 'rm -rf "$TMPD"' EXIT
@@ -56,17 +91,12 @@ security find-identity -v -p codesigning "$CHECK_KC" | grep -q "Developer ID App
   || { security delete-keychain "$CHECK_KC"; die "the .p12 has no Developer ID Application identity"; }
 security delete-keychain "$CHECK_KC"
 
-read -r -p "Apple ID email for notarization: " APPLE_ID
-read -r -s -p "App-specific password for that Apple ID: " APPLE_APP_PASSWORD; echo
-read -r -p "Team ID [$TEAM_ID_DEFAULT]: " TEAM_ID
-TEAM_ID="${TEAM_ID:-$TEAM_ID_DEFAULT}"
+ask_notary
 
 echo "Setting secrets on $REPO"
 base64 -i "$P12" | tr -d '\n' | gh secret set MACOS_CERT_P12 -R "$REPO"
 printf '%s' "$P12_PASS" | gh secret set MACOS_CERT_PASSWORD -R "$REPO"
-printf '%s' "$APPLE_ID" | gh secret set APPLE_ID -R "$REPO"
-printf '%s' "$APPLE_APP_PASSWORD" | gh secret set APPLE_APP_PASSWORD -R "$REPO"
-printf '%s' "$TEAM_ID" | gh secret set APPLE_TEAM_ID -R "$REPO"
+set_notary_secrets
 unset P12_PASS APPLE_APP_PASSWORD
 
 echo "Done. Secrets on $REPO:"
