@@ -157,11 +157,15 @@ main {
   border-radius: 4px;
 }
 
-/* Phone width: Back and the title share the first row, and the buttons get a
-   row of their own, spread across its full width, so none are pushed off the
-   screen. On the narrowest phones (320 px) the buttons shrink a little to still
-   fit on that one row. */
-@media (max-width: 640px) {
+/* Narrow window (phones, and a desktop window dragged narrow): Back and the title
+   share the first row, and the buttons get rows of their own below. The buttons
+   are in groups and the groups wrap onto the next row when they do not all fit,
+   so every button, and Save and Discard while the text is edited, stays inside
+   the window and never scrolls off it. The thin separators are dropped because a
+   wrapped row would start or end with one. Edit text stays on small screens: the
+   editor is a plain textarea and works there. 760 px is where Back, the title
+   and every button, with Save and Discard, still fit on one row. */
+@media (max-width: 760px) {
   .toolbar { flex-wrap: wrap; row-gap: 2px; padding: 6px 8px; }
   #back { order: 1; }
   #song-title {
@@ -172,15 +176,19 @@ main {
   .toolbar-actions {
     order: 3;
     flex: 1 1 100%;
-    justify-content: space-between;
-    gap: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 2px 12px;
   }
-  .tool-group { gap: 0; }
+  .tool-sep { display: none; }
+  .tool-group { gap: 0; flex: none; }
+  #edit-actions { margin-left: 0; gap: 6px; }
   .tool { width: 34px; height: 34px; }
 }
 
 @media (max-width: 360px) {
   .tool { width: 30px; height: 30px; }
+  .toolbar-actions { column-gap: 8px; }
 }
 
 #toast {
@@ -205,14 +213,118 @@ main {
   background: #fff;
 }
 
-#sheet {
-  padding: 16px 32px 40px;
+/* The sheet and the editor that lies over it while the text is edited are set
+   in exactly the same type, so that every letter of one is under the same
+   letter of the other. Kerning and ligatures are off for both, because the
+   sheet draws each letter on its own and the textarea draws a run of text. */
+#sheet, #sheet-editor {
   font-family: "Times New Roman", Times, serif;
   /* Zoom changes only this font size. The chords and the line gaps are in em,
      so they scale with it and stay over their letters. */
   font-size: calc(20px * var(--zoom, 1));
   line-height: 1.2;
   color: #000;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  font-feature-settings: "kern" 0, "liga" 0, "clig" 0;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-indent: 0;
+  tab-size: 8;
+}
+
+#sheet {
+  padding: 16px 32px 40px;
+}
+
+#sheet-wrap { position: relative; }
+
+/* Editing, on screen only. Every line keeps room for its chords, so a line does
+   not move when the first chord lands on it or the last one leaves, and the
+   textarea can use one even line height: the room for the chords (--edit-gap)
+   plus the line (1.2em). The first line is moved down by half the room, because
+   a textarea centres its letters in its line box and the sheet puts them at the
+   bottom of its own. --edit-gap is an even number of whole pixels, about 1.15em,
+   set by viewer.js with the zoom. With a whole-pixel half the browser rounds the
+   letters of the textarea and of the sheet to the same pixel row. With 1.15em
+   they differed by a pixel at some zoom levels. */
+@media screen {
+  #sheet-wrap.editing .line { margin-top: var(--edit-gap, 1.15em); }
+
+  #sheet-editor {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    margin: 0;
+    border: 0;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    padding: calc((16px + var(--edit-gap, 1.15em) / 2) * var(--boost, 1))
+      calc(32px * var(--boost, 1)) calc(40px * var(--boost, 1));
+    line-height: calc(1.2em + var(--edit-gap, 1.15em) * var(--boost, 1));
+    white-space: pre;
+    overflow-wrap: normal;
+    background: transparent;
+    /* The letters under it show through. Only the caret and the selection
+       are drawn by the textarea. */
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: #000;
+  }
+
+  /* iPhone Safari zooms the page when a text field under 16px gets focus. Below
+     80% zoom the sheet's font is under 16px, so the textarea is laid out with a
+     font of 16px (--boost, set by viewer.js, is the ratio that makes it 16px) and
+     every length of it multiplied by the same number, then scaled back down to
+     cover the sheet exactly. --boost is 1 and there is no transform at 80% and up. */
+  #sheet-wrap {
+    --boost: 1;
+  }
+
+  #sheet-editor {
+    font-size: max(16px, calc(20px * var(--zoom, 1) * var(--boost, 1)));
+  }
+
+  #sheet-wrap.boosted #sheet-editor {
+    transform: scale(calc(1 / var(--boost, 1)));
+    transform-origin: 0 0;
+  }
+
+  #sheet-editor::selection {
+    background: rgba(0, 122, 255, 0.3);
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+#edit-actions { gap: 6px; margin-left: 4px; }
+
+.tool-text {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d1d1d6;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 15px;
+  color: #1c1c1e;
+  cursor: pointer;
+}
+
+#edit-save {
+  background: #007aff;
+  border-color: #007aff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.tool-text:hover { filter: brightness(0.96); }
+
+.tool-text:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 1px;
 }
 
 .line {
@@ -224,6 +336,9 @@ main {
 .line.has-chords { margin-top: 1.15em; }
 
 .char { position: relative; }
+
+/* A tab is as wide as viewer.js (fitTabs) sets it, not 8 spaces. */
+.char.tab { flex: none; }
 
 .chord {
   position: absolute;
@@ -331,7 +446,7 @@ main {
   }
 
   #list-view, #back, .toolbar-actions, #persist-note, #toast, #menu, #notice,
-  #song-error {
+  #song-error, #sheet-editor {
     display: none !important;
   }
 

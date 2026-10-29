@@ -56,41 +56,86 @@
     }
   }
 
+  // The letters a reader sees: a base letter with its accents, an emoji with its
+  // skin tone or its joiners, a flag, are each one letter even though they are
+  // several code points. Chords are stored by code point, so each letter also
+  // says where it starts. Without Intl.Segmenter (old browsers) every code point
+  // is a letter, as before.
+  var segmenter = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+
+  // The letters of one line as strings. Joined, they are the line.
+  function letters(line) {
+    if (!segmenter) {
+      return Array.from(line);
+    }
+    var found = [];
+    var parts = segmenter.segment(line);
+    for (var part of parts) {
+      found.push(part.segment);
+    }
+    return found;
+  }
+
   function linesOf(text) {
     return text.split("\n").map(function (line) {
       return Array.from(line);
     });
   }
 
-  // Line and column of a letter. A line break, a negative number and a number
-  // past the end have no letter, so a chord stored there is not drawn.
-  function lineAndColumn(songChar, lines) {
-    if (songChar < 0) {
-      return null;
+  // Where each line starts, as a code point index in the song (lines are joined by
+  // one line break). Worked out once per song, so a chord finds its line by binary
+  // search instead of walking all the lines.
+  function lineStarts(lines) {
+    var starts = [];
+    var at = 0;
+    for (var i = 0; i < lines.length; i++) {
+      starts.push(at);
+      at += lines[i].length + 1;
     }
-    var start = 0;
-    for (var lineNum = 0; lineNum < lines.length; lineNum++) {
-      var end = start + lines[lineNum].length + 1;
-      if (songChar < end - 1) {
-        return [lineNum, songChar - start];
-      }
-      if (songChar === end - 1) {
-        return null;
-      }
-      start = end;
-    }
-    return null;
+    return starts;
   }
 
-  function lineHasChords(lineNum, chords, lines) {
-    for (var i = 0; i < chords.length; i++) {
-      var found = lineAndColumn(chords[i].characterNum, lines);
-      if (found && found[0] === lineNum) {
-        return true;
+  // Line and column of a letter. A line break, a negative number and a number
+  // past the end have no letter, so a chord stored there is not drawn.
+  function lineAndColumn(songChar, lines, starts) {
+    if (songChar < 0 || !lines.length) {
+      return null;
+    }
+    var low = 0;
+    var high = lines.length - 1;
+    while (low < high) {
+      var middle = (low + high + 1) >> 1;
+      if (starts[middle] <= songChar) {
+        low = middle;
+      } else {
+        high = middle - 1;
       }
     }
-    return false;
+    var column = songChar - starts[low];
+    return column < lines[low].length ? [low, column] : null;
   }
+
+  // For every line, the indexes of the chords that are drawn on it, in the order
+  // they are given (a chord on a line break or past the end is on no line).
+  function chordsByLine(chords, lines, starts) {
+    var byLine = lines.map(function () { return []; });
+    var found = [];
+    for (var i = 0; i < chords.length; i++) {
+      var at = lineAndColumn(chords[i].characterNum, lines, starts);
+      found.push(at);
+      if (at) {
+        byLine[at[0]].push(i);
+      }
+    }
+    return { byLine: byLine, found: found };
+  }
+
+  // The key detection below only looks at the roots and types of the chords, in
+  // order, and it is slow for a long song (it tries every place to split it). Typing
+  // moves chords but rarely changes that sequence, so the last answer is kept.
+  var lastRegions = { signature: null, groups: [] };
 
   // Unknown chords have no root, so they take no part in key detection.
   function regions(chords) {
@@ -99,20 +144,30 @@
     }).sort(function (a, b) {
       return a.characterNum - b.characterNum;
     });
-    var starts = SoftchordChords.detectRegionStartIndices(sorted);
-    var found = [];
-    for (var index = 0; index < starts.length; index++) {
-      var startIndex = starts[index];
-      var endIndex = index + 1 < starts.length ? starts[index + 1] : sorted.length;
-      var group = sorted.slice(startIndex, endIndex);
-      var detected = SoftchordChords.bestDetectedKey(group);
-      var prefer = detected ? detected.prefer : SoftchordChords.preferNeither;
-      found.push({
-        start: group.length ? group[0].characterNum : 0,
-        prefer: prefer,
-      });
+    var signature = sorted.map(function (chord) {
+      return chord.noteId + ":" + chord.chordTypeId;
+    }).join("|");
+    if (lastRegions.signature !== signature) {
+      var starts = SoftchordChords.detectRegionStartIndices(sorted);
+      var groups = [];
+      for (var index = 0; index < starts.length; index++) {
+        var startIndex = starts[index];
+        var endIndex = index + 1 < starts.length ? starts[index + 1] : sorted.length;
+        var group = sorted.slice(startIndex, endIndex);
+        var detected = SoftchordChords.bestDetectedKey(group);
+        groups.push({
+          first: group.length ? startIndex : -1,
+          prefer: detected ? detected.prefer : SoftchordChords.preferNeither,
+        });
+      }
+      lastRegions = { signature: signature, groups: groups };
     }
-    return found;
+    return lastRegions.groups.map(function (group) {
+      return {
+        start: group.first >= 0 ? sorted[group.first].characterNum : 0,
+        prefer: group.prefer,
+      };
+    });
   }
 
   function preferFor(charNum, regions) {
@@ -129,22 +184,21 @@
 
   function render(text, chords, includeChords) {
     var lines = linesOf(text);
+    var placed = chordsByLine(chords, lines, lineStarts(lines));
     var spelling = regions(chords);
     var song = "";
     for (var lineNum = 0; lineNum < lines.length; lineNum++) {
       var line = lines[lineNum];
-      if (includeChords && lineHasChords(lineNum, chords, lines)) {
+      var onLine = placed.byLine[lineNum];
+      if (includeChords && onLine.length) {
         var cells = [];
         for (var cell = 0; cell < line.length; cell++) {
           cells.push(" ");
         }
-        for (var i = 0; i < chords.length; i++) {
-          var found = lineAndColumn(chords[i].characterNum, lines);
-          if (!found || found[0] !== lineNum) {
-            continue;
-          }
-          var prefer = preferFor(chords[i].characterNum, spelling);
-          place(SoftchordChords.chordText(chords[i], prefer), cells, found[1]);
+        for (var i = 0; i < onLine.length; i++) {
+          var chord = chords[onLine[i]];
+          var prefer = preferFor(chord.characterNum, spelling);
+          place(SoftchordChords.chordText(chord, prefer), cells, placed.found[onLine[i]][1]);
         }
         song += rstrip(cells) + "\n";
       }
@@ -157,22 +211,56 @@
     return song.split("\n").join("\r\n");
   }
 
+  // For each code point of a line: the code point where its letter starts, and
+  // how many code points the letter has. Null when every letter is one code point.
+  function letterSpans(line) {
+    var parts = letters(line.join(""));
+    if (parts.length === line.length) {
+      return null;
+    }
+    var starts = [];
+    var lengths = [];
+    var at = 0;
+    for (var i = 0; i < parts.length; i++) {
+      var size = Array.from(parts[i]).length;
+      for (var k = 0; k < size; k++) {
+        starts.push(at);
+        lengths.push(size);
+      }
+      at += size;
+    }
+    return { starts: starts, lengths: lengths };
+  }
+
+  // The chords of every line, each with the column of its letter. A chord stored
+  // on an accent or on a joiner is drawn over the whole letter, so its anchor is
+  // where the letter starts, and span (only when more than 1) says how many code
+  // points the letter has.
   function sheet(text, chords) {
     var lines = linesOf(text);
+    var located = chordsByLine(chords, lines, lineStarts(lines));
     var spelling = regions(chords);
     return lines.map(function (line, lineNum) {
       var placed = [];
-      for (var i = 0; i < chords.length; i++) {
-        var found = lineAndColumn(chords[i].characterNum, lines);
-        if (!found || found[0] !== lineNum) {
-          continue;
+      var spans = null;
+      var onLine = located.byLine[lineNum];
+      if (onLine.length) {
+        spans = letterSpans(line);
+      }
+      for (var i = 0; i < onLine.length; i++) {
+        var chord = chords[onLine[i]];
+        var column = located.found[onLine[i]][1];
+        var prefer = preferFor(chord.characterNum, spelling);
+        var anchor = spans ? spans.starts[column] : column;
+        var entry = {
+          anchor: anchor,
+          text: SoftchordChords.chordText(chord, prefer),
+          unrecognized: !!chord.unknown,
+        };
+        if (spans && spans.lengths[column] > 1) {
+          entry.span = spans.lengths[column];
         }
-        var prefer = preferFor(chords[i].characterNum, spelling);
-        placed.push({
-          anchor: found[1],
-          text: SoftchordChords.chordText(chords[i], prefer),
-          unrecognized: !!chords[i].unknown,
-        });
+        placed.push(entry);
       }
       return { lyric: line.join(""), chords: placed };
     });
@@ -181,5 +269,6 @@
   return {
     render: render,
     sheet: sheet,
+    letters: letters,
   };
 });

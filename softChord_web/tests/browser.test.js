@@ -5,7 +5,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const helper = require("./browser_helper");
 
-const skip = helper.findChrome() ? false : "Chrome is not installed (set CHROME_BIN)";
+const skip = helper.skipUnlessBrowser();
 
 const LONG = "Lorem ipsum dolor sit amet ".repeat(8).trim();
 const SONGS = [

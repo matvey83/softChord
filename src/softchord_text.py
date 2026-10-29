@@ -71,6 +71,8 @@ def lyric_renumber_map(previous, text):
     A letter that was deleted or replaced has no entry, so the chord on it is
     dropped. The end is never allowed to reach into the start, so two old
     letters never map to one new letter (Hello -> Helo keeps one l).
+    A chord past the end of the text (or below zero) is in neither the start nor
+    the end, so the first edit drops it. One on a line break is kept.
 
     Mirror: softchord_text.swift SongLyricChords.renumberMap.
     """

@@ -94,7 +94,9 @@
       var raisedBaseline = normalBaseline - chordsHeight / 10;
       for (var k = 0; k < line.chords.length; k++) {
         var chord = line.chords[k];
-        if (chord.anchor < 0 || chord.anchor + 1 >= offsets.length) {
+        // A letter of several code points (an accent, an emoji) is one span wide.
+        var span = chord.span || 1;
+        if (chord.anchor < 0 || chord.anchor + span >= offsets.length) {
           continue;
         }
         var parts = Array.from(chord.text);
@@ -103,7 +105,7 @@
         });
         var total = widths.reduce(function (sum, w) { return sum + w; }, 0);
         var left = PADDING + offsets[chord.anchor];
-        var right = PADDING + offsets[chord.anchor + 1];
+        var right = PADDING + offsets[chord.anchor + span];
         var x = (left + right) / 2 - total / 2;
         minX = Math.min(minX, x);
         for (var p = 0; p < parts.length; p++) {
