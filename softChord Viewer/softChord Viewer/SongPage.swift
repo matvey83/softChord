@@ -104,11 +104,15 @@ struct SongPage: View {
         let storedText = shownText ?? source.text
         let storedChords = shownChords ?? source.chords
         let dirtyDraft = (editing || editingChords) && (draft != storedText || editChords != storedChords)
-        if dirtyDraft || (SongTranspose.changesChords(steps, in: storedChords) && shownText == nil && shownChords == nil) {
+        let transposed = SongTranspose.changesChords(steps, in: storedChords)
+        let kept = shownText != nil || shownChords != nil
+        if dirtyDraft || (transposed && !kept) {
             return "Changes do not persist"
         }
-        if shownText != nil || shownChords != nil {
-            return "Not written to the songbook"
+        if kept {
+            // The saved edit stays for this run. The transpose does not, so a
+            // song with both says so for each.
+            return transposed ? "Not written to the songbook. Transpose does not persist." : "Not written to the songbook"
         }
         return nil
     }
