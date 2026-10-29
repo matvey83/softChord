@@ -1,7 +1,8 @@
 // Song list and chord sheet.
 // The open song is kept in memory. Transpose draws a shifted copy and does
 // not write the songbook. Edit text changes the copy kept here (see the Edit
-// text section below) and does not write the songbook either.
+// text section below) and does not write the songbook either. Edit chords does
+// the same with the chords (see the Edit chords section).
 
 (function () {
   var listView = document.getElementById("list-view");
@@ -33,6 +34,9 @@
   var zoomResetButton = optional("zoom-reset");
   var zoomInButton = optional("zoom-in");
   var editButton = optional("edit-text");
+  var editChordsButton = optional("edit-chords");
+  var chordActions = optional("chord-actions");
+  var chordLive = optional("chord-live");
   var editActions = optional("edit-actions");
   var saveButton = optional("edit-save");
   var discardButton = optional("edit-discard");
@@ -64,10 +68,11 @@
   var zoomPercent = SongZoom.load(zoomStorage);
   var menuSongId = null;
   var toastTimer = null;
-  // Edit text. savedEdit is the text and chords the user kept with Save, for
-  // the open song only (the songbook is not written), and draft is the edit in
-  // progress. Both are thrown away when the page leaves the song. Chords in
-  // both are not transposed: they are shown shifted by steps, like the iPhone app.
+  // Edit text and Edit chords. savedEdit is the text and chords the user kept
+  // with Save, for the open song only (the songbook is not written), and draft is
+  // the edit in progress ({mode: "text" or "chords", ...}). Both are thrown away
+  // when the page leaves the song. Chords in both are not transposed: they are
+  // shown shifted by steps, like the iPhone app.
   var savedEdit = null;
   var draft = null;
   var composing = false;
@@ -271,7 +276,7 @@
     zoomInButton.disabled = zoomPercent >= SongZoom.MAX;
     zoomResetButton.disabled = SongZoom.isDefault(zoomPercent);
     fitTabs();
-    if (draft) {
+    if (draft && draft.mode === "text") {
       sizeEditor();
     }
   }
@@ -546,6 +551,9 @@
   function paintDraft(text, chords) {
     paintSheet(SongText.sheet(text, SongTranspose.shifted(chords, steps)));
     sizeEditor();
+    if (draft && draft.mode === "chords") {
+      chordMode.afterPaint();
+    }
   }
 
   // The textarea is as big as everything it holds, so it never scrolls itself.
@@ -567,25 +575,66 @@
     editor.style.height = Math.max(editor.scrollHeight, sheet.offsetHeight * boost) + "px";
   }
 
+  // ---- Edit chords ----
+  // The chords are selected, dragged, typed in and deleted on the sheet itself
+  // (softchord_chord_mode.js). The text is not edited, so there is no textarea:
+  // every step is a snapshot of the chords, kept in the draft like in Edit text.
+  var chordMode = SongChordMode.create({
+    sheet: sheet,
+    sheetWrap: sheetWrap,
+    sheetScroll: sheetScroll,
+    buttons: {
+      edit: optional("chord-edit"),
+      remove: optional("chord-delete"),
+      undo: optional("chord-undo"),
+      redo: optional("chord-redo"),
+    },
+    live: chordLive,
+    entry: {
+      root: document.getElementById("chord-entry"),
+      field: document.getElementById("chord-entry-field"),
+      note: document.getElementById("chord-entry-note"),
+      ok: document.getElementById("chord-entry-ok"),
+      cancel: document.getElementById("chord-entry-cancel"),
+    },
+    draft: function () { return draft && draft.mode === "chords" ? draft : null; },
+    steps: function () { return steps; },
+    repaint: function () { paintDraft(draft.text, draft.chords); },
+  });
+
   // These buttons need the song as it is on disk or in the viewer, so they wait
   // until Save or Discard. Zoom is not among them: the textarea is sized in em
   // from the same --zoom as the sheet, so it scales together with it.
-  function setEditingState(on) {
-    // The textarea holds the same words as the sheet under it, and has the label
-    // "Song text". A screen reader would read the song twice, so while editing
-    // only the textarea is left for it.
-    if (on) {
+  // mode is "text" or "chords" (only looked at when on is true).
+  function setEditingState(on, mode) {
+    var chords = on && mode === "chords";
+    // While the text is edited, the textarea holds the same words as the sheet
+    // under it, and has the label "Song text". A screen reader would read the
+    // song twice, so only the textarea is left for it. While chords are edited
+    // the sheet is what is used, so it stays, and can be reached with the Tab key.
+    if (on && !chords) {
       sheet.setAttribute("aria-hidden", "true");
     } else {
       sheet.removeAttribute("aria-hidden");
     }
+    if (chords) {
+      sheet.tabIndex = 0;
+      sheet.setAttribute("role", "application");
+      sheet.setAttribute("aria-label", "Song chords");
+    } else {
+      sheet.removeAttribute("tabindex");
+      sheet.removeAttribute("role");
+      sheet.removeAttribute("aria-label");
+    }
     [printButton, copyTextButton, copyChordsButton, copyImageButton, transposeDown,
-      transposeUp, transposeReset, editButton].forEach(function (button) {
+      transposeUp, transposeReset, editButton, editChordsButton].forEach(function (button) {
       button.disabled = on;
     });
     editActions.hidden = !on;
+    chordActions.hidden = !chords;
     sheetWrap.classList.toggle("editing", on);
-    editor.hidden = !on;
+    sheetWrap.classList.toggle("chord-mode", chords);
+    editor.hidden = !(on && !chords);
   }
 
   // The song line at the top of the song area, and how far its top edge is from
@@ -627,7 +676,9 @@
     return offset;
   }
 
-  function startEditing() {
+  // mode is "text" (the whole text of the song, in the textarea) or "chords"
+  // (the chords on the sheet, the text as it is).
+  function startEditing(mode) {
     if (draft || openId == null) {
       return;
     }
@@ -639,8 +690,12 @@
     }
     var normal = SongTextEdit.normalizeSong(source.text, source.chords);
     draft = {
+      mode: mode,
       text: normal.text,
       chords: normal.chords,
+      // What the edit started from: leaving with the draft different from this asks
+      // first (see draftChanged).
+      start: { text: normal.text, chords: cloneChords(normal.chords) },
       history: [{ text: normal.text, chords: cloneChords(normal.chords) }],
       index: 0,
     };
@@ -650,7 +705,14 @@
     // only after Save. Save, Discard and paintSong set the note again from what
     // is really kept.
     persistNote.hidden = false;
-    setEditingState(true);
+    setEditingState(true, mode);
+    if (mode === "chords") {
+      chordMode.enter();
+      paintDraft(draft.text, draft.chords);
+      scrollToLine(anchor);
+      sheet.focus({ preventScroll: true });
+      return;
+    }
     editor.value = draft.text;
     paintDraft(draft.text, draft.chords);
     editor.focus({ preventScroll: true });
@@ -667,6 +729,7 @@
     }
     draft = null;
     composing = false;
+    chordMode.leave();
     setEditingState(false);
     editor.value = "";
   }
@@ -696,12 +759,59 @@
     paintSong();
     scrollToLine(anchor);
     // The button that was clicked is gone from the screen, so the keyboard would
-    // otherwise be left on the page itself. Edit text is where the user was.
-    editButton.focus({ preventScroll: true });
+    // otherwise be left on the page itself. The button that began the edit is
+    // where the user was.
+    (kept.mode === "chords" ? editChordsButton : editButton).focus({ preventScroll: true });
     if (save && savedEdit) {
       showToast("Saved");
     }
   }
+
+  // True when the draft is not what the edit started from: leaving would lose
+  // something that nothing keeps.
+  function draftChanged() {
+    return !!draft && (draft.text !== draft.start.text || !sameChords(draft.chords, draft.start.chords));
+  }
+
+  var leaveDialog = document.getElementById("leave-confirm");
+  var leaveProceed = null;
+
+  // Runs proceed now, or, when there are edits that would be lost, after asking.
+  // Keep editing (also Escape) leaves everything as it is.
+  function askBeforeLeaving(proceed) {
+    if (!draftChanged()) {
+      proceed();
+      return;
+    }
+    if (typeof leaveDialog.showModal !== "function") {
+      if (window.confirm("Discard changes?\nYour changes are not kept anywhere and will be lost.")) {
+        proceed();
+      }
+      return;
+    }
+    leaveProceed = proceed;
+    if (!leaveDialog.open) {
+      leaveDialog.showModal();
+    }
+  }
+
+  document.getElementById("leave-confirm-keep").addEventListener("click", function () {
+    leaveProceed = null;
+    leaveDialog.close();
+  });
+
+  document.getElementById("leave-confirm-discard").addEventListener("click", function () {
+    var proceed = leaveProceed;
+    leaveProceed = null;
+    leaveDialog.close();
+    if (proceed) {
+      proceed();
+    }
+  });
+
+  leaveDialog.addEventListener("close", function () {
+    leaveProceed = null;
+  });
 
   function forgetEdits() {
     savedEdit = null;
@@ -722,7 +832,7 @@
   // The text the textarea holds now has become the draft's text.
   function commitEdit(inputType) {
     var text = editor.value;
-    if (!draft || text === draft.text) {
+    if (!draft || draft.mode !== "text" || text === draft.text) {
       return;
     }
     var chords = null;
@@ -746,7 +856,7 @@
   }
 
   editor.addEventListener("input", function (event) {
-    if (!draft) {
+    if (!draft || draft.mode !== "text") {
       return;
     }
     if (composing || event.isComposing) {
@@ -768,11 +878,12 @@
     commitEdit("insertCompositionText");
   });
 
-  editButton.addEventListener("click", startEditing);
+  editButton.addEventListener("click", function () { startEditing("text"); });
+  editChordsButton.addEventListener("click", function () { startEditing("chords"); });
   saveButton.addEventListener("click", function () { finishEditing(true); });
   discardButton.addEventListener("click", function () { finishEditing(false); });
   window.addEventListener("resize", function () {
-    if (draft) {
+    if (draft && draft.mode === "text") {
       sizeEditor();
     }
   });
@@ -784,6 +895,17 @@
 
   function showFromHash() {
     var id = songIdFromHash();
+    if (draftChanged() && id !== openId) {
+      // The address already changed (the browser's Back or Forward, or a typed
+      // address), so put it back, and go there only if the edits are discarded.
+      var wanted = location.hash;
+      history.replaceState(null, "", location.pathname + location.search + "#/song/" + openId);
+      askBeforeLeaving(function () {
+        leaveEditing();
+        location.hash = wanted;
+      });
+      return;
+    }
     menu.hidden = true;
     if (id == null) {
       openId = null;
@@ -872,7 +994,10 @@
   });
 
   document.getElementById("back").addEventListener("click", function () {
-    location.hash = "#/";
+    askBeforeLeaving(function () {
+      leaveEditing();
+      location.hash = "#/";
+    });
   });
 
   copyTextButton.addEventListener("click", function () {

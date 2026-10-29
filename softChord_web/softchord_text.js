@@ -133,9 +133,13 @@
   }
 
   // The key detection below only looks at the roots and types of the chords, in
-  // order, and it is slow for a long song (it tries every place to split it). Typing
-  // moves chords but rarely changes that sequence, so the last answer is kept.
-  var lastRegions = { signature: null, groups: [] };
+  // order, and it is slow for a long song (it tries every place to split it: about
+  // 100 ms for 600 chords). Typing moves chords but rarely changes that sequence,
+  // and a chord dragged along a line changes it only when it passes another chord,
+  // and goes back to an order it had a moment ago when it is dragged back. So the
+  // last few answers are kept, the oldest dropped first.
+  var REGION_CACHE_SIZE = 32;
+  var regionCache = new Map();
 
   // Unknown chords have no root, so they take no part in key detection.
   function regions(chords) {
@@ -147,9 +151,13 @@
     var signature = sorted.map(function (chord) {
       return chord.noteId + ":" + chord.chordTypeId;
     }).join("|");
-    if (lastRegions.signature !== signature) {
+    var groups = regionCache.get(signature);
+    if (groups) {
+      // Used just now, so it goes to the back of the line to be dropped.
+      regionCache.delete(signature);
+    } else {
       var starts = SoftchordChords.detectRegionStartIndices(sorted);
-      var groups = [];
+      groups = [];
       for (var index = 0; index < starts.length; index++) {
         var startIndex = starts[index];
         var endIndex = index + 1 < starts.length ? starts[index + 1] : sorted.length;
@@ -160,9 +168,12 @@
           prefer: detected ? detected.prefer : SoftchordChords.preferNeither,
         });
       }
-      lastRegions = { signature: signature, groups: groups };
+      if (regionCache.size >= REGION_CACHE_SIZE) {
+        regionCache.delete(regionCache.keys().next().value);
+      }
     }
-    return lastRegions.groups.map(function (group) {
+    regionCache.set(signature, groups);
+    return groups.map(function (group) {
       return {
         start: group.first >= 0 ? sorted[group.first].characterNum : 0,
         prefer: group.prefer,

@@ -2,7 +2,7 @@
 
 A cross-platform editor for songs with chords. Chords are attached to individual letters in the lyrics (not lined up with spaces), so they stay in place as you edit. Songs are stored together in a songbook file.
 
-**Web viewer:** [open the songbook on any phone or computer](https://matvey83.github.io/softChord/softChord_web/) (hosted with GitHub Pages). The songbook is read-only there; the song text can be edited with *Edit text* (best on a large screen), but changes are lost when the page is left (see [docs/lyric_editing.md](docs/lyric_editing.md)).
+**Web viewer:** [open the songbook on any phone or computer](https://matvey83.github.io/softChord/softChord_web/) (hosted with GitHub Pages). The songbook is read-only there; the song text can be edited with *Edit text* (best on a large screen) and the chords with *Edit chords* ([docs/chord_editing.md](docs/chord_editing.md)), but changes are lost when the page is left (see [docs/lyric_editing.md](docs/lyric_editing.md)).
 
 ![softChord editing a song with chords](docs/screenshot.jpg)
 
@@ -111,7 +111,7 @@ cd softChord_web
 node --test
 ```
 
-The tests of the Edit text mode and the layout drive the real page in headless Chrome. Chrome is found in the usual places, or set `CHROME_BIN` to its path. Without Chrome those tests are **skipped, not passed**: the run prints a `WARNING ... did NOT run` message and reports them as skipped. To make a missing Chrome a failure (for a CI that must test the browser), run with `SOFTCHORD_REQUIRE_BROWSER=1 node --test`.
+The tests of the Edit text and Edit chords modes and the layout drive the real page in headless Chrome. Chrome is found in the usual places, or set `CHROME_BIN` to its path. Without Chrome those tests are **skipped, not passed**: the run prints a `WARNING ... did NOT run` message and reports them as skipped. To make a missing Chrome a failure (for a CI that must test the browser), run with `SOFTCHORD_REQUIRE_BROWSER=1 node --test`.
 
 ### Regenerating UI modules
 
