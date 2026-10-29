@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Start a desktop release:  tools/release.sh 1.2
+# Staple DMGs whose notarization finished after the build:
+#                            tools/release.sh --staple 1.2
+#   (uses the notarytool keychain profile in NOTARY_PROFILE, default softchord-notary)
 #
 # 1. Checks: on master, in sync with origin, no uncommitted changes in the
 #    files the build uses, gh logged in, docs/release_notes/vVERSION.md exists,
@@ -13,6 +16,12 @@
 #
 # Other local changes (Xcode project, songbooks, logs) are left alone.
 set -euo pipefail
+
+if [ "${1:-}" = "--staple" ]; then
+  V="${2:?usage: tools/release.sh --staple VERSION}"
+  cd "$(git rev-parse --show-toplevel)"
+  NOTARY_PROFILE="${NOTARY_PROFILE:-softchord-notary}" exec packaging/macos/staple_release.sh "v${V#v}"
+fi
 
 VER="${1:?usage: tools/release.sh VERSION   (for example 1.2)}"
 VER="${VER#v}"
@@ -65,6 +74,9 @@ echo
 sleep 5
 RUN="$(gh run list --workflow build.yml --event push --branch "$TAG" -L1 --json databaseId -q '.[0].databaseId' || true)"
 echo "Started. Watch the build:  gh run watch ${RUN:-<run id from gh run list --workflow build.yml>}"
+echo "If a DMG is still waiting for Apple when the build ends, it is attached signed with a"
+echo ".notarization-pending marker; later run: tools/release.sh --staple $VER"
+echo "  (or Actions -> Staple -> Run workflow with tag $TAG)"
 echo "If only notarization fails (401 = wrong Apple ID or app-specific password):"
 echo "  tools/setup_mac_signing_secrets.sh --notary-only && gh run rerun --failed ${RUN:-<run id>}"
 echo "Then check the assets and publish: gh release edit $TAG --draft=false   (or on github.com)"

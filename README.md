@@ -186,4 +186,6 @@ pyinstaller --noconfirm --clean softchord.spec
 2. Run `tools/release.sh <version>` (for example `tools/release.sh 1.2`). It checks that master matches GitHub and the build files are committed, sets the version in `src/softchord_version.py` and commits it, pushes master, creates the draft release with the notes and pushes the tag. The tag starts the build, which attaches the files to the draft.
 3. When the run is green, check the assets and publish the draft on GitHub.
 
+The Mac jobs wait up to 10 minutes for Apple. If notarization is still running then (a first submission can take hours), the signed DMG is attached anyway with a `NAME.dmg.notarization-pending` file holding the submission ID, and the build only warns. Once Apple accepts it, run **Actions → Staple → Run workflow** with the tag, or `tools/release.sh --staple <version>` on a Mac with the `softchord-notary` notarytool profile. It staples the DMG, re-uploads it and removes the pending file. Publish after that.
+
 Do not commit `build/` or `dist/` (they are gitignored).

@@ -3,7 +3,9 @@ name: Build
 # A v* tag push builds, creates the draft release if it is missing, and attaches
 # the assets. Run workflow with an empty release_tag only builds (artifacts on
 # the run page). The version is __version__ in src/softchord_version.py; a tag
-# must be v<that version>.
+# must be v<that version>. If Apple is still notarizing a DMG after about 10
+# minutes, the signed DMG is attached with NAME.dmg.notarization-pending next
+# to it; run the Staple workflow later to staple it.
 
 on:
   workflow_dispatch:
@@ -130,6 +132,7 @@ jobs:
             dist/softChord-${{ env.VER }}-*.dmg
             dist/softChord-${{ env.VER }}-*.zip
             dist/softChord-${{ env.VER }}-*.exe
+            dist/softChord-${{ env.VER }}-*.notarization-pending
           if-no-files-found: error
 
       - name: Attach to release
@@ -139,5 +142,11 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          files=(dist/softChord-"$VER"-*.dmg dist/softChord-"$VER"-*.zip dist/softChord-"$VER"-*.exe)
+          files=(dist/softChord-"$VER"-*.dmg dist/softChord-"$VER"-*.zip dist/softChord-"$VER"-*.exe
+                 dist/softChord-"$VER"-*.notarization-pending)
           gh release upload "$TAG" "${files[@]}" --clobber
+          # A rebuild that stapled in time drops the pending marker of an earlier run.
+          if [ "$RUNNER_OS" = macOS ]; then
+            p="softChord-$VER-macos-${{ matrix.arch }}.dmg.notarization-pending"
+            [ -f "dist/$p" ] || gh release delete-asset "$TAG" "$p" -y 2>/dev/null || true
+          fi
