@@ -1128,6 +1128,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         # Allows the user to show only songs that match this text:
         self.filter_string = ""
+        # True while the song list selection is put back by code. The open
+        # song does not change then.
+        self._holding_song_selection = False
 
         self.songs_model = SongsTableModel(self)
         self.songs_proxy_model = SongsProxyModel(self)
@@ -1324,30 +1327,60 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.win.raise_()
 
     def songFilterEdited(self, new_text):
+        """Show only the songs that match the filter text.
 
+        Showing and hiding rows does not change which song is open. The
+        selection is put back while the selection callback is held off, so
+        the open song is not saved, closed and read again. (That dropped its
+        undo steps, the Reset transpose count, and the scroll position.) A
+        song the filter hides stays open, and is selected again when the
+        filter shows it.
+        """
+        selected_ids = self.getSelectedSongIds()
+        if not selected_ids and self.current_song is not None:
+            selected_ids = [self.current_song.id]
+
+        self._holding_song_selection = True
+        try:
+            self.ui.songs_view.selectionModel().clear()
+
+            self.songs_model.layoutAboutToBeChanged.emit()
+            self.filter_string = new_text
+            self.songs_model.layoutChanged.emit()  # Forces the view to redraw
+
+            self._selectSongIds(selected_ids)
+        finally:
+            self._holding_song_selection = False
+
+        visible = self.getSelectedSongIds()
+        song = self.current_song
+        keeps_open_song = song is not None and visible in ([], [song.id])
+        if not keeps_open_song and (song is not None or len(visible) == 1):
+            # Several songs were selected and one is left: open it.
+            self.songsSelectionChangedCallback()
+        else:
+            self.updateStates()
+
+    def _selectSongIds(self, song_ids):
+        """Select the rows of these songs that the filter shows."""
         selection_model = self.ui.songs_view.selectionModel()
-
-        # Save the selection:
-        selected_source_rows = []
-        for index in selection_model.selectedRows():
-            index = self.songs_proxy_model.mapToSource(index)
-            selected_source_rows.append(index.row())
-
-        self.ui.songs_view.selectionModel().clear()
-
-        self.songs_model.layoutAboutToBeChanged.emit()
-
-        self.filter_string = new_text
-
-        self.songs_model.layoutChanged.emit()  # Forces the view to redraw
-
-        # FIXME re-select the subset of selected rows that is still visible
-        for row in selected_source_rows:
-            source_index = self.songs_model.index(row, 0)
+        ids = self.songs_model.getAllSongIds()
+        first = None
+        for song_id in song_ids:
+            if song_id not in ids:
+                continue
+            source_index = self.songs_model.index(ids.index(song_id), 0)
             proxy_index = self.songs_proxy_model.mapFromSource(source_index)
+            if not proxy_index.isValid():
+                continue
+            if first is None:
+                first = proxy_index
             selection_model.select(
                 proxy_index, QtCore.QItemSelectionModel.SelectionFlag.Select |
                 QtCore.QItemSelectionModel.SelectionFlag.Rows)
+        if first is not None:
+            selection_model.setCurrentIndex(
+                first, QtCore.QItemSelectionModel.SelectionFlag.NoUpdate)
 
     def clearFilterClicked(self):
         self.ui.song_filter_ef.setText("")
@@ -1835,6 +1868,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         Called when the song selection changes.
         """
+        if self._holding_song_selection:
+            return
 
         # Commit any changes in the current song:
         if self.store.is_open:
