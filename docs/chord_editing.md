@@ -1,6 +1,6 @@
 # Web: Edit chords
 
-The button next to the pencil (title "Edit song chords") opens the chord editor of
+The button next to the pencil (title "Edit Chords…") opens the chord editor of
 the web viewer. It is a second editing mode beside Edit text: only one of them is
 open at a time, and the other one's button is disabled until Save or Discard.
 
@@ -10,7 +10,9 @@ song's chords (Viewer, Copy and Print use them afterwards), **Discard** throws i
 away. The songbook is never written. While the mode is open Print, the Copy buttons,
 Transpose down/up, Reset transpose and Edit text are disabled, so the key cannot
 change under the draft (a song opened at +2 is edited at +2; chords are stored
-untransposed, as in [lyric_editing.md](lyric_editing.md)).
+untransposed, as in [lyric_editing.md](lyric_editing.md)). A transpose made
+before the mode opened is part of the edit: Save keeps it, Discard puts it back (a
+transpose while viewing shows Save and Discard as well, see lyric_editing.md).
 
 ## Mouse and touch
 

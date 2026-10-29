@@ -81,10 +81,10 @@
         </div>
         <span class="tool-sep" aria-hidden="true"></span>
         <div class="tool-group" role="group" aria-label="Edit">
-          <button id="edit-text" class="tool" type="button" title="Edit song text" aria-label="Edit song text">
+          <button id="edit-text" class="tool" type="button" title="Edit Text…" aria-label="Edit Text…">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 20l1-4.2L16.6 4.2a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.3l3.2 3.2"/></svg>
           </button>
-          <button id="edit-chords" class="tool" type="button" title="Edit song chords" aria-label="Edit song chords">
+          <button id="edit-chords" class="tool" type="button" title="Edit Chords…" aria-label="Edit Chords…">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="7" cy="17.5" r="2.7"/><path d="M9.7 17.5V4.5l6.3 1.7"/><path d="M13 20.5l.7-3 5.6-5.6a1.5 1.5 0 0 1 2.1 2.1L15.8 19.6z"/></svg>
           </button>
         </div>
@@ -103,8 +103,8 @@
           </button>
         </div>
         <div id="edit-actions" class="tool-group" role="group" aria-label="Finish editing" hidden>
-          <button id="edit-save" class="tool-text" type="button" title="Keep the edited text for now" aria-label="Save">Save</button>
-          <button id="edit-discard" class="tool-text" type="button" title="Throw the edits away" aria-label="Discard">Discard</button>
+          <button id="edit-discard" class="tool-text" type="button" title="Throw the changes away" aria-label="Discard">Discard</button>
+          <button id="edit-save" class="tool-text" type="button" title="Keep the changes for now" aria-label="Save">Save</button>
         </div>
       </div>
     </header>
@@ -145,8 +145,9 @@
     <form method="dialog"><button type="submit">OK</button></form>
   </dialog>
 
-  <!-- Leaving Edit text or Edit chords (Back, another song) with edits that nothing
-       keeps asks first. Keep editing is the default. -->
+  <!-- Leaving Edit text or Edit chords (Back, another song), or a transpose that
+       was not saved, with changes that nothing keeps asks first. Keep editing is
+       the default. -->
   <dialog id="leave-confirm" aria-labelledby="leave-confirm-title">
     <h2 id="leave-confirm-title">Discard changes?</h2>
     <p>Your changes are not kept anywhere and will be lost.</p>

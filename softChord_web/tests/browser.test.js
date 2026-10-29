@@ -47,8 +47,16 @@ test("Escape closes the notice dialog and keeps the song open", { skip: skip }, 
     assert.equal(await page.eval("location.hash"), "#/song/1");
     assert.equal(await page.eval("document.getElementById('song-view').hidden"), false);
     assert.equal(await state(page, "transpose-reset"), false);
-    // A second Escape, with no dialog, leaves the song.
+    // A second Escape, with no dialog, would leave the song: the transpose was
+    // not saved, so it asks first. Escape there keeps the song.
     await page.pressKey("Escape");
+    assert.equal(await page.eval("document.getElementById('leave-confirm').open"), true);
+    await page.pressKey("Escape");
+    assert.equal(await page.eval("document.getElementById('leave-confirm').open"), false);
+    assert.equal(await page.eval("location.hash"), "#/song/1");
+    // Discard there leaves.
+    await page.pressKey("Escape");
+    await click(page, "leave-confirm-discard");
     await page.waitFor("document.getElementById('song-view').hidden", "leaving the song");
     assert.equal(await page.eval("location.hash"), "#/");
   });
@@ -83,8 +91,68 @@ test("Reset transpose and the notice follow the steps, a whole octave counts as 
     // Another song starts from its own opened key.
     await click(page, "transpose-up");
     await page.eval("location.hash = '#/'");
+    await click(page, "leave-confirm-discard");
     await openSong(page, 2);
     assert.equal(await state(page, "transpose-reset"), true);
+  });
+});
+
+test("a transpose is a change to Save or Discard, unless it is back at the key", { skip: skip }, function () {
+  return inSong("transpose-save", SONGS, async function (page) {
+    await openSong(page, 1);
+    var actionsHidden = "document.getElementById('edit-actions').hidden";
+    var sheet = "document.getElementById('sheet').textContent";
+    var opened = await page.eval(sheet);
+    assert.equal(await page.eval(actionsHidden), true);
+    await click(page, "transpose-up");
+    assert.equal(await page.eval(actionsHidden), false);
+    // Back at the key, or a whole octave away, is no change.
+    await click(page, "transpose-down");
+    assert.equal(await page.eval(actionsHidden), true);
+    for (var i = 0; i < 12; i++) { await click(page, "transpose-up"); }
+    assert.equal(await page.eval(actionsHidden), true);
+    await click(page, "transpose-reset");
+    // Discard goes back to the key.
+    await click(page, "transpose-up");
+    await click(page, "transpose-up");
+    var up2 = await page.eval(sheet);
+    await click(page, "edit-discard");
+    assert.equal(await page.eval(sheet), opened);
+    assert.equal(await page.eval(actionsHidden), true);
+    // Save keeps it: the buttons go, the notice stays, and leaving does not ask.
+    await click(page, "transpose-up");
+    await click(page, "transpose-up");
+    await click(page, "edit-save");
+    assert.equal(await page.eval(sheet), up2);
+    assert.equal(await page.eval(actionsHidden), true);
+    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false);
+    // From the saved key, Reset is a change again.
+    await click(page, "transpose-reset");
+    assert.equal(await page.eval(sheet), opened);
+    assert.equal(await page.eval(actionsHidden), false);
+    await click(page, "edit-discard");
+    assert.equal(await page.eval(sheet), up2);
+    await click(page, "back");
+    await page.waitFor("document.getElementById('song-view').hidden", "leaving the song");
+    assert.equal(await page.eval("document.getElementById('leave-confirm').open"), false);
+  });
+});
+
+test("an edit started after a transpose saves or discards the transpose with it", { skip: skip }, function () {
+  return inSong("transpose-edit", SONGS, async function (page) {
+    await openSong(page, 1);
+    var sheet = "document.getElementById('sheet').textContent";
+    var opened = await page.eval(sheet);
+    await click(page, "transpose-up");
+    var up = await page.eval(sheet);
+    await click(page, "edit-text");
+    await click(page, "edit-discard");
+    assert.equal(await page.eval(sheet), opened);
+    await click(page, "transpose-up");
+    await click(page, "edit-chords");
+    await click(page, "edit-save");
+    assert.equal(await page.eval(sheet), up);
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
   });
 });
 

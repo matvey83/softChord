@@ -33,8 +33,8 @@ const {
 
 test("the Edit text button opens the editor over the sheet and locks what must wait", { skip: skip }, function () {
   return inEditor([HELLO], async function (page) {
-    assert.equal(await page.eval("document.getElementById('edit-text').title"), "Edit song text");
-    assert.equal(await page.eval("document.getElementById('edit-text').getAttribute('aria-label')"), "Edit song text");
+    assert.equal(await page.eval("document.getElementById('edit-text').title"), "Edit Text…");
+    assert.equal(await page.eval("document.getElementById('edit-text').getAttribute('aria-label')"), "Edit Text…");
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
     assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
     await startEditing(page);
@@ -51,6 +51,8 @@ test("the Edit text button opens the editor over the sheet and locks what must w
     }
     assert.equal(await page.eval("document.getElementById('edit-save').textContent"), "Save");
     assert.equal(await page.eval("document.getElementById('edit-discard').textContent"), "Discard");
+    // Discard comes first, then Save, as in the desktop and iPhone apps.
+    assert.equal(await page.eval("document.getElementById('edit-discard').nextElementSibling.id"), "edit-save");
     // Spelling help, and a visible caret.
     assert.equal(await page.eval("document.getElementById('sheet-editor').spellcheck"), false);
     assert.equal(await page.eval("document.getElementById('sheet-editor').wrap"), "off");

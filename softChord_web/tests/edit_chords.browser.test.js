@@ -23,8 +23,8 @@ async function startChords(page) {
 
 test("the Edit chords button opens the mode next to the pencil and locks what must wait", { skip: skip }, function () {
   return inEditor([HELLO], async function (page) {
-    assert.equal(await page.eval("document.getElementById('edit-chords').title"), "Edit song chords");
-    assert.equal(await page.eval("document.getElementById('edit-chords').getAttribute('aria-label')"), "Edit song chords");
+    assert.equal(await page.eval("document.getElementById('edit-chords').title"), "Edit Chords…");
+    assert.equal(await page.eval("document.getElementById('edit-chords').getAttribute('aria-label')"), "Edit Chords…");
     assert.equal(await page.eval("document.getElementById('edit-chords').previousElementSibling.id"), "edit-text");
     assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), true);
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
