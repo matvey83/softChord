@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Hardened runtime exceptions for a PyInstaller + PyQt6 app.
+	     Python's ctypes (libffi) writes code into memory it then runs. -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<!-- The bundled Python extension modules and Qt plugins are loaded with
+	     dlopen. They are all signed with our identity, but PyInstaller's
+	     bootloader and Qt both fail closed without this on some macOS versions. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

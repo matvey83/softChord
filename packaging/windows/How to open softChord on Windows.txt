@@ -1,0 +1,21 @@
+How to open softChord on Windows
+================================
+
+1. Put softChord.exe where you want to keep it, for example in a softChord
+   folder in Documents or in C:\Users\<you>\AppData\Local\Programs\softChord.
+   It is one file and needs no installer or admin rights. Keep it there:
+   double-clicking a .songbook file opens it with this copy of softChord.exe.
+
+2. Double-click softChord.exe.
+
+3. softChord is not signed with a Windows code signing certificate, so the first
+   time Windows shows "Windows protected your PC" (Microsoft Defender SmartScreen).
+   Click "More info", then "Run anyway". Windows remembers this for this file.
+
+   If the file was blocked after downloading: right-click softChord.exe,
+   choose Properties, tick "Unblock" at the bottom of the General tab, then OK.
+
+4. Open a songbook with File > Open Songbook..., or double-click a .songbook file.
+
+To update, replace softChord.exe with the new one in the same place.
+Releases: https://github.com/matvey83/softChord/releases

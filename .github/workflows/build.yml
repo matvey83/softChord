@@ -1,10 +1,15 @@
 name: Build
 
+# A v* tag push builds, creates the draft release if it is missing, and attaches
+# the assets. Run workflow with an empty release_tag only builds (artifacts on
+# the run page). The version is __version__ in src/softchord_version.py; a tag
+# must be v<that version>.
+
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to upload builds to (e.g. v1.0.0). Leave empty to skip upload.
+        description: Release tag to upload builds to (e.g. v1.1). Leave empty to skip upload.
         required: false
         type: string
         default: ""
@@ -16,45 +21,80 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ver.outputs.tag }}
+      ver: ${{ steps.ver.outputs.ver }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version and tag
+        id: ver
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          VER="$(python3 build_softChord.py --version)"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="$INPUT_TAG"
+          fi
+          if [ -n "$TAG" ] && [ "$TAG" != "v$VER" ]; then
+            echo "::error::Tag $TAG does not match src/softchord_version.py ($VER). Expected v$VER."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "Version $VER, tag '${TAG:-none}'"
+
+      - name: Create the draft release if missing
+        if: steps.ver.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          VER: ${{ steps.ver.outputs.ver }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists"
+            exit 0
+          fi
+          NOTES="docs/release_notes/$TAG.md"
+          if [ -f "$NOTES" ]; then
+            gh release create "$TAG" --draft --verify-tag --title "softChord $VER" --notes-file "$NOTES"
+          else
+            echo "::warning::$NOTES not found; using generated notes"
+            gh release create "$TAG" --draft --verify-tag --title "softChord $VER" --generate-notes
+          fi
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-14
             id: macos-arm64
-            artifact: macos-arm64
+            arch: arm64
           - os: macos-15-intel
             id: macos-x86_64
-            artifact: macos-x86_64
+            arch: x86_64
           - os: windows-latest
             id: windows
-            artifact: windows
+            arch: x64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
+    env:
+      VER: ${{ needs.prepare.outputs.ver }}
+      TAG: ${{ needs.prepare.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Set version
-        id: ver
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${{ github.ref_name }}"
-          else
-            TAG="${{ github.event.inputs.release_tag }}"
-          fi
-          if [ -z "$TAG" ]; then
-            VER="dev"
-          else
-            VER="${TAG#v}"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "ver=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Build
         run: python build_softChord.py
@@ -63,28 +103,41 @@ jobs:
         if: runner.os == 'macOS'
         run: file dist/softChord.app/Contents/MacOS/softChord
 
-      - name: Package macOS zip
+      - name: Sign, package DMG and notarize (macOS)
         if: runner.os == 'macOS'
-        run: ditto -c -k --keepParent dist/softChord.app "dist/softChord-${{ steps.ver.outputs.ver }}-${{ matrix.artifact }}.zip"
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: packaging/macos/sign_and_package.sh "$VER" "${{ matrix.arch }}"
 
-      - name: Rename Windows exe
+      - name: Package Windows zip and exe
         if: runner.os == 'Windows'
         shell: bash
-        run: mv dist/softChord.exe "dist/softChord-${{ steps.ver.outputs.ver }}-windows.exe"
+        run: |
+          cp "packaging/windows/How to open softChord on Windows.txt" dist/
+          (cd dist && python -m zipfile -c "softChord-$VER-windows.zip" softChord.exe "How to open softChord on Windows.txt")
+          python -m zipfile -l "dist/softChord-$VER-windows.zip"
+          mv dist/softChord.exe "dist/softChord-$VER-windows.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: softChord-${{ matrix.id }}
-          path: dist/softChord-${{ steps.ver.outputs.ver }}-*
+          path: |
+            dist/softChord-${{ env.VER }}-*.dmg
+            dist/softChord-${{ env.VER }}-*.zip
+            dist/softChord-${{ env.VER }}-*.exe
           if-no-files-found: error
 
       - name: Attach to release
-        if: steps.ver.outputs.tag != ''
+        if: env.TAG != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           shopt -s nullglob
-          files=(dist/softChord-${{ steps.ver.outputs.ver }}-*)
-          gh release upload "${{ steps.ver.outputs.tag }}" "${files[@]}" --clobber
+          files=(dist/softChord-"$VER"-*.dmg dist/softChord-"$VER"-*.zip dist/softChord-"$VER"-*.exe)
+          gh release upload "$TAG" "${files[@]}" --clobber
