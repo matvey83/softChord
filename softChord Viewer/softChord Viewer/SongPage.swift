@@ -2053,20 +2053,14 @@ private final class SongChordZoomView: SongZoomScrollView {
               let target = sheetDrawing.nearestLetter(at: songPoint(contentPoint)) else {
             return
         }
-        let previous = fingerLetter ?? from
-        guard target != previous else {
+        guard let step = SongLyricChords.draggedChord(
+            chords, in: text, chordAt: from, finger: fingerLetter ?? from, target: target) else {
             return
         }
-        fingerLetter = target
-        let occupied = Set(chords.map(\.characterNum)).subtracting([from])
-        let direction = SongLyricChords.dragDirection(in: text, chord: from, previous: previous, target: target)
-        guard let to = SongLyricChords.nextFreeCharacter(
-            in: text, target: target, direction: direction, occupied: occupied, allowOtherDirection: true),
-              to != from else {
-            return
-        }
-        let next = SongLyricChords.reattached(chords, from: from, to: to)
-        guard next != chords else {
+        fingerLetter = step.finger
+        let to = step.chordAt
+        let next = step.chords
+        guard to != from else {
             return
         }
         chords = next
