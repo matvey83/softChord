@@ -151,6 +151,7 @@
     }
 
     // Undo, Redo, and the buttons that need a selected letter or chord.
+    // MIRRORED UI: the iOS toolbar (planned SongToolbar.swift) enables them the same way.
     function updateButtons() {
       var d = host.draft();
       buttons.undo.disabled = !d || d.index <= 0;

@@ -27,6 +27,11 @@
   var transposeUp = optional("transpose-up");
   var transposeReset = optional("transpose-reset");
   var toolbarActions = document.querySelector(".toolbar-actions") || document.createElement("div");
+  // MIRRORED UI: the iOS app mirrors these toolbar buttons (planned in
+  // softChord Viewer/softChord Viewer/SongToolbar.swift), and the desktop editor
+  // will later. A change to a button, its order, icon or when it shows or is
+  // dimmed (applyZoom, paintSong, setEditing, chord mode's updateButtons) is
+  // made in both apps.
   var copyTextButton = optional("copy-text");
   var copyChordsButton = optional("copy-chords");
   var copyImageButton = optional("copy-image");
@@ -696,6 +701,7 @@
       sheet.removeAttribute("role");
       sheet.removeAttribute("aria-label");
     }
+    // MIRRORED UI: the iOS toolbar dims and shows the same buttons while editing.
     [printButton, copyTextButton, copyChordsButton, copyImageButton, transposeDown,
       transposeUp, transposeReset, editButton, editChordsButton].forEach(function (button) {
       button.disabled = on;
@@ -892,12 +898,16 @@
       return;
     }
     if (typeof leaveDialog.showModal !== "function") {
-      if (window.confirm("Discard changes?\nYour changes are not kept anywhere and will be lost.")) {
+      if (window.confirm("Discard changes?\nYour changes will be lost if you don\u2019t save them.")) {
         proceed();
       }
       return;
     }
     leaveProceed = proceed;
+    var title = songTitle.textContent;
+    document.getElementById("leave-confirm-title").textContent = title
+      ? "Do you want to save the changes you made to \u201c" + title + "\u201d?"
+      : "Do you want to save the changes you made?";
     if (!leaveDialog.open) {
       leaveDialog.showModal();
     }
@@ -906,6 +916,18 @@
   document.getElementById("leave-confirm-keep").addEventListener("click", function () {
     leaveProceed = null;
     leaveDialog.close();
+  });
+
+  // Save keeps the edit and the transpose for this run (as the toolbar's Save
+  // does), then leaves.
+  document.getElementById("leave-confirm-save").addEventListener("click", function () {
+    var proceed = leaveProceed;
+    leaveProceed = null;
+    leaveDialog.close();
+    finish(true);
+    if (proceed) {
+      proceed();
+    }
   });
 
   document.getElementById("leave-confirm-discard").addEventListener("click", function () {

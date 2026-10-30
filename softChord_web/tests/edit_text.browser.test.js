@@ -252,8 +252,10 @@ test("Escape does not leave the song while editing, and Back and other songs ask
     // Back asks. Keep editing leaves everything as it was.
     await click(page, "back");
     assert.equal(await page.eval(asking), true, "Back asks before it drops an edit");
-    assert.equal(await page.eval("document.getElementById('leave-confirm-title').textContent"), "Discard changes?");
-    assert.equal(await page.eval("document.activeElement.id"), "leave-confirm-keep", "Keep editing is the default");
+    // MIRRORED UI: Save / Don't Save / Cancel, as in the desktop editor and the iOS app.
+    assert.equal(await page.eval("document.getElementById('leave-confirm-title').textContent"),
+      "Do you want to save the changes you made to \u201cHello\u201d?");
+    assert.equal(await page.eval("document.activeElement.id"), "leave-confirm-save", "Save is the default");
     await click(page, "leave-confirm-keep");
     assert.equal(await page.eval(asking), false);
     assert.equal(await page.eval("location.hash"), "#/song/1");
@@ -263,7 +265,17 @@ test("Escape does not leave the song while editing, and Back and other songs ask
     await page.pressKey("Escape");
     assert.equal(await page.eval(asking), false);
     assert.equal(await page.eval("document.getElementById('song-view').hidden"), false);
-    // Discard goes back to the list and the edit is gone.
+    // Save ends the edit as the toolbar's Save does, and goes back to the list.
+    // (This app keeps a saved edit only while its song stays open.)
+    await click(page, "back");
+    await click(page, "leave-confirm-save");
+    await page.waitFor("document.getElementById('song-view').hidden", "the list after Save");
+    await page.eval("location.hash = '#/song/1'");
+    await page.waitFor("!document.getElementById('song-view').hidden", "the song again");
+    assert.equal(await page.eval(asking), false);
+    await startEditing(page);
+    await page.insertText("Q");
+    // Don't Save goes back to the list and the edit is gone.
     await click(page, "back");
     await click(page, "leave-confirm-discard");
     await page.waitFor("document.getElementById('song-view').hidden", "the list");
