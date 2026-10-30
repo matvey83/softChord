@@ -13,6 +13,7 @@ Or via the project test runner:
 """
 
 import unittest
+from unittest import mock
 import sqlite3
 import copy
 import os
@@ -4914,6 +4915,31 @@ class TestEditorModeMenu(unittest.TestCase):
         self.assertFalse(self.app.editing())
         self.assertFalse(self.app.ui.chord_editor_button.isDown())
 
+    def test_switching_modes_keeps_the_edit_and_does_not_ask(self):
+        # MIRRORED UI: the web and iOS apps switch modes the same way.
+        asked = []
+        with mock.patch.object(type(self.app), "_askSaveChanges",
+                               lambda app: asked.append(1) or "cancel"):
+            self.assertTrue(self.app.lyricEditorSelected())
+            before = self.app._currentSongText()
+            cursor = self.app.editor.textCursor()
+            cursor.setPosition(0)
+            cursor.insertText("Q")
+            self.assertTrue(self.app.editChanged())
+            self.assertTrue(self.app.chordEditorSelected())
+            self.assertEqual(asked, [])
+            self.assertTrue(self.app.chordEditing())
+            self.assertTrue(self.app._currentSongText().startswith("Q"))
+            self.assertTrue(self.app.editChanged())
+            self.assertFalse(self.app.ui.save_edit_button.isHidden())
+            self.assertTrue(self.app.lyricEditorSelected())
+            self.assertTrue(self.app.textEditing())
+            self.assertTrue(self.app._currentSongText().startswith("Q"))
+            self.assertEqual(asked, [])
+            self.app.discardEdit()
+            self.assertFalse(self.app.editing())
+            self.assertEqual(self.app._currentSongText(), before)
+
     def test_edit_needs_an_open_song(self):
         self.app.setCurrentSong(None)
         self.app.updateStates()
@@ -7333,14 +7359,20 @@ class TestSaveAndDiscard(unittest.TestCase):
         self.assertFalse(self.app.editing())
         self.assertEqual(self.app.current_song.id, 1)
 
-    def test_switching_edit_kind_asks(self):
+    def test_switching_edit_kind_keeps_the_draft(self):
+        # MIRRORED UI: the web and iOS apps switch modes the same way.
+        before = self.db_song()
         self.add_chord_edit()
-        self.dialog.answers.append(_SB.Cancel)
         self.app.lyricEditorSelected()
-        self.assertTrue(self.app.chordEditing())
-        self.dialog.answers.append(_SB.Save)
-        self.app.lyricEditorSelected()
+        self.assertEqual(self.dialog.asked, [])
         self.assertTrue(self.app.textEditing())
+        self.assertTrue(self.app.editChanged())
+        self.assertEqual(self.db_song(), before)
+        self.app.chordEditorSelected()
+        self.assertEqual(self.dialog.asked, [])
+        self.assertTrue(self.app.chordEditing())
+        self.app.ui.save_edit_button.click()
+        self.assertFalse(self.app.editing())
         self.assertEqual(self.db_song()[3], [(0, "C"), (3, "G")])
 
     def test_filter_keeps_the_draft(self):

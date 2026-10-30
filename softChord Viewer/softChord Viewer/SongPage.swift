@@ -74,6 +74,8 @@ struct SongPage: View {
     /// Set once the keyboard has finished hiding, so Back can pop from the page.
     @State private var popWhenReady = false
     @State private var askingToLeave = false
+    /// Edit Chords was pressed while the text is edited: open it once the keyboard is down.
+    @State private var switchingToChords = false
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
     @State private var draft = ""
@@ -294,6 +296,11 @@ struct SongPage: View {
                     Text("Your changes will be lost if you don\u{2019}t save them.")
                 }
         }
+        .onChange(of: editing) { _, now in
+            if !now {
+                textEditorClosed()
+            }
+        }
         .onChange(of: popWhenReady) { _, pop in
             if pop {
                 dismiss()
@@ -351,8 +358,8 @@ struct SongPage: View {
         case .zoomIn: zoomTo(SongZoom.stepped(shownZoom, 1))
         case .zoomReset: zoomTo(SongZoom.normal)
         case .print: SongPrint.present(lines, title: title)
-        case .editText: beginLyricEdit()
-        case .editChords: beginChordEdit()
+        case .editText: editingChords ? switchEditing(toChords: false) : beginLyricEdit()
+        case .editChords: editing ? switchEditing(toChords: true) : beginChordEdit()
         case .chordEdit: requestChordEdit(chordSelection)
         case .chordDelete: deleteSelectedChord()
         case .chordUndo: undoChordChange()
@@ -389,6 +396,37 @@ struct SongPage: View {
         }
         draft = lyricText
         editChords = shownChords ?? source?.chords ?? []
+        chordSelection = nil
+        chordRequest = nil
+        chordUndo = []
+        chordRedo = []
+        editingChords = true
+    }
+
+    /// MIRRORED UI: viewer.js switchEditing and the desktop's startEdit. Edit Text
+    /// while editing chords, or Edit Chords while editing the text: the draft (text
+    /// and chords) goes on in the other mode without asking, and one Save or
+    /// Discard keeps or drops all of it. Chord undo starts over.
+    private func switchEditing(toChords: Bool) {
+        if toChords {
+            // The text field leaves once the keyboard is down (see editing's onChange).
+            switchingToChords = true
+            closeWhenKeyboardEnds = true
+        } else {
+            chordRequest = nil
+            chordSelection = nil
+            chordUndo = []
+            chordRedo = []
+            editingChords = false
+            editing = true
+        }
+    }
+
+    private func textEditorClosed() {
+        guard switchingToChords else {
+            return
+        }
+        switchingToChords = false
         chordSelection = nil
         chordRequest = nil
         chordUndo = []
@@ -476,6 +514,7 @@ struct SongPage: View {
     /// Save and Discard: the edit, with a transpose made before it, or while
     /// viewing only the transpose.
     private func finish(save: Bool) {
+        switchingToChords = false
         if editing || editingChords {
             finishEditing(save: save)
         } else {

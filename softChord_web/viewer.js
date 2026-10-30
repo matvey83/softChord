@@ -703,9 +703,12 @@
     }
     // MIRRORED UI: the iOS toolbar dims and shows the same buttons while editing.
     [printButton, copyTextButton, copyChordsButton, copyImageButton, transposeDown,
-      transposeUp, transposeReset, editButton, editChordsButton].forEach(function (button) {
+      transposeUp, transposeReset].forEach(function (button) {
       button.disabled = on;
     });
+    // The other edit button stays on: it switches the same edit to that mode.
+    editButton.disabled = on && !chords;
+    editChordsButton.disabled = chords;
     editActions.hidden = !on;
     chordActions.hidden = !chords;
     sheetWrap.classList.toggle("editing", on);
@@ -755,6 +758,10 @@
   // mode is "text" (the whole text of the song, in the textarea) or "chords"
   // (the chords on the sheet, the text as it is).
   function startEditing(mode) {
+    if (draft && draft.mode !== mode && !composing) {
+      switchEditing(mode);
+      return;
+    }
     if (draft || openId == null) {
       return;
     }
@@ -781,6 +788,26 @@
     // only after Save. Save, Discard and paintSong set the note again from what
     // is really kept.
     persistNote.hidden = false;
+    showDraft(mode, anchor);
+  }
+
+  // MIRRORED UI: the iOS song page (SongPage.swift switchEditing) and the desktop
+  // editor (softchord_session.py startEdit) switch the same way.
+  // Edit Text while editing chords, or Edit Chords while editing the text: the
+  // draft (text and chords) goes on in the other mode without asking, and one
+  // Save or Discard keeps or drops all of it. Undo starts over from here.
+  function switchEditing(mode) {
+    var anchor = topLine();
+    if (draft.mode === "chords") {
+      chordMode.leave();
+    }
+    draft.mode = mode;
+    draft.history = [{ text: draft.text, chords: cloneChords(draft.chords) }];
+    draft.index = 0;
+    showDraft(mode, anchor);
+  }
+
+  function showDraft(mode, anchor) {
     setEditingState(true, mode);
     if (mode === "chords") {
       chordMode.enter();

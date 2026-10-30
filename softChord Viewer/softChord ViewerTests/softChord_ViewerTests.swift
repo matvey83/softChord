@@ -151,6 +151,43 @@ struct softChord_ViewerTests {
         asking.isHidden = true
     }
 
+    /// MIRRORED UI: viewer.js switchEditing. Edit Chords while the text is edited,
+    /// and Edit Text again, keep the draft and do not ask.
+    @Test @MainActor func switchingEditModesKeepsTheDraft() async throws {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let title = try #require(try Songbook.titles().first)
+        let window = show(UIHostingController(rootView: SongListHarness(song: title)))
+        await settle()
+        try await openEditor(in: window)
+        let field = try #require(window.descendants(of: UITextView.self).first)
+        field.selectedRange = NSRange(location: 0, length: 0)
+        field.insertText("Q")
+        await settle()
+        #expect(isEnabled("Edit Chords…", in: window))
+        #expect(!isEnabled("Edit Text…", in: window))
+        pressButton("Edit Chords…", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty && self.onScreen("Add chord")
+        }
+        #expect(onScreen("Add chord") && onScreen("Save"))
+        #expect(isEnabled("Edit Text…", in: window))
+        #expect(window.rootViewController?.presentedViewController == nil, "no question")
+        pressButton("Edit Text…", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty == false
+        }
+        let again = try #require(window.descendants(of: UITextView.self).first)
+        #expect(again.text.hasPrefix("Q"))
+        #expect(!onScreen("Add chord"))
+        pressButton("Discard", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty
+        }
+        #expect(SongSessionEdits.copy(for: title.id) == nil)
+        window.isHidden = true
+    }
+
     /// A transpose while viewing is a change: Discard and Save show, unless the
     /// song is back at the key it had. Save keeps the key for this run.
     @Test @MainActor func aTransposeIsAChangeToSaveOrDiscard() async throws {
