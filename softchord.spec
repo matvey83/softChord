@@ -56,7 +56,10 @@ a = Analysis(
     pathex=["src"],
     binaries=[],
     # The toolbar icons are the web app's SVGs (one copy, see softchord_toolbar.py).
-    datas=[("src/icons/softchord.png", "icons"),
+    # songbook.sql sits next to softchord_store.py, which reads the schema
+    # from it at import.
+    datas=[("src/songbook.sql", "."),
+           ("src/icons/softchord.png", "icons"),
            ("softChord_web/icons/toolbar/*.svg", "icons/toolbar")],
     hiddenimports=[
         "softchord_version",
