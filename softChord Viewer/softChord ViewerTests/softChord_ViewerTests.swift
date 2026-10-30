@@ -563,6 +563,33 @@ struct softChord_ViewerTests {
         #expect(SongLyricChords.deleted([c, g], at: 1) == [c, g])
     }
 
+    /// MIRRORED: chord_edit.test.js and test_song.py TestChordRoom use the same
+    /// text and moves.
+    @Test func chordRoomRightOfTheLine() {
+        var text = "Hi you\nab"
+        var chords = [SongChord.from(text: "G", characterNum: 5), SongChord.from(text: "D", characterNum: 7)]
+        var at = 5
+        for _ in 0..<10 {
+            let moved = SongLyricChords.movedWithRoom(chords, in: text, from: at, to: at + 1, roomAt: at)
+            text = moved.text
+            chords = moved.chords
+            at = moved.moved(at + 1)
+        }
+        #expect(text == "Hi you" + String(repeating: " ", count: 10) + "\nab")
+        #expect(chords.map(\.characterNum) == [15, 17])
+        #expect(SongLyricChords.withRoom(chords, in: text, at: 15).count == 0)
+        // Dragged back onto the line, the spaces go again.
+        let back = SongLyricChords.movedWithRoom(chords, in: text, from: 15, to: 3, roomAt: nil)
+        #expect(back.text == "Hi you\nab")
+        #expect(back.chords.map(\.characterNum) == [3, 7])
+        #expect(back.moved(3) == 3)
+        // A delete takes away the spaces only that chord needed; other lines keep theirs.
+        let deleted = SongLyricChords.tidied(
+            SongLyricChords.deleted(chords, at: 15), in: text + "  ", touched: [15])
+        #expect(deleted.text == "Hi you\nab  ")
+        #expect(deleted.chords.map(\.characterNum) == [7])
+    }
+
     @Test func aChordTypedWhileTransposedIsStoredUntransposed() {
         let text = "Hello there"
         // Stored C and G, shown two steps up as D and A.

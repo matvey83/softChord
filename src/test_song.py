@@ -236,6 +236,10 @@ class MinimalTestApp:
 
     # The real jump-over rule, so mouse drags can be tested here.
     freeCharacterForChord = softchord.SongbookSession.freeCharacterForChord
+    placeChord = softchord.SongbookSession.placeChord
+    _chordsAt = softchord.SongbookSession.__dict__["_chordsAt"]
+    dragChordPastLineEnd = softchord.SongbookSession.dragChordPastLineEnd
+    drag_past_line_end = None
 
     def deleteSelectedChord(self):
         pass
@@ -1684,29 +1688,33 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.assertEqual(len(list(song.iterateAllChords())), 2)
 
     def test_arrow_key_stays_when_no_letter_is_free_that_way(self):
+        # Ten spaces right of the last letter is all the room a line has.
+        text = "0123" + " " * 10 + "\n567"
         song = self._song_with_chords(
-            "0123\n567", [(2, Qt.Key.Key_C), (3, Qt.Key.Key_D)],
+            text, [(12, Qt.Key.Key_C), (13, Qt.Key.Key_D)],
             song_id=10032)
-        self.app.selected_char_num = 2
+        self.app.selected_char_num = 12
         steps = self.app.undo_stack.index()
 
         moved = self.app.processKeyPressed(Qt.Key.Key_Right)
 
         self.assertFalse(moved)
         self.assertEqual(self.app.undo_stack.index(), steps)
-        self.assertEqual(song.getChordAtPosition(2).note_id, 0)
-        self.assertEqual(song.getChordAtPosition(3).note_id, 2)
+        self.assertEqual(song.getAllText(), text)
+        self.assertEqual(song.getChordAtPosition(12).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(13).note_id, 2)
 
     def test_arrow_key_does_not_cross_a_line_break_or_the_start(self):
         song = self._song_with_chords(
-            "01\n34", [(0, Qt.Key.Key_C), (1, Qt.Key.Key_D)], song_id=10033)
-        self.app.selected_char_num = 1
+            "01" + " " * 10 + "\n34", [(0, Qt.Key.Key_C), (11, Qt.Key.Key_D)],
+            song_id=10033)
+        self.app.selected_char_num = 11
         self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Right))
         self.app.selected_char_num = 0
         self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Left))
         self.assertEqual(
             sorted(chord.character_num for chord in song.iterateAllChords()),
-            [0, 1])
+            [0, 11])
 
     def test_delete_removes_every_selected_chord_as_one_undo(self):
         song = self._select_chords_at("0123456789", [1, 4],
@@ -4862,6 +4870,94 @@ class TestSongsContextMenu(unittest.TestCase):
         self.assertEqual(fake_exec.labels, ["Delete"])
         self.assertEqual(self.questions, [])
         self.assertEqual(self._song_ids(), {1, 3})
+
+
+class TestChordRoom(unittest.TestCase):
+    """A chord goes up to 10 letters right of its line (chord_room).
+
+    MIRRORED: chord_edit.test.js and softChord_ViewerTests chordRoomRightOfTheLine
+    use the same text and moves.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = test_app()
+
+    def setUp(self):
+        self.app = test_app()
+        self.td = open_empty_temp_songbook(self.app)
+        insert_and_select_song(self.app, text="Hi you\nab", with_chord=True)
+        self.app.chordEditorSelected()
+        self.song = self.app.current_song
+        self.song.addChord(SongChord(self.song, 5, 7, 0, -1, "", 0))
+        self.song.addChord(SongChord(self.song, 7, 2, 0, -1, "", 0))
+
+    def tearDown(self):
+        if self.app.edit_session is not None:
+            self.app._endEdit()
+        self.app.setCurrentSongbook(None)
+        shutil.rmtree(self.td, ignore_errors=True)
+
+    def positions(self):
+        return sorted(c.character_num for c in self.song.iterateAllChords())
+
+    def right(self, times=1, key=Qt.Key.Key_Right):
+        for _ in range(times):
+            self.assertTrue(self.app.processKeyPressed(key))
+
+    def test_arrows_add_and_take_away_spaces_with_undo_delete_and_save(self):
+        self.app.selected_char_num = 5
+        self.right()
+        self.assertEqual(self.song.getAllText(), "Hi you \nab")
+        self.assertEqual(self.positions(), [0, 6, 8])
+        self.right(9)
+        self.assertEqual(self.song.getAllText(), "Hi you" + " " * 10 + "\nab")
+        self.assertEqual(self.positions(), [0, 15, 17])
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Right))
+        self.app.undo_stack.undo()
+        self.assertEqual(self.song.getAllText(), "Hi you" + " " * 9 + "\nab")
+        self.assertEqual(self.positions(), [0, 14, 16])
+        self.app.undo_stack.redo()
+        self.assertEqual(self.positions(), [0, 15, 17])
+        self.right(10, Qt.Key.Key_Left)
+        self.assertEqual(self.song.getAllText(), "Hi you\nab")
+        self.assertEqual(self.positions(), [0, 5, 7])
+
+        self.right(3)
+        self.app.deleteSelectedChord()
+        self.assertEqual(self.song.getAllText(), "Hi you\nab")
+        self.assertEqual(self.positions(), [0, 7])
+        self.app.undo_stack.undo()
+        self.assertEqual(self.song.getAllText(), "Hi you   \nab")
+        self.assertEqual(self.positions(), [0, 8, 10])
+
+        self.app.saveEdit()
+        record = self.app.store.load_song(self.song.id)
+        self.assertEqual(record.text, "Hi you   \nab")
+        self.assertEqual(sorted(link.character_num for link in record.chords),
+                         [0, 8, 10])
+
+    def test_a_drag_past_the_line_gets_spaces_and_back_loses_them(self):
+        editor = self.app.editor
+        chord = self.song.getChordAtPosition(5)
+        self.app.undo_stack.beginMacro("chord dragged")
+        editor.dragging_chord = chord
+        editor.dragging_mouse_char = 5
+        editor.original_chord = None
+        try:
+            self.app.dragChordPastLineEnd(editor, 6, 10000)
+            self.assertEqual(self.song.getAllText(), "Hi you" + " " * 10 + "\nab")
+            self.assertEqual(self.positions(), [0, 15, 17])
+            moved, _ = self.app.placeChord(editor.dragging_chord, 3)
+            self.assertEqual(moved.character_num, 3)
+            self.assertEqual(self.song.getAllText(), "Hi you\nab")
+            self.assertEqual(self.positions(), [0, 3, 7])
+        finally:
+            editor.dragging_chord = None
+            self.app.undo_stack.endMacro()
+        self.app.undo_stack.undo()
+        self.assertEqual(self.song.getAllText(), "Hi you\nab")
+        self.assertEqual(self.positions(), [0, 5, 7])
 
 
 class TestEditorModeMenu(unittest.TestCase):

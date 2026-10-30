@@ -154,3 +154,80 @@ def chord_drag_direction(text, chord_char, previous_char, target):
     if line_start_index(text, chord_char) != line_start_index(text, target):
         return 1
     return -1 if target < previous_char else 1
+
+
+# ---- Room right of a line ----
+# A chord can go up to CHORD_ROOM letters right of the last letter of its line
+# (not a space). The line gets spaces for it while a chord is dragged or moved
+# with an arrow key (chord_room), and after a move or a delete the spaces at
+# the end of the lines it touched that no chord needs go again
+# (tidy_chord_room): a line keeps spaces only up to its last chord. Other
+# lines keep their spaces (Remove Trailing Spaces is for those), and so does
+# a line of only spaces, and a tab.
+# MIRRORED: softchord_chord_edit.js withRoom and tidied, softchord_text.swift
+# SongLyricChords.withRoom and tidied.
+CHORD_ROOM = 10
+
+
+def chord_room(text, index):
+    """(text, at, count): the line that holds index with spaces up to
+    CHORD_ROOM letters right of its last letter that is not a space.
+
+    count spaces went in at at, so a position from at on moves by count.
+    """
+    span = line_letter_range(text, index)
+    if span is None:
+        return text, len(text), 0
+    first, last = span
+    letter = last
+    while letter >= first and text[letter] == " ":
+        letter -= 1
+    end = last + 1
+    count = letter + 1 + CHORD_ROOM - end
+    if letter < first or count <= 0:
+        return text, end, 0
+    return text[:end] + " " * count + text[end:], end, count
+
+
+def tidy_chord_room(text, chord_positions, touched):
+    """(text, gaps): the lines that hold a position of touched without the
+    spaces at their end past their last chord.
+
+    gaps are the (start, end) ranges taken away; tidy_moved gives where a
+    position is now.
+    """
+    taken = set(chord_positions)
+    gaps = []
+    first = 0
+    for i in range(len(text) + 1):
+        if i < len(text) and text[i] != "\n":
+            continue
+        cut = i
+        while cut > first and text[cut - 1] == " " and cut - 1 not in taken:
+            cut -= 1
+        if (first < cut < i
+                and any(first <= at <= i for at in touched if at is not None)):
+            gaps.append((cut, i))
+        first = i + 1
+    if not gaps:
+        return text, gaps
+    pieces = []
+    at = 0
+    for start, end in gaps:
+        pieces.append(text[at:start])
+        at = end
+    pieces.append(text[at:])
+    return "".join(pieces), gaps
+
+
+def tidy_moved(gaps, position):
+    """Where position is after the gaps of tidy_chord_room went."""
+    if position is None:
+        return None
+    by = 0
+    for start, end in gaps:
+        if position >= end:
+            by += end - start
+        elif position >= start:
+            by += position - start
+    return position - by

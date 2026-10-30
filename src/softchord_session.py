@@ -63,7 +63,8 @@ from softchord_store import (
     readonly_database_error,
 )
 from softchord_layout import QtDocumentLayout, SongLayout
-from softchord_text import (chord_drag_direction, lyric_renumber_map,
+from softchord_text import (chord_room, tidy_chord_room, tidy_moved,
+                             line_letter_range, chord_drag_direction, lyric_renumber_map,
                             next_free_character)
 from softchord_io import (
     SQLITE_HEADER,
@@ -427,20 +428,34 @@ class CustomTextEdit(QtWidgets.QTextEdit):
                         chord, song_char_num, direction, True)
 
                     if landing is not None and landing != chord.character_num:
-                        new_chord = copy.copy(chord)
-                        new_chord.character_num = landing
-                        song.replaceChord(chord, new_chord)
-                        self.dragging_chord = new_chord
+                        # The spaces the chord leaves at the end of a line go.
+                        moved, where = self.app.placeChord(chord, landing)
+                        self.dragging_chord = moved
+                        self.dragging_mouse_char = where(song_char_num)
+                        self._followReplaced(where)
 
                         # Show hover feedback on the new letter:
-                        self.app.hover_char_num = landing
-                        self.app.selected_char_num = landing
+                        self.app.hover_char_num = moved.character_num
+                        self.app.selected_char_num = moved.character_num
         else:
             # The mouse is NOT over a letter
             if not self.dragging_chord:
                 self.app.hover_char_num = None
+            elif self.app.drag_past_line_end is not None:
+                # Right of the last letter of a line: the line gets spaces.
+                self.app.dragChordPastLineEnd(self, *self.app.drag_past_line_end)
 
         self.app.editor.viewport().update()
+
+    def _followReplaced(self, where):
+        """The copy of an Option drag stays the chord it is when it moved."""
+        if self.original_chord is None:
+            return
+        position = where(self.original_chord.character_num)
+        for chord in self.app.current_song.iterateAllChords():
+            if chord.character_num == position and chord is not self.dragging_chord:
+                self.original_chord = chord
+                return
 
     def mousePressEvent(self, event):
         """
@@ -1411,6 +1426,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.selected_chord_nums = set()
         # The letter/chord that is currently hover (mouse hoveing over it):
         self.hover_char_num = None
+        self.drag_past_line_end = None
 
         # NOTE: For printing of small song books, font sizes of 14 / 11 are ideal.
 
@@ -2040,7 +2056,21 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         chord = self.getSelectedChord()
         if chord:
-            self.current_song.deleteChord(chord)
+            # The spaces only this chord needed at the end of its line go too.
+            song = self.current_song
+            others = [other for other in song.iterateAllChords()
+                      if other is not chord]
+            text, gaps = tidy_chord_room(
+                song.getAllText(), [other.character_num for other in others],
+                (chord.character_num, ))
+            if not gaps:
+                song.deleteChord(chord)
+                return
+            song.setTextAndChords(
+                text, self._chordsAt(
+                    [(other, tidy_moved(gaps, other.character_num))
+                     for other in others])[0],
+                tidy_moved(gaps, chord.character_num))
 
     def _deleteSelectedChords(self):
         """Delete every marquee-selected chord as one undo step."""
@@ -2060,6 +2090,94 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.selected_char_num = None
         self.editor.viewport().update()
         return True
+
+    @staticmethod
+    def _chordsAt(moves):
+        """(chords, copies): the chords at their new positions, a copy for each
+        one that moves; copies maps an old chord to its copy."""
+        chords = []
+        copies = {}
+        for chord, position in moves:
+            if position != chord.character_num:
+                moved = copy.copy(chord)
+                moved.character_num = position
+                copies[id(chord)] = moved
+                chord = moved
+            chords.append(chord)
+        return chords, copies
+
+    def placeChord(self, chord, landing, room=None):
+        """Move chord onto landing, as one undo step: (moved chord, where).
+
+        landing is a letter of room's text (softchord_text.chord_room, by
+        default the song's text as it is). The lines the chord left and went
+        to lose the spaces at their end that no chord needs, so the text can
+        change with the chords. where(position) is where a position of room's
+        text is now.
+
+        MIRRORED: softchord_chord_mode.js nudge and dragTo, SongPage.swift
+        moveChord (both with SongChordEdit / SongLyricChords withRoom, tidied).
+        """
+        song = self.current_song
+        text = song.getAllText()
+        room_text, at, count = room or (text, len(text), 0)
+
+        def shifted(position):
+            return position + count if position >= at else position
+
+        moves = [(other, landing if other is chord
+                  else shifted(other.character_num))
+                 for other in song.iterateAllChords()]
+        new_text, gaps = tidy_chord_room(
+            room_text, [position for _, position in moves],
+            (shifted(chord.character_num), landing))
+
+        def where(position):
+            return tidy_moved(gaps, position)
+
+        final = where(landing)
+        if new_text == text:
+            moved = copy.copy(chord)
+            moved.character_num = final
+            song.replaceChord(chord, moved)
+            return moved, where
+        chords, copies = self._chordsAt(
+            [(other, where(position)) for other, position in moves])
+        song.setTextAndChords(new_text, chords, final)
+        return copies.get(id(chord), chord), where
+
+    def dragChordPastLineEnd(self, editor, line_end, distance):
+        """The dragged chord, with the pointer distance pixels right of the
+        line that ends at line_end: the line gets spaces for it, up to
+        CHORD_ROOM past its last letter."""
+        song = self.current_song
+        chord = editor.dragging_chord
+        text = song.getAllText()
+        last = line_end - 1
+        if chord is None or last < 0 or text[last] == "\n":
+            return
+        room = chord_room(text, last)
+        room_text, at, count = room
+        span = line_letter_range(room_text, last)
+        width = max(1.0, QtGui.QFontMetricsF(
+            song.doc.defaultFont()).horizontalAdvance(" "))
+        target = min(span[1], last + max(1, math.ceil(distance / width)))
+        if target == editor.dragging_mouse_char:
+            return
+        occupied = {
+            other.character_num + (count if other.character_num >= at else 0)
+            for other in song.iterateAllChords() if other is not chord
+        }
+        landing = next_free_character(room_text, target, 1, occupied, True)
+        current = chord.character_num + (count if chord.character_num >= at else 0)
+        if landing is None or landing == current:
+            return
+        moved, where = self.placeChord(chord, landing, room)
+        editor.dragging_chord = moved
+        editor.dragging_mouse_char = where(target)
+        editor._followReplaced(where)
+        self.hover_char_num = moved.character_num
+        self.selected_char_num = moved.character_num
 
     def freeCharacterForChord(self, chord, target, direction,
                               allow_other_direction):
@@ -2140,15 +2258,22 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             if prev_chord:
                 # A letter that has a chord is jumped over. No free letter on
                 # the line that way (or a line break) means the chord stays.
-                new_chord = copy.copy(prev_chord)
+                # Right of the last letter there is room (chord_room).
                 direction = -1 if key == Qt.Key.Key_Left else 1
-                landing = self.freeCharacterForChord(
-                    prev_chord, prev_chord.character_num + direction,
-                    direction, False)
+                song = self.current_song
+                room = chord_room(song.getAllText(), prev_chord.character_num)
+                room_text, at, count = room
+                occupied = {
+                    other.character_num + (count if other.character_num >= at else 0)
+                    for other in song.iterateAllChords()
+                    if other is not prev_chord
+                }
+                landing = next_free_character(
+                    room_text, prev_chord.character_num + direction,
+                    direction, occupied, False)
                 if landing is None:
                     return False
-                new_chord.character_num = landing
-                self.current_song.replaceChord(prev_chord, new_chord)
+                self.placeChord(prev_chord, landing, room)
                 return True
 
         # Determine if "m" key is pressed:
@@ -4048,6 +4173,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         event happened.
         """
 
+        self.drag_past_line_end = None
         if not self.current_song:
             return None
 
@@ -4086,6 +4212,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         # If at the start or end of line, make sure the cursor is actually over a character:
         if at_start or at_end:
+            if at_end and x >= rect.right() and dragging:
+                # A chord dragged right of its line: see dragChordPastLineEnd.
+                self.drag_past_line_end = (pos, x - rect.right())
             if at_start and x < rect.left():
                 return None
             if at_end and x >= rect.right():

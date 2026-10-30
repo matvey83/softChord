@@ -337,11 +337,20 @@ test("a chord jumps over a letter that has a chord and crosses lines, nothing is
     // And on down to line 3, in one drag that passes line 2.
     await dragChord(page, 2, 27);
     assert.deepEqual(await chordsShown(page), [[0, "H", "C"], [6, "w", "Am"], [24, "T", "F"], [27, "r", "G"]]);
-    // Past the end of a line the pointer is on its last letter.
+    // Past the end of a line the line gets spaces for the chord, up to 10 past
+    // its last letter (SongChordEdit.withRoom). The F of the next line moves on.
     var a = await point(page, 6, "chord");
     var end = await point(page, 10);
     await page.mouse.drag(a, { x: end.x + 300, y: end.y });
-    assert.deepEqual((await chordsShown(page))[1], [10, "d", "Am"]);
+    assert.deepEqual(await chordsShown(page), [[0, "H", "C"], [20, " ", "Am"], [34, "T", "F"], [37, "r", "G"]]);
+    // Dragged back onto the line, the spaces go again.
+    a = await point(page, 20, "chord");
+    var back = await point(page, 8);
+    await page.mouse.drag(a, back);
+    assert.deepEqual(await chordsShown(page), [[0, "H", "C"], [8, "r", "Am"], [24, "T", "F"], [27, "r", "G"]]);
+    // Undo puts the text back with the chords: the spaces are there again.
+    await click(page, "chord-undo");
+    assert.deepEqual(await chordsShown(page), [[0, "H", "C"], [20, " ", "Am"], [34, "T", "F"], [37, "r", "G"]]);
     assert.deepEqual(page.errors, []);
   });
 });

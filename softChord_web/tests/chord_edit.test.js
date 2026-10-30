@@ -260,3 +260,48 @@ test("the neighbouring letter on the line", function () {
   assert.equal(SongChordEdit.neighbour(text, 0, -1), null);
   assert.equal(SongChordEdit.neighbour(text, 3, 1), null, "a line break has no letter");
 });
+
+// MIRRORED: test_song.py TestChordRoom and softChord_ViewerTests chordRoomRightOfTheLine
+// use the same text and moves.
+test("a chord moves up to 10 letters right of its line, and the spaces go again", function () {
+  let text = "Hi you\nab";
+  let chords = [chord(5, 1), chord(7, 2)];
+  let at = 5;
+  function nudge(direction) {
+    const room = SongChordEdit.withRoom(text, chords, at);
+    const step = SongChordEdit.nudged(room.chords, room.text, at, direction);
+    if (!step) {
+      return false;
+    }
+    const tidy = SongChordEdit.tidied(room.text, step.chords, step.chordAt);
+    text = tidy.text;
+    chords = tidy.chords;
+    at = tidy.index;
+    return true;
+  }
+  assert.ok(nudge(1));
+  assert.equal(text, "Hi you \nab");
+  assert.deepEqual(positions(chords), [6, 8]);
+  for (let i = 0; i < 9; i++) {
+    assert.ok(nudge(1));
+  }
+  assert.equal(text, "Hi you" + " ".repeat(10) + "\nab");
+  assert.deepEqual(positions(chords), [15, 17]);
+  assert.equal(nudge(1), false, "no more than 10");
+  for (let i = 0; i < 10; i++) {
+    assert.ok(nudge(-1));
+  }
+  assert.equal(text, "Hi you\nab");
+  assert.deepEqual(positions(chords), [5, 7]);
+});
+
+test("tidied keeps the spaces a chord needs, other lines, lines of only spaces and tabs", function () {
+  const text = "ab   \n   \nc \t\nd    x\ne  \nf  ";
+  const tidy = SongChordEdit.tidied(text, [chord(3), chord(14), chord(25)], 3, [3, 7, 11, 15, 22]);
+  assert.equal(tidy.text, "ab  \n   \nc \t\nd    x\ne\nf  ");
+  assert.deepEqual(positions(tidy.chords), [3, 13, 22]);
+  assert.equal(tidy.index, 3);
+  const deleted = SongChordEdit.tidied("ab  ", [], 3);
+  assert.equal(deleted.text, "ab");
+  assert.equal(deleted.index, 2);
+});

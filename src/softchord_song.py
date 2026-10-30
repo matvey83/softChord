@@ -87,6 +87,39 @@ class ReplaceChordCommand(QtGui.QUndoCommand):
         self.song.session.updateChordLineSpacing(self.song)
 
 
+class SetTextAndChordsCommand(QtGui.QUndoCommand):
+    """The lyric text and the chords of a song, changed together.
+
+    A chord moved right of its line gives the line spaces (see
+    softchord_text.chord_room), so the text changes with the chords, and one
+    undo puts both back.
+    """
+    # Edits one Song object. The session drops these when another song is shown.
+    song_scoped = True
+
+    def __init__(self, song, text, chords, selected):
+        QtGui.QUndoCommand.__init__(self)
+        self.song = song
+        self.before = (song.text, list(song._chords),
+                       song.session.selected_char_num)
+        self.after = (text, list(chords), selected)
+
+    def _put(self, state):
+        text, chords, selected = state
+        self.song.text = text
+        self.song._chords = list(chords)
+        QtDocumentLayout.fill(self.song, self.song.session)
+        self.song.updateSharpsOrFlats()
+        self.song.session.selected_char_num = selected
+        self.song.session.updateChordLineSpacing(self.song)
+
+    def undo(self):
+        self._put(self.before)
+
+    def redo(self):
+        self._put(self.after)
+
+
 class DeleteSongsCommand(QtGui.QUndoCommand):
 
     def __init__(self, owner, song_ids):
@@ -764,6 +797,10 @@ class Song:
 
         # This is important for undo/redo to move the selection:
         self.session.selected_char_num = chord.character_num
+
+    def setTextAndChords(self, text, chords, selected):
+        self.session.undo_stack.push(
+            SetTextAndChordsCommand(self, text, chords, selected))
 
     def deleteChord(self, chord):
         self.session.undo_stack.push(DeleteChordCommand(self, chord))
