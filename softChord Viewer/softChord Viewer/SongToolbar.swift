@@ -6,14 +6,16 @@
 //  order and groups, the icons (Assets.xcassets/Toolbar, exported from
 //  softChord_web/index.html by tools/export_toolbar_icons.js), the labels, when
 //  each shows or is dimmed, the sizes and the wrapping onto more rows follow
-//  softChord_web/index.html (.toolbar), viewer.css (.toolbar, .tool, the 940 and
-//  360 px rules), viewer.js (applyZoom, paintSong, setEditing) and
-//  softchord_chord_mode.js (updateButtons). The desktop editor's toolbar
-//  (src/softchord_toolbar.py) follows them too and also wraps whole groups onto
-//  more rows, but only when they do not fit (no 940 pt rule, no Back or title).
-//  Change all three apps together.
+//  softChord_web/index.html (.toolbar), viewer.css (.toolbar, .narrow,
+//  .edit-row, the 360 px rule), viewer.js (layoutToolbar, applyZoom, paintSong,
+//  setEditing) and softchord_chord_mode.js (updateButtons). The desktop editor's
+//  toolbar (src/softchord_toolbar.py rowWidth) follows them too (no Back or
+//  title). All three wrap by the widest mode (SongToolbarMetrics): when its
+//  buttons fit on one row every mode is one row, else the edit groups start the
+//  next row in every mode. Change all three apps together.
 
 import SwiftUI
+import UIKit
 
 /// Zoom steps for the song area, a whole percent (100 = normal).
 /// MIRRORED UI: softChord_web/softchord_zoom.js (same range, step, grid and key).
@@ -50,10 +52,9 @@ enum SongZoom {
 /// The toolbar buttons, in the web order. The raw value is the web button id
 /// and the icon name.
 enum SongToolbarButton: String {
-    case copyText = "copy-text", copyChords = "copy-chords", copyImage = "copy-image"
+    case copyText = "copy-text", copyChords = "copy-chords", copyImage = "copy-image", print = "print"
     case transposeDown = "transpose-down", transposeUp = "transpose-up", transposeReset = "transpose-reset"
     case zoomOut = "zoom-out", zoomReset = "zoom-reset", zoomIn = "zoom-in"
-    case print = "print"
     case editText = "edit-text", editChords = "edit-chords"
     case chordEdit = "chord-edit", chordDelete = "chord-delete", chordUndo = "chord-undo", chordRedo = "chord-redo"
     case discard = "edit-discard", save = "edit-save"
@@ -98,7 +99,8 @@ struct SongToolbarState: Equatable {
 
     func isEnabled(_ button: SongToolbarButton) -> Bool {
         switch button {
-        case .copyText, .copyChords, .copyImage, .transposeDown, .transposeUp, .print:
+        // Copy and Print, and Transpose, are not shown while editing (see groups).
+        case .copyText, .copyChords, .copyImage, .print, .transposeDown, .transposeUp:
             !editing
         // The other edit button switches the open edit to that mode (viewer.js switchEditing).
         case .editText: !(editing && !chordMode)
@@ -116,13 +118,17 @@ struct SongToolbarState: Equatable {
     }
 
     /// The groups shown now, in order, with their names for VoiceOver.
+    /// Copy and Print, and Transpose, need the song as saved, so their groups
+    /// are hidden while editing (viewer.js setEditingState).
     var groups: [(name: String, buttons: [SongToolbarButton])] {
-        var groups: [(name: String, buttons: [SongToolbarButton])] = [
+        var groups: [(name: String, buttons: [SongToolbarButton])] = []
+        if !editing {
             // TODO: re-add Add to Photos to the toolbar (SongShareMenu's addSongToPhotos).
-            ("Copy song", [.copyText, .copyChords, .copyImage]),
-            ("Transpose", [.transposeDown, .transposeUp, .transposeReset]),
+            groups.append(("Copy and print", [.copyText, .copyChords, .copyImage, .print]))
+            groups.append(("Transpose", [.transposeDown, .transposeUp, .transposeReset]))
+        }
+        groups += [
             ("Zoom", [.zoomOut, .zoomReset, .zoomIn]),
-            ("Print", [.print]),
             ("Edit", [.editText, .editChords]),
         ]
         if editing && chordMode {
@@ -132,6 +138,84 @@ struct SongToolbarState: Equatable {
             groups.append(("Finish editing", [.discard, .save]))
         }
         return groups
+    }
+}
+
+/// How the toolbar is laid out (MIRRORED UI: viewer.js layoutToolbar).
+enum SongToolbarRows: Equatable {
+    /// Back, the title and the buttons on one row (38 pt buttons).
+    case oneRow
+    /// Back and the title, then the buttons on one row below (34 pt).
+    case buttonRow
+    /// Back and the title, then the buttons, the edit groups starting a row.
+    case editRow
+}
+
+/// The widths of the toolbar's button rows, from the sizes SongToolbar draws.
+/// MIRRORED UI: viewer.js layoutToolbar, softchord_toolbar.py rowWidth.
+struct SongToolbarMetrics {
+    /// Back, the title, Discard and Save scale with the text size (SongToolbar.scale).
+    var scale: CGFloat = 1
+
+    /// The title keeps at least this next to the buttons on one row (viewer.js TOOLBAR_TITLE_MIN).
+    static let titleMin: CGFloat = 60
+
+    /// Every mode: viewing with a transpose not saved (the widest), Edit Text, Edit Chords.
+    static let modes: [SongToolbarState] = [
+        SongToolbarState(pending: true),
+        SongToolbarState(editing: true),
+        SongToolbarState(editing: true, chordMode: true),
+    ]
+
+    static func buttonSize(oneRow: Bool, width: CGFloat) -> CGFloat {
+        oneRow ? 38 : (width <= 360 ? 30 : 34)
+    }
+
+    func textWidth(_ text: String, size: CGFloat, semibold: Bool = false) -> CGFloat {
+        let font = UIFont.systemFont(ofSize: size, weight: semibold ? .semibold : .regular)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    var backWidth: CGFloat { textWidth("‹ Back", size: 17 * scale) + 4 }
+
+    /// The buttons of state's mode on one row.
+    func rowWidth(_ state: SongToolbarState, oneRow: Bool, width: CGFloat) -> CGFloat {
+        let size = Self.buttonSize(oneRow: oneRow, width: width)
+        let spacing: CGFloat = oneRow ? 6 : (width <= 360 ? 8 : 12)
+        var x: CGFloat = 0
+        for (index, group) in state.groups.enumerated() {
+            let finish = group.name == "Finish editing"
+            if index > 0 {
+                x += spacing
+                // The separators show on one row only, before each group but Chord and Finish.
+                if oneRow && group.name != "Chord" && !finish {
+                    x += 1 + spacing
+                }
+            }
+            if finish {
+                x += (oneRow ? 4 : 0) + 6 + group.buttons.reduce(0) {
+                    $0 + textWidth(state.label($1), size: 15 * scale, semibold: $1 == .save) + 24
+                }
+            } else {
+                let count = CGFloat(group.buttons.count)
+                x += count * size + (count - 1) * (oneRow ? 2 : 0)
+            }
+        }
+        return x
+    }
+
+    /// The widest mode's buttons on one row.
+    func widestRow(oneRow: Bool, width: CGFloat) -> CGFloat {
+        Self.modes.map { rowWidth($0, oneRow: oneRow, width: width) }.max() ?? 0
+    }
+
+    /// The rows for a toolbar this wide.
+    func rows(width: CGFloat) -> SongToolbarRows {
+        // 12 pt padding each side, 8 pt between Back, the title and the buttons.
+        if widestRow(oneRow: true, width: width) <= width - 24 - backWidth - 16 - Self.titleMin {
+            return .oneRow
+        }
+        return widestRow(oneRow: false, width: width) <= width - 16 ? .buttonRow : .editRow
     }
 }
 
@@ -155,10 +239,11 @@ struct SongToolbar: View {
     @ScaledMetric(relativeTo: .body) private var textScale: CGFloat = 1
     private var scale: CGFloat { min(textScale, 1.35) }
 
-    // MIRRORED UI: viewer.css. Wider than 940 is one row (Edit Chords needs about
-    // 920); 360 or less, smaller buttons.
-    private var wide: Bool { width > 940 }
-    private var buttonSize: CGFloat { wide ? 38 : (width <= 360 ? 30 : 34) }
+    // MIRRORED UI: viewer.js layoutToolbar and viewer.css. The widest mode's
+    // buttons decide, so the rows do not change with the mode.
+    private var rows: SongToolbarRows { SongToolbarMetrics(scale: scale).rows(width: width) }
+    private var wide: Bool { rows == .oneRow }
+    private var buttonSize: CGFloat { SongToolbarMetrics.buttonSize(oneRow: wide, width: width) }
 
     var body: some View {
         #if DEBUG
@@ -189,7 +274,9 @@ struct SongToolbar: View {
                         heading.padding(.trailing, 44)
                     }
                     if let state {
-                        SongToolbarFlow(spacing: width <= 360 ? 8 : 12, rowSpacing: 2) {
+                        SongToolbarFlow(spacing: width <= 360 ? 8 : 12, rowSpacing: 2,
+                                        breakBefore: rows == .editRow
+                                            ? state.groups.firstIndex { $0.name == "Edit" } : nil) {
                             ForEach(Array(state.groups.enumerated()), id: \.offset) { _, group in
                                 groupView(group, state: state)
                             }
@@ -294,17 +381,19 @@ private struct SongToolbarTextStyle: ButtonStyle {
 }
 
 /// Places the groups left to right and starts a new row when the next group
-/// does not fit. MIRRORED UI: viewer.css .toolbar-actions flex-wrap (narrow).
+/// does not fit, and at breakBefore (the Edit group, see SongToolbarRows.editRow).
+/// MIRRORED UI: viewer.css .toolbar-actions flex-wrap and .tool-break (narrow).
 private struct SongToolbarFlow: Layout {
     var spacing: CGFloat
     var rowSpacing: CGFloat
+    var breakBefore: Int? = nil
 
     private func frames(_ width: CGFloat, _ subviews: Subviews) -> (frames: [CGRect], size: CGSize) {
         var frames: [CGRect] = []
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, used: CGFloat = 0
-        for view in subviews {
+        for (index, view) in subviews.enumerated() {
             let size = view.sizeThatFits(.unspecified)
-            if x > 0 && x + size.width > width {
+            if x > 0 && (x + size.width > width || index == breakBefore) {
                 x = 0
                 y += rowHeight + rowSpacing
                 rowHeight = 0

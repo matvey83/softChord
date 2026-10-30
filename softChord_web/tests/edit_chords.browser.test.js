@@ -41,8 +41,15 @@ test("the Edit chords button opens the mode next to the pencil and locks what mu
     assert.equal(await page.eval("document.activeElement.id"), "sheet");
     // The song transpose and what reads the song wait. Zoom stays, and Edit text
     // switches this edit to the text.
-    for (var id of ["print", "copy-text", "copy-chords", "copy-image", "transpose-down", "transpose-up",
-      "transpose-reset", "edit-chords"]) {
+    // Copy and Print, and Transpose, are hidden (each whole group, and the
+    // separator after it). Transpose is disabled too.
+    for (var group of ["copy-actions", "copy-sep", "transpose-actions", "transpose-sep"]) {
+      assert.equal(await page.eval("document.getElementById('" + group + "').hidden"), true, group);
+    }
+    for (var id of ["print", "transpose-up"]) {
+      assert.equal(await page.eval("document.getElementById('" + id + "').offsetParent"), null, id);
+    }
+    for (id of ["transpose-down", "transpose-up", "transpose-reset", "edit-chords"]) {
       assert.equal(await disabled(page, id), true, id + " waits until Save or Discard");
     }
     assert.equal(await disabled(page, "edit-text"), false, "edit-text switches modes");
@@ -80,6 +87,10 @@ test("while editing, the other one of Edit text and Edit chords stays on (it swi
     assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
     assert.equal(await page.eval("document.getElementById('sheet').hasAttribute('tabindex')"), false);
     assert.equal(await page.eval("document.getElementById('sheet').hasAttribute('role')"), false);
+    assert.equal(await page.eval("document.getElementById('copy-actions').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('copy-sep').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('transpose-sep').hidden"), false);
     for (var id of ["print", "copy-text", "transpose-down", "edit-text", "edit-chords"]) {
       assert.equal(await disabled(page, id), false, id + " is back");
     }

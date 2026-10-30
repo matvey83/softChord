@@ -119,6 +119,18 @@ apps; change all of them together. The main places:
 - Desktop: `src/softchord_toolbar.py`. Its header comment lists the intended
   desktop differences (for example the desktop-only Fonts group).
 
+The toolbar wraps the same way in all three, measured rather than at a fixed
+width: the width of the buttons on one row is worked out for every mode
+(viewing, Edit Text, Edit Chords, each with what it hides) and the widest
+decides (it is viewing with Save and Discard showing). When it fits, every
+mode is one row; when it does not, the edit groups (Edit, the chord buttons,
+Undo and Redo, Discard and Save) start the next row in every mode, so the
+rows do not move when the mode changes. On the web and iOS only the buttons
+are measured: one row holds Back, the title (at least 60 px) and the 38 px
+buttons; else Back and the title sit above the 34 px buttons, which follow
+the rule above. See `layoutToolbar` (viewer.js), `SongToolbarMetrics`
+(SongToolbar.swift) and `rowWidth` (softchord_toolbar.py).
+
 The icons are drawn inline in `softChord_web/index.html`, which is the source.
 After changing one there, run
 

@@ -7,8 +7,9 @@ open at a time, and the other one's button is disabled until Save or Discard.
 Like Edit text it edits a draft of the song for this page visit only. "Changes do
 not persist" is shown as soon as the mode opens. **Save** keeps the draft as the
 song's chords (Viewer, Copy and Print use them afterwards), **Discard** throws it
-away. The songbook is never written. While the mode is open Print, the Copy buttons,
-Transpose down/up, Reset transpose and Edit text are disabled, so the key cannot
+away. The songbook is never written. While the mode is open the three Copy buttons
+and Print (one group) and Transpose down/up and Reset transpose (another group)
+are hidden, and Edit text is disabled, so the key cannot
 change under the draft (a song opened at +2 is edited at +2; chords are stored
 untransposed, as in [lyric_editing.md](lyric_editing.md)). A transpose made
 before the mode opened is part of the edit: Save keeps it, Discard puts it back (a

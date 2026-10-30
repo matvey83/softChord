@@ -123,6 +123,61 @@ for (var phone of [320, 375, 640, 700, 760, 800, 940, 941, 1000]) {
   })(phone);
 }
 
+// The rows of the toolbar (layoutToolbar): the widest mode (viewing with Save
+// and Discard) decides, so the rows are the same in every mode. Wide: Back, the
+// title and the buttons on one row. Narrower: the buttons below Back and the
+// title, on one row while they fit, else the Edit group starts the next row.
+async function toolbarRows(page) {
+  return page.eval("(function () {" +
+    "var t = document.querySelector('#song-view .toolbar');" +
+    "var top = function (id) { return Math.round(document.getElementById(id).getBoundingClientRect().top); };" +
+    "var zoom = document.getElementById('zoom-in').closest('.tool-group');" +
+    "var edit = document.getElementById('edit-group');" +
+    "return { narrow: t.classList.contains('narrow'), back: top('back'), zoom: Math.round(zoom.getBoundingClientRect().top)," +
+    " edit: top('edit-group'), editLeft: Math.round(edit.getBoundingClientRect().left)," +
+    " chords: document.getElementById('chord-actions').hidden ? null : top('chord-actions') }; })()");
+}
+
+for (var rowCase of [[1200, "one"], [700, "buttons"], [500, "edit"], [375, "edit"]]) {
+  (function (width, expected) {
+    test("at " + width + "px the toolbar rows are the same in every mode (" + expected + ")", { skip: skip }, async function () {
+      var page = await helper.openViewer([TABS], { viewport: { width: width, height: 700 } });
+      try {
+        await page.eval("location.hash = '#/song/1'");
+        await page.waitFor("!document.getElementById('song-view').hidden", "the song page");
+        var modes = [["viewing", null], ["text", "edit-text"], ["chords", "edit-chords"]];
+        for (var mode of modes) {
+          if (mode[1]) {
+            if (mode[0] === "chords") { await click(page, "edit-discard"); }
+            await click(page, mode[1]);
+            await page.waitFor("!document.getElementById('edit-actions').hidden", "editing");
+          }
+          var rows = await toolbarRows(page);
+          if (expected === "one") {
+            assert.equal(rows.narrow, false, mode[0]);
+            assert.ok(Math.abs(rows.edit - rows.back) < 6, mode[0] + " one row: " + JSON.stringify(rows));
+          } else {
+            assert.equal(rows.narrow, true, mode[0]);
+            assert.ok(rows.zoom > rows.back, mode[0] + " buttons below the title");
+            if (expected === "buttons") {
+              assert.equal(rows.edit, rows.zoom, mode[0] + " buttons on one row");
+            } else {
+              assert.ok(rows.edit > rows.zoom, mode[0] + " Edit starts a row: " + JSON.stringify(rows));
+              assert.ok(rows.editLeft <= 8, mode[0] + " Edit at the left: " + rows.editLeft);
+            }
+          }
+          if (rows.chords !== null) {
+            assert.equal(rows.chords, rows.edit, mode[0] + " chord buttons follow Edit");
+          }
+        }
+        assert.deepEqual(page.errors, []);
+      } finally {
+        await page.close();
+      }
+    });
+  })(rowCase[0], rowCase[1]);
+}
+
 // A long song, scrolled to the middle. Line n is "Line n" with a chord on every third.
 function longSong() {
   var lines = [];

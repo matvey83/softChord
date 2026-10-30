@@ -41,6 +41,10 @@
   var zoomInButton = optional("zoom-in");
   var editButton = optional("edit-text");
   var editChordsButton = optional("edit-chords");
+  var copyActions = optional("copy-actions");
+  var copySeparator = optional("copy-sep");
+  var transposeActions = optional("transpose-actions");
+  var transposeSeparator = optional("transpose-sep");
   var chordActions = optional("chord-actions");
   var chordLive = optional("chord-live");
   var editActions = optional("edit-actions");
@@ -580,7 +584,10 @@
       return;
     }
     songError.hidden = true;
-    toolbarActions.hidden = false;
+    if (toolbarActions.hidden) {
+      toolbarActions.hidden = false;
+      layoutToolbar();
+    }
     songTitle.textContent = source.title;
     document.title = source.title;
     var chords = SongTranspose.shifted(source.chords, steps);
@@ -677,9 +684,12 @@
     repaint: function () { paintDraft(draft.text, draft.chords); },
   });
 
-  // These buttons need the song as it is on disk or in the viewer, so they wait
-  // until Save or Discard. Zoom is not among them: the textarea is sized in em
-  // from the same --zoom as the sheet, so it scales together with it.
+  // Copy, Print and Transpose need the song as it is on disk or in the viewer,
+  // so they wait until Save or Discard: the Copy and Print group and the
+  // Transpose group are hidden, each with the separator after it (Transpose is
+  // also disabled, so nothing can change the key under the draft). Zoom is not
+  // among them: the textarea is sized in em from the same --zoom as the sheet,
+  // so it scales together with it.
   // mode is "text" or "chords" (only looked at when on is true).
   function setEditingState(on, mode) {
     var chords = on && mode === "chords";
@@ -701,9 +711,13 @@
       sheet.removeAttribute("role");
       sheet.removeAttribute("aria-label");
     }
-    // MIRRORED UI: the iOS toolbar dims and shows the same buttons while editing.
-    [printButton, copyTextButton, copyChordsButton, copyImageButton, transposeDown,
-      transposeUp, transposeReset].forEach(function (button) {
+    // MIRRORED UI: the iOS and desktop toolbars hide Copy and Print and
+    // Transpose while editing too, and dim and show the same buttons.
+    copyActions.hidden = on;
+    copySeparator.hidden = on;
+    transposeActions.hidden = on;
+    transposeSeparator.hidden = on;
+    [transposeDown, transposeUp, transposeReset].forEach(function (button) {
       button.disabled = on;
     });
     // The other edit button stays on: it switches the same edit to that mode.
@@ -714,6 +728,93 @@
     sheetWrap.classList.toggle("editing", on);
     sheetWrap.classList.toggle("chord-mode", chords);
     editor.hidden = !(on && !chords);
+  }
+
+  // MIRRORED UI: SongToolbar.swift (SongToolbarMetrics) and
+  // softchord_toolbar.py (rowWidth, widestRowWidth, _FlowLayout) wrap the same
+  // way; viewer.css describes the three layouts. The width of a mode's buttons
+  // on one row is measured with every group shown, so it does not depend on the
+  // open mode and switching modes does not move the rows.
+  var TOOLBAR_TITLE_MIN = 60; // the title keeps at least this next to the buttons
+  var toolbarModes = [
+    // Viewing with Save and Discard (a transpose not yet kept) is the widest.
+    function (el) { return el !== chordActions; },
+    function (el) {
+      return el !== copyActions && el !== copySeparator && el !== transposeActions &&
+        el !== transposeSeparator && el !== chordActions;
+    },
+    function (el) {
+      return el !== copyActions && el !== copySeparator && el !== transposeActions &&
+        el !== transposeSeparator;
+    },
+  ];
+
+  // The widest mode's buttons on one row, in the layout the class names give.
+  function widestToolbarRow(toolbar, narrow) {
+    toolbar.classList.toggle("narrow", narrow);
+    toolbar.classList.add("measuring");
+    var style = getComputedStyle(toolbarActions);
+    var gap = parseFloat(style.columnGap) || 0;
+    var items = Array.prototype.filter.call(toolbarActions.children, function (el) {
+      return !el.classList.contains("tool-break");
+    }).map(function (el) {
+      var box = getComputedStyle(el);
+      return {
+        el: el,
+        separator: el.classList.contains("tool-sep"),
+        width: box.display === "none" ? 0 : el.getBoundingClientRect().width +
+          (parseFloat(box.marginLeft) || 0) + (parseFloat(box.marginRight) || 0),
+      };
+    });
+    toolbar.classList.remove("measuring");
+    var widest = 0;
+    toolbarModes.forEach(function (shows) {
+      var x = 0;
+      var groups = 0;
+      var separator = null;
+      items.forEach(function (item) {
+        if (!shows(item.el)) {
+          return;
+        }
+        if (item.separator) {
+          // Drawn only between two groups.
+          separator = groups && item.width ? item : null;
+          return;
+        }
+        if (separator) {
+          x += separator.width + gap;
+          separator = null;
+        }
+        x += (groups ? gap : 0) + item.width;
+        groups++;
+      });
+      widest = Math.max(widest, x);
+    });
+    return widest;
+  }
+
+  // One row with Back and the title when the widest mode's buttons fit there;
+  // else Back and the title above rows of buttons, all on one row when they fit,
+  // else with the edit groups starting the next row (viewer.css).
+  function layoutToolbar() {
+    var toolbar = toolbarActions.parentElement;
+    if (!toolbar || songView.hidden || toolbarActions.hidden || !toolbar.clientWidth) {
+      return;
+    }
+    var back = document.getElementById("back");
+    var row = getComputedStyle(toolbar);
+    toolbar.classList.remove("edit-row");
+    var wide = widestToolbarRow(toolbar, false);
+    var beside = toolbar.clientWidth - parseFloat(row.paddingLeft) - parseFloat(row.paddingRight) -
+      (back ? back.getBoundingClientRect().width : 0) - 2 * (parseFloat(row.columnGap) || 0) -
+      TOOLBAR_TITLE_MIN;
+    if (wide <= beside) {
+      return;
+    }
+    var narrow = widestToolbarRow(toolbar, true);
+    row = getComputedStyle(toolbar);
+    var full = toolbar.clientWidth - parseFloat(row.paddingLeft) - parseFloat(row.paddingRight);
+    toolbar.classList.toggle("edit-row", narrow > full + 0.5);
   }
 
   // The song line at the top of the song area, and how far its top edge is from
@@ -1045,6 +1146,7 @@
   saveButton.addEventListener("click", function () { finish(true); });
   discardButton.addEventListener("click", function () { finish(false); });
   window.addEventListener("resize", function () {
+    layoutToolbar();
     if (draft && draft.mode === "text") {
       sizeEditor();
     }
@@ -1098,6 +1200,7 @@
     }
     listView.hidden = true;
     songView.hidden = false;
+    layoutToolbar();
     // The address of the song that is being edited again (#/song/01 is song 1):
     // painting the song now would put the saved text over the sheet while the
     // textarea still holds the draft. The edit goes on as it was.
