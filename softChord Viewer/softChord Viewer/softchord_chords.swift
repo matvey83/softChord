@@ -61,6 +61,14 @@ nonisolated enum SoftchordChords {
         var prefer: Int
         var score: Int
         var majorTonic: Int
+        var tonic = 0
+        var isMinor = false
+    }
+
+    /// Mirror: softchord_chords.py key_label ("F♯m", "B♭").
+    static func keyLabel(tonic: Int, isMinor: Bool, prefer: Int) -> String {
+        let names = prefer == preferFlats ? flatNames : sharpNames
+        return names[mod12(tonic)] + (isMinor ? "m" : "")
     }
 
     /// Mirror: softchord_chords.py prefer_from_major_tonic.
@@ -149,7 +157,8 @@ nonisolated enum SoftchordChords {
             return lhs.prefer > rhs.prefer
         }
         let best = ranked[0]
-        return DetectedKey(prefer: best.prefer, score: best.score, majorTonic: best.majorTonic)
+        return DetectedKey(prefer: best.prefer, score: best.score, majorTonic: best.majorTonic,
+                           tonic: best.tonic, isMinor: best.isMinor)
     }
 
     /// Mirror: softchord_chords.py detect_region_start_indices.
@@ -402,9 +411,8 @@ nonisolated enum SoftchordChords {
     }
 }
 
-// TODO: Port key_label and format_auto_detected_key_text from softchord_chords.py
-// so the song page can show the detected key. bestDetectedKey here keeps
-// prefer and score only. Leave the editor's key label as it is.
+// TODO: Port format_auto_detected_key_text from softchord_chords.py so the song
+// page can show the detected key. Leave the editor's key label as it is.
 
 /// Half-step shifts for the open song. Nothing here is written to the songbook.
 nonisolated enum SongTranspose {

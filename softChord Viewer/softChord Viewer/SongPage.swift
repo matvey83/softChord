@@ -169,6 +169,20 @@ struct SongPage: View {
         return editing || editingChords || kept || transposed ? "Changes do not persist" : nil
     }
 
+    /// The note for a transpose, with the key the chords are shown in when one is
+    /// found ("Transposed up to Am"), the auto-detected key moved by the steps.
+    private func transposedNote(_ text: String, to joiner: String) -> String {
+        let chords = shownChords ?? source?.chords ?? []
+        guard let key = SoftchordChords.bestDetectedKey(chords), key.score > 0 else {
+            return text
+        }
+        let major = ((key.majorTonic + steps) % 12 + 12) % 12
+        let label = SoftchordChords.keyLabel(
+            tonic: key.tonic + steps, isMinor: key.isMinor,
+            prefer: SoftchordChords.preferFromMajorTonic(major))
+        return text + joiner + label
+    }
+
     /// MIRRORED UI: viewer.js showToast (#toast): a short note at the bottom.
     private func showToast(_ message: String) {
         toast = message
@@ -256,21 +270,6 @@ struct SongPage: View {
                     .background(Color.white)
             }
         }
-        .overlay(alignment: .bottom) {
-            if let toast {
-                Text(toast)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                    .background(Color(red: 0.11, green: 0.11, blue: 0.118).opacity(0.92),
-                                in: RoundedRectangle(cornerRadius: 10))
-                    .padding(.bottom, 24)
-                    .padding(.horizontal, 16)
-                    .allowsHitTesting(false)
-            }
-        }
         .sheet(item: $chordRequest) { request in
             SongChordTextSheet(request: request) { text in
                 applyChordText(text, for: request)
@@ -322,7 +321,32 @@ struct SongPage: View {
                     .background(Color.white)
             }
         }
+        // On the whole page, after the toolbar and the banner, so neither moves
+        // it: a fixed spot above the bottom edge (the keyboard's top while it is
+        // up), with room left for the banner whether it is shown or not.
+        // MIRRORED UI: viewer.css #toast (fixed, 24px from the bottom).
+        .overlay(alignment: .bottom) {
+            if let toast {
+                // A long note wraps to 2 lines, and shrinks a little before it is cut.
+                Text(toast)
+                    .font(.system(size: 14))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .background(Color(red: 0.11, green: 0.11, blue: 0.118).opacity(0.92),
+                                in: RoundedRectangle(cornerRadius: 10))
+                    .padding(.bottom, 24 + Self.bannerRoom)
+                    .padding(.horizontal, 16)
+                    .allowsHitTesting(false)
+            }
+        }
     }
+
+    /// The height of the "Changes do not persist" banner, kept free under the note.
+    private static let bannerRoom: CGFloat = 36
 
     private var toolbarState: SongToolbarState {
         SongToolbarState(
@@ -338,7 +362,9 @@ struct SongPage: View {
     }
 
     private func toolbarTapped(_ button: SongToolbarButton) {
+        var failed = false
         let report: (String, String) -> Void = { title, message in
+            failed = true
             noticeTitle = title
             noticeMessage = message
         }
@@ -349,18 +375,37 @@ struct SongPage: View {
             return shownSong
         }
         switch button {
-        case .copyText: songShareCopy(song, includeChords: false, report: report)
-        case .copyChords: songShareCopy(song, includeChords: true, report: report)
-        case .copyImage: copySongImage(song, report: report)
-        case .transposeDown: steps -= 1
-        case .transposeUp: steps += 1
-        case .transposeReset: steps = 0
+        // The copies run at once, so a report means the copy failed: no note then.
+        case .copyText:
+            songShareCopy(song, includeChords: false, report: report)
+            if !failed { showToast("Song text copied to clipboard") }
+        case .copyChords:
+            songShareCopy(song, includeChords: true, report: report)
+            if !failed { showToast("Song text with chords copied to clipboard") }
+        case .copyImage:
+            copySongImage(song, report: report)
+            if !failed { showToast("Song image copied to clipboard") }
+        case .transposeDown:
+            steps -= 1
+            showToast(transposedNote("Transposed down", to: " to "))
+        case .transposeUp:
+            steps += 1
+            showToast(transposedNote("Transposed up", to: " to "))
+        case .transposeReset:
+            steps = 0
+            showToast(transposedNote("Transposed back to original key", to: ", "))
         case .zoomOut: zoomTo(SongZoom.stepped(shownZoom, -1))
         case .zoomIn: zoomTo(SongZoom.stepped(shownZoom, 1))
         case .zoomReset: zoomTo(SongZoom.normal)
         case .print: SongPrint.present(lines, title: title)
-        case .editText: editingChords ? switchEditing(toChords: false) : beginLyricEdit()
-        case .editChords: editing ? switchEditing(toChords: true) : beginChordEdit()
+        case .editText:
+            let wasText = editing && !switchingToChords
+            editingChords ? switchEditing(toChords: false) : beginLyricEdit()
+            if !wasText, editing { showToast("Entered text editor mode") }
+        case .editChords:
+            let wasChords = editingChords || switchingToChords
+            editing ? switchEditing(toChords: true) : beginChordEdit()
+            if !wasChords, editingChords || switchingToChords { showToast("Entered chord editor mode") }
         case .chordEdit: requestChordEdit(chordSelection)
         case .chordDelete: deleteSelectedChord()
         case .chordUndo: undoChordChange()
