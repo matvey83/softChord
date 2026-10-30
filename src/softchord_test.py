@@ -63,44 +63,87 @@ class SoftChordEditorTest(unittest.TestCase):
         self.app.deleteSelectedSongs()
         self.assertEqual(self.app.songs_model.rowCount(), self.prev_rows)
 
-    def test_import_and_export_text_roundtrip(self):
-        """Import text file and export it back (exercises App import/export paths)."""
-        song_file = "test_тест_song.txt"
+    def _import_then_export(self, song_file, add_chords=()):
+        """Import one text file, export it, delete it; return the exported text.
+
+        add_chords: (character_num, note_id) chords added before the export.
+        """
+        rows = self.app.songs_model.rowCount()
         self.app.importTextFiles([song_file])
-
-        self.assertEqual(self.app.songs_model.rowCount(), self.prev_rows + 1)
-
-        # Export back to text
+        self.assertEqual(self.app.songs_model.rowCount(), rows + 1)
+        song = self.app.current_song
+        for character_num, note_id in add_chords:
+            song._addChord(softchord.SongChord(
+                song, character_num, note_id, 0, -1, "", 0))
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
             out_path = tmp.name
-
         try:
             self.app.exportToText(out_path)
-
-            with open(out_path, encoding="utf-8") as fh:
-                exported = fh.readlines()
-
-            with open(song_file, encoding="utf-8") as fh:
-                original = fh.readlines()
-
-            # Not quite the file: a chord always sits on a letter (the A over
-            # the space before "This" and "Your" goes onto the T and the Y),
-            # and a chord name is written centered on its letter (E/G♯ and
-            # F♯m sit one column left of where the file has them).
-            changed = {
-                0: "\ufeff A           D\n",
-                2: " A           D\n",
-                4: " A   E/G♯  F♯m\n",
-            }
-            expected = [changed.get(i, line) for i, line in enumerate(original)]
-            self.assertEqual(exported, expected)
+            with open(out_path, encoding="utf-8", newline="") as fh:
+                exported = fh.read()
         finally:
-            if os.path.exists(out_path):
-                os.remove(out_path)
-
-        # Cleanup the imported song
+            os.remove(out_path)
         self.app.deleteSelectedSongs()
-        self.assertEqual(self.app.songs_model.rowCount(), self.prev_rows)
+        self.assertEqual(self.app.songs_model.rowCount(), rows)
+        return exported
+
+    def _write_temp_text(self, text):
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".txt", delete=False, encoding="utf-8",
+                newline="") as tmp:
+            tmp.write(text)
+        self.addCleanup(os.remove, tmp.name)
+        return tmp.name
+
+    def test_import_and_export_text_roundtrip(self):
+        """Import a text file, export it, and import that export again.
+
+        A chord name is written starting above its letter, which is where a
+        text import reads it from, so export -> import -> export is the same.
+        """
+        song_file = "test_тест_song.txt"
+        exported = self._import_then_export(song_file)
+        with open(song_file, encoding="utf-8", newline="") as fh:
+            original = fh.read().splitlines(keepends=True)
+        # Not quite the file: a chord always sits on a letter, so the A over
+        # the space before "This" and "Your" goes onto the T and the Y.
+        changed = {
+            0: "\ufeff A           D\r\n",
+            2: " A           D\r\n",
+            4: " A    E/G\u266f  F\u266fm\r\n",
+        }
+        expected = "".join(changed.get(i, line) for i, line in enumerate(original))
+        self.assertEqual(exported, expected)
+        again = self._import_then_export(self._write_temp_text(exported))
+        self.assertEqual(again, exported)
+
+    def test_text_with_chords_on_letters_comes_back_unchanged(self):
+        """Multi-letter names, a name past the line end, and Cyrillic lyrics."""
+        lyric = "Shine on me, Lord Jesus"
+        chords = [(0, "Am7"), (6, "E/G\u266f"), (13, "F\u266fm"),
+                  (len(lyric) - 1, "Dsus4")]
+        row = ""
+        for column, name in chords:
+            row = row.ljust(column) + name
+        text = ("\ufeff" + row + "\r\n" + lyric + "\r\n"
+                + "G" + " " * 15 + "Em\r\n" + "Это русские слова\r\n")
+        self.assertEqual(self._import_then_export(self._write_temp_text(text)),
+                         text)
+
+    def test_chords_on_neighbouring_letters_keep_a_space_between(self):
+        """A name that would touch the one before it moves right, past a space.
+
+        The text cannot hold both on neighbouring letters, so the import reads
+        the moved name on the letter it is written over, and a second export
+        is the same as the first.
+        """
+        text = "\ufeffAm7\r\nShine on me\r\n"
+        # D on the "h" and E on the "i", right after Am7 on the "S".
+        exported = self._import_then_export(
+            self._write_temp_text(text), add_chords=[(1, 2), (2, 4)])
+        self.assertEqual(exported, "\ufeffAm7 D E\r\nShine on me\r\n")
+        again = self._import_then_export(self._write_temp_text(exported))
+        self.assertEqual(again, exported)
 
     def test_export_to_single_pdf(self):
         """Basic PDF export through the App."""

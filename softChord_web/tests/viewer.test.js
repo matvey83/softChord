@@ -53,8 +53,16 @@ test("song text matches the editor layout", function () {
   var withChords = SongText.render(text, chords, true);
   assert.equal(
     withChords,
-    "C    Am\r\nTest line one\r\n" + " ".repeat(11) + "G\r\nTest line two");
+    "C    Am\r\nTest line one\r\n" + " ".repeat(12) + "G\r\nTest line two");
   assert.equal(SongText.render(text, chords, false), "Test line one\r\nTest line two");
+});
+
+test("song text names start above their letter and keep a space between", function () {
+  // Am on the S, D on the h (moved past a space after Am), Em on the last e.
+  var chords = [chord(10, 4, 1), chord(1, 2), chord(0, 9, 1)];
+  assert.equal(
+    SongText.render("Shine on me", chords, true),
+    "Am D" + " ".repeat(6) + "Em\r\nShine on me");
 });
 
 test("sheet anchors chords on their letters", function () {
@@ -101,8 +109,9 @@ test("chords with no letter are not drawn and do not crash", function () {
     assert.deepEqual(lines[1].chords.map(function (c) { return c.anchor; }), [0]);
     assert.equal(SongText.render(text, chords, true), "C\r\nab\r\nG\r\ncd");
   });
-  var long = SongText.render("Oh", [chord(0, 0, 11)], true);
-  assert.ok(long.includes("\r\nOh"));
+  var long = chord(1, 0, 11);
+  long.bassNoteId = 7;
+  assert.equal(SongText.render("Oh", [long], true), " C°/G\r\nOh");
 });
 
 test("A major spells sharps", function () {

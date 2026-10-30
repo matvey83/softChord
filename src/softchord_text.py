@@ -5,39 +5,26 @@ place_chord_on_line and format_song_text stay in this order.
 """
 
 
-def place_chord_on_line(cells, anchor, chord_text):
-    """Write one chord into a monospace lyric line, centered on anchor.
+def place_chord_on_line(cells, anchor, chord_text, free=0):
+    """Write one chord into a monospace chord row, starting above anchor.
 
-    cells is one character per lyric column. An even-length name is shifted
-    so the anchor letter sits just left of the name's middle. The name is
-    moved inward when it would hang off either end of the line.
+    cells is one character per lyric column. The name starts above its
+    letter, which is where a text import (and the usual plain-text chord
+    sheet) reads it from. free is the first column the name may use (one
+    space after the name before it); a name that would touch that one
+    starts there instead. A name past the end of the line adds columns.
+    Returns the first column the next name may use.
 
-    Mirror: softchord_text.swift SongText.place.
+    Mirror: softchord_text.swift SongText.place, softchord_text.js place.
     """
-    chord_len = len(chord_text)
-    if chord_len == 0 or not cells:
-        return
-    chord_left = anchor - (chord_len // 2)
-    if not (chord_len % 2):
-        chord_left += 1
-    chord_right = chord_left + chord_len
-
-    while chord_left < 0:
-        chord_left += 1
-        chord_right += 1
-
-    while chord_right >= len(cells):
-        chord_right -= 1
-        chord_left -= 1
-
-    # A name longer than the line wraps round its start, and what does not
-    # fit is left out, as in the Swift and JavaScript versions.
-    for i, char in enumerate(chord_text):
-        index = i + chord_left
-        if index < 0:
-            index += len(cells)
-        if 0 <= index < len(cells):
-            cells[index] = char
+    if not chord_text:
+        return free
+    left = max(anchor, free, 0)
+    right = left + len(chord_text)
+    if right > len(cells):
+        cells.extend([" "] * (right - len(cells)))
+    cells[left:right] = list(chord_text)
+    return right + 1
 
 
 def format_song_text(lines, include_chords, line_has_chords, chords_on_line):
@@ -50,8 +37,11 @@ def format_song_text(lines, include_chords, line_has_chords, chords_on_line):
     for linenum, line_text in enumerate(lines):
         if include_chords and line_has_chords(linenum):
             cells = [' '] * len(line_text)
-            for anchor, chord_text in chords_on_line(linenum):
-                place_chord_on_line(cells, anchor, chord_text)
+            # Left to right; of two chords on one letter the later is written.
+            names = dict(chords_on_line(linenum))
+            free = 0
+            for anchor in sorted(names):
+                free = place_chord_on_line(cells, anchor, names[anchor], free)
             song_text += ''.join(cells).rstrip() + "\n"
 
         if not include_chords:
