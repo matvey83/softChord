@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-softchord-songbook">
+    <comment>softChord songbook</comment>
+    <sub-class-of type="application/vnd.sqlite3"/>
+    <icon name="softchord"/>
+    <glob pattern="*.songbook"/>
+  </mime-type>
+</mime-info>

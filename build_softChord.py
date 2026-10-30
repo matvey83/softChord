@@ -4,6 +4,7 @@ Build a standalone softChord app with PyInstaller.
 
 macOS:   dist/softChord.app
 Windows: dist/softChord.exe
+Linux:   dist/softChord (packaging/linux/package.sh makes the AppImage)
 
 Usage:
     ./build_softChord.py

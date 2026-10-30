@@ -10,7 +10,7 @@ Ported to Qt6 in May-June 2023.
 # NOTE The sqlite3 is intentionally used instead of QtSql.
 
 from PyQt6 import QtCore, QtGui, QtWidgets
-import sys, os
+import sys, os, re
 import sqlite3
 import traceback
 import threading
@@ -298,13 +298,117 @@ def _configure_frozen_stdio():
         sys.stderr = log_fp
 
 
+LINUX_DESKTOP_ID = "com.matvey83.softchord.desktop"
+
+
+def _linux_data_dir():
+    """packaging/linux in the repository, or linux/ in the frozen app."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    bundled = os.path.join(here, "linux")
+    if os.path.isdir(bundled):
+        return bundled
+    return os.path.join(here, os.pardir, "packaging", "linux")
+
+
+def linux_desktop_entry(appimage, data_dir=None):
+    """The .desktop file of packaging/linux with Exec set to this AppImage
+    (quoted as the Desktop Entry spec asks)."""
+    path = os.path.join(data_dir or _linux_data_dir(), LINUX_DESKTOP_ID)
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    # The quoting rule escapes " ` $ and \ with a backslash, then the string
+    # rule doubles every backslash; a literal % is %%.
+    arg = re.sub(r'(["`$\\])', r"\\\1", appimage)
+    quoted = '"%s"' % arg.replace("\\", "\\\\").replace("%", "%%")
+    out = []
+    for line in lines:
+        if line.startswith("Exec="):
+            line = "Exec=%s %%f" % quoted
+        elif line.startswith("TryExec="):
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def register_linux_file_association(appimage=None, data_home=None,
+                                    run=None):
+    """Linux AppImage: install the .desktop file, the songbook MIME type and
+    the icon under ~/.local/share (no root), so *.songbook opens with this
+    AppImage. Only when $APPIMAGE is set; any failure is ignored. Returns
+    True when something was (re)written."""
+    appimage = appimage or os.environ.get("APPIMAGE")
+    if not appimage:
+        return False
+    try:
+        import shutil
+        import subprocess
+        data_dir = _linux_data_dir()
+        data_home = data_home or os.environ.get("XDG_DATA_HOME") or \
+            os.path.join(os.path.expanduser("~"), ".local", "share")
+        entry = linux_desktop_entry(os.path.abspath(appimage), data_dir)
+        apps = os.path.join(data_home, "applications")
+        desktop = os.path.join(apps, LINUX_DESKTOP_ID)
+        try:
+            with open(desktop, encoding="utf-8") as f:
+                if f.read() == entry:
+                    return False
+        except OSError:
+            pass
+        mime = os.path.join(data_home, "mime")
+        icons = os.path.join(data_home, "icons", "hicolor", "256x256", "apps")
+        for folder in (apps, os.path.join(mime, "packages"), icons):
+            os.makedirs(folder, exist_ok=True)
+        shutil.copyfile(os.path.join(data_dir, "softchord-mime.xml"),
+                        os.path.join(mime, "packages", "softchord.xml"))
+        shutil.copyfile(os.path.join(data_dir, "softchord.png"),
+                        os.path.join(icons, "softchord.png"))
+        with open(desktop, "w", encoding="utf-8") as f:
+            f.write(entry)
+        # The tools get the system libraries, not the ones PyInstaller
+        # unpacked for this app.
+        env = dict(os.environ)
+        if "LD_LIBRARY_PATH_ORIG" in env:
+            env["LD_LIBRARY_PATH"] = env["LD_LIBRARY_PATH_ORIG"]
+        elif _is_frozen():
+            env.pop("LD_LIBRARY_PATH", None)
+        run = run or (lambda cmd: subprocess.run(
+            cmd, env=env, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=20))
+        # xdg-mime cannot add the default to a mimeapps.list that does not
+        # exist yet (it leaves an empty mimeapps.list.new).
+        config = os.environ.get("XDG_CONFIG_HOME") or \
+            os.path.join(os.path.expanduser("~"), ".config")
+        mimeapps = os.path.join(config, "mimeapps.list")
+        if shutil.which("xdg-mime") and not os.path.exists(mimeapps):
+            os.makedirs(config, exist_ok=True)
+            open(mimeapps, "a").close()
+        for cmd in (["update-mime-database", mime],
+                    ["update-desktop-database", apps],
+                    ["xdg-mime", "default", LINUX_DESKTOP_ID,
+                     "application/x-softchord-songbook"]):
+            if shutil.which(cmd[0]):
+                try:
+                    run(cmd)
+                except Exception:
+                    pass
+        return True
+    except Exception:
+        # Association is convenience; never block the app from starting.
+        return False
+
+
 def register_songbook_file_association():
     """Register *.songbook -> this executable in the current-user registry.
 
     macOS associations come from the app bundle Info.plist. On Windows the
     standalone exe has no installer, so we claim the extension at launch
     (HKCU, no admin required) whenever the stored command path is stale.
+    On Linux the AppImage does the same in ~/.local/share
+    (register_linux_file_association).
     """
+    if sys.platform.startswith("linux") and _is_frozen():
+        register_linux_file_association()
+        return
     if sys.platform != "win32" or not _is_frozen():
         return
 
