@@ -111,6 +111,8 @@ else:
 # pdf_dialog_ui_file = os.path.join(exec_dir, "softchord_pdf_dialog.ui")
 
 import softchord_main_window_ui, softchord_chord_dialog_ui, softchord_pdf_dialog_ui
+from softchord_toolbar import SongToolbar
+from softchord_note import BriefNote
 
 paper_sizes_list = [
     (PageSizeId.Letter, "Letter (8.5 x 11 inches, 216 x 279 mm)"),
@@ -1295,11 +1297,12 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.showSongsContextMenu)
 
         self.ui.song_filter_ef.textEdited.connect(self.songFilterEdited)
-        self.ui.clear_filter_button.clicked.connect(self.clearFilterClicked)
+        self.ui.song_filter_ef.setClearButtonEnabled(True)
 
         self.previous_song_text = None  # Song text before last user's edit operation
 
         self.editor = CustomTextEdit(self)
+        self.brief_note = BriefNote(self.editor)
         self.editor.undoAvailable.connect(self.updateEditMenu)
         self.editor.redoAvailable.connect(self.updateEditMenu)
 
@@ -1310,11 +1313,6 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.editor.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.NoWrap)
         self.editor.textChanged.connect(self.lyricsTextChanged)
 
-        self.ui.transpose_up_button.clicked.connect(self.transposeUp)
-        self.ui.transpose_down_button.clicked.connect(self.transposeDown)
-        self.ui.transpose_reset_button.clicked.connect(self.transposeReset)
-        self.ui.new_song_button.clicked.connect(self.createNewSong)
-        self.ui.delete_song_button.clicked.connect(self.deleteSelectedSongs)
 
         self.ui.song_num_ef.textEdited.connect(self.currentSongNumberEdited)
         self.ui.song_title_ef.textEdited.connect(self.currentSongTitleEdited)
@@ -1375,17 +1373,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.lyricEditorSelected)
         self.ui.actionSaveEdit.triggered.connect(self.saveEdit)
         self.ui.actionDiscardEdit.triggered.connect(self.requestDiscardEdit)
-        self.ui.save_edit_button.clicked.connect(self.saveEdit)
-        self.ui.discard_edit_button.clicked.connect(self.discardEdit)
-        self.ui.save_edit_button.setDefault(False)
-        self.ui.save_edit_button.setAutoDefault(False)
-        self.ui.discard_edit_button.setAutoDefault(False)
 
         self.ui.actionZoomIn.triggered.connect(self.zoomIn)
         self.ui.actionZoomOut.triggered.connect(self.zoomOut)
         self.ui.actionZoomActual.triggered.connect(self.zoomActual)
-        self.ui.zoom_in_button.clicked.connect(self.zoomIn)
-        self.ui.zoom_out_button.clicked.connect(self.zoomOut)
 
         self.zoom_levels = [1.0]
         zoom1 = 1.0
@@ -1396,13 +1387,19 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.zoom_levels += [zoom1, zoom2]
         self.zoom_levels.sort()
 
-        self.ui.zoom_slider.setRange(0, len(self.zoom_levels) - 1)
-        self.ui.zoom_slider.sliderMoved.connect(self.updateZoomWidgets)
 
         # Set zoom to 100%:
         self.zoom_factor = 1.0
-        pos = self.zoom_levels.index(1.0)
-        self.ui.zoom_slider.setSliderPosition(pos)
+        self.zoom_pos = self.zoom_levels.index(1.0)
+
+        # The song toolbar above the song pane (see softchord_toolbar.py).
+        self.toolbar = SongToolbar(self, self.ui.layoutWidget)
+        # Below the Notes row, directly above the song.
+        column = self.ui.verticalLayout
+        song_at = next(i for i in range(column.count())
+                       if column.itemAt(i).layout() is self.ui.lyric_editor_layout)
+        column.insertWidget(song_at, self.toolbar)
+        self.undo_stack.indexChanged.connect(self._updateChordButtons)
 
         self.clipboard = QtWidgets.QApplication.clipboard()
         self.clipboard.dataChanged.connect(self.clipboardChanged)
@@ -1460,9 +1457,6 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.setCurrentSongbook(None)
 
         self.songs_model.updateFromDatabase()
-
-        self.ui.lyric_editor_button.clicked.connect(self.lyricEditorSelected)
-        self.ui.chord_editor_button.clicked.connect(self.chordEditorSelected)
 
         # The song is viewed until Edit Chords or Edit Text is chosen.
         self._applyEditorMode(None)
@@ -1534,13 +1528,28 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.song_filter_ef.setText("")
         self.songFilterEdited("")
 
+    def note(self, text):
+        """A brief note at the bottom of the song view (softchord_note.py)."""
+        self.brief_note.showNote(text)
+
+    def _editModeIs(self, mode):
+        return self.edit_session is not None and self.edit_session.mode == mode
+
     def lyricEditorSelected(self):
         """Edit Text...: start editing the lyrics of the open song."""
-        return self.startEdit(EditSession.TEXT)
+        was = self._editModeIs(EditSession.TEXT)
+        started = self.startEdit(EditSession.TEXT)
+        if started and not was and self._editModeIs(EditSession.TEXT):
+            self.note("Entered text editor mode")
+        return started
 
     def chordEditorSelected(self):
         """Edit Chords...: start editing the chords of the open song."""
-        return self.startEdit(EditSession.CHORDS)
+        was = self._editModeIs(EditSession.CHORDS)
+        started = self.startEdit(EditSession.CHORDS)
+        if started and not was and self._editModeIs(EditSession.CHORDS):
+            self.note("Entered chord editor mode")
+        return started
 
     # -- Edit sessions -------------------------------------------------------
 
@@ -1647,6 +1656,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 return False
             self._refreshSongList()
         self._endEdit()
+        if report:
+            self.note("Saved")
         return True
 
     def discardEdit(self, checked=False):
@@ -1658,6 +1669,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if song is self.current_song and self.editChanged():
             self._restoreSongDraft(song, session.start)
         self._endEdit()
+        self.note("Changes discarded")
 
     def requestDiscardEdit(self, checked=False):
         """Esc: discard the edit, asking first only when something changed."""
@@ -1845,8 +1857,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         changes something."""
         shown = mode is not None and (
             mode != EditSession.VIEW or self.editChanged())
-        self.ui.discard_edit_button.setVisible(shown)
-        self.ui.save_edit_button.setVisible(shown)
+        mode_name = None if mode == EditSession.VIEW else mode
+        self.toolbar.applyMode(mode_name, shown)
 
     def songHasUnsavedEdit(self, song_id):
         """The song list shows a dot on this song's row."""
@@ -1859,12 +1871,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         lyric = mode == EditSession.TEXT
         entering_lyric = lyric and not self.editor.lyric_editor_mode
 
-        self.ui.chord_editor_button.setDown(mode == EditSession.CHORDS)
-        self.ui.lyric_editor_button.setDown(lyric)
         self.editor.viewport().setCursor(
             Qt.CursorShape.IBeamCursor if lyric else Qt.CursorShape.ArrowCursor)
-        self.ui.chords_editor_label.setVisible(mode == EditSession.CHORDS)
-        self.ui.lyrics_editor_label.setVisible(lyric)
         self._showSaveAndDiscard(mode)
         if mode != EditSession.CHORDS:
             # Chords can be selected only in Edit Chords.
@@ -1883,6 +1891,43 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.actionDiscardEdit.setEnabled(mode is not None)
         self.editor.viewport().update()
         self.updateEditMenu()
+        self._updateChordButtons()
+
+    # The selected letter or chords of Edit Chords. Setting them updates the
+    # toolbar's Add/Edit chord and Delete chord buttons.
+    @property
+    def selected_char_num(self):
+        return self.__dict__.get("_selected_char_num")
+
+    @selected_char_num.setter
+    def selected_char_num(self, value):
+        self.__dict__["_selected_char_num"] = value
+        self._updateChordButtons()
+
+    @property
+    def selected_chord_nums(self):
+        return self.__dict__.get("_selected_chord_nums", set())
+
+    @selected_chord_nums.setter
+    def selected_chord_nums(self, value):
+        self.__dict__["_selected_chord_nums"] = value
+        self._updateChordButtons()
+
+    def _updateChordButtons(self, *args):
+        toolbar = self.__dict__.get("toolbar")
+        if toolbar is None or sip.isdeleted(toolbar):
+            return
+        letter = self.selected_char_num is not None and self.chordEditing()
+        chord = letter and self.getSelectedChord() is not None
+        toolbar.updateChordButtons(
+            letter, chord, chord or bool(self.selected_chord_nums))
+
+    def editChordFromToolbar(self, checked=False):
+        """Add/Edit chord: the selected chord, else a new one at the letter."""
+        if not self.chordEditing() or self.selected_char_num is None:
+            return
+        self.processSongCharEdit(self.selected_char_num)
+        self._updateChordButtons()
 
     def __del__(self):
         pass
@@ -2051,7 +2096,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         Deletes the currently selected chord from the song.
         """
 
-        if self._deleteSelectedChords():
+        count = self._deleteSelectedChords()
+        if count:
+            self.note("Chords deleted" if count > 1 else "Chord deleted")
             return
 
         chord = self.getSelectedChord()
@@ -2063,6 +2110,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             text, gaps = tidy_chord_room(
                 song.getAllText(), [other.character_num for other in others],
                 (chord.character_num, ))
+            self.note("Chord deleted")
             if not gaps:
                 song.deleteChord(chord)
                 return
@@ -2089,7 +2137,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.selected_chord_nums = set()
         self.selected_char_num = None
         self.editor.viewport().update()
-        return True
+        return len(chords)
 
     @staticmethod
     def _chordsAt(moves):
@@ -2341,17 +2389,25 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
     def undo(self):
         if self._using_lyric_undo():
+            can = self.editor.document().isUndoAvailable()
             self.editor.undo()
         else:
+            can = self.undo_stack.canUndo()
             self.undo_stack.undo()
         self.editor.viewport().update()
+        if can:
+            self.note("Undone")
 
     def redo(self):
         if self._using_lyric_undo():
+            can = self.editor.document().isRedoAvailable()
             self.editor.redo()
         else:
+            can = self.undo_stack.canRedo()
             self.undo_stack.redo()
         self.editor.viewport().update()
+        if can:
+            self.note("Redone")
 
     def updateEditMenu(self, ignored1=None, ignored2=None):
         # An edit's undo history can outlive the window at exit.
@@ -2590,15 +2646,12 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.song_title_ef.setEnabled(self.current_song != None)
         self.ui.song_num_ef.setEnabled(self.current_song != None)
         self._updateAutoDetectedKeyLabel()
-        self.ui.transpose_up_button.setEnabled(self.current_song != None)
-        self.ui.transpose_down_button.setEnabled(self.current_song != None)
+        self.toolbar.transpose_up.setEnabled(self.current_song != None)
+        self.toolbar.transpose_down.setEnabled(self.current_song != None)
         self.updateTransposeResetButton()
         self.ui.actionChordEditorMode.setEnabled(self.current_song != None)
         self.ui.actionLyricEditorMode.setEnabled(self.current_song != None)
-        self.ui.chord_editor_button.setEnabled(self.current_song != None)
-        self.ui.lyric_editor_button.setEnabled(self.current_song != None)
 
-        self.ui.delete_song_button.setEnabled(num_selected > 0)
         self.ui.actionDeleteSongs.setEnabled(num_selected > 0)
         self.ui.actionRemoveTrailingSpaces.setEnabled(num_selected > 0)
         self.ui.actionDeleteSong.setEnabled(num_selected == 1)
@@ -2627,7 +2680,6 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         songbook_open = self.store.is_open
         self.ui.actionImportText.setEnabled(songbook_open)
 
-        self.ui.new_song_button.setEnabled(songbook_open)
         self.ui.actionNewSong.setEnabled(songbook_open)
 
         self.ui.actionCloseSongbook.setEnabled(songbook_open)
@@ -2714,11 +2766,22 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if not self._viewDraft():
             return
         self.undo_stack.push(TransposeSongCommand(song, steps))
+        self.note(self._transposedNote(
+            "Transposed up" if steps > 0 else "Transposed down", " to "))
+
+    def _transposedNote(self, text, joiner):
+        """iOS SongPage.transposedNote: with the key the chords are now in."""
+        song = self.current_song
+        chords = [c for c in song.iterateAllChords() if not c.unknown]
+        key = best_detected_key(chords) if chords else None
+        if key is None or key.score <= 0:
+            return text
+        return text + joiner + key.label
 
     def updateTransposeResetButton(self):
         """Reset is on only when the open song is not in the key it was loaded in."""
         song = self.current_song
-        self.ui.transpose_reset_button.setEnabled(
+        self.toolbar.transpose_reset.setEnabled(
             song is not None and song.transposed_steps != 0)
 
     def transposeReset(self):
@@ -2738,6 +2801,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             return
         self.undo_stack.push(
             TransposeSongCommand(song, -song.transposed_steps, "reset transpose"))
+        self.note(self._transposedNote("Transposed back to original key", ", "))
 
     def _onLyricUndoCommandAdded(self):
         # Undo and redo do not emit this. A document that is no longer shown
@@ -2890,39 +2954,38 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if self.edit_session is not None:
             self._updateEditChanged()
 
-    def zoomIn(self):
-        pos = self.ui.zoom_slider.sliderPosition()
-        self.ui.zoom_slider.setSliderPosition(pos + 1)
+    def zoomIn(self, checked=False):
+        self.zoom_pos = min(self.zoom_pos + 1, len(self.zoom_levels) - 1)
         self.updateZoomWidgets()
+        self._zoomNote()
 
-    def zoomOut(self):
-        pos = self.ui.zoom_slider.sliderPosition()
-        self.ui.zoom_slider.setSliderPosition(pos - 1)
+    def zoomOut(self, checked=False):
+        self.zoom_pos = max(self.zoom_pos - 1, 0)
         self.updateZoomWidgets()
+        self._zoomNote()
 
-    def zoomActual(self):
+    def zoomActual(self, checked=False):
         """
         Set zoom level to 100%
         """
-        pos = self.zoom_levels.index(1.0)
-        self.ui.zoom_slider.setSliderPosition(pos)
+        self.zoom_pos = self.zoom_levels.index(1.0)
         self.updateZoomWidgets()
+        self._zoomNote()
+
+    def _zoomNote(self):
+        self.note("Zoom %d%%" % round(self.zoom_factor * 100.0))
 
     def updateZoomWidgets(self):
 
-        pos = self.ui.zoom_slider.sliderPosition()
+        pos = self.zoom_pos
         self.zoom_factor = self.zoom_levels[pos]
-        percent = int(self.zoom_factor * 100.0)
-        percent_str = str(percent) + "%"
-        self.ui.zoom_label.setText("Zoom: %s" % percent_str)
+        self.toolbar.setZoomPercent(round(self.zoom_factor * 100.0))
         self.updateEditorFonts()
 
         enable_zoom_in = (pos != len(self.zoom_levels) - 1)
         enable_zoom_out = (pos != 0)
         enable_zoom_actual = (self.zoom_levels[pos] != 1.0)
 
-        self.ui.zoom_in_button.setEnabled(enable_zoom_in)
-        self.ui.zoom_out_button.setEnabled(enable_zoom_out)
         self.ui.actionZoomIn.setEnabled(enable_zoom_in)
         self.ui.actionZoomOut.setEnabled(enable_zoom_out)
         self.ui.actionZoomActual.setEnabled(enable_zoom_actual)
@@ -2967,6 +3030,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.chords_font_size = new_font.pointSizeF()
             self.chords_font = new_font
             self.updateEditorFonts()
+            self.note("Chords font changed")
 
     def changeLyricsFont(self):
         """
@@ -2981,6 +3045,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.lyrics_font_size = new_font.pointSizeF()
             self.lyrics_font = new_font
             self.updateEditorFonts()
+            self.note("Lyrics font changed")
 
     def updateEditorFonts(self):
         """
@@ -3043,6 +3108,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             try:
                 self.printSongsToPrinter(song_ids, printer,
                                                        "Printing...")
+                self.note("Sent to printer")
             except Exception as err:
                 self.error("Error printing:\n\n%s " % traceback.format_exc())
 
@@ -3486,6 +3552,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.clipboard.setText(song_text)
         finally:
             self.restoreCursor()
+        self.note("Song text copied to clipboard")
 
     def copySongTextWithChords(self):
         """
@@ -3501,6 +3568,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.clipboard.setText(song_text)
         finally:
             self.restoreCursor()
+        self.note("Song text with chords copied to clipboard")
 
     def copySongAsImage(self):
         """
@@ -3522,6 +3590,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.clipboard.setMimeData(mime)
         finally:
             self.restoreCursor()
+        self.note("Song image copied to clipboard")
 
     def _paddedSongSheetBounds(self, song, editor):
         """Lyric frame and chords, with room for a chord past the letters."""
@@ -4247,8 +4316,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             # Ok pressed
             if add_new:
                 self.current_song.addChord(new_chord)
+                self.note("Chord added")
             else:
                 self.current_song.replaceChord(orig_chord, new_chord)
+                self.note("Chord changed")
 
             self.editor.viewport().update()
 

@@ -39,10 +39,13 @@
            glass with a minus, an equals sign (back to 100%) or a plus; Reset transpose is a counterclockwise arrow; Print is a printer; Edit text is a pencil; Edit chords is a note with a pencil; Edit chord is a text field; Delete chord is a bin; Undo and Redo are curved arrows), so they need no licence note or network fetch. -->
       <!-- MIRRORED UI: the iOS app mirrors this toolbar (planned in
            softChord Viewer/softChord Viewer/SongToolbar.swift, icons in its
-           Assets.xcassets/Toolbar), and the desktop editor will later. The
-           buttons, their order and groups, the icons (these SVGs), the labels and
-           tooltips, when each shows or is dimmed, and the wrapping onto a second
-           row are the same in both apps: change them in both. -->
+           Assets.xcassets/Toolbar), and so does the desktop editor
+           (src/softchord_toolbar.py, the SVGs in icons/toolbar/). The buttons,
+           their order and groups, the icons, the labels and tooltips, and when
+           each shows or is dimmed are the same in all three apps: change them in
+           all three. iOS and the desktop also wrap whole groups onto more rows
+           like this page (the desktop only when they do not fit, with no 940 px
+           rule) and the desktop has no Back or title. -->
       <div class="toolbar-actions">
         <div class="tool-group" role="group" aria-label="Copy song">
           <button id="copy-text" class="tool" type="button" title="Copy song text" aria-label="Copy song text">

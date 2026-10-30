@@ -8,8 +8,10 @@
 //  each shows or is dimmed, the sizes and the wrapping onto more rows follow
 //  softChord_web/index.html (.toolbar), viewer.css (.toolbar, .tool, the 940 and
 //  360 px rules), viewer.js (applyZoom, paintSong, setEditing) and
-//  softchord_chord_mode.js (updateButtons). The desktop editor will follow them
-//  later. Change both apps together.
+//  softchord_chord_mode.js (updateButtons). The desktop editor's toolbar
+//  (src/softchord_toolbar.py) follows them too and also wraps whole groups onto
+//  more rows, but only when they do not fit (no 940 pt rule, no Back or title).
+//  Change all three apps together.
 
 import SwiftUI
 

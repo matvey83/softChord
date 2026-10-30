@@ -55,7 +55,9 @@ a = Analysis(
     ["src/softchord.py"],
     pathex=["src"],
     binaries=[],
-    datas=[("src/icons/softchord.png", "icons")],
+    # The toolbar icons are the web app's SVGs (one copy, see softchord_toolbar.py).
+    datas=[("src/icons/softchord.png", "icons"),
+           ("softChord_web/icons/toolbar/*.svg", "icons/toolbar")],
     hiddenimports=[
         "softchord_version",
         "softchord_chords",

@@ -25,9 +25,6 @@ class Ui_MainWindow(object):
         self.verticalLayout_3 = QtWidgets.QVBoxLayout(self.layoutWidget)
         self.verticalLayout_3.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_3.setObjectName("verticalLayout_3")
-        self.label_3 = QtWidgets.QLabel(parent=self.layoutWidget)
-        self.label_3.setObjectName("label_3")
-        self.verticalLayout_3.addWidget(self.label_3)
         self.horizontalLayout_7 = QtWidgets.QHBoxLayout()
         self.horizontalLayout_7.setSpacing(2)
         self.horizontalLayout_7.setObjectName("horizontalLayout_7")
@@ -37,35 +34,18 @@ class Ui_MainWindow(object):
         self.song_filter_ef = QtWidgets.QLineEdit(parent=self.layoutWidget)
         self.song_filter_ef.setObjectName("song_filter_ef")
         self.horizontalLayout_7.addWidget(self.song_filter_ef)
-        self.clear_filter_button = QtWidgets.QToolButton(parent=self.layoutWidget)
-        self.clear_filter_button.setObjectName("clear_filter_button")
-        self.horizontalLayout_7.addWidget(self.clear_filter_button)
         self.verticalLayout_3.addLayout(self.horizontalLayout_7)
         self.songs_view = QtWidgets.QTableView(parent=self.layoutWidget)
         self.songs_view.setMinimumSize(QtCore.QSize(100, 80))
         self.songs_view.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.songs_view.setObjectName("songs_view")
         self.verticalLayout_3.addWidget(self.songs_view)
-        self.horizontalLayout_2 = QtWidgets.QHBoxLayout()
-        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
-        self.new_song_button = QtWidgets.QPushButton(parent=self.layoutWidget)
-        self.new_song_button.setObjectName("new_song_button")
-        self.horizontalLayout_2.addWidget(self.new_song_button)
-        self.delete_song_button = QtWidgets.QPushButton(parent=self.layoutWidget)
-        self.delete_song_button.setObjectName("delete_song_button")
-        self.horizontalLayout_2.addWidget(self.delete_song_button)
-        spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
-        self.horizontalLayout_2.addItem(spacerItem)
-        self.verticalLayout_3.addLayout(self.horizontalLayout_2)
         self.layoutWidget1 = QtWidgets.QWidget(parent=self.splitter)
         self.layoutWidget1.setObjectName("layoutWidget1")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.layoutWidget1)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout.setSpacing(2)
         self.verticalLayout.setObjectName("verticalLayout")
-        self.label = QtWidgets.QLabel(parent=self.layoutWidget1)
-        self.label.setObjectName("label")
-        self.verticalLayout.addWidget(self.label)
         self.horizontalLayout = QtWidgets.QHBoxLayout()
         self.horizontalLayout.setSpacing(5)
         self.horizontalLayout.setObjectName("horizontalLayout")
@@ -106,45 +86,6 @@ class Ui_MainWindow(object):
         self.horizontalLayout_9 = QtWidgets.QHBoxLayout()
         self.horizontalLayout_9.setObjectName("horizontalLayout_9")
         self.verticalLayout.addLayout(self.horizontalLayout_9)
-        self.horizontalLayout_6 = QtWidgets.QHBoxLayout()
-        self.horizontalLayout_6.setSpacing(5)
-        self.horizontalLayout_6.setObjectName("horizontalLayout_6")
-        self.chord_editor_button = QtWidgets.QToolButton(parent=self.layoutWidget1)
-        self.chord_editor_button.setObjectName("chord_editor_button")
-        self.horizontalLayout_6.addWidget(self.chord_editor_button)
-        self.lyric_editor_button = QtWidgets.QToolButton(parent=self.layoutWidget1)
-        self.lyric_editor_button.setObjectName("lyric_editor_button")
-        self.horizontalLayout_6.addWidget(self.lyric_editor_button)
-        self.discard_edit_button = QtWidgets.QPushButton(parent=self.layoutWidget1)
-        self.discard_edit_button.setObjectName("discard_edit_button")
-        self.horizontalLayout_6.addWidget(self.discard_edit_button)
-        self.save_edit_button = QtWidgets.QPushButton(parent=self.layoutWidget1)
-        self.save_edit_button.setObjectName("save_edit_button")
-        self.horizontalLayout_6.addWidget(self.save_edit_button)
-        spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
-        self.horizontalLayout_6.addItem(spacerItem1)
-        self.label_12 = QtWidgets.QLabel(parent=self.layoutWidget1)
-        self.label_12.setObjectName("label_12")
-        self.horizontalLayout_6.addWidget(self.label_12)
-        self.transpose_down_button = QtWidgets.QPushButton(parent=self.layoutWidget1)
-        self.transpose_down_button.setObjectName("transpose_down_button")
-        self.horizontalLayout_6.addWidget(self.transpose_down_button)
-        self.transpose_up_button = QtWidgets.QPushButton(parent=self.layoutWidget1)
-        self.transpose_up_button.setObjectName("transpose_up_button")
-        self.horizontalLayout_6.addWidget(self.transpose_up_button)
-        self.transpose_reset_button = QtWidgets.QPushButton(parent=self.layoutWidget1)
-        self.transpose_reset_button.setEnabled(False)
-        self.transpose_reset_button.setObjectName("transpose_reset_button")
-        self.horizontalLayout_6.addWidget(self.transpose_reset_button)
-        self.verticalLayout.addLayout(self.horizontalLayout_6)
-        self.chords_editor_label = QtWidgets.QLabel(parent=self.layoutWidget1)
-        self.chords_editor_label.setWordWrap(True)
-        self.chords_editor_label.setObjectName("chords_editor_label")
-        self.verticalLayout.addWidget(self.chords_editor_label)
-        self.lyrics_editor_label = QtWidgets.QLabel(parent=self.layoutWidget1)
-        self.lyrics_editor_label.setWordWrap(True)
-        self.lyrics_editor_label.setObjectName("lyrics_editor_label")
-        self.verticalLayout.addWidget(self.lyrics_editor_label)
         self.lyric_editor_layout = QtWidgets.QVBoxLayout()
         self.lyric_editor_layout.setObjectName("lyric_editor_layout")
         self.chord_scroll_area = QtWidgets.QScrollArea(parent=self.layoutWidget1)
@@ -160,24 +101,6 @@ class Ui_MainWindow(object):
         self.chord_scroll_area.setWidget(self.scrollAreaWidgetContents)
         self.lyric_editor_layout.addWidget(self.chord_scroll_area)
         self.verticalLayout.addLayout(self.lyric_editor_layout)
-        self.horizontalLayout_3 = QtWidgets.QHBoxLayout()
-        self.horizontalLayout_3.setObjectName("horizontalLayout_3")
-        self.zoom_out_button = QtWidgets.QToolButton(parent=self.layoutWidget1)
-        self.zoom_out_button.setObjectName("zoom_out_button")
-        self.horizontalLayout_3.addWidget(self.zoom_out_button)
-        self.zoom_slider = QtWidgets.QSlider(parent=self.layoutWidget1)
-        self.zoom_slider.setOrientation(QtCore.Qt.Orientation.Horizontal)
-        self.zoom_slider.setObjectName("zoom_slider")
-        self.horizontalLayout_3.addWidget(self.zoom_slider)
-        self.zoom_in_button = QtWidgets.QToolButton(parent=self.layoutWidget1)
-        self.zoom_in_button.setObjectName("zoom_in_button")
-        self.horizontalLayout_3.addWidget(self.zoom_in_button)
-        self.zoom_label = QtWidgets.QLabel(parent=self.layoutWidget1)
-        self.zoom_label.setObjectName("zoom_label")
-        self.horizontalLayout_3.addWidget(self.zoom_label)
-        spacerItem2 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
-        self.horizontalLayout_3.addItem(spacerItem2)
-        self.verticalLayout.addLayout(self.horizontalLayout_3)
         self.verticalLayout_2.addWidget(self.splitter)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(parent=MainWindow)
@@ -192,9 +115,6 @@ class Ui_MainWindow(object):
         self.menuEdit = QtWidgets.QMenu(parent=self.menubar)
         self.menuEdit.setObjectName("menuEdit")
         MainWindow.setMenuBar(self.menubar)
-        self.statusbar = QtWidgets.QStatusBar(parent=MainWindow)
-        self.statusbar.setObjectName("statusbar")
-        MainWindow.setStatusBar(self.statusbar)
         self.actionNewSong = QtGui.QAction(parent=MainWindow)
         self.actionNewSong.setObjectName("actionNewSong")
         self.actionDeleteSong = QtGui.QAction(parent=MainWindow)
@@ -341,75 +261,11 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "softChord Editor"))
-        self.label_3.setText(_translate("MainWindow", "Songs in the current songbook:"))
         self.label_2.setText(_translate("MainWindow", "Filter:"))
-        self.clear_filter_button.setText(_translate("MainWindow", "x"))
-        self.new_song_button.setText(_translate("MainWindow", "New Song"))
-        self.delete_song_button.setText(_translate("MainWindow", "Delete selected"))
-        self.label.setText(_translate("MainWindow", "<html><head/><body><p><span style=\" font-weight:600;\">Selected song:</span></p></body></html>"))
         self.label_6.setText(_translate("MainWindow", "Number:"))
         self.label_4.setText(_translate("MainWindow", "Title:"))
         self.auto_detected_key_label.setText(_translate("MainWindow", "Auto-detected key:"))
         self.label_11.setText(_translate("MainWindow", "Notes:"))
-        self.chord_editor_button.setToolTip(_translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-"<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-"p, li { white-space: pre-wrap; }\n"
-"</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:11pt; font-weight:400; font-style:normal;\">\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Edit the chords of this song (⌘K). Save or discard the edit when you are done.</p></body></html>"))
-        self.chord_editor_button.setText(_translate("MainWindow", "Edit Chords"))
-        self.lyric_editor_button.setToolTip(_translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-"<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-"p, li { white-space: pre-wrap; }\n"
-"</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:11pt; font-weight:400; font-style:normal;\">\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Edit the text of this song (⌘L). Save or discard the edit when you are done.</p></body></html>"))
-        self.lyric_editor_button.setText(_translate("MainWindow", "Edit Text"))
-        self.discard_edit_button.setToolTip(_translate("MainWindow", "Put the song back as it was before this edit (Esc)."))
-        self.discard_edit_button.setText(_translate("MainWindow", "Discard"))
-        self.save_edit_button.setToolTip(_translate("MainWindow", "Save this edit to the songbook (⌘S)."))
-        self.save_edit_button.setText(_translate("MainWindow", "Save"))
-        self.label_12.setText(_translate("MainWindow", "Transpose:"))
-        self.transpose_down_button.setToolTip(_translate("MainWindow", "Transpose the whole song one half-step down."))
-        self.transpose_down_button.setText(_translate("MainWindow", "Down"))
-        self.transpose_up_button.setToolTip(_translate("MainWindow", "Transpose the whole song one half-step up."))
-        self.transpose_up_button.setText(_translate("MainWindow", "Up"))
-        self.transpose_reset_button.setToolTip(_translate("MainWindow", "Transpose the song back to the key it had when it was opened. Dimmed until the song has been transposed."))
-        self.transpose_reset_button.setText(_translate("MainWindow", "Reset"))
-        self.chords_editor_label.setToolTip(_translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-"<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-"p, li { white-space: pre-wrap; }\n"
-"</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:13pt; font-weight:400; font-style:normal;\">\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To add a new chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Press on a lyrics letter to select it, then press one of the following keys: A, B, C, D, E, F, or G.  To assign a sharp or a flat, press the &quot;Up&quot; or &quot;Down&quot; key afterwards to &quot;transpose&quot; the chord.  To create a minor chord, press the &quot;M&quot; key.  To create advanced chords, double-click on the created chord (a dialog box will open).</span></p>\n"
-"<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To edit a chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Click on the chord to select it, then press &quot;M&quot; to toggle major/minor, press another letter to assign a different note, or press &quot;Up&quot; or &quot;Down&quot; keys to transpose it. Double-click on the chord for advanced modifications.</span></p>\n"
-"<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To move a chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Click on the chord to select it, and then use the &quot;Left&quot; or &quot;Right&quot; keys to move it relative to the lyrics below it. Alternatively you can simply drag it to the new place.</span></p>\n"
-"<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To duplicate a chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">While holding the &quot;Option&quot; key, click and drag the chord. Alternatively you can use copy-and-paste.</span></p>\n"
-"<p style=\"-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:11pt;\"></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt; font-weight:600;\">To delete a chord:</span></p>\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">Click on the chord to select it, and press the &quot;Delete&quot; key.</span></p></body></html>"))
-        self.chords_editor_label.setText(_translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-"<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-"p, li { white-space: pre-wrap; }\n"
-"</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:13pt; font-weight:400; font-style:normal;\">\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-weight:600;\">Edit chords of the selected song: </span> <span style=\" font-style:italic;\">(Hover mouse here for help)</span></p></body></html>"))
-        self.lyrics_editor_label.setToolTip(_translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-"<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-"p, li { white-space: pre-wrap; }\n"
-"</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:13pt; font-weight:400; font-style:normal;\">\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-size:11pt;\">When in lyric editing mode, you can modify the text (lyrics) of the song.  As text is moved/added/removed, chords get moved automatically to follow their letters.   Remember to go back into the chord editor mode when you need modify chords.</span></p></body></html>"))
-        self.lyrics_editor_label.setText(_translate("MainWindow", "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-"<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-"p, li { white-space: pre-wrap; }\n"
-"</style></head><body style=\" font-family:\'Lucida Grande\'; font-size:13pt; font-weight:400; font-style:normal;\">\n"
-"<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-weight:600;\">Edit lyrics of the selected song: </span> <span style=\" font-style:italic;\">(Hover mouse here for help)</span></p></body></html>"))
-        self.zoom_out_button.setText(_translate("MainWindow", "-"))
-        self.zoom_in_button.setText(_translate("MainWindow", "+"))
-        self.zoom_label.setText(_translate("MainWindow", "Zoom: 100%"))
         self.menuSong.setTitle(_translate("MainWindow", "Song"))
         self.menuFile.setTitle(_translate("MainWindow", "File"))
         self.menuSettings.setTitle(_translate("MainWindow", "Settings"))
@@ -454,6 +310,7 @@ class Ui_MainWindow(object):
         self.actionZoomOut.setText(_translate("MainWindow", "Zoom Out"))
         self.actionZoomOut.setShortcut(_translate("MainWindow", "Ctrl+-"))
         self.actionZoomActual.setText(_translate("MainWindow", "Actual Zoom"))
+        self.actionZoomActual.setShortcut(_translate("MainWindow", "Ctrl+0"))
         self.actionCopy.setText(_translate("MainWindow", "Copy"))
         self.actionCopy.setShortcut(_translate("MainWindow", "Ctrl+C"))
         self.actionCut.setText(_translate("MainWindow", "Cut"))
