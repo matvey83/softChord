@@ -156,7 +156,7 @@ way (at 60%, 100% and 150% zoom for tabs). Kerning and ligatures are switched of
 both layers to keep them equal.
 
 The browser tests need Chrome. Without it they are skipped with a loud warning,
-and `SOFTCHORD_REQUIRE_BROWSER=1` makes a missing Chrome a failure (see the README).
+and `SOFTCHORD_REQUIRE_BROWSER=1` makes a missing Chrome a failure (see [development.md](development.md#web)).
 
 ## Desktop: Edit Text…
 
