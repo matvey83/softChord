@@ -158,9 +158,12 @@ main {
 }
 
 /* MIRRORED UI: the iOS app mirrors this toolbar and how it wraps (planned in
-   softChord Viewer/softChord Viewer/SongToolbar.swift), and the desktop editor
-   will later. A change to the button sizes, gaps, groups or the wrapping rules
-   below is made in both apps. */
+   softChord Viewer/softChord Viewer/SongToolbar.swift). The desktop editor
+   (src/softchord_toolbar.py) mirrors the groups, the flat look and the
+   wrapping of whole groups, but wraps only when they do not fit (no 940 px
+   rule) and keeps the separators between groups on a row. A change to the
+   button sizes, gaps, groups or the wrapping rules below is made in both apps,
+   and a change to the groups or the look in the desktop editor too. */
 /* Narrow window (phones, and a desktop window dragged narrow): Back and the title
    share the first row, and the buttons get rows of their own below. The buttons
    are in groups and the groups wrap onto the next row when they do not all fit,

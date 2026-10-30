@@ -3668,7 +3668,7 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.transposeUp()
         self.assertEqual(song.transposed_steps, 0)
         self.assertFalse(self.app.undo_stack.canUndo())
-        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
         self.assertEqual(next(song.iterateAllChords()).getChordText(), "N.C.")
         # Even a direct transpose does not count steps for a song that cannot move.
         song.transpose(3)
@@ -3680,17 +3680,17 @@ class TestMoreAppOperations(unittest.TestCase):
         song.addChord(SongChord.unknown_chord(song, 5, "abcdefghij"))
         self.app.transposeUp()
         self.assertEqual(song.transposed_steps, 1)
-        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertTrue(self.app.toolbar.transpose_reset.isEnabled())
         self.assertEqual(song.getChordAtPosition(0).note_id, 1)
         self.assertEqual(song.getChordAtPosition(5).getChordText(), "abcdefg")
         self.app.undo_stack.undo()
         self.assertEqual(song.transposed_steps, 0)
-        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
 
     def test_reset_transpose_is_dimmed_until_the_song_is_transposed(self):
         insert_and_select_song(self.app, with_chord=True)
         song = self.app.current_song
-        button = self.app.ui.transpose_reset_button
+        button = self.app.toolbar.transpose_reset
         self.assertFalse(button.isEnabled())
         self.assertEqual(song.transposed_steps, 0)
 
@@ -3709,7 +3709,7 @@ class TestMoreAppOperations(unittest.TestCase):
     def test_reset_transpose_goes_back_to_the_key_the_song_was_loaded_in(self):
         insert_and_select_song(self.app, with_chord=True)
         song = self.app.current_song
-        button = self.app.ui.transpose_reset_button
+        button = self.app.toolbar.transpose_reset
 
         self.app.transposeUp()
         self.app.transposeUp()
@@ -3718,7 +3718,7 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(song.getChordAtPosition(0).note_id, 2)
         self.assertTrue(button.isEnabled())
 
-        self.app.ui.transpose_reset_button.click()
+        self.app.toolbar.transpose_reset.trigger()
         self.assertEqual(song.getChordAtPosition(0).note_id, 0)
         self.assertEqual(self._stored_note_id(), 0)
         self.assertEqual(song.transposed_steps, 0)
@@ -3765,15 +3765,15 @@ class TestMoreAppOperations(unittest.TestCase):
         for _ in range(12):
             self.app.transposeUp()
         self.assertEqual(self.app.current_song.getChordAtPosition(0).note_id, 0)
-        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
         # A tritone and more resets the short way round, either way.
         for steps in (7, 8, 11):
             for _ in range(steps):
                 self.app.transposeUp()
-            self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+            self.assertTrue(self.app.toolbar.transpose_reset.isEnabled())
             self.app.transposeReset()
             self.assertEqual(self.app.current_song.getChordAtPosition(0).note_id, 0)
-            self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+            self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
 
     def test_reset_transpose_keeps_chords_added_after_transposing(self):
         insert_and_select_song(self.app, with_chord=True)
@@ -3788,7 +3788,7 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(song.getChordAtPosition(1).note_id, 0)
         # Nothing was thrown away.
         self.assertEqual(len(list(song.iterateAllChords())), 2)
-        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
 
     def test_reset_transpose_counts_from_when_the_song_was_loaded(self):
         insert_and_select_song(self.app, with_chord=True)
@@ -3799,28 +3799,28 @@ class TestMoreAppOperations(unittest.TestCase):
         self.app.songs_model.updateFromDatabase()
 
         self.app.transposeUp()
-        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertTrue(self.app.toolbar.transpose_reset.isEnabled())
         # A song with no chords has nothing to reset.
         self.app.setCurrentSong(Song(self.app, 1))
         self.assertEqual(self.app.current_song.id, 1)
-        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
         # Opening the first song again loads it as the songbook has it (one step
         # up, which was saved), so that is now the key it was loaded in.
         self.app.setCurrentSong(Song(self.app, 0))
         self.assertEqual(self.app.current_song.getChordAtPosition(0).note_id, 1)
-        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
         self.app.transposeUp()
-        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertTrue(self.app.toolbar.transpose_reset.isEnabled())
         self.app.transposeReset()
         self.assertEqual(self.app.current_song.getChordAtPosition(0).note_id, 1)
 
     def test_reset_transpose_is_dimmed_with_no_song_open(self):
         insert_and_select_song(self.app, with_chord=True)
         self.app.transposeUp()
-        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertTrue(self.app.toolbar.transpose_reset.isEnabled())
         self.app.setCurrentSong(None)
         self.app.updateStates()
-        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
         self.app.transposeReset()  # no song: nothing happens, and no error
 
     def test_remove_trailing_spaces_undo_restores_a_dropped_chord(self):
@@ -4981,35 +4981,35 @@ class TestEditorModeMenu(unittest.TestCase):
     def test_viewing_at_startup(self):
         self.assertFalse(self.app.ui.actionChordEditorMode.isCheckable())
         self.assertFalse(self.app.ui.actionLyricEditorMode.isCheckable())
-        self.assertFalse(self.app.ui.chord_editor_button.isDown())
-        self.assertFalse(self.app.ui.lyric_editor_button.isDown())
+        self.assertFalse(self.app.toolbar.isActive(self.app.ui.actionChordEditorMode))
+        self.assertFalse(self.app.toolbar.isActive(self.app.ui.actionLyricEditorMode))
         self.assertFalse(self.app.editor.lyric_editor_mode)
         self.assertFalse(self.app.editing())
 
     def test_menu_and_buttons_start_edits(self):
         self.app.ui.actionLyricEditorMode.trigger()
         self.assertTrue(self.app.textEditing())
-        self.assertTrue(self.app.ui.lyric_editor_button.isDown())
-        self.assertFalse(self.app.ui.chord_editor_button.isDown())
+        self.assertTrue(self.app.toolbar.isActive(self.app.ui.actionLyricEditorMode))
+        self.assertFalse(self.app.toolbar.isActive(self.app.ui.actionChordEditorMode))
         self.assertTrue(self.app.editor.lyric_editor_mode)
 
         # Nothing changed, so the other kind starts without asking.
-        self.app.ui.chord_editor_button.click()
+        self.app.ui.actionChordEditorMode.trigger()
         self.assertTrue(self.app.chordEditing())
-        self.assertTrue(self.app.ui.chord_editor_button.isDown())
-        self.assertFalse(self.app.ui.lyric_editor_button.isDown())
+        self.assertTrue(self.app.toolbar.isActive(self.app.ui.actionChordEditorMode))
+        self.assertFalse(self.app.toolbar.isActive(self.app.ui.actionLyricEditorMode))
         self.assertFalse(self.app.editor.lyric_editor_mode)
 
-        self.app.ui.lyric_editor_button.click()
+        self.app.ui.actionLyricEditorMode.trigger()
         self.assertTrue(self.app.editor.lyric_editor_mode)
 
         self.app.ui.actionChordEditorMode.trigger()
-        self.assertTrue(self.app.ui.chord_editor_button.isDown())
+        self.assertTrue(self.app.toolbar.isActive(self.app.ui.actionChordEditorMode))
         self.assertFalse(self.app.editor.lyric_editor_mode)
 
-        self.app.ui.discard_edit_button.click()
+        self.app.toolbar.discard.trigger()
         self.assertFalse(self.app.editing())
-        self.assertFalse(self.app.ui.chord_editor_button.isDown())
+        self.assertFalse(self.app.toolbar.isActive(self.app.ui.actionChordEditorMode))
 
     def test_switching_modes_keeps_the_edit_and_does_not_ask(self):
         # MIRRORED UI: the web and iOS apps switch modes the same way.
@@ -5027,7 +5027,7 @@ class TestEditorModeMenu(unittest.TestCase):
             self.assertTrue(self.app.chordEditing())
             self.assertTrue(self.app._currentSongText().startswith("Q"))
             self.assertTrue(self.app.editChanged())
-            self.assertFalse(self.app.ui.save_edit_button.isHidden())
+            self.assertFalse((not self.app.toolbar.save.isVisible()))
             self.assertTrue(self.app.lyricEditorSelected())
             self.assertTrue(self.app.textEditing())
             self.assertTrue(self.app._currentSongText().startswith("Q"))
@@ -7120,7 +7120,7 @@ class TestSongFilterKeepsTheOpenSong(unittest.TestCase):
         self.assertEqual(self.song.transposed_steps, 1)
         self.app.songFilterEdited("Test")
         self.assertEqual(self.app.current_song.transposed_steps, 1)
-        self.assertTrue(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertTrue(self.app.toolbar.transpose_reset.isEnabled())
         # The transpose is a change while viewing. Keep it, so closing asks nothing.
         self.assertTrue(self.app.saveEdit())
 
@@ -7144,6 +7144,103 @@ class _SaveDialogAnswers:
 
 
 _SB = QtWidgets.QMessageBox.StandardButton
+
+
+class TestBriefNotes(unittest.TestCase):
+    """The brief note at the bottom of the song view (softchord_note.py)."""
+
+    def setUp(self):
+        TestSaveAndDiscard.setUp(self)
+        self.app.brief_note.hide()
+    def tearDown(self):
+        app = self.app
+        app.zoom_pos = app.zoom_levels.index(1.0)
+        app.updateZoomWidgets()
+        app.brief_note.hide()
+        TestSaveAndDiscard.tearDown(self)
+    row_of = lambda self, *a: TestSaveAndDiscard.row_of(self, *a)
+    select_song = lambda self, *a, **k: TestSaveAndDiscard.select_song(
+        self, *a, **k)
+
+    def shown(self):
+        note = self.app.brief_note
+        return note.text() if note.isVisible() else None
+
+    def test_copy_notes(self):
+        self.app.ui.actionCopySongText.trigger()
+        self.assertEqual(self.shown(), "Song text copied to clipboard")
+        self.app.ui.actionCopySongTextWithChords.trigger()
+        self.assertEqual(self.shown(),
+                         "Song text with chords copied to clipboard")
+        self.app.ui.actionCopySongAsImage.trigger()
+        self.assertEqual(self.shown(), "Song image copied to clipboard")
+
+    def test_edit_mode_save_and_discard_notes(self):
+        self.app.ui.actionChordEditorMode.trigger()
+        self.assertEqual(self.shown(), "Entered chord editor mode")
+        self.app.ui.actionLyricEditorMode.trigger()
+        self.assertEqual(self.shown(), "Entered text editor mode")
+        self.app.toolbar.save.trigger()
+        self.assertEqual(self.shown(), "Saved")
+        self.app.ui.actionChordEditorMode.trigger()
+        self.app.toolbar.discard.trigger()
+        self.assertEqual(self.shown(), "Changes discarded")
+
+    def test_transpose_zoom_undo_and_redo_notes(self):
+        toolbar = self.app.toolbar
+        toolbar.transpose_up.trigger()
+        self.assertEqual(self.shown(), "Transposed up to D♭")
+        toolbar.transpose_down.trigger()
+        toolbar.transpose_down.trigger()
+        self.assertEqual(self.shown(), "Transposed down to B")
+        toolbar.transpose_reset.trigger()
+        self.assertEqual(self.shown(), "Transposed back to original key, C")
+        self.app.ui.actionUndo.trigger()
+        self.assertEqual(self.shown(), "Undone")
+        self.app.ui.actionRedo.trigger()
+        self.assertEqual(self.shown(), "Redone")
+        self.app.ui.actionZoomIn.trigger()
+        self.assertEqual(self.shown(), "Zoom 110%")
+        self.app.ui.actionZoomActual.trigger()
+        self.assertEqual(self.shown(), "Zoom 100%")
+
+    def test_font_notes_only_when_confirmed(self):
+        app = self.app
+        saved = (app.lyrics_font, app.lyrics_font_size, app.chords_font,
+                 app.chords_font_size)
+
+        def restore():
+            (app.lyrics_font, app.lyrics_font_size, app.chords_font,
+             app.chords_font_size) = saved
+            app.updateEditorFonts()
+        self.addCleanup(restore)
+        with mock.patch.object(QtWidgets.QFontDialog, "getFont",
+                               return_value=(QtGui.QFont("Courier", 20), False)):
+            self.app.ui.actionLyricsFont.trigger()
+        self.assertIsNone(self.shown())
+        with mock.patch.object(QtWidgets.QFontDialog, "getFont",
+                               return_value=(QtGui.QFont("Courier", 20), True)):
+            self.app.ui.actionLyricsFont.trigger()
+            self.assertEqual(self.shown(), "Lyrics font changed")
+            self.app.ui.actionChordsFont.trigger()
+            self.assertEqual(self.shown(), "Chords font changed")
+
+    def test_chord_deleted_note(self):
+        self.app.ui.actionChordEditorMode.trigger()
+        self.app.selected_char_num = 0
+        self.app.toolbar.chord_delete.trigger()
+        self.assertEqual(self.shown(), "Chord deleted")
+
+    def test_note_sits_on_the_song_view_bottom(self):
+        note = self.app.brief_note
+        editor = self.app.editor
+        self.assertIs(note.parentWidget(), editor)
+        self.app.ui.actionZoomIn.trigger()
+        self.assertEqual(note.geometry().bottom() + 1, editor.height() - 24)
+        at = note.geometry()
+        # Starting an edit shows the toolbar's edit buttons but moves no note.
+        self.app.ui.actionChordEditorMode.trigger()
+        self.assertEqual(note.geometry().bottom(), at.bottom())
 
 
 class TestSaveAndDiscard(unittest.TestCase):
@@ -7214,8 +7311,8 @@ class TestSaveAndDiscard(unittest.TestCase):
 
     def test_viewing_is_the_default(self):
         self.assertFalse(self.app.editing())
-        self.assertFalse(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
-        self.assertFalse(self.app.ui.discard_edit_button.isVisibleTo(self.app.win))
+        self.assertFalse(self.app.toolbar.save.isVisible())
+        self.assertFalse(self.app.toolbar.discard.isVisible())
         self.assertFalse(self.app.ui.actionSaveEdit.isEnabled())
         self.assertFalse(self.app.ui.actionChordEditorMode.isCheckable())
         self.assertFalse(self.app.ui.actionLyricEditorMode.isCheckable())
@@ -7227,21 +7324,193 @@ class TestSaveAndDiscard(unittest.TestCase):
     def test_edit_shows_the_bar_and_save_hides_it(self):
         self.app.ui.actionChordEditorMode.trigger()
         self.assertTrue(self.app.chordEditing())
-        self.assertTrue(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
-        self.assertTrue(self.app.ui.discard_edit_button.isVisibleTo(self.app.win))
+        self.assertTrue(self.app.toolbar.save.isVisible())
+        self.assertTrue(self.app.toolbar.discard.isVisible())
         self.assertTrue(self.app.ui.actionSaveEdit.isEnabled())
-        self.app.ui.save_edit_button.click()
+        self.app.toolbar.save.trigger()
         self.assertFalse(self.app.editing())
-        self.assertFalse(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
-        self.assertFalse(self.app.ui.discard_edit_button.isVisibleTo(self.app.win))
+        self.assertFalse(self.app.toolbar.save.isVisible())
+        self.assertFalse(self.app.toolbar.discard.isVisible())
+
+    def test_toolbar_groups_follow_the_web_toolbar(self):
+        toolbar = self.app.toolbar
+        ui = self.app.ui
+        names = [a if a == "|" else a.objectName()
+                 for a in toolbar.toolbarActions()]
+        self.assertEqual(names, [
+            "actionCopySongText", "actionCopySongTextWithChords",
+            "actionCopySongAsImage", "|",
+            "actionTransposeDown", "actionTransposeUp", "actionTransposeReset",
+            "|", "actionZoomOut", "actionZoomActual", "actionZoomIn",
+            "actionZoomPercent", "|", "actionPrint", "|",
+            "actionLyricsFont", "actionChordsFont", "|",
+            "actionLyricEditorMode", "actionChordEditorMode",
+            "actionChordEdit", "actionChordDelete", "actionUndoTool",
+            "actionRedoTool", "actionDiscardTool", "actionSaveEditTool"])
+        for action in toolbar.toolbarActions():
+            if action in toolbar._icons:
+                self.assertFalse(action.icon().isNull(), action.objectName())
+        self.assertIn(ui.actionChordEditorMode.shortcut().toString(),
+                      ui.actionChordEditorMode.toolTip())
+        self.assertEqual(ui.actionZoomActual.shortcut().toString(), "Ctrl+0")
+        self.assertFalse(hasattr(ui, "zoom_slider"))
+
+    def test_toolbar_font_buttons_open_the_font_dialogs(self):
+        toolbar = self.app.toolbar
+        ui = self.app.ui
+        self.assertEqual(ui.actionLyricsFont.toolTip(), "Select font for lyrics")
+        self.assertEqual(ui.actionChordsFont.toolTip(), "Select font for chords")
+        for action in (ui.actionLyricsFont, ui.actionChordsFont):
+            self.assertFalse(toolbar.widgetForAction(action).isHidden())
+            self.assertFalse(action.icon().isNull())
+        picked = QtGui.QFont("Courier", 21)
+        with mock.patch.object(QtWidgets.QFontDialog, "getFont",
+                               return_value=(picked, True)) as get_font:
+            toolbar.widgetForAction(ui.actionLyricsFont).click()
+            self.assertEqual(self.app.lyrics_font.pointSizeF(), 21)
+            picked = QtGui.QFont("Courier", 17)
+            get_font.return_value = (picked, True)
+            toolbar.widgetForAction(ui.actionChordsFont).click()
+            self.assertEqual(self.app.chords_font.pointSizeF(), 17)
+        self.assertEqual(get_font.call_count, 2)
+
+    def test_toolbar_edit_group_is_always_on_the_last_row(self):
+        toolbar = self.app.toolbar
+        ui = self.app.ui
+        flow = toolbar.layout()
+        box = lambda action: toolbar.widgetForAction(action).parentWidget()
+        copy, fonts, edit = (box(ui.actionCopySongText),
+                             box(ui.actionLyricsFont),
+                             box(ui.actionLyricEditorMode))
+        rows = lambda: sorted({w.geometry().y() for w in toolbar.findChildren(
+            QtWidgets.QWidget) if w.parentWidget() is toolbar
+            and not w.isHidden() and w.geometry().width() > 1})
+
+        # Wide: everything else fits on row 1, the edit group is alone on row 2.
+        flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
+        self.assertEqual(len(rows()), 2)
+        self.assertGreater(edit.geometry().y(), copy.geometry().y())
+        self.assertEqual(fonts.geometry().y(), copy.geometry().y())
+        self.assertEqual(edit.geometry().x(), flow.contentsMargins().left())
+        two_rows = flow.heightForWidth(2000)
+
+        # Narrower: the fonts group no longer fits on row 1 and goes onto the
+        # last row in front of the edit group; still two rows.
+        width = fonts.geometry().right()
+        flow.setGeometry(QtCore.QRect(0, 0, width, flow.heightForWidth(width)))
+        self.assertEqual(fonts.geometry().y(), edit.geometry().y())
+        self.assertLess(fonts.geometry().x(), edit.geometry().x())
+        self.assertEqual(len(rows()), 2)
+        self.assertEqual(flow.heightForWidth(width), two_rows)
+
+        # Very narrow: more rows, the edit group still on the last one.
+        flow.setGeometry(QtCore.QRect(0, 0, 150, flow.heightForWidth(150)))
+        self.assertGreater(len(rows()), 2)
+        self.assertEqual(edit.geometry().y(), rows()[-1])
+
+        # Editing: the edit groups (Edit, chord, Discard/Save) stay together
+        # on the last row whenever the pane can hold all of them.
+        self.app.chordEditorSelected()
+        finish = box(toolbar.save)
+        flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
+        tail = finish.geometry().right() - edit.geometry().left() + 1
+        for width in range(tail + 1, 1200, 25):
+            flow.setGeometry(QtCore.QRect(0, 0, width,
+                                          flow.heightForWidth(width)))
+            self.assertEqual(finish.geometry().y(), edit.geometry().y(), width)
+            self.assertEqual(edit.geometry().y(), rows()[-1], width)
+            self.assertEqual(flow.heightForWidth(width),
+                             toolbar.heightForWidth(width), width)
+
+    def test_edit_buttons_carry_the_old_hint_labels_help(self):
+        ui = self.app.ui
+        chords = ui.actionChordEditorMode.toolTip()
+        self.assertTrue(chords.startswith("<qt>Edit Chords…"))
+        self.assertIn(ui.actionChordEditorMode.shortcut().toString(), chords)
+        self.assertIn("<br><br><b>To add a new chord:</b><br>", chords)
+        self.assertIn("To delete a chord:", chords)
+        text = ui.actionLyricEditorMode.toolTip()
+        self.assertTrue(text.startswith("<qt>Edit Text…"))
+        self.assertIn("<br><br>When in lyric editing mode", text)
+        # The toolbar sits directly above the song.
+        column = ui.verticalLayout
+        at = column.indexOf(self.app.toolbar)
+        self.assertIs(column.itemAt(at + 1).layout(), ui.lyric_editor_layout)
+
+    def test_toolbar_buttons_per_mode(self):
+        toolbar = self.app.toolbar
+        shown = lambda action: (action.isVisible() and not
+                                toolbar.widgetForAction(action).isHidden())
+        extra = (toolbar.chord_edit, toolbar.chord_delete, toolbar.undo,
+                 toolbar.redo, toolbar.discard, toolbar.save)
+        self.assertEqual([shown(a) for a in extra], [False] * 6)
+
+        self.app.lyricEditorSelected()
+        self.assertTrue(toolbar.isActive(self.app.ui.actionLyricEditorMode))
+        self.assertEqual([shown(a) for a in extra],
+                         [False, False, True, True, True, True])
+
+        self.app.chordEditorSelected()
+        self.assertTrue(toolbar.isActive(self.app.ui.actionChordEditorMode))
+        self.assertFalse(toolbar.isActive(self.app.ui.actionLyricEditorMode))
+        self.assertEqual([shown(a) for a in extra], [True] * 6)
+
+        self.app.discardEdit()
+        self.assertFalse(toolbar.isActive(self.app.ui.actionChordEditorMode))
+        self.assertEqual([shown(a) for a in extra], [False] * 6)
+
+    def test_toolbar_add_or_edit_chord(self):
+        toolbar = self.app.toolbar
+        self.app.chordEditorSelected()
+        self.assertFalse(toolbar.chord_edit.isEnabled())
+        self.assertFalse(toolbar.chord_delete.isEnabled())
+
+        self.app.selected_char_num = 0  # the letter with the C chord
+        self.assertTrue(toolbar.chord_edit.isEnabled())
+        self.assertEqual(toolbar.chord_edit.toolTip(), "Edit chord")
+        self.assertTrue(toolbar.chord_delete.isEnabled())
+
+        self.app.selected_char_num = 3  # a letter with no chord
+        self.assertEqual(toolbar.chord_edit.toolTip(), "Add chord")
+        self.assertFalse(toolbar.chord_delete.isEnabled())
+
+        opened = []
+        self.app.processSongCharEdit = opened.append
+        toolbar.chord_edit.trigger()
+        self.assertEqual(opened, [3])
+
+    def test_toolbar_wraps_whole_groups_when_narrow(self):
+        flow = self.app.toolbar.layout()
+        one_row = flow.heightForWidth(2000)
+        self.assertGreater(flow.heightForWidth(250), one_row)
+        self.assertTrue(self.app.ui.song_filter_ef.isClearButtonEnabled())
+        for name in ("clear_filter_button", "new_song_button",
+                     "delete_song_button", "label_3", "label", "statusbar",
+                     "chords_editor_label", "lyrics_editor_label"):
+            self.assertFalse(hasattr(self.app.ui, name), name)
+
+    def test_toolbar_zoom_percent_is_a_plain_label(self):
+        toolbar = self.app.toolbar
+        label = toolbar.widgetForAction(toolbar.zoom_percent)
+        self.assertIsInstance(label, QtWidgets.QLabel)
+        self.assertEqual(label.text(), "100%")
+        self.app.ui.actionZoomIn.trigger()
+        self.assertEqual(label.text(), "110%")
+        toolbar.zoom_percent.trigger()  # not a reset any more
+        self.assertEqual(label.text(), "110%")
+        self.assertTrue(self.app.ui.actionZoomActual.isEnabled())
+        self.app.ui.actionZoomActual.trigger()
+        self.assertEqual(label.text(), "100%")
+        self.assertEqual(self.app.zoom_factor, 1.0)
 
     def test_save_and_discard_sit_right_of_edit_text(self):
-        layout = self.app.ui.horizontalLayout_6
-        widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
-        at = widgets.index(self.app.ui.lyric_editor_button)
-        self.assertEqual(widgets[at + 1:at + 3],
-                         [self.app.ui.discard_edit_button,
-                          self.app.ui.save_edit_button])
+        toolbar = self.app.toolbar
+        actions = toolbar.toolbarActions()
+        at = actions.index(self.app.ui.actionChordEditorMode)
+        self.assertEqual(actions[at + 1:],
+                         [toolbar.chord_edit, toolbar.chord_delete,
+                          toolbar.undo, toolbar.redo,
+                          toolbar.discard, toolbar.save])
         self.assertFalse(hasattr(self.app.ui, "edit_bar_label"))
 
     # Chords are selected only in Edit Chords
@@ -7304,7 +7573,7 @@ class TestSaveAndDiscard(unittest.TestCase):
         self.app.transposeUp()
         self.app.currentSongTitleEdited("New title")
         self.app.currentSongNumberEdited("42")
-        self.app.ui.discard_edit_button.click()
+        self.app.toolbar.discard.trigger()
         self.assertFalse(self.app.editing())
         song = self.app.current_song
         self.assertEqual(song.title, "Test Song")
@@ -7467,7 +7736,7 @@ class TestSaveAndDiscard(unittest.TestCase):
         self.app.chordEditorSelected()
         self.assertEqual(self.dialog.asked, [])
         self.assertTrue(self.app.chordEditing())
-        self.app.ui.save_edit_button.click()
+        self.app.toolbar.save.trigger()
         self.assertFalse(self.app.editing())
         self.assertEqual(self.db_song()[3], [(0, "C"), (3, "G")])
 
@@ -7581,16 +7850,16 @@ class TestSaveAndDiscard(unittest.TestCase):
         self.assertTrue(self.app.editing())
         self.assertFalse(self.app.chordEditing())
         self.assertFalse(self.app.textEditing())
-        self.assertTrue(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
-        self.assertTrue(self.app.ui.discard_edit_button.isVisibleTo(self.app.win))
+        self.assertTrue(self.app.toolbar.save.isVisible())
+        self.assertTrue(self.app.toolbar.discard.isVisible())
         self.assertEqual(self.row_title(0), "Test Song \u2022")
         self.assertTrue(self.app.win.isWindowModified())
         self.assertEqual(self.db_song(), before)
-        self.app.ui.save_edit_button.click()
+        self.app.toolbar.save.trigger()
         self.assertFalse(self.app.editing())
         self.assertNotEqual(self.stored_chords(), before[3])
         self.assertEqual(self.row_title(0), "Test Song")
-        self.assertFalse(self.app.ui.save_edit_button.isVisibleTo(self.app.win))
+        self.assertFalse(self.app.toolbar.save.isVisible())
 
     def test_transposing_back_is_no_change(self):
         for back in (self.app.transposeDown, self.app.transposeReset):
@@ -7602,7 +7871,7 @@ class TestSaveAndDiscard(unittest.TestCase):
                 back()
             self.assertFalse(self.app.editChanged())
             self.assertFalse(
-                self.app.ui.save_edit_button.isVisibleTo(self.app.win))
+                self.app.toolbar.save.isVisible())
             self.assertEqual(self.row_title(0), "Test Song")
             QTest.qWait(20)
             self.assertFalse(self.app.editing(), back.__name__)
@@ -7634,7 +7903,7 @@ class TestSaveAndDiscard(unittest.TestCase):
         self.app.discardEdit()
         self.assertEqual(self.song.getChordAtPosition(0).note_id, 0)
         self.assertEqual(self.song.transposed_steps, 0)
-        self.assertFalse(self.app.ui.transpose_reset_button.isEnabled())
+        self.assertFalse(self.app.toolbar.transpose_reset.isEnabled())
         self.assertEqual(self.db_song(), before)
 
     def test_undo_while_viewing_never_writes(self):

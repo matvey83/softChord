@@ -133,7 +133,7 @@ class SoftChordEditorTest(unittest.TestCase):
         self.app.importTextFiles(["test_тест_song.txt"])
         last_row = self.app.songs_model.rowCount() - 1
         self.app.ui.songs_view.selectRow(last_row)
-        button = self.app.ui.transpose_reset_button
+        button = self.app.toolbar.transpose_reset
 
         original_text = self.app.current_song.getAsText(include_chords=True)
         self.assertFalse(button.isEnabled())
@@ -149,7 +149,7 @@ class SoftChordEditorTest(unittest.TestCase):
         self.app.transposeDown()
         self.app.transposeDown()
         self.assertTrue(button.isEnabled())
-        button.click()
+        button.trigger()
         self.assertEqual(self.app.current_song.getAsText(include_chords=True), original_text)
         self.assertFalse(button.isEnabled())
 

@@ -118,6 +118,8 @@ _SESSION_FIELDS = (
     "editor_mode_action_group",
     "zoom_levels",
     "zoom_factor",
+    "zoom_pos",
+    "toolbar",
     "clipboard",
     "ignore_song_text_changed",
     "selected_char_num",
