@@ -1153,7 +1153,12 @@ def _png_bytes(image):
     return data
 
 
-class _SongSheetClipboardTypes(QtGui.QUtiMimeConverter):
+# QUtiMimeConverter exists only in the macOS build of Qt; elsewhere the class
+# below is never created (see SongbookSession), but must still import.
+_UtiMimeConverter = getattr(QtGui, "QUtiMimeConverter", object)
+
+
+class _SongSheetClipboardTypes(_UtiMimeConverter):
     """Mac names for a copied song sheet.
 
     Qt's own image copy is a TIFF. Other apps paste a PNG or an SVG.
