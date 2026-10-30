@@ -966,8 +966,12 @@
     }
   });
 
+  // The close event comes later, as a task: by then the dialog may have been
+  // asked again (Keep, then another song at once), and that question stays.
   leaveDialog.addEventListener("close", function () {
-    leaveProceed = null;
+    if (!leaveDialog.open) {
+      leaveProceed = null;
+    }
   });
 
   function forgetEdits() {
