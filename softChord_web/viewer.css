@@ -157,15 +157,20 @@ main {
   border-radius: 4px;
 }
 
+/* MIRRORED UI: the iOS app mirrors this toolbar and how it wraps (planned in
+   softChord Viewer/softChord Viewer/SongToolbar.swift), and the desktop editor
+   will later. A change to the button sizes, gaps, groups or the wrapping rules
+   below is made in both apps. */
 /* Narrow window (phones, and a desktop window dragged narrow): Back and the title
    share the first row, and the buttons get rows of their own below. The buttons
    are in groups and the groups wrap onto the next row when they do not all fit,
    so every button, and Save and Discard while the text is edited, stays inside
    the window and never scrolls off it. The thin separators are dropped because a
    wrapped row would start or end with one. Edit text stays on small screens: the
-   editor is a plain textarea and works there. 760 px is where Back, the title
-   and every button, with Save and Discard, still fit on one row. */
-@media (max-width: 760px) {
+   editor is a plain textarea and works there. 940 px is where Back, the title
+   and every button, with the Edit Chords buttons and Save and Discard, still
+   fit on one row (they need about 920). */
+@media (max-width: 940px) {
   .toolbar { flex-wrap: wrap; row-gap: 2px; padding: 6px 8px; }
   #back { order: 1; }
   #song-title {
@@ -611,9 +616,11 @@ main {
 
 .leave-confirm-buttons { display: flex; justify-content: flex-end; gap: 8px; }
 
+#leave-confirm-discard { margin-right: auto; }
+
 #leave-confirm-discard { color: #d70015; }
 
-#leave-confirm-keep {
+#leave-confirm-save {
   background: #007aff;
   border-color: #007aff;
   color: #fff;

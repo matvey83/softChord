@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>softChord Viewer</title>
-  <link rel="stylesheet" href="viewer.css?v=2026-10-29a">
+  <link rel="stylesheet" href="viewer.css?v=2026-10-29c">
   <!-- The app icon (an open songbook with a clef), as in the iOS and desktop apps.
        The 16, 32 and 48 px sizes are cropped to the book with thicker lines. -->
   <link rel="icon" href="icons/favicon.ico" sizes="16x16 32x32 48x48">
@@ -37,6 +37,12 @@
            currentColor; Up and Down are plain arrows like the SF Symbols arrow.up
            and arrow.down in the iOS app; Zoom out and Zoom in are a magnifying
            glass with a minus, an equals sign (back to 100%) or a plus; Reset transpose is a counterclockwise arrow; Print is a printer; Edit text is a pencil; Edit chords is a note with a pencil; Edit chord is a text field; Delete chord is a bin; Undo and Redo are curved arrows), so they need no licence note or network fetch. -->
+      <!-- MIRRORED UI: the iOS app mirrors this toolbar (planned in
+           softChord Viewer/softChord Viewer/SongToolbar.swift, icons in its
+           Assets.xcassets/Toolbar), and the desktop editor will later. The
+           buttons, their order and groups, the icons (these SVGs), the labels and
+           tooltips, when each shows or is dimmed, and the wrapping onto a second
+           row are the same in both apps: change them in both. -->
       <div class="toolbar-actions">
         <div class="tool-group" role="group" aria-label="Copy song">
           <button id="copy-text" class="tool" type="button" title="Copy song text" aria-label="Copy song text">
@@ -148,12 +154,15 @@
   <!-- Leaving Edit text or Edit chords (Back, another song), or a transpose that
        was not saved, with changes that nothing keeps asks first. Keep editing is
        the default. -->
+  <!-- MIRRORED UI: the desktop editor's Save / Don't Save / Cancel sheet
+       (softchord_session.py _leaveEditMessageBox) and the iOS song page's Back. -->
   <dialog id="leave-confirm" aria-labelledby="leave-confirm-title">
-    <h2 id="leave-confirm-title">Discard changes?</h2>
-    <p>Your changes are not kept anywhere and will be lost.</p>
+    <h2 id="leave-confirm-title">Do you want to save the changes you made?</h2>
+    <p>Your changes will be lost if you don’t save them.</p>
     <div class="leave-confirm-buttons">
-      <button type="button" id="leave-confirm-discard" class="tool-text">Discard</button>
-      <button type="button" id="leave-confirm-keep" class="tool-text" autofocus>Keep editing</button>
+      <button type="button" id="leave-confirm-discard" class="tool-text">Don’t Save</button>
+      <button type="button" id="leave-confirm-keep" class="tool-text">Cancel</button>
+      <button type="button" id="leave-confirm-save" class="tool-text" autofocus>Save</button>
     </div>
   </dialog>
 
@@ -162,15 +171,15 @@
        folder, so a browser that kept an old index.html does not mix it with new
        scripts, or the other way round. sql-wasm.js never changes, so it has none. -->
   <script src="sql-wasm.js"></script>
-  <script src="softchord_chords.js?v=2026-10-29a"></script>
-  <script src="softchord_text.js?v=2026-10-29a"></script>
-  <script src="softchord_text_edit.js?v=2026-10-29a"></script>
-  <script src="softchord_chord_edit.js?v=2026-10-29a"></script>
-  <script src="song_filter.js?v=2026-10-29a"></script>
-  <script src="songbook.js?v=2026-10-29a"></script>
-  <script src="softchord_zoom.js?v=2026-10-29a"></script>
-  <script src="softchord_sheet_image.js?v=2026-10-29a"></script>
-  <script src="softchord_chord_mode.js?v=2026-10-29a"></script>
-  <script src="viewer.js?v=2026-10-29a"></script>
+  <script src="softchord_chords.js?v=2026-10-29c"></script>
+  <script src="softchord_text.js?v=2026-10-29c"></script>
+  <script src="softchord_text_edit.js?v=2026-10-29c"></script>
+  <script src="softchord_chord_edit.js?v=2026-10-29c"></script>
+  <script src="song_filter.js?v=2026-10-29c"></script>
+  <script src="songbook.js?v=2026-10-29c"></script>
+  <script src="softchord_zoom.js?v=2026-10-29c"></script>
+  <script src="softchord_sheet_image.js?v=2026-10-29c"></script>
+  <script src="softchord_chord_mode.js?v=2026-10-29c"></script>
+  <script src="viewer.js?v=2026-10-29c"></script>
 </body>
 </html>

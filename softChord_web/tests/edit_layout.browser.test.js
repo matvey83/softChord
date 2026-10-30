@@ -92,7 +92,7 @@ async function buttonsOutside(page, width) {
     "return out; })()");
 }
 
-for (var phone of [320, 375, 640, 700, 760, 761, 800, 1000]) {
+for (var phone of [320, 375, 640, 700, 760, 800, 940, 941, 1000]) {
   (function (width) {
     test("the toolbar fits in a " + width + "px window, also while editing", { skip: skip }, async function () {
       var page = await helper.openViewer([TABS], { viewport: { width: width, height: 700 } });
@@ -110,6 +110,11 @@ for (var phone of [320, 375, 640, 700, 760, 761, 800, 1000]) {
             "return hit && hit.id; })()");
           assert.equal(onTop, id, id + " is on top at its own centre");
         }
+        // Edit Chords adds four buttons: still inside the window.
+        await click(page, "edit-discard");
+        await click(page, "edit-chords");
+        await page.waitFor("!document.getElementById('chord-actions').hidden", "the chord buttons");
+        assert.deepEqual(await buttonsOutside(page, width), [], "editing chords");
         assert.deepEqual(page.errors, []);
       } finally {
         await page.close();
