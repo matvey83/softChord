@@ -4864,7 +4864,7 @@ class TestSongsContextMenu(unittest.TestCase):
         def question(msg,
                      button1="OK",
                      button2="Cancel",
-                     title="softChord - Question"):
+                     title="SoftChord - Question"):
             self.questions.append(msg)
             self.question_buttons.append(button1)
             return self.accept_delete

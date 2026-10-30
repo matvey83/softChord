@@ -14,7 +14,7 @@ enum SongPhotoLibrary {
         var description: String {
             switch self {
             case .denied:
-                return "Photos access is turned off for softChord Viewer."
+                return "Photos access is turned off for SoftChord."
             case .saveFailed(let message):
                 return message
             }

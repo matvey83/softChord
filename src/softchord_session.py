@@ -1711,7 +1711,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         title = (song.title if song is not None else "") or "Untitled"
         box = QtWidgets.QMessageBox(self.win)
         box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
-        box.setWindowTitle("softChord")
+        box.setWindowTitle("SoftChord")
         box.setText("Do you want to save the changes you made to \u201c%s\u201d?"
                     % title)
         box.setInformativeText(
@@ -3911,7 +3911,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                  msg,
                  button1="OK",
                  button2="Cancel",
-                 title="softChord - Question"):
+                 title="SoftChord - Question"):
         """ 
         Display a prompt dialog window with specified text.
         Returns True if first button (default OK) is pressed, False otherwise.

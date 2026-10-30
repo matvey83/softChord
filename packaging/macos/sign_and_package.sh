@@ -94,7 +94,7 @@ mkdir -p "$STAGE"
 ditto "$APP" "$STAGE/softChord.app"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
-hdiutil create -volname "softChord $VER" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+hdiutil create -volname "SoftChord $VER" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 
 PENDING="$DMG.notarization-pending"
 rm -f "$PENDING"

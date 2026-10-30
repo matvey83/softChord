@@ -156,7 +156,7 @@ class App(QtWidgets.QApplication):
 
     def __init__(self, args):
         if App._singleton is not None:
-            raise RuntimeError("softChord is already running")
+            raise RuntimeError("SoftChord is already running")
         super().__init__(args)
         self.setApplicationVersion(__version__)
         self.session = SongbookSession()
@@ -240,7 +240,7 @@ def _handle_unhandled_exception(exc_type, exc, tb):
         parent = None
         if isinstance(app, App) and getattr(app, "win", None) is not None:
             parent = app.win
-        QtWidgets.QMessageBox.critical(parent, "softChord error", message)
+        QtWidgets.QMessageBox.critical(parent, "SoftChord error", message)
     except Exception:
         pass
     finally:
@@ -438,7 +438,7 @@ def register_songbook_file_association():
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
                               r"Software\Classes\%s" % prog_id) as key:
             winreg.SetValueEx(key, None, 0, winreg.REG_SZ,
-                              "softChord songbook")
+                              "SoftChord songbook")
 
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER,
                               r"Software\Classes\%s\DefaultIcon" %

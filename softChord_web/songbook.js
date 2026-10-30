@@ -39,7 +39,7 @@
     if (version > FORMAT_VERSION) {
       problem = "This songbook is a newer format (version " + version + "). Update this viewer.";
     } else if (version !== FORMAT_VERSION) {
-      problem = "This songbook is an old format. Update softChord on your Mac, open the " +
+      problem = "This songbook is an old format. Update SoftChord on your Mac, open the " +
         "songbook there to convert it, then copy it here again.";
     }
     if (problem) {

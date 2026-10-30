@@ -580,7 +580,7 @@
       toolbarActions.hidden = true;
       leaveEditing();
       transposeReset.disabled = true;
-      document.title = "softChord Viewer";
+      document.title = "SoftChord";
       return;
     }
     songError.hidden = true;
@@ -1184,7 +1184,7 @@
       forgetEdits();
       listView.hidden = false;
       songView.hidden = true;
-      document.title = "softChord Viewer";
+      document.title = "SoftChord";
       paintList();
       return;
     }

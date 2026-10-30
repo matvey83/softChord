@@ -1,4 +1,4 @@
-# softChord
+# SoftChord
 
 A cross-platform editor for songbooks. Enables management of a song book
 containing multiple songs with lyrics and chords.  Each chord is attached
@@ -7,7 +7,7 @@ key, or zoom level changes.
 
 The songbook can be shared as a file, or exported to a printable PDF.
 
-![softChord showing a song with chords](docs/screenshot.jpg)
+![SoftChord showing a song with chords](docs/screenshot.jpg)
 
 ## Three apps
 
@@ -20,7 +20,7 @@ The songbook can be shared as a file, or exported to a printable PDF.
   from source on any system with Python (see below).
 - **Web app**: [open it in any browser](https://matvey83.github.io/softChord/softChord_web/).
   Shows the songbook in this repository. Changes are not saved yet.
-- **iOS app, softChord Viewer** (iPhone and iPad). Shows the songbook in this
+- **iOS app, SoftChord** (iPhone and iPad). Shows the songbook in this
   repository. Changes are not saved yet. It is not on the App Store: build it
   from source in Xcode (`softChord Viewer/softChord Viewer.xcodeproj`).
 
@@ -93,6 +93,6 @@ cd softChord
 
 ## History
 
-softChord 0.9.x was released on
+SoftChord 0.9.x was released on
 [SourceForge](https://sourceforge.net/projects/softchord/) in 2011–2013; those
 binaries are still there.

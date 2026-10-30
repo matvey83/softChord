@@ -260,7 +260,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "softChord Editor"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "SoftChord Editor"))
         self.label_2.setText(_translate("MainWindow", "Filter:"))
         self.label_6.setText(_translate("MainWindow", "Number:"))
         self.label_4.setText(_translate("MainWindow", "Title:"))

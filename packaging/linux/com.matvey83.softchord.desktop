@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=softChord
+Name=SoftChord
 GenericName=Songbook Editor
 Comment=Edit songbooks with lyrics and chords
 Exec=softChord %f

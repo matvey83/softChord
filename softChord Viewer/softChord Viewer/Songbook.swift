@@ -34,7 +34,7 @@ enum SongbookError: Error, Equatable, CustomStringConvertible {
         case .songNotFound:
             return "That song is not in the songbook."
         case .oldFormat:
-            return "This songbook is an old format. Update softChord on your Mac, open the songbook there to convert it, then copy it here again."
+            return "This songbook is an old format. Update SoftChord on your Mac, open the songbook there to convert it, then copy it here again."
         case .newerFormat(let version):
             return "This songbook is a newer format (version \(version)). Update this app."
         }

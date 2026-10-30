@@ -80,8 +80,8 @@ def detect_format(conn):
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version > SONGBOOK_FORMAT_VERSION:
         raise ValueError(
-            "This songbook was saved by a newer version of softChord "
-            "(songbook format %i). Please update softChord." % version)
+            "This songbook was saved by a newer version of SoftChord "
+            "(songbook format %i). Please update SoftChord." % version)
     if "song_chord_link" in _tables(conn):
         columns = _columns(conn, "song_chord_link")
         if "chord" not in columns:

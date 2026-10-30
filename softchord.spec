@@ -12,9 +12,9 @@ from softchord_version import __version__  # noqa: E402
 SONGBOOK_UTI = "com.matvey83.softchord.songbook"
 
 info_plist = {
-    "CFBundleName": "softChord",
-    "CFBundleDisplayName": "softChord",
-    "CFBundleGetInfoString": "softChord",
+    "CFBundleName": "SoftChord",
+    "CFBundleDisplayName": "SoftChord",
+    "CFBundleGetInfoString": "SoftChord",
     "CFBundleIdentifier": "com.matvey83.softchord",
     "CFBundlePackageType": "APPL",
     "CFBundleShortVersionString": __version__,
@@ -23,14 +23,14 @@ info_plist = {
     "NSPrincipalClass": "NSApplication",
     "LSSupportsOpeningDocumentsInPlace": True,
     "NSDocumentsFolderUsageDescription":
-        "softChord needs access to your documents to open and save songbook files.",
+        "SoftChord needs access to your documents to open and save songbook files.",
     "NSDesktopFolderUsageDescription":
-        "softChord needs access to the Desktop to open and save songbook files.",
+        "SoftChord needs access to the Desktop to open and save songbook files.",
     "NSDownloadsFolderUsageDescription":
-        "softChord needs access to Downloads to open and save songbook files.",
+        "SoftChord needs access to Downloads to open and save songbook files.",
     "CFBundleDocumentTypes": [
         {
-            "CFBundleTypeName": "softChord songbook",
+            "CFBundleTypeName": "SoftChord songbook",
             "CFBundleTypeRole": "Editor",
             "LSHandlerRank": "Owner",
             "LSItemContentTypes": [SONGBOOK_UTI],
@@ -41,7 +41,7 @@ info_plist = {
     "UTExportedTypeDeclarations": [
         {
             "UTTypeIdentifier": SONGBOOK_UTI,
-            "UTTypeDescription": "softChord songbook",
+            "UTTypeDescription": "SoftChord songbook",
             "UTTypeConformsTo": ["public.data", "public.content"],
             "UTTypeTagSpecification": {
                 "public.filename-extension": ["songbook"],

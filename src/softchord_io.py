@@ -71,7 +71,7 @@ def connect_existing_songbook(filename):
         header = fh.read(16)
     if header != SQLITE_HEADER:
         raise ValueError(
-            "This file is not a valid softChord songbook:\n%s" % filename)
+            "This file is not a valid SoftChord songbook:\n%s" % filename)
 
     conn = sqlite3.connect(filename)
     try:
@@ -85,7 +85,7 @@ def connect_existing_songbook(filename):
     if "songs" not in tables:
         conn.close()
         raise ValueError(
-            "This file is not a valid softChord songbook (missing songs table):\n%s"
+            "This file is not a valid SoftChord songbook (missing songs table):\n%s"
             % filename)
     enable_foreign_keys(conn)
     return conn
@@ -786,18 +786,18 @@ class SongbookIO:
         # that could not be changed. Save Songbook As keeps the work.
         self.songbook_original_path = original_path
         if filename is None:
-            self.win.setWindowTitle("softChord[*]")
+            self.win.setWindowTitle("SoftChord[*]")
         elif original_path is not None:
             songbook_name = os.path.splitext(
                 os.path.basename(original_path))[0]
             self.win.setWindowTitle(
-                "softChord - %s (converted copy, not saved)[*]" % songbook_name)
+                "SoftChord - %s (converted copy, not saved)[*]" % songbook_name)
         else:
             songbook_name = os.path.splitext(os.path.basename(filename))[0]
             suffix = ""
             if opened is not None and opened.read_only:
                 suffix = " (read-only)"
-            self.win.setWindowTitle("softChord - %s%s[*]" %
+            self.win.setWindowTitle("SoftChord - %s%s[*]" %
                                     (songbook_name, suffix))
 
         self.songs_model.updateFromDatabase()
