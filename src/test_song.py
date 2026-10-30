@@ -2079,6 +2079,44 @@ class TestAppRendering(unittest.TestCase):
         open_empty_temp_songbook(self.app)
         insert_and_select_song(self.app, with_chord=True)
 
+    def test_switching_to_a_shorter_song_repaints_all_of_the_old_one(self):
+        """No lines of the previous, longer song stay on screen."""
+        # Few enough lines for no scroll bar: a scroll bar coming or going
+        # resizes the view, and that repaints all of it anyway.
+        long_text = "\n".join("A much longer line number %d of the song" % i
+                               for i in range(8))
+        long_song = create_test_song(self.app, 2, "Long", long_text)
+        short_song = create_test_song(self.app, 3, "Short", "Short\nlines")
+        window = self.app.ui.centralwidget.window()
+        was_visible, size = window.isVisible(), window.size()
+        window.resize(1000, 700)
+        window.show()
+        viewport = self.app.editor.viewport()
+        self.app.setCurrentSong(long_song)
+        QtWidgets.QApplication.processEvents()
+        drawn = QtGui.QRegion()
+
+        class Painted(QtCore.QObject):
+            def eventFilter(self, obj, event):
+                nonlocal drawn
+                if event.type() == QtCore.QEvent.Type.Paint:
+                    drawn = drawn.united(event.region())
+                return False
+
+        spy = Painted()
+        viewport.installEventFilter(spy)
+        try:
+            self.app.setCurrentSong(short_song)
+            QtWidgets.QApplication.processEvents()
+            area = viewport.rect()
+        finally:
+            viewport.removeEventFilter(spy)
+            window.resize(size)
+            if not was_visible:
+                window.hide()
+        missed = QtGui.QRegion(area).subtracted(drawn)
+        self.assertTrue(missed.isEmpty(), missed.boundingRect())
+
     def test_get_chord_width(self):
         """getChordWidth should return a reasonable positive width."""
         width = self.app.getChordWidth("C#m7")

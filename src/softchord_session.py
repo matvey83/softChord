@@ -2755,6 +2755,10 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         # The text undo stack belongs to the document just shown.
         self._reset_lyric_chord_history()
+        # The editor repaints only the new document's own area, and the song
+        # view also draws chords outside it. Repaint all of it so nothing of
+        # the previous song stays on screen.
+        self.editor.viewport().update()
 
     def _transposeCurrentSong(self, steps):
         """
