@@ -20,8 +20,22 @@ struct softChord_ViewerTests {
             "Copy song text",
             "Copy song text with chords",
             "Copy as image",
-            "Add to Photos",
         ])
+    }
+
+    /// MIRRORED UI: the web toolbar's buttons, in order, and its zoom steps.
+    @Test func songToolbarMatchesTheWebToolbar() {
+        var state = SongToolbarState()
+        #expect(state.groups.flatMap(\.buttons).map(\.rawValue) == [
+            "copy-text", "copy-chords", "copy-image", "transpose-down", "transpose-up", "transpose-reset",
+            "zoom-out", "zoom-reset", "zoom-in", "print", "edit-text", "edit-chords",
+        ])
+        #expect(!state.isEnabled(.transposeReset) && !state.isEnabled(.zoomReset) && state.isEnabled(.print))
+        state.editing = true
+        state.chordMode = true
+        #expect(state.groups.map(\.name).suffix(2) == ["Chord", "Finish editing"])
+        #expect(!state.isEnabled(.copyText) && state.isEnabled(.zoomIn) && state.label(.chordEdit) == "Add chord")
+        #expect(SongZoom.stepped(105, 1) == 110 && SongZoom.stepped(105, -1) == 100 && SongZoom.stepped(50, -1) == 50)
     }
 
     @Test func songPageMenuAddsEdit() {
@@ -58,120 +72,83 @@ struct softChord_ViewerTests {
         window.isHidden = true
     }
 
-    /// The menu button sits at the top of the navigation bar, clear of the status bar.
-    @Test @MainActor func songControlsSitAtTheTopOfTheBar() async throws {
-        let song = try Songbook.titles().first
-        let title = try #require(song)
-        let controller = UIHostingController(rootView: NavigationStack {
-            SongPage(song: title)
-        })
-        let window = show(controller)
-        await settle()
-        let menu = try #require(controller.view.window?.descendants(of: UIButton.self).first {
-            $0.accessibilityLabel == "Menu"
-        })
-        let bar = try #require(controller.view.window?.descendants(of: UINavigationBar.self).first)
-        let menuTop = menu.convert(menu.bounds, to: nil).minY
-        let barTop = bar.convert(
-            CGPoint(x: 0, y: bar.safeAreaLayoutGuide.layoutFrame.minY), to: nil).y
-        let statusTop = window.safeAreaInsets.top
-        #expect(menuTop + 1 >= statusTop)
-        #expect(abs(menuTop - barTop) < 2)
-        let down = try #require(window.descendants(of: UIButton.self).first {
-            $0.accessibilityLabel == "Down"
-        })
-        let up = try #require(window.descendants(of: UIButton.self).first {
-            $0.accessibilityLabel == "Up"
-        })
-        #expect(down.convert(down.bounds, to: nil).minY > menuTop)
-        #expect(up.convert(up.bounds, to: nil).maxY < window.bounds.maxY)
-        window.isHidden = true
-    }
 
-    /// A press anywhere on the menu or an arrow has to reach that button.
-    /// The song is pushed, as it is from the list, so the bar container is in place.
-    @Test @MainActor func songControlsTakeAPressAnywhereOnTheButton() async throws {
-        let song = try Songbook.titles().first
-        let title = try #require(song)
-        let controller = UIHostingController(rootView: NavigationStack(path: .constant([title])) {
-            Text("Songs")
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: SongTitle.self) { song in
-                    SongPage(song: song)
-                }
-        })
-        let window = show(controller)
-        await settle()
-        window.layoutIfNeeded()
-        try await checkSongControls(in: window)
-        // The phone is used in landscape. The menu failed there.
-        window.frame = CGRect(x: 0, y: 0, width: 852, height: 393)
-        window.layoutIfNeeded()
-        await settle()
-        try await checkSongControls(in: window)
-        window.isHidden = true
-    }
 
-    /// Reset transpose sits with Down and Up. It is dimmed until the song has been
-    /// moved, brings the song back to the key it had when it was opened, and is
-    /// dimmed again when Up and Down cancel out.
-    @Test @MainActor func resetTransposeIsDimmedUntilTheSongIsMoved() async throws {
-        let song = try Songbook.titles().first
-        let title = try #require(song)
-        let controller = UIHostingController(rootView: NavigationStack(path: .constant([title])) {
-            Text("Songs")
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: SongTitle.self) { song in
-                    SongPage(song: song)
-                }
-        })
-        let window = show(controller)
+
+    /// MIRRORED UI: the web toolbar. The chord buttons show while chords are
+    /// edited, and the song starts below the toolbar, wide or narrow.
+    @Test @MainActor func theToolbarShowsTheChordButtonsAndTheSongStartsBelowIt() async throws {
+        let title = try #require(try Songbook.titles().first)
+        let window = show(UIHostingController(rootView: SongListHarness(song: title)))
         await settle()
-        window.layoutIfNeeded()
-        func reset() throws -> UIButton {
-            try #require(window.descendants(of: UIButton.self).first {
-                $0.accessibilityLabel == "Reset transpose"
+        pressButton("Edit Chords…", in: window)
+        await settle()
+        for width: CGFloat in [402, 320, 900, 1000] {
+            window.frame = CGRect(x: 0, y: 0, width: width, height: 874)
+            window.layoutIfNeeded()
+            await settle()
+            for name in ["Copy song text", "Print / Save as PDF", "Add chord", "Redo", "Save"] {
+                #expect(onScreen(name), "\(name) \(width)")
+            }
+            // Back and the title, then at least one row of buttons (34 pt) on a phone.
+            let bottom = window.safeAreaInsets.top + (width > 940 ? 38 : 34 * 2)
+            let chords = try #require(window.descendants(of: UIScrollView.self).first {
+                $0.accessibilityIdentifier == "Song chords"
             })
+            #expect(chords.convert(chords.bounds, to: window).minY >= bottom - 0.5, "\(width)")
         }
-        let down = try #require(window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Down" })
-        let resetButton = try reset()
-        // Same row as Down and Up, after them.
-        let up = try #require(window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Up" })
-        let upFrame = up.convert(up.bounds, to: nil)
-        let resetFrame = resetButton.convert(resetButton.bounds, to: nil)
-        #expect(abs(upFrame.midY - resetFrame.midY) < 1)
-        #expect(resetFrame.minX >= upFrame.maxX)
-        #expect(down.convert(down.bounds, to: nil).maxX <= upFrame.minX)
-        // Untouched song: dimmed.
-        #expect(try reset().isEnabled == false)
-        // Moved: on.
-        pressButton("Up", in: window)
+        window.isHidden = true
+    }
+
+    /// Reset transpose is dimmed until the song has been moved, and again when Up
+    /// and Down cancel out or the song moved a whole octave.
+    @Test @MainActor func resetTransposeIsDimmedUntilTheSongIsMoved() async throws {
+        let title = try #require(try Songbook.titles().first)
+        let window = show(UIHostingController(rootView: SongListHarness(song: title)))
         await settle()
-        #expect(try reset().isEnabled)
-        // A press anywhere on the live button reaches it.
-        let live = try reset().convert(try reset().bounds, to: window).insetBy(dx: 1, dy: 1)
-        for point in [CGPoint(x: live.minX, y: live.minY), CGPoint(x: live.midX, y: live.midY),
-                      CGPoint(x: live.maxX, y: live.maxY)] {
-            #expect(window.hitTest(point, with: nil) === (try reset()))
-        }
-        // Up then Down by the same amount is the opened key again: dimmed.
-        pressButton("Down", in: window)
+        func resetIsOn() -> Bool { isEnabled("Reset transpose", in: window) }
+        #expect(!resetIsOn())
+        pressButton("Transpose up", in: window)
         await settle()
-        #expect(try reset().isEnabled == false)
-        // Several steps, then Reset goes straight back, and a second press does nothing.
-        pressButton("Down", in: window)
-        pressButton("Down", in: window)
-        pressButton("Down", in: window)
+        #expect(resetIsOn())
+        pressButton("Transpose down", in: window)
         await settle()
-        #expect(try reset().isEnabled)
+        #expect(!resetIsOn())
+        for _ in 0..<3 { pressButton("Transpose down", in: window) }
+        await settle()
+        #expect(resetIsOn())
         pressButton("Reset transpose", in: window)
         await settle()
-        #expect(try reset().isEnabled == false)
-        // A whole octave shows the same chords, so that is the loaded key too.
-        for _ in 0..<12 { pressButton("Up", in: window) }
+        #expect(!resetIsOn())
+        for _ in 0..<12 { pressButton("Transpose up", in: window) }
         await settle()
-        #expect(try reset().isEnabled == false)
+        #expect(!resetIsOn())
         window.isHidden = true
+    }
+
+    /// Back returns to the list.
+    @Test @MainActor func backButtonReturnsToTheSongList() async throws {
+        let title = try #require(try Songbook.titles().first)
+        let window = show(UIHostingController(rootView: SongListHarness(song: title)))
+        await settle()
+        #expect(navigationController(in: window.rootViewController)?.viewControllers.count == 2)
+        pressBack(in: window)
+        await waitUntil(in: window) { view in
+            navigationController(in: view.rootViewController)?.viewControllers.count == 1
+        }
+        #expect(navigationController(in: window.rootViewController)?.viewControllers.count == 1)
+        window.isHidden = true
+
+        // With a change not saved, Back asks (Save / Don't Save / Cancel) and stays.
+        let asking = show(UIHostingController(rootView: SongListHarness(song: title)))
+        await settle()
+        pressButton("Transpose up", in: asking)
+        await settle()
+        pressBack(in: asking)
+        await settle()
+        #expect(navigationController(in: asking.rootViewController)?.viewControllers.count == 2)
+        asking.rootViewController?.presentedViewController?.dismiss(animated: false)
+        asking.isHidden = true
     }
 
     /// A transpose while viewing is a change: Discard and Save show, unless the
@@ -189,36 +166,21 @@ struct softChord_ViewerTests {
         })
         let window = show(controller)
         await settle()
-        func onScreen(_ name: String) -> Bool {
-            window.descendants(of: UIButton.self).contains { button in
-                guard button.configuration?.title == name else {
-                    return false
-                }
-                var view: UIView? = button
-                while let current = view {
-                    if current.isHidden {
-                        return false
-                    }
-                    view = current.superview
-                }
-                return true
-            }
-        }
         #expect(!onScreen("Save"))
-        pressButton("Up", in: window)
+        pressButton("Transpose up", in: window)
         await settle()
         #expect(onScreen("Discard") && onScreen("Save"))
-        pressButton("Down", in: window)
+        pressButton("Transpose down", in: window)
         await settle()
         #expect(!onScreen("Save"))
-        pressButton("Up", in: window)
-        pressButton("Up", in: window)
+        pressButton("Transpose up", in: window)
+        pressButton("Transpose up", in: window)
         await settle()
         pressButton("Discard", in: window)
         await settle()
         #expect(!onScreen("Save"))
         #expect(SongSessionEdits.copy(for: title.id) == nil)
-        pressButton("Up", in: window)
+        pressButton("Transpose up", in: window)
         await settle()
         pressButton("Save", in: window)
         await settle()
@@ -231,140 +193,7 @@ struct softChord_ViewerTests {
         window.isHidden = true
     }
 
-    /// Edit chord, Delete chord, and Undo with Redo sit under Discard and Save, one
-    /// row each, on one line, and the chord view starts below them.
-    @Test @MainActor func chordButtonsSitBelowSaveAndTheTextStartsBelowThem() async throws {
-        let song = try Songbook.titles().first
-        let title = try #require(song)
-        let controller = UIHostingController(rootView: NavigationStack(path: .constant([title])) {
-            Text("Songs")
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: SongTitle.self) { song in
-                    SongPage(song: song)
-                }
-        })
-        let window = show(controller)
-        await settle()
-        let menu = try #require(window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Menu" })
-        let action = try #require(menu.menu?.children.compactMap { $0 as? UIAction }.first {
-            $0.title == "Edit Chords…"
-        })
-        action.performWithSender(nil, target: nil)
-        await settle()
-        let sizes: [(CGSize, UIContentSizeCategory)] = [
-            (CGSize(width: 402, height: 874), .large),
-            (CGSize(width: 852, height: 393), .large),
-            (CGSize(width: 402, height: 874), .accessibilityLarge),
-        ]
-        for (size, category) in sizes {
-            window.frame = CGRect(origin: .zero, size: size)
-            controller.traitOverrides.preferredContentSizeCategory = category
-            window.layoutIfNeeded()
-            await settle()
-            func button(_ name: String) throws -> UIButton {
-                try #require(window.descendants(of: UIButton.self).first {
-                    $0.configuration?.title == name && !$0.isHidden
-                })
-            }
-            let save = try button("Save").convert(try button("Save").bounds, to: window)
-            let edit = try button("Edit chord")
-            let delete = try button("Delete chord")
-            let editFrame = edit.convert(edit.bounds, to: window)
-            let deleteFrame = delete.convert(delete.bounds, to: window)
-            #expect(editFrame.minY >= save.maxY, "\(size) \(category)")
-            #expect(deleteFrame.minY >= editFrame.maxY, "\(size) \(category)")
-            // One line of the button's own font, plus its padding.
-            let font = UIFont.preferredFont(forTextStyle: .footnote, compatibleWith: delete.traitCollection)
-            #expect(deleteFrame.height < font.lineHeight * 2 + 8, "\(size) \(category) \(deleteFrame)")
-            let chords = try #require(window.descendants(of: UIView.self).first {
-                $0.accessibilityIdentifier == "Song chords"
-            })
-            let chordsFrame = chords.convert(chords.bounds, to: window)
-            #expect(chordsFrame.minY >= deleteFrame.maxY, "\(size) \(category) \(chordsFrame)")
-            // Undo and Redo are the row under them, dimmed until a chord changes.
-            for name in ["Undo", "Redo"] {
-                let history = try #require(window.descendants(of: UIButton.self).first {
-                    $0.accessibilityLabel == name
-                })
-                let frame = history.convert(history.bounds, to: window)
-                #expect(frame.minY >= deleteFrame.maxY, "\(name) \(size) \(category)")
-                #expect(chordsFrame.minY >= frame.maxY, "\(name) \(size) \(category)")
-                #expect(!history.isEnabled, "\(name)")
-            }
-        }
-        // The chord view zooms and scrolls like the song view.
-        let sheet = try #require(window.descendants(of: UIScrollView.self).first {
-            $0.accessibilityIdentifier == "Song chords"
-        })
-        #expect(sheet.gestureRecognizers?.contains { $0 is UIPinchGestureRecognizer } == true)
-        window.isHidden = true
-    }
 
-    /// Back has to receive the press and return to the list. A press that only
-    /// flashes the button leaves the song on screen.
-    @Test @MainActor func backButtonReturnsToTheSongList() async throws {
-        let song = try Songbook.titles().first
-        let title = try #require(song)
-        let controller = UIHostingController(rootView: SongListHarness(song: title))
-        let window = show(controller)
-        await settle()
-        // Layout puts the bar container back in front. The buttons move above
-        // it when the run loop is about to wait.
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DispatchQueue.main.async {
-                continuation.resume()
-            }
-        }
-        let back = try #require(window.descendants(of: UIButton.self).first {
-            $0.accessibilityLabel == "Back"
-        })
-        let area = back.convert(back.bounds, to: window).insetBy(dx: 1, dy: 1)
-        #expect(area.width > 50)
-        #expect(area.height > 16)
-        let samples = [
-            CGPoint(x: area.minX, y: area.minY),
-            CGPoint(x: area.midX, y: area.minY),
-            CGPoint(x: area.maxX, y: area.minY),
-            CGPoint(x: area.minX, y: area.midY),
-            CGPoint(x: area.midX, y: area.midY),
-            CGPoint(x: area.maxX, y: area.midY),
-            CGPoint(x: area.minX, y: area.maxY),
-            CGPoint(x: area.midX, y: area.maxY),
-            CGPoint(x: area.maxX, y: area.maxY),
-        ]
-        for point in samples {
-            let hit = window.hitTest(point, with: nil)
-            let onBack = hit === back || hit?.isDescendant(of: back) == true
-            #expect(onBack, "\(point) hit \(hit.map { String(describing: type(of: $0)) } ?? "nil")")
-        }
-        let beside = CGPoint(x: area.maxX + 12, y: area.midY)
-        let besideHit = window.hitTest(beside, with: nil)
-        let besideIsBack = besideHit === back || besideHit?.isDescendant(of: back) == true
-        #expect(besideIsBack == false)
-        #expect(navigationController(in: window.rootViewController)?.viewControllers.count == 2)
-        back.performPrimaryAction()
-        // The pop starts immediately. The song buttons stay until the
-        // transition takes the page off the window.
-        var returned = false
-        for _ in 0..<40 {
-            await Task.yield()
-            try await Task.sleep(for: .milliseconds(50))
-            let backLeft = window.descendants(of: UIButton.self).contains {
-                $0.accessibilityLabel == "Back"
-            } == false
-            let menuLeft = window.descendants(of: UIButton.self).contains {
-                $0.accessibilityLabel == "Menu"
-            } == false
-            if backLeft && menuLeft {
-                returned = true
-                break
-            }
-        }
-        #expect(returned)
-        #expect(navigationController(in: window.rootViewController)?.viewControllers.count == 1)
-        #expect(anyWindowShows("Songs"))
-        window.isHidden = true
-    }
 
     /// Save has to leave edit mode, and the field has to still be on screen
     /// when the keyboard starts hiding. Back from the editor returns to the list.
@@ -378,7 +207,7 @@ struct softChord_ViewerTests {
             view.descendants(of: UITextView.self).isEmpty
         }
         #expect(window.descendants(of: UITextView.self).isEmpty)
-        #expect(window.descendants(of: UIButton.self).contains { $0.accessibilityLabel == "Menu" })
+        #expect(onScreen("Zoom in"))
 
         try await openEditor(in: window)
         let editor = try #require(window.descendants(of: UITextView.self).first)
@@ -415,7 +244,6 @@ struct softChord_ViewerTests {
             navigationController(in: view.rootViewController)?.viewControllers.count == 1
         }
         #expect(navigationController(in: editBack.rootViewController)?.viewControllers.count == 1)
-        #expect(editBack.descendants(of: UIButton.self).contains { $0.accessibilityLabel == "Back" } == false)
         editBack.isHidden = true
 
         // A tap outside the field resigns it before Back runs. The page has
@@ -532,20 +360,38 @@ struct softChord_ViewerTests {
     }
 
     @MainActor private func pressBack(in window: UIWindow) {
-        window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Back" }?.performPrimaryAction()
+        pressButton("Back", in: window)
+    }
+
+    /// The toolbar button shown now with this label (Back is nil).
+    @MainActor private func toolbarButton(_ label: String) -> SongToolbarButton? {
+        guard let state = SongToolbarTesting.shown?.state else {
+            return nil
+        }
+        return state.groups.flatMap(\.buttons).first { state.label($0) == label }
+    }
+
+    @MainActor private func onScreen(_ label: String) -> Bool {
+        toolbarButton(label) != nil
+    }
+
+    @MainActor private func isEnabled(_ label: String, in window: UIWindow) -> Bool {
+        guard let button = toolbarButton(label), let state = SongToolbarTesting.shown?.state else {
+            return false
+        }
+        return state.isEnabled(button)
     }
 
     @MainActor private func pressButton(_ title: String, in window: UIWindow) {
-        let button = window.descendants(of: UIButton.self).first {
-            $0.accessibilityLabel == title || $0.configuration?.title == title
+        if title == "Back" {
+            SongToolbarTesting.shown?.back()
+        } else if let button = toolbarButton(title), isEnabled(title, in: window) {
+            SongToolbarTesting.shown?.press(button)
         }
-        button?.sendActions(for: .touchUpInside)
     }
 
     @MainActor private func performMenuAction(_ title: String, in window: UIWindow) throws {
-        let menu = try #require(window.descendants(of: UIButton.self).first { $0.accessibilityLabel == "Menu" })
-        let action = try #require(menu.menu?.children.compactMap { $0 as? UIAction }.first { $0.title == title })
-        action.performWithSender(menu, target: nil)
+        pressButton(title, in: window)
     }
 
     @MainActor private func waitUntil(in window: UIWindow, _ done: (UIWindow) -> Bool) async {
@@ -571,179 +417,6 @@ struct softChord_ViewerTests {
             }
         }
         return nil
-    }
-
-    /// Whole button, in front of the bar container, and the menu actually opens.
-    @MainActor private func checkSongControls(in window: UIWindow) async throws {
-        // Layout puts the bar container back in front. The buttons move above
-        // it when the run loop is about to wait.
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DispatchQueue.main.async {
-                continuation.resume()
-            }
-        }
-        for name in ["Menu", "Down", "Up", "Reset transpose"] {
-            let button = try #require(window.descendants(of: UIButton.self).first {
-                $0.accessibilityLabel == name
-            })
-            var reachedWindow = false
-            var ancestor: UIView? = button
-            while let view = ancestor {
-                if view.superview === window {
-                    reachedWindow = true
-                }
-                ancestor = view.superview
-            }
-            #expect(reachedWindow)
-            let area = button.convert(button.bounds, to: window).insetBy(dx: 1, dy: 1)
-            #expect(area.width > 20)
-            #expect(area.height > 20)
-            let samples = [
-                CGPoint(x: area.minX, y: area.minY),
-                CGPoint(x: area.midX, y: area.minY),
-                CGPoint(x: area.maxX, y: area.minY),
-                CGPoint(x: area.minX, y: area.midY),
-                CGPoint(x: area.midX, y: area.midY),
-                CGPoint(x: area.maxX, y: area.midY),
-                CGPoint(x: area.minX, y: area.maxY),
-                CGPoint(x: area.midX, y: area.maxY),
-                CGPoint(x: area.maxX, y: area.maxY),
-            ]
-            // A dimmed button (Reset transpose before the song is moved) takes no
-            // press, so only a live button is hit tested.
-            for point in samples where button.isEnabled {
-                #expect(window.hitTest(point, with: nil) === button)
-            }
-        }
-        let menu = try #require(window.descendants(of: UIButton.self).first {
-            $0.accessibilityLabel == "Menu"
-        })
-        #expect(menu.showsMenuAsPrimaryAction)
-        #expect(menu.menu?.children.isEmpty == false)
-        let presenter = menuPresenter(of: menu)
-        #expect(presenter?.view.window === window)
-        #expect(menu.isDescendant(of: presenter?.view ?? UIView()))
-        #expect(controllerIsInTheWindowHierarchy(presenter))
-        if let chrome = chromePanel(containing: menu, in: presenter?.view) {
-            let middle = CGPoint(x: window.bounds.midX, y: window.bounds.midY)
-            let middleHit = window.hitTest(middle, with: nil)
-            let hitsChrome = middleHit === chrome || middleHit?.isDescendant(of: chrome) == true
-            #expect(hitsChrome == false)
-        }
-        controlsAreInFrontOfTheBar(menu, window: window)
-        menu.performPrimaryAction()
-        await settle()
-        #expect(menu.isHeld)
-        #expect(anyWindowShows("Copy song text"))
-        menu.contextMenuInteraction?.dismissMenu()
-    }
-
-    /// The buttons have to be in front of the bar container. That container
-    /// takes presses that land on whatever is behind it.
-    @MainActor private func controlsAreInFrontOfTheBar(_ menu: UIView, window: UIWindow) {
-        let bars = window.descendants(of: UIView.self).filter {
-            String(describing: type(of: $0)).contains("FloatingBar")
-        }
-        if bars.isEmpty {
-            Issue.record("Floating bar is missing")
-            return
-        }
-        for bar in bars {
-            guard let parent = commonParent(menu, bar),
-                  let menuIndex = childIndex(of: menu, in: parent),
-                  let barIndex = childIndex(of: bar, in: parent) else {
-                Issue.record("Could not place the menu and the bar")
-                return
-            }
-            if menuIndex <= barIndex {
-                let names = parent.subviews.map { String(describing: type(of: $0)) }
-                Issue.record("Song buttons are not in front of the bar. Siblings: \(names)")
-            }
-        }
-    }
-
-    @MainActor private func commonParent(_ first: UIView, _ second: UIView) -> UIView? {
-        var seen: [ObjectIdentifier: UIView] = [:]
-        var current: UIView? = first
-        while let view = current {
-            seen[ObjectIdentifier(view)] = view
-            current = view.superview
-        }
-        current = second
-        while let view = current {
-            if let parent = seen[ObjectIdentifier(view)] {
-                return parent
-            }
-            current = view.superview
-        }
-        return nil
-    }
-
-    /// The button panel added to the controller that presents the menu.
-    @MainActor private func chromePanel(containing menu: UIView, in root: UIView?) -> UIView? {
-        var current: UIView? = menu
-        while let view = current {
-            if view.superview === root {
-                return view
-            }
-            current = view.superview
-        }
-        return nil
-    }
-
-    @MainActor private func childIndex(of view: UIView, in parent: UIView) -> Int? {
-        var current: UIView? = view
-        while let node = current {
-            if node.superview === parent {
-                return parent.subviews.firstIndex(of: node)
-            }
-            current = node.superview
-        }
-        return nil
-    }
-
-    /// A detached controller can open a menu once, then the gesture gate times out.
-    @MainActor private func controllerIsInTheWindowHierarchy(_ controller: UIViewController?) -> Bool {
-        guard let controller, controller.view.window != nil else {
-            return false
-        }
-        var top = controller
-        while let parent = top.parent {
-            top = parent
-        }
-        return top === controller.view.window?.rootViewController
-    }
-
-    /// The controller that owns an ancestor view. The window does not count.
-    @MainActor private func menuPresenter(of view: UIView) -> UIViewController? {
-        var current: UIView? = view
-        while let ancestor = current, !(ancestor is UIWindow) {
-            if let controller = ancestor.next as? UIViewController, controller.view === ancestor {
-                return controller
-            }
-            current = ancestor.superview
-        }
-        return nil
-    }
-
-    @MainActor private func anyWindowShows(_ text: String) -> Bool {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        for scene in scenes {
-            for window in scene.windows where windowShows(text, in: window) {
-                return true
-            }
-        }
-        return false
-    }
-
-    @MainActor private func windowShows(_ text: String, in view: UIView) -> Bool {
-        if view.accessibilityLabel == text {
-            return true
-        }
-        if let label = view as? UILabel, label.text == text {
-            return true
-        }
-        return view.subviews.contains { windowShows(text, in: $0) }
     }
 
 

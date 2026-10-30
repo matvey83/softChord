@@ -221,7 +221,7 @@ private extension UIView {
     }
 }
 
-/// The song list menu and the song page menu share these items.
+/// The song list menu. The song page toolbar (SongToolbar.swift) uses the same copy functions.
 /// Mirror: softchord_session.py copySongText, copySongTextWithChords, and copySongAsImage.
 /// They copy the song as it is shown: the song page passes `shown` (a saved edit
 /// and the transpose). Without it, or when it has nothing, the song is read as the
@@ -250,9 +250,7 @@ enum SongShareMenu {
             UIAction(title: "Copy as image") { _ in
                 copySongImage(song, report: report)
             },
-            UIAction(title: "Add to Photos") { _ in
-                addSongToPhotos(song, report: report)
-            },
+            // TODO: re-add Add to Photos to the toolbar (and this menu): addSongToPhotos below.
         ]
         if let onEdit {
             // Mirror: softchord_session.py lyricEditorSelected.
@@ -275,7 +273,7 @@ private func shownSheet(_ song: () throws -> SongSource) throws -> [SongSheetLin
     return SongText.sheet(text: shown.text, chords: shown.chords)
 }
 
-private func copySongImage(_ song: () throws -> SongSource, report: @escaping (String, String) -> Void) {
+func copySongImage(_ song: () throws -> SongSource, report: @escaping (String, String) -> Void) {
     do {
         let image = SongSheetImage.image(for: try shownSheet(song), scale: 2)
         guard let data = image.pngData() else {
@@ -288,7 +286,7 @@ private func copySongImage(_ song: () throws -> SongSource, report: @escaping (S
     }
 }
 
-private func addSongToPhotos(_ song: () throws -> SongSource, report: @escaping (String, String) -> Void) {
+func addSongToPhotos(_ song: () throws -> SongSource, report: @escaping (String, String) -> Void) {
     // Read the song now, as it is shown when the item is chosen.
     let sheet: [SongSheetLine]
     do {
@@ -307,7 +305,7 @@ private func addSongToPhotos(_ song: () throws -> SongSource, report: @escaping 
     }
 }
 
-private func songShareCopy(_ song: () throws -> SongSource, includeChords: Bool, report: @escaping (String, String) -> Void) {
+func songShareCopy(_ song: () throws -> SongSource, includeChords: Bool, report: @escaping (String, String) -> Void) {
     do {
         let shown = try song()
         UIPasteboard.general.string = SongText.render(text: shown.text, chords: shown.chords, includeChords: includeChords)
