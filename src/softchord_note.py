@@ -3,13 +3,13 @@
 MIRRORED UI: the web app's showToast (softChord_web/viewer.js, #toast in
 viewer.css) and the iOS app's showToast (SongPage.swift): 14 px white text on a
 dark rounded box 24 px above the bottom, centred, at most 2 lines, gone after
-2.2 s; a new note replaces the one shown. Desktop: it sits on the song view
+1.5 s; a new note replaces the one shown. Desktop: it sits on the song view
 (the editor), so it does not move when the toolbar wraps or an edit starts.
 """
 
 from PyQt6 import QtCore, QtWidgets
 
-DURATION_MS = 2200
+DURATION_MS = 1500
 BOTTOM = 24
 SIDE = 16
 

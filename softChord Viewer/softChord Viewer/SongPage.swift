@@ -188,7 +188,7 @@ struct SongPage: View {
         toast = message
         toastTask?.cancel()
         toastTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.2))
+            try? await Task.sleep(for: .seconds(1.5))
             if !Task.isCancelled {
                 toast = nil
             }
