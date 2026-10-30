@@ -7479,6 +7479,15 @@ class TestSaveAndDiscard(unittest.TestCase):
         toolbar.chord_edit.trigger()
         self.assertEqual(opened, [3])
 
+    def test_notes_are_cleared_when_several_songs_are_selected(self):
+        self.app.ui.song_subtitle_ef.setText("Some notes")
+        self.app.ui.songs_view.selectAll()
+        self.assertIsNone(self.app.current_song)
+        self.assertEqual(self.app.ui.song_subtitle_ef.text(), "")
+        self.assertFalse(self.app.ui.song_subtitle_ef.isEnabled())
+        self.select_song(0)
+        self.assertTrue(self.app.ui.song_subtitle_ef.isEnabled())
+
     def test_toolbar_wraps_whole_groups_when_narrow(self):
         flow = self.app.toolbar.layout()
         one_row = flow.heightForWidth(2000)
