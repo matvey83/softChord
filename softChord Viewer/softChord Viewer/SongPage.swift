@@ -61,13 +61,21 @@ struct SongPage: View {
     /// The letter picked in chord editing. Its chord, if it has one, is the selected chord.
     @State private var chordSelection: Int?
     @State private var chordRequest: SongChordEditRequest?
-    /// Where the song controls end and where the chord view begins, both in window
-    /// coordinates. The chord view starts below the controls, so they never cover text.
-    @State private var panelBottom: CGFloat = 0
-    @State private var chordViewTop: CGFloat = 0
+    /// MIRRORED UI: the zoom of viewer.js. The zoom chosen with the buttons, kept
+    /// for every song; the zoom that fits the widest line on screen (nil when the
+    /// chosen zoom fits); set once the buttons or a pinch zoomed this song, which
+    /// then shows at exactly that zoom.
+    @State private var zoomPercent = SongZoom.load()
+    @State private var fitPercent: Int?
+    @State private var songZoomed = false
+    /// The zoom left by a pinch, which is not kept for other songs.
+    @State private var pinchPercent: Int?
     @State private var closeWhenKeyboardEnds = false
     /// Set once the keyboard has finished hiding, so Back can pop from the page.
     @State private var popWhenReady = false
+    @State private var askingToLeave = false
+    @State private var toast: String?
+    @State private var toastTask: Task<Void, Never>?
     @State private var draft = ""
     /// Chord positions for the edit in progress. Note ids stay as stored.
     @State private var editChords: [SongChord] = []
@@ -136,32 +144,71 @@ struct SongPage: View {
         return SongTranspose.changesChords(steps - savedSteps, in: shownChords ?? source.chords)
     }
 
-    /// Unsaved keystrokes and a transpose not saved are still only on this page.
-    /// A saved edit or transpose stays for this run, but it is not in the songbook file.
+    /// An edit or a transpose that Back would lose. MIRRORED UI: viewer.js draftChanged.
+    private var hasUnsavedChanges: Bool {
+        guard let source else {
+            return false
+        }
+        let storedText = shownText ?? source.text
+        let storedChords = shownChords ?? source.chords
+        return stepsChanged
+            || ((editing || editingChords) && (draft != storedText || editChords != storedChords))
+    }
+
+    /// MIRRORED UI: viewer.js persistNote. Shown while editing, and while the
+    /// song shows a saved edit or another key than the songbook's.
     private var bannerText: String? {
         guard let source else {
             return nil
         }
-        let storedText = shownText ?? source.text
-        let storedChords = shownChords ?? source.chords
-        let dirtyDraft = (editing || editingChords) && (draft != storedText || editChords != storedChords)
-        let transposed = stepsChanged
-        let kept = shownText != nil || shownChords != nil || SongTranspose.changesChords(savedSteps, in: storedChords)
-        if dirtyDraft || (transposed && !kept) {
-            return "Changes do not persist"
-        }
-        if kept {
-            // The saved edit stays for this run. A transpose not saved does
-            // not, so a song with both says so for each.
-            return transposed ? "Not written to the songbook. Transpose does not persist." : "Not written to the songbook"
-        }
-        return nil
+        let kept = shownText != nil || shownChords != nil
+        let transposed = SongTranspose.changesChords(steps, in: shownChords ?? source.chords)
+        return editing || editingChords || kept || transposed ? "Changes do not persist" : nil
     }
 
-    /// The chord controls hang below the navigation bar, one row each. The
-    /// chord view starts under the lowest of them.
-    private var chordControlsInset: CGFloat {
-        max(0, panelBottom - chordViewTop) + 8
+    /// MIRRORED UI: viewer.js showToast (#toast): a short note at the bottom.
+    private func showToast(_ message: String) {
+        toast = message
+        toastTask?.cancel()
+        toastTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.2))
+            if !Task.isCancelled {
+                toast = nil
+            }
+        }
+    }
+
+    /// The zoom the song is shown at. A wide song opens smaller so it fits.
+    private var shownZoom: Int {
+        if let pinchPercent {
+            return pinchPercent
+        }
+        return songZoomed || fitPercent == nil ? zoomPercent : min(zoomPercent, fitPercent!)
+    }
+
+    /// The sheet reports the zoom that fits its widest line. Only a smaller one is
+    /// used, and not while editing (viewer.js fitToWidth).
+    private func fitChanged(_ fit: Int) {
+        guard !editing, !editingChords else {
+            return
+        }
+        let next = fit < zoomPercent ? max(SongZoom.min, fit) : nil
+        if next != fitPercent {
+            fitPercent = next
+        }
+    }
+
+    private func zoomTo(_ percent: Int) {
+        songZoomed = true
+        pinchPercent = nil
+        zoomPercent = SongZoom.clamp(percent)
+        SongZoom.save(zoomPercent)
+        showToast("Zoom \(zoomPercent)%")
+    }
+
+    private func pinched(_ scale: CGFloat) {
+        songZoomed = true
+        pinchPercent = SongZoom.clamp(Int((scale * 100).rounded()))
     }
 
     var body: some View {
@@ -187,26 +234,38 @@ struct SongPage: View {
                 // Mirror: the desktop's Edit Chords mode (chordEditorSelected).
                 // The letters are read-only. A press selects a letter and its
                 // chord, and a drag moves the chord onto another letter.
-                VStack(spacing: 0) {
-                    Color.clear.frame(height: chordControlsInset)
-                    SongChordEditor(
-                        text: draft,
-                        chords: SongTranspose.shifted(editChords, by: steps),
-                        selection: $chordSelection,
-                        onChordMoved: moveChord,
-                        onDragBegan: { dragRecorded = false },
-                        onEditRequested: requestChordEdit
-                    )
-                }
+                SongChordEditor(
+                    text: draft,
+                    chords: SongTranspose.shifted(editChords, by: steps),
+                    selection: $chordSelection,
+                    zoom: CGFloat(shownZoom) / 100,
+                    onPinched: pinched,
+                    onFit: fitChanged,
+                    onChordMoved: moveChord,
+                    onDragBegan: { dragRecorded = false },
+                    onEditRequested: requestChordEdit
+                )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .background(Color.white)
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
-                        chordViewTop = $0
-                    }
             } else {
-                SongZoomCanvas(lines: lines)
+                SongZoomCanvas(lines: lines, zoom: CGFloat(shownZoom) / 100, onPinched: pinched, onFit: fitChanged)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .background(Color.white)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Text(toast)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .background(Color(red: 0.11, green: 0.11, blue: 0.118).opacity(0.92),
+                                in: RoundedRectangle(cornerRadius: 10))
+                    .padding(.bottom, 24)
+                    .padding(.horizontal, 16)
+                    .allowsHitTesting(false)
             }
         }
         .sheet(item: $chordRequest) { request in
@@ -214,83 +273,26 @@ struct SongPage: View {
                 applyChordText(text, for: request)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
+        // MIRRORED UI: the web song toolbar (SongToolbar.swift), pinned above the song.
+        .toolbar(.hidden, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
-        .toolbar {
-            // The bar's own back item highlights and then loses the press.
-            // The song controls draw Back instead, above the bar. This spacer
-            // only keeps the title from sliding under that button. With no
-            // song loaded there are no song controls, so the bar keeps Back.
-            if source == nil {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text("Back")
-                        }
-                    }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // TODO: Under the title, show the subtitle when it is not empty,
+            // and the auto-detected key in the editor's words
+            // ("Auto-detected key: ..."). Port key_label and
+            // format_auto_detected_key_text from softchord_chords.py.
+            SongToolbar(title: title, state: source == nil ? nil : toolbarState,
+                        onBack: backTapped, onButton: toolbarTapped)
+                // MIRRORED UI: the desktop's Save / Don't Save / Cancel sheet
+                // (softchord_session.py _leaveEditMessageBox) and viewer.js leave-confirm.
+                .alert("Do you want to save the changes you made to \u{201C}\(title)\u{201D}?",
+                       isPresented: $askingToLeave) {
+                    Button("Save") { finishAndLeave(save: true) }
+                    Button("Don\u{2019}t Save", role: .destructive) { finishAndLeave(save: false) }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Your changes will be lost if you don\u{2019}t save them.")
                 }
-            } else {
-                ToolbarItem(placement: .topBarLeading) {
-                    Color.clear
-                        .frame(width: 88, height: 1)
-                        .accessibilityHidden(true)
-                }
-                .sharedBackgroundVisibility(.hidden)
-            }
-            ToolbarItem(placement: .principal) {
-                // TODO: Under the title, show the subtitle when it is not empty,
-                // and the auto-detected key in the editor's words
-                // ("Auto-detected key: ..."). Port key_label and
-                // format_auto_detected_key_text from softchord_chords.py.
-                // This page keeps transpose in memory. The editor keeps saving it.
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(1)
-            }
-            // Leaves room so the title does not run under the buttons.
-            // The buttons themselves are pinned to the top of the bar.
-            if source != nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Color.clear
-                        .frame(width: editing || editingChords ? 170 : 140, height: 1)
-                        .accessibilityHidden(true)
-                }
-                .sharedBackgroundVisibility(.hidden)
-            }
-        }
-        .background {
-            if source != nil {
-                SongChromeDock(
-                    editing: editing || editingChords,
-                    pending: stepsChanged,
-                    chordMode: editingChords,
-                    selectionState: chordSelectionState,
-                    songId: songId,
-                    steps: $steps,
-                    chords: editingChords ? editChords : (shownChords ?? source?.chords ?? []),
-                    onBack: { leaveSong() },
-                    onEdit: beginLyricEdit,
-                    onEditChords: beginChordEdit,
-                    onEditChord: { requestChordEdit(chordSelection) },
-                    onDeleteChord: deleteSelectedChord,
-                    canUndo: !chordUndo.isEmpty,
-                    canRedo: !chordRedo.isEmpty,
-                    onUndo: undoChordChange,
-                    onRedo: redoChordChange,
-                    onDiscard: { finish(save: false) },
-                    onSave: { finish(save: true) },
-                    shownSong: { shownSong },
-                    onPanelBottom: { panelBottom = $0 },
-                    onNotice: { title, message in
-                        noticeTitle = title
-                        noticeMessage = message
-                    }
-                )
-            }
         }
         .onChange(of: popWhenReady) { _, pop in
             if pop {
@@ -310,6 +312,57 @@ struct SongPage: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                     .background(Color.white)
+            }
+        }
+    }
+
+    private var toolbarState: SongToolbarState {
+        SongToolbarState(
+            editing: editing || editingChords,
+            chordMode: editingChords,
+            pending: stepsChanged,
+            transposed: SongTranspose.changesChords(steps, in: shownChords ?? source?.chords ?? []),
+            zoom: shownZoom,
+            canZoom: !editing,
+            selection: chordSelectionState,
+            canUndo: !chordUndo.isEmpty,
+            canRedo: !chordRedo.isEmpty)
+    }
+
+    private func toolbarTapped(_ button: SongToolbarButton) {
+        let report: (String, String) -> Void = { title, message in
+            noticeTitle = title
+            noticeMessage = message
+        }
+        let song: () throws -> SongSource = {
+            guard let shownSong else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            return shownSong
+        }
+        switch button {
+        case .copyText: songShareCopy(song, includeChords: false, report: report)
+        case .copyChords: songShareCopy(song, includeChords: true, report: report)
+        case .copyImage: copySongImage(song, report: report)
+        case .transposeDown: steps -= 1
+        case .transposeUp: steps += 1
+        case .transposeReset: steps = 0
+        case .zoomOut: zoomTo(SongZoom.stepped(shownZoom, -1))
+        case .zoomIn: zoomTo(SongZoom.stepped(shownZoom, 1))
+        case .zoomReset: zoomTo(SongZoom.normal)
+        case .print: SongPrint.present(lines, title: title)
+        case .editText: beginLyricEdit()
+        case .editChords: beginChordEdit()
+        case .chordEdit: requestChordEdit(chordSelection)
+        case .chordDelete: deleteSelectedChord()
+        case .chordUndo: undoChordChange()
+        case .chordRedo: redoChordChange()
+        case .discard: finish(save: false)
+        case .save:
+            let changed = hasUnsavedChanges
+            finish(save: true)
+            if changed {
+                showToast("Saved")
             }
         }
     }
@@ -481,6 +534,19 @@ struct SongPage: View {
         closeWhenKeyboardEnds = true
     }
 
+    private func backTapped() {
+        if hasUnsavedChanges {
+            askingToLeave = true
+        } else {
+            leaveSong()
+        }
+    }
+
+    private func finishAndLeave(save: Bool) {
+        finish(save: save)
+        leaveSong()
+    }
+
     /// Pop after the keyboard is down. Popping while a field is still typing
     /// hides the keyboard, and taking the page away hides it again.
     private func leaveSong() {
@@ -532,536 +598,6 @@ struct SongPage: View {
                     noticeMessage = nil
                 }
             })
-    }
-}
-
-/// Pins Back, the menu, and the transpose buttons to the top of the navigation bar.
-/// A SwiftUI menu in that corner is rebuilt while it is closed, and the first
-/// choice then waits. These buttons keep one menu for the life of the page.
-private struct SongChromeDock: UIViewRepresentable {
-    var editing: Bool
-    /// A transpose not saved while viewing: Discard and Save show next to the
-    /// transpose buttons.
-    var pending: Bool
-    var chordMode: Bool
-    var selectionState: SongChordSelectionState
-    var songId: Int
-    @Binding var steps: Int
-    /// The chords the page is showing. Transposing does nothing to a song with no
-    /// recognized chord, so Reset stays dimmed for it.
-    var chords: [SongChord]
-    var onBack: () -> Void
-    var onEdit: () -> Void
-    var onEditChords: () -> Void
-    var onEditChord: () -> Void
-    var onDeleteChord: () -> Void
-    var canUndo: Bool
-    var canRedo: Bool
-    var onUndo: () -> Void
-    var onRedo: () -> Void
-    var onDiscard: () -> Void
-    var onSave: () -> Void
-    var shownSong: () -> SongSource?
-    var onPanelBottom: (CGFloat) -> Void
-    var onNotice: (String, String) -> Void
-
-    func makeUIView(context: Context) -> SongChromeAnchor {
-        let view = SongChromeAnchor()
-        view.isUserInteractionEnabled = false
-        view.backgroundColor = .clear
-        return view
-    }
-
-    func updateUIView(_ view: SongChromeAnchor, context: Context) {
-        let coordinator = context.coordinator
-        coordinator.songId = songId
-        coordinator.steps = $steps
-        coordinator.chords = chords
-        coordinator.applyTransposeState()
-        coordinator.editing = editing
-        coordinator.pending = pending
-        coordinator.chordMode = chordMode
-        coordinator.selectionState = selectionState
-        coordinator.onBack = onBack
-        coordinator.onEdit = onEdit
-        coordinator.onEditChords = onEditChords
-        coordinator.onEditChord = onEditChord
-        coordinator.onDeleteChord = onDeleteChord
-        coordinator.canUndo = canUndo
-        coordinator.canRedo = canRedo
-        coordinator.onUndo = onUndo
-        coordinator.onRedo = onRedo
-        coordinator.onDiscard = onDiscard
-        coordinator.onSave = onSave
-        coordinator.shownSong = shownSong
-        coordinator.onPanelBottom = onPanelBottom
-        coordinator.onNotice = onNotice
-        view.onInstall = { [weak coordinator, weak view] in
-            guard let coordinator, let view else {
-                return
-            }
-            coordinator.install(on: view)
-        }
-        coordinator.install(on: view)
-        coordinator.applyEditing()
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    static func dismantleUIView(_ view: SongChromeAnchor, coordinator: Coordinator) {
-        view.removePanel()
-    }
-
-    final class Coordinator: NSObject {
-        var songId = 0
-        var steps: Binding<Int> = .constant(0)
-        var chords: [SongChord] = []
-        var editing = false
-        var pending = false
-        var chordMode = false
-        var selectionState = SongChordSelectionState.none
-        var onBack: () -> Void = {}
-        var onEdit: () -> Void = {}
-        var onEditChords: () -> Void = {}
-        var onEditChord: () -> Void = {}
-        var onDeleteChord: () -> Void = {}
-        var canUndo = false
-        var canRedo = false
-        var onUndo: () -> Void = {}
-        var onRedo: () -> Void = {}
-        private weak var anchor: SongChromeAnchor?
-        /// Set once the page drops the buttons, so a late update cannot put them
-        /// back on the list.
-        private var closed = false
-        var onDiscard: () -> Void = {}
-        var onSave: () -> Void = {}
-        var shownSong: () -> SongSource? = { nil }
-        var onPanelBottom: (CGFloat) -> Void = { _ in }
-        private var reportedBottom: CGFloat?
-        var onNotice: (String, String) -> Void = { _, _ in }
-        private var viewControls: UIView?
-        private var editControls: UIView?
-        private var chordTools: UIView?
-        private var resetTransposeButton: UIButton?
-        private var editChordButton: UIButton?
-        private var deleteChordButton: UIButton?
-        private var undoButton: UIButton?
-        private var redoButton: UIButton?
-
-        func install(on anchor: SongChromeAnchor) {
-            // The bar's container covers the screen and takes presses that land
-            // on the buttons. They stay in the bar's own view, above that
-            // container. The bar's controller presents the menu. An extra
-            // child controller makes Back flash and then time out.
-            // Once the page has left the window, a late update must not put
-            // the buttons back on the list.
-            self.anchor = anchor
-            guard !closed, anchor.window != nil, anchor.panel == nil,
-                  let bar = anchor.navigationBar(),
-                  let parent = anchor.barOwner(for: bar) else {
-                return
-            }
-            let panel = makePanel()
-            panel.translatesAutoresizingMaskIntoConstraints = false
-            parent.view.addSubview(panel)
-            NSLayoutConstraint.activate([
-                panel.topAnchor.constraint(equalTo: bar.safeAreaLayoutGuide.topAnchor),
-                panel.leadingAnchor.constraint(equalTo: bar.layoutMarginsGuide.leadingAnchor),
-                panel.trailingAnchor.constraint(equalTo: bar.layoutMarginsGuide.trailingAnchor),
-            ])
-            anchor.panel = panel
-            anchor.installFrontObserver()
-            anchor.moveHostAboveTheBar()
-            applyEditing()
-        }
-
-        /// Reset transpose is dimmed while the song is in the songbook's key (0).
-        /// A song opens at the transpose saved for this run, 0 if none. Up then
-        /// Down by the same amount is back, and so is a whole octave (12), which
-        /// shows the same chords.
-        func applyTransposeState() {
-            resetTransposeButton?.isEnabled = SongTranspose.changesChords(steps.wrappedValue, in: chords)
-        }
-
-        func applyEditing() {
-            viewControls?.isHidden = editing
-            editControls?.isHidden = !(editing || pending)
-            chordTools?.isHidden = !(editing && chordMode)
-            editChordButton?.isEnabled = selectionState != .none
-            deleteChordButton?.isEnabled = selectionState == .chord
-            undoButton?.isEnabled = canUndo
-            redoButton?.isEnabled = canRedo
-        }
-
-        private func makePanel() -> SongChromePanel {
-            let menuButton = UIButton(configuration: menuConfiguration())
-            menuButton.showsMenuAsPrimaryAction = true
-            menuButton.menu = SongShareMenu.menu(
-                songId: { [weak self] in self?.songId ?? 0 },
-                report: { [weak self] title, message in
-                    self?.onNotice(title, message)
-                },
-                onEdit: { [weak self] in
-                    self?.onEdit()
-                },
-                onEditChords: { [weak self] in
-                    self?.onEditChords()
-                },
-                shown: { [weak self] in
-                    self?.shownSong()
-                })
-            menuButton.accessibilityLabel = "Menu"
-
-            // Mirror: softchord_session.py transposeDown and transposeUp, and the
-            // Reset transpose button next to them.
-            let reset = resetTransposeConfiguredButton()
-            resetTransposeButton = reset
-            let row = UIStackView(arrangedSubviews: [
-                arrowButton("arrow.down", name: "Down", delta: -1),
-                arrowButton("arrow.up", name: "Up", delta: 1),
-                reset,
-            ])
-            row.axis = .horizontal
-            row.spacing = 6
-            row.alignment = .center
-
-            let stack = UIStackView(arrangedSubviews: [menuButton, row])
-            stack.axis = .vertical
-            stack.alignment = .trailing
-            stack.spacing = 6
-            stack.setContentHuggingPriority(.required, for: .horizontal)
-            viewControls = stack
-
-            // Mirror: the desktop lyric editor keeps typed letters in the open song.
-            // Save does that for this screen. The songbook file stays as it was.
-            let edits = UIStackView(arrangedSubviews: [
-                textButton("Discard", prominent: false, action: #selector(discardTapped)),
-                textButton("Save", prominent: true, action: #selector(saveTapped)),
-            ])
-            edits.axis = .horizontal
-            edits.spacing = 6
-            edits.isHidden = true
-            editControls = edits
-
-            // Mirror: the desktop's chord dialog and deleteSelectedChord.
-            let editChord = textButton("Edit chord", prominent: false, action: #selector(editChordTapped))
-            let deleteChord = textButton("Delete chord", prominent: false, action: #selector(deleteChordTapped))
-            editChordButton = editChord
-            deleteChordButton = deleteChord
-            // Mirror: the desktop edit's Undo and Redo.
-            let undo = symbolButton("arrow.uturn.backward", name: "Undo", action: #selector(undoTapped))
-            let redo = symbolButton("arrow.uturn.forward", name: "Redo", action: #selector(redoTapped))
-            undoButton = undo
-            redoButton = redo
-            let history = UIStackView(arrangedSubviews: [undo, redo])
-            history.axis = .horizontal
-            history.spacing = 6
-            let tools = UIStackView(arrangedSubviews: [editChord, deleteChord, history])
-            tools.axis = .vertical
-            tools.alignment = .trailing
-            tools.spacing = 6
-            tools.isHidden = true
-            chordTools = tools
-
-            let trailing = UIStackView(arrangedSubviews: [stack, edits, tools])
-            trailing.axis = .vertical
-            trailing.alignment = .trailing
-            trailing.spacing = 6
-            trailing.setContentHuggingPriority(.required, for: .horizontal)
-
-            // The gap is not a control. The panel refuses presses that miss a button.
-            let spacer = UIView()
-            spacer.isUserInteractionEnabled = false
-            spacer.setContentHuggingPriority(.fittingSizeLevel, for: .horizontal)
-            spacer.setContentCompressionResistancePriority(.fittingSizeLevel, for: .horizontal)
-
-            let panel = SongChromePanel(arrangedSubviews: [backButton(), spacer, trailing])
-            panel.axis = .horizontal
-            panel.alignment = .top
-            // The page keeps its text below the lowest control.
-            panel.onLayout = { [weak self, weak panel] in
-                guard let self, let panel else {
-                    return
-                }
-                let bottom = panel.convert(panel.bounds, to: nil).maxY
-                guard bottom != self.reportedBottom else {
-                    return
-                }
-                self.reportedBottom = bottom
-                DispatchQueue.main.async { self.onPanelBottom(bottom) }
-            }
-            return panel
-        }
-
-        private func backButton() -> UIButton {
-            var config = UIButton.Configuration.glass()
-            config.title = "Back"
-            config.image = UIImage(systemName: "chevron.left")
-            config.imagePadding = 4
-            config.buttonSize = .small
-            config.cornerStyle = .capsule
-            let button = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in
-                // Take the buttons down before the pop. They are hosted on the
-                // navigation controller, which stays up when the song leaves.
-                self?.closeChrome()
-                self?.onBack()
-            })
-            button.accessibilityLabel = "Back"
-            button.setContentHuggingPriority(.required, for: .horizontal)
-            button.setContentCompressionResistancePriority(.required, for: .horizontal)
-            return button
-        }
-
-        private func menuConfiguration() -> UIButton.Configuration {
-            var config = UIButton.Configuration.bordered()
-            config.image = UIImage(systemName: "line.3.horizontal")
-            config.buttonSize = .small
-            config.cornerStyle = .capsule
-            // A popup indicator is the extra chevron. This button is the menu itself.
-            config.indicator = .none
-            return config
-        }
-
-        private func arrowButton(_ symbol: String, name: String, delta: Int) -> UIButton {
-            var config = UIButton.Configuration.bordered()
-            config.image = UIImage(systemName: symbol)
-            config.buttonSize = .small
-            config.cornerStyle = .capsule
-            let button = UIButton(configuration: config)
-            button.accessibilityLabel = name
-            button.tag = delta
-            button.addTarget(self, action: #selector(transposeTapped(_:)), for: .touchUpInside)
-            return button
-        }
-
-        private func resetTransposeConfiguredButton() -> UIButton {
-            var config = UIButton.Configuration.bordered()
-            config.image = UIImage(systemName: "arrow.counterclockwise")
-            config.buttonSize = .small
-            config.cornerStyle = .capsule
-            let button = UIButton(configuration: config)
-            button.accessibilityLabel = "Reset transpose"
-            button.isEnabled = SongTranspose.changesChords(steps.wrappedValue, in: chords)
-            button.addTarget(self, action: #selector(resetTransposeTapped), for: .touchUpInside)
-            return button
-        }
-
-        private func textButton(_ title: String, prominent: Bool, action: Selector) -> UIButton {
-            var config = prominent ? UIButton.Configuration.filled() : .bordered()
-            config.title = title
-            config.buttonSize = .small
-            config.cornerStyle = .capsule
-            // A title is one line. The button grows to fit it.
-            config.titleLineBreakMode = .byClipping
-            let button = UIButton(configuration: config)
-            button.titleLabel?.numberOfLines = 1
-            button.setContentHuggingPriority(.required, for: .horizontal)
-            button.setContentCompressionResistancePriority(.required, for: .horizontal)
-            button.addTarget(self, action: action, for: .touchUpInside)
-            return button
-        }
-
-        private func symbolButton(_ symbol: String, name: String, action: Selector) -> UIButton {
-            var config = UIButton.Configuration.bordered()
-            config.image = UIImage(systemName: symbol)
-            config.buttonSize = .small
-            config.cornerStyle = .capsule
-            let button = UIButton(configuration: config)
-            button.accessibilityLabel = name
-            button.isEnabled = false
-            button.addTarget(self, action: action, for: .touchUpInside)
-            return button
-        }
-
-        private func closeChrome() {
-            closed = true
-            anchor?.removePanel()
-        }
-
-        @objc private func transposeTapped(_ sender: UIButton) {
-            steps.wrappedValue += sender.tag
-        }
-
-        @objc private func resetTransposeTapped() {
-            steps.wrappedValue = 0
-        }
-
-        @objc private func editChordTapped() {
-            onEditChord()
-        }
-
-        @objc private func deleteChordTapped() {
-            onDeleteChord()
-        }
-
-        @objc private func undoTapped() {
-            onUndo()
-        }
-
-        @objc private func redoTapped() {
-            onRedo()
-        }
-
-        @objc private func discardTapped() {
-            onDiscard()
-        }
-
-        @objc private func saveTapped() {
-            onSave()
-        }
-    }
-}
-
-/// The gap between Back and the menu is not a button. Presses there
-/// belong to the song.
-private final class SongChromePanel: UIStackView {
-    var onLayout: (() -> Void)?
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        onLayout?()
-    }
-
-    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        for subview in subviews.reversed()
-            where !subview.isHidden && subview.isUserInteractionEnabled && subview.alpha > 0.01 {
-            if subview.point(inside: convert(point, to: subview), with: event) {
-                return true
-            }
-        }
-        return false
-    }
-}
-
-/// Sits in the page so it can find the navigation bar, then removes its
-/// buttons when the page goes away.
-private final class SongChromeAnchor: UIView {
-    var onInstall: (() -> Void)?
-    weak var panel: UIView?
-    private var frontObserver: CFRunLoopObserver?
-    private var appearGeneration = 0
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window == nil {
-            removePanel()
-            return
-        }
-        let generation = appearGeneration
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.window != nil, self.appearGeneration == generation else {
-                return
-            }
-            self.onInstall?()
-        }
-    }
-
-    deinit {
-        // The buttons live on the navigation controller, which stays on screen
-        // after this page is popped. Drop them here if dismantle did not run.
-        removePanel()
-    }
-
-    /// The bar container moves itself in front again during layout. This runs
-    /// after that layout, while the run loop is waiting for the next press.
-    func installFrontObserver() {
-        guard frontObserver == nil else {
-            return
-        }
-        let observer = CFRunLoopObserverCreateWithHandler(
-            kCFAllocatorDefault,
-            CFRunLoopActivity.beforeWaiting.rawValue,
-            true,
-            0
-        ) { [weak self] _, _ in
-            self?.moveHostAboveTheBar()
-        }
-        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
-        frontObserver = observer
-    }
-
-    /// Puts the buttons just above the bar container. An open menu stays above them.
-    /// A press that is already down is left alone. Moving a view cancels that press,
-    /// which is how Back was flashing and then doing nothing. Back lives in the bar,
-    /// so it has no UIControl tracking flag. Any finger still down has to count.
-    func moveHostAboveTheBar() {
-        guard let panel, let parent = panel.superview, !menuIsOpen(panel),
-              let ourIndex = parent.subviews.firstIndex(of: panel) else {
-            return
-        }
-        guard let barIndex = parent.subviews.indices.last(where: {
-            String(describing: type(of: parent.subviews[$0])).contains("FloatingBar")
-        }), ourIndex < barIndex else {
-            return
-        }
-        let root = parent.window ?? parent
-        guard !controlIsTracking(root), !touchIsDown(root) else {
-            return
-        }
-        parent.insertSubview(panel, aboveSubview: parent.subviews[barIndex])
-    }
-
-    func removePanel() {
-        appearGeneration += 1
-        onInstall = nil
-        removeFrontObserver()
-        panel?.removeFromSuperview()
-        panel = nil
-    }
-
-    func navigationBar() -> UINavigationBar? {
-        var responder: UIResponder? = self
-        while let current = responder {
-            if let controller = current as? UIViewController {
-                return controller.navigationController?.navigationBar
-            }
-            responder = current.next
-        }
-        return nil
-    }
-
-    /// The controller whose own view contains the bar.
-    func barOwner(for bar: UIView) -> UIViewController? {
-        var current: UIView? = bar
-        while let view = current, !(view is UIWindow) {
-            if let controller = view.next as? UIViewController, controller.view === view {
-                return controller
-            }
-            current = view.superview
-        }
-        return nil
-    }
-
-    private func removeFrontObserver() {
-        if let frontObserver {
-            CFRunLoopRemoveObserver(CFRunLoopGetMain(), frontObserver, .commonModes)
-        }
-        frontObserver = nil
-    }
-
-    private func menuIsOpen(_ view: UIView) -> Bool {
-        if let button = view as? UIButton, button.isHeld {
-            return true
-        }
-        return view.subviews.contains { menuIsOpen($0) }
-    }
-
-    private func controlIsTracking(_ view: UIView) -> Bool {
-        if let control = view as? UIControl, control.isTracking {
-            return true
-        }
-        return view.subviews.contains { controlIsTracking($0) }
-    }
-
-    private func touchIsDown(_ view: UIView) -> Bool {
-        if let recognizers = view.gestureRecognizers {
-            for recognizer in recognizers where recognizer.numberOfTouches > 0 {
-                return true
-            }
-        }
-        return view.subviews.contains { touchIsDown($0) }
     }
 }
 
@@ -1770,14 +1306,20 @@ private struct SongChordTextSheet: View {
 
 private struct SongZoomCanvas: UIViewRepresentable {
     var lines: [SongSheetLine]
+    var zoom: CGFloat
+    var onPinched: (CGFloat) -> Void
+    var onFit: (Int) -> Void
 
     func makeUIView(context: Context) -> SongZoomScrollView {
         let view = SongZoomScrollView()
-        view.setLines(lines)
+        updateUIView(view, context: context)
         return view
     }
 
     func updateUIView(_ view: SongZoomScrollView, context: Context) {
+        view.onPinched = onPinched
+        view.onFit = onFit
+        view.setRequestedZoom(zoom)
         view.setLines(lines)
     }
 
@@ -1800,8 +1342,15 @@ private class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureR
     private var isLockingOrigin = false
     private var isPositioningSheet = false
 
-    private let minimumSheetZoom: CGFloat = 0.25
-    private let maximumSheetZoom: CGFloat = 4
+    // MIRRORED UI: softchord_zoom.js MIN and MAX.
+    private let minimumSheetZoom = CGFloat(SongZoom.min) / 100
+    private let maximumSheetZoom = CGFloat(SongZoom.max) / 100
+    /// The zoom the page asks for (buttons, fit). A pinch reports where it ended.
+    private var requestedZoom: CGFloat = 1
+    var onPinched: (CGFloat) -> Void = { _ in }
+    /// The whole percent at which the widest line fits the width.
+    var onFit: (Int) -> Void = { _ in }
+    private var reportedFit: Int?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1841,6 +1390,38 @@ private class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureR
         sheet.selection = selection
     }
 
+    /// Keeps the top-left song point in place.
+    func setRequestedZoom(_ scale: CGFloat) {
+        guard abs(scale - requestedZoom) > 0.001 else {
+            return
+        }
+        requestedZoom = scale
+        guard abs(scale - zoom) > 0.006 else {
+            return
+        }
+        let songX = contentOffset.x / zoom
+        let songY = contentOffset.y / zoom
+        zoom = scale
+        updateContentSize()
+        let maxX = max(0, contentSize.width - bounds.width)
+        let maxY = max(0, contentSize.height - bounds.height)
+        contentOffset = CGPoint(x: min(songX * zoom, maxX), y: min(songY * zoom, maxY))
+        positionSheet()
+    }
+
+    private func reportFit() {
+        guard bounds.width > 0, songSize.width > 0 else {
+            return
+        }
+        let fit = Int(((bounds.width - 1) / songSize.width * 100).rounded(.down))
+        guard fit != reportedFit else {
+            return
+        }
+        reportedFit = fit
+        let report = onFit
+        DispatchQueue.main.async { report(fit) }
+    }
+
     func setLines(_ lines: [SongSheetLine]) {
         guard lines != loadedLines else {
             return
@@ -1858,12 +1439,13 @@ private class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureR
             updateContentSize()
             contentOffset = keptOffset
         } else {
-            zoom = 1
+            zoom = requestedZoom
             lockToOrigin = true
             updateContentSize()
             setContentOffset(.zero, animated: false)
         }
         positionSheet()
+        reportFit()
     }
 
     override func layoutSubviews() {
@@ -1871,9 +1453,9 @@ private class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureR
         guard bounds.width > 0, bounds.height > 0 else {
             return
         }
-        if lockToOrigin, !isLockingOrigin, zoom != 1 || contentOffset != .zero {
+        if lockToOrigin, !isLockingOrigin, zoom != requestedZoom || contentOffset != .zero {
             isLockingOrigin = true
-            zoom = 1
+            zoom = requestedZoom
             updateContentSize()
             if contentOffset != .zero {
                 setContentOffset(.zero, animated: false)
@@ -1881,6 +1463,7 @@ private class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureR
             isLockingOrigin = false
         }
         positionSheet()
+        reportFit()
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
@@ -1899,6 +1482,10 @@ private class SongZoomScrollView: UIScrollView, UIScrollViewDelegate, UIGestureR
         if gesture.state == .began {
             lockToOrigin = false
             baseZoom = zoom
+        }
+        if gesture.state == .ended {
+            requestedZoom = zoom
+            onPinched(zoom)
         }
         guard gesture.state == .began || gesture.state == .changed else {
             return
@@ -1973,6 +1560,9 @@ private struct SongChordEditor: UIViewRepresentable {
     var text: String
     var chords: [SongChord]
     @Binding var selection: Int?
+    var zoom: CGFloat
+    var onPinched: (CGFloat) -> Void
+    var onFit: (Int) -> Void
     var onChordMoved: (Int, Int) -> Void
     var onDragBegan: () -> Void
     var onEditRequested: (Int) -> Void
@@ -2001,6 +1591,9 @@ private struct SongChordEditor: UIViewRepresentable {
         view.onChordMoved = onChordMoved
         view.onDragBegan = onDragBegan
         view.onEditRequested = onEditRequested
+        view.onPinched = onPinched
+        view.onFit = onFit
+        view.setRequestedZoom(zoom)
         view.chords = chords
         view.text = text
         view.setLines(SongText.sheet(text: text, chords: chords))

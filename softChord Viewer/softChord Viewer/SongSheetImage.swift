@@ -101,3 +101,64 @@ enum SongSheetImage {
         }
     }
 }
+
+/// Prints the song as it is shown, at its normal size (smaller when a line is
+/// wider than the page), starting a new page between song lines.
+/// MIRRORED UI: the web toolbar's Print button (viewer.js window.print()).
+enum SongPrint {
+    static func present(_ lines: [SongSheetLine], title: String) {
+        let info = UIPrintInfo.printInfo()
+        info.outputType = .general
+        info.jobName = title
+        let controller = UIPrintInteractionController.shared
+        controller.printInfo = info
+        controller.printPageRenderer = SongPrintRenderer(drawing: SongSheetLayout.drawing(for: lines))
+        controller.present(animated: true)
+    }
+}
+
+private final class SongPrintRenderer: UIPrintPageRenderer {
+    let drawing: SongSheetLayout.Drawing
+    /// The song y where each page starts.
+    private var starts: [CGFloat] = []
+
+    init(drawing: SongSheetLayout.Drawing) {
+        self.drawing = drawing
+        super.init()
+    }
+
+    private var scale: CGFloat {
+        min(1, printableRect.width / max(1, drawing.size.width))
+    }
+
+    override var numberOfPages: Int {
+        let pageHeight = printableRect.height / scale
+        let lineTops = Set(drawing.letters.map { $0.reach.minY }).sorted()
+        starts = []
+        var start: CGFloat = 0
+        while start < drawing.size.height, pageHeight > 0 {
+            starts.append(start)
+            let limit = start + pageHeight
+            if limit >= drawing.size.height {
+                break
+            }
+            start = lineTops.last { $0 > start + 1 && $0 <= limit } ?? limit
+        }
+        return max(1, starts.count)
+    }
+
+    override func drawPage(at pageIndex: Int, in printableRect: CGRect) {
+        guard pageIndex < starts.count, let context = UIGraphicsGetCurrentContext() else {
+            return
+        }
+        let start = starts[pageIndex]
+        let end = pageIndex + 1 < starts.count ? starts[pageIndex + 1] : drawing.size.height
+        let clip = CGRect(x: 0, y: 0, width: drawing.size.width, height: end - start)
+        context.saveGState()
+        context.translateBy(x: printableRect.minX, y: printableRect.minY)
+        context.scaleBy(x: scale, y: scale)
+        context.clip(to: clip)
+        SongSheetImage.draw(drawing, zoom: 1, origin: CGPoint(x: 0, y: start), clip: clip)
+        context.restoreGState()
+    }
+}
