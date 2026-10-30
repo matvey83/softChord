@@ -2641,10 +2641,12 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if self.current_song == None:
             self.ui.song_title_ef.setText("")
             self.ui.song_num_ef.setText("")
+            self.ui.song_subtitle_ef.setText("")
 
         self.editor.setEnabled(self.current_song != None)
         self.ui.song_title_ef.setEnabled(self.current_song != None)
         self.ui.song_num_ef.setEnabled(self.current_song != None)
+        self.ui.song_subtitle_ef.setEnabled(self.current_song != None)
         self._updateAutoDetectedKeyLabel()
         self.toolbar.transpose_up.setEnabled(self.current_song != None)
         self.toolbar.transpose_down.setEnabled(self.current_song != None)
