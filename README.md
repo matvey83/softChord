@@ -11,11 +11,12 @@ The songbook can be shared as a file, or exported to a printable PDF.
 
 ## Three apps
 
-- **Desktop editor** (macOS and Windows). The full editor: it opens, edits and
+- **Desktop editor** (macOS, Windows and Linux). The full editor: it opens, edits and
   saves songbooks. Download it from
   [GitHub Releases](https://github.com/matvey83/softChord/releases): signed and
-  notarized `.dmg`s for Apple Silicon and Intel Macs, and a Windows `.exe` or
-  `.zip` (the Windows build is unsigned, so SmartScreen asks first). It also runs
+  notarized `.dmg`s for Apple Silicon and Intel Macs, a Windows `.exe` or
+  `.zip` (the Windows build is unsigned, so SmartScreen asks first), and a Linux
+  `.AppImage` or `.tar.gz` (x86_64). It also runs
   from source on any system with Python (see below).
 - **Web app**: [open it in any browser](https://matvey83.github.io/softChord/softChord_web/).
   Shows the songbook in this repository. Changes are not saved yet.

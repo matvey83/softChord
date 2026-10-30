@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=softChord
+GenericName=Songbook Editor
+Comment=Edit songbooks with lyrics and chords
+Exec=softChord %f
+Icon=softchord
+Terminal=false
+Categories=AudioVideo;Audio;Music;
+MimeType=application/x-softchord-songbook;
+Keywords=chords;lyrics;songbook;
+StartupWMClass=softChord

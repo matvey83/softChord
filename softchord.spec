@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for softChord (macOS .app and Windows .exe)."""
+"""PyInstaller spec for softChord (macOS .app, Windows .exe, Linux executable)."""
 
 import os
 import sys
@@ -51,6 +51,14 @@ info_plist = {
     ],
 }
 
+# Linux: the .desktop file, MIME type and icon that the AppImage registers in
+# ~/.local/share on launch (see register_songbook_file_association).
+LINUX_DATAS = []
+if sys.platform.startswith("linux"):
+    LINUX_DATAS = [("packaging/linux/com.matvey83.softchord.desktop", "linux"),
+                   ("packaging/linux/softchord-mime.xml", "linux"),
+                   ("packaging/linux/softchord.png", "linux")]
+
 a = Analysis(
     ["src/softchord.py"],
     pathex=["src"],
@@ -60,7 +68,7 @@ a = Analysis(
     # from it at import.
     datas=[("src/songbook.sql", "."),
            ("src/icons/softchord.png", "icons"),
-           ("softChord_web/icons/toolbar/*.svg", "icons/toolbar")],
+           ("softChord_web/icons/toolbar/*.svg", "icons/toolbar")] + LINUX_DATAS,
     hiddenimports=[
         "softchord_version",
         "softchord_chords",

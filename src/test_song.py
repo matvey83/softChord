@@ -4039,6 +4039,74 @@ class TestReadImportTextFile(unittest.TestCase):
         self.assertEqual(read_import_text_file(cp1250_path), text)
 
 
+class TestLinuxFileAssociation(unittest.TestCase):
+    """The AppImage registers *.songbook in ~/.local/share on launch."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.data = os.path.join(os.path.dirname(os.path.abspath(
+            softchord.__file__)), os.pardir, "packaging", "linux")
+
+    def test_desktop_entry_runs_this_appimage(self):
+        entry = softchord.linux_desktop_entry(
+            "/opt/My Apps/softChord-1.1.AppImage", self.data)
+        lines = entry.splitlines()
+        self.assertEqual(lines[0], "[Desktop Entry]")
+        self.assertIn('Exec="/opt/My Apps/softChord-1.1.AppImage" %f', lines)
+        self.assertIn("MimeType=application/x-softchord-songbook;", lines)
+        self.assertIn("Icon=softchord", lines)
+        self.assertEqual(sum(l.startswith("Exec=") for l in lines), 1)
+        # Characters the Desktop Entry spec escapes in a quoted argument.
+        odd = softchord.linux_desktop_entry('/a$b"c\\d%e', self.data)
+        self.assertIn('Exec="/a\\\\$b\\\\"c\\\\\\\\d%%e" %f', odd)
+
+    def test_mime_type_is_the_one_the_other_apps_use(self):
+        with open(os.path.join(self.data, "softchord-mime.xml")) as f:
+            xml = f.read()
+        self.assertIn('<mime-type type="application/x-softchord-songbook">',
+                      xml)
+        self.assertIn('<glob pattern="*.songbook"/>', xml)
+
+    def test_register_writes_once_into_data_home(self):
+        ran = []
+        config = os.path.join(self.tmp, "config")
+        with mock.patch.object(shutil, "which", return_value="/usr/bin/x"), \
+                mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": config}):
+            self.assertTrue(softchord.register_linux_file_association(
+                "/opt/softChord.AppImage", self.tmp, ran.append))
+        # xdg-mime needs a mimeapps.list to add the default to.
+        self.assertTrue(os.path.isfile(os.path.join(config, "mimeapps.list")))
+        desktop = os.path.join(self.tmp, "applications",
+                               softchord.LINUX_DESKTOP_ID)
+        with open(desktop) as f:
+            self.assertIn('Exec="/opt/softChord.AppImage" %f', f.read())
+        for path in (("mime", "packages", "softchord.xml"),
+                     ("icons", "hicolor", "256x256", "apps", "softchord.png")):
+            self.assertTrue(os.path.isfile(os.path.join(self.tmp, *path)))
+        self.assertEqual([cmd[0] for cmd in ran], [
+            "update-mime-database", "update-desktop-database", "xdg-mime"])
+        # Unchanged: nothing is written or run again.
+        self.assertFalse(softchord.register_linux_file_association(
+            "/opt/softChord.AppImage", self.tmp, ran.append))
+        self.assertEqual(len(ran), 3)
+        # A moved AppImage is registered again.
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": config}):
+            self.assertTrue(softchord.register_linux_file_association(
+                "/home/me/softChord.AppImage", self.tmp, lambda cmd: None))
+
+    def test_register_is_skipped_without_appimage_or_on_failure(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("APPIMAGE", None)
+            self.assertFalse(softchord.register_linux_file_association(
+                data_home=self.tmp))
+        self.assertEqual(os.listdir(self.tmp), [])
+        blocked = os.path.join(self.tmp, "file")
+        open(blocked, "w").close()
+        self.assertFalse(softchord.register_linux_file_association(
+            "/opt/softChord.AppImage", blocked, lambda cmd: None))
+
+
 class TestConnectExistingSongbook(unittest.TestCase):
     """connect_existing_songbook rejects junk files and opens real songbooks."""
 
