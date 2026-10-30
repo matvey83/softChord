@@ -145,7 +145,7 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
       toast.hidden = true;
-    }, 2200);
+    }, 1500);
   }
 
   // The open song: the songbook's copy, or the text and chords kept with Save.
