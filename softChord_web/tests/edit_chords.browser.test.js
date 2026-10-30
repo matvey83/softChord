@@ -39,11 +39,13 @@ test("the Edit chords button opens the mode next to the pencil and locks what mu
     assert.equal(await page.eval("document.getElementById('sheet').tabIndex"), 0);
     assert.equal(await page.eval("document.getElementById('sheet').getAttribute('aria-hidden')"), null);
     assert.equal(await page.eval("document.activeElement.id"), "sheet");
-    // Edit text, Edit chords, the song transpose and what reads the song wait. Zoom stays.
+    // The song transpose and what reads the song wait. Zoom stays, and Edit text
+    // switches this edit to the text.
     for (var id of ["print", "copy-text", "copy-chords", "copy-image", "transpose-down", "transpose-up",
-      "transpose-reset", "edit-text", "edit-chords"]) {
+      "transpose-reset", "edit-chords"]) {
       assert.equal(await disabled(page, id), true, id + " waits until Save or Discard");
     }
+    assert.equal(await disabled(page, "edit-text"), false, "edit-text switches modes");
     for (id of ["zoom-in", "zoom-out"]) {
       assert.equal(await disabled(page, id), false, id + " stays on");
     }
@@ -57,18 +59,20 @@ test("the Edit chords button opens the mode next to the pencil and locks what mu
   });
 });
 
-test("Edit text and Edit chords exclude each other until Save or Discard", { skip: skip }, function () {
+test("while editing, the other one of Edit text and Edit chords stays on (it switches modes)", { skip: skip }, function () {
   return inEditor([HELLO], async function (page) {
     await click(page, "edit-text");
     await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor");
-    assert.equal(await disabled(page, "edit-chords"), true);
+    assert.equal(await disabled(page, "edit-chords"), false);
+    assert.equal(await disabled(page, "edit-text"), true);
     assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), true);
     assert.equal(await page.eval("document.getElementById('sheet').getAttribute('aria-hidden')"), "true");
     assert.equal(await page.eval("document.getElementById('sheet').hasAttribute('tabindex')"), false);
     await click(page, "edit-discard");
     assert.equal(await disabled(page, "edit-chords"), false);
     await startChords(page);
-    assert.equal(await disabled(page, "edit-text"), true);
+    assert.equal(await disabled(page, "edit-text"), false);
+    assert.equal(await disabled(page, "edit-chords"), true);
     await click(page, "edit-discard");
     assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), false);
     assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('editing')"), false);

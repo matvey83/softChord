@@ -96,8 +96,11 @@ struct SongToolbarState: Equatable {
 
     func isEnabled(_ button: SongToolbarButton) -> Bool {
         switch button {
-        case .copyText, .copyChords, .copyImage, .transposeDown, .transposeUp, .print, .editText, .editChords:
+        case .copyText, .copyChords, .copyImage, .transposeDown, .transposeUp, .print:
             !editing
+        // The other edit button switches the open edit to that mode (viewer.js switchEditing).
+        case .editText: !(editing && !chordMode)
+        case .editChords: !(editing && chordMode)
         case .transposeReset: !editing && transposed
         case .zoomOut: canZoom && zoom > SongZoom.min
         case .zoomReset: canZoom && zoom != SongZoom.normal

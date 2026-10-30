@@ -578,3 +578,29 @@ test("painting only the lines that changed gives the same sheet as painting all 
     await page.close();
   }
 });
+
+// MIRRORED UI: the iOS app and the desktop editor switch modes the same way.
+test("Edit Chords while editing the text, and back, keeps the draft and does not ask", { skip: skip }, function () {
+  return inEditor([HELLO], async function (page) {
+    var asking = "document.getElementById('leave-confirm').open";
+    await startEditing(page);
+    await page.insertText("Q");
+    assert.equal(await page.eval("document.getElementById('edit-text').disabled"), true);
+    assert.equal(await page.eval("document.getElementById('edit-chords').disabled"), false);
+    await click(page, "edit-chords");
+    assert.equal(await page.eval(asking), false);
+    await page.waitFor("!document.getElementById('chord-actions').hidden", "the chord buttons");
+    assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
+    assert.equal((await sheetText(page)).startsWith("Q"), true, "the typed letter is in the chord view");
+    assert.equal(await page.eval("document.getElementById('edit-text').disabled"), false);
+    assert.equal(await page.eval("document.getElementById('edit-chords').disabled"), true);
+    assert.equal(await page.eval("document.getElementById('edit-save').offsetParent !== null"), true);
+    await click(page, "edit-text");
+    await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor again");
+    assert.equal((await editorValue(page)).startsWith("Q"), true);
+    assert.equal(await page.eval(asking), false);
+    // Discard drops the edit made in both modes.
+    await click(page, "edit-discard");
+    assert.equal(await sheetText(page), HELLO.text);
+  });
+});

@@ -1590,10 +1590,17 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 self._updateEditChanged()
                 self.updateStates()
                 return True
-            # The other kind of edit: save or discard this one first.
-            if not self.confirmLeaveEdit():
-                self._applyEditorMode(session.mode)
-                return False
+            # MIRRORED UI: the web app (viewer.js switchEditing) and the iOS
+            # app (SongPage.swift switchEditing) switch the same way.
+            # The other kind of edit: the same edit goes on in that mode,
+            # without asking. One Save or Discard keeps or drops all of it.
+            # The text's own undo starts over (see _applyEditorMode); the
+            # edit's undo stack goes on.
+            session.mode = mode
+            self._applyEditorMode(mode)
+            self._updateEditChanged()
+            self.updateStates()
+            return True
 
         # Steps for another Song object must not be undone in this edit.
         self._dropSongEditSteps()
