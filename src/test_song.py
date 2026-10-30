@@ -8169,4 +8169,9 @@ class TestSaveAndDiscard(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    # Qt can crash while Python shuts down after the tests (seen on macOS
+    # and Linux), so exit with the test result before that can happen.
+    program = unittest.main(verbosity=2, exit=False)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0 if program.result.wasSuccessful() else 1)

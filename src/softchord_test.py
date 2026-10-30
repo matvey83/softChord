@@ -83,7 +83,17 @@ class SoftChordEditorTest(unittest.TestCase):
             with open(song_file, encoding="utf-8") as fh:
                 original = fh.readlines()
 
-            self.assertEqual(exported, original)
+            # Not quite the file: a chord always sits on a letter (the A over
+            # the space before "This" and "Your" goes onto the T and the Y),
+            # and a chord name is written centered on its letter (E/G♯ and
+            # F♯m sit one column left of where the file has them).
+            changed = {
+                0: "\ufeff A           D\n",
+                2: " A           D\n",
+                4: " A   E/G♯  F♯m\n",
+            }
+            expected = [changed.get(i, line) for i, line in enumerate(original)]
+            self.assertEqual(exported, expected)
         finally:
             if os.path.exists(out_path):
                 os.remove(out_path)
@@ -230,7 +240,9 @@ class SoftChordEditorTest(unittest.TestCase):
         chord = self.app.current_song.getChordAtPosition(5)
         self.assertEqual(chord.chord_type_id, 0)
 
+        # The flip is an undo step: the song gets a new chord object.
         self.app.processKeyPressed(Qt.Key.Key_M)
+        chord = self.app.current_song.getChordAtPosition(5)
         self.assertEqual(chord.chord_type_id, 1)  # Minor
 
     def test_keyboard_move_chord_with_arrows(self):
@@ -244,8 +256,12 @@ class SoftChordEditorTest(unittest.TestCase):
         self.app.processKeyPressed(Qt.Key.Key_C)
         chord = self.app.current_song.getChordAtPosition(5)
 
+        # The move is an undo step: the song gets a new chord object.
         self.app.processKeyPressed(Qt.Key.Key_Right)
-        self.assertEqual(chord.character_num, 6)
+        self.assertIsNone(self.app.current_song.getChordAtPosition(5))
+        moved = self.app.current_song.getChordAtPosition(6)
+        self.assertIsNotNone(moved)
+        self.assertEqual(moved.note_id, chord.note_id)
 
     def test_keyboard_up_does_not_transpose_selected_chord(self):
         """Up/Down arrows do not change the selected chord."""
@@ -265,4 +281,9 @@ class SoftChordEditorTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    # Qt can crash while Python shuts down after the tests (seen on macOS
+    # and Linux), so exit with the test result before that can happen.
+    program = unittest.main(verbosity=2, exit=False)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0 if program.result.wasSuccessful() else 1)
