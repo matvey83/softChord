@@ -285,6 +285,110 @@
     return changed ? result : null;
   }
 
+  // ---- Room right of a line ----
+  // A chord can go up to ROOM letters right of the last letter of its line (not a
+  // space). The line gets that many spaces while a chord is dragged or moved with
+  // an arrow key (withRoom), and after every move or delete the spaces at the end
+  // of that line that no chord needs go again (tidied): a line keeps spaces only up
+  // to its last chord. The text and the chords change together, so one Undo step
+  // has both. Only spaces at the end of a line that has a letter are taken away:
+  // a line of only spaces stays as it is, and so does a tab.
+  // MIRRORED: softchord_text.py chord_room and tidy_chord_room, softchord_text.swift
+  // SongLyricChords.withRoom and tidied.
+  var ROOM = 10;
+
+  function shiftedChords(chords, from, by) {
+    return chords.map(function (chord) {
+      if (chord.characterNum < from) {
+        return chord;
+      }
+      var moved = Object.assign({}, chord);
+      moved.characterNum += by;
+      return moved;
+    });
+  }
+
+  // {text, chords}: the line that holds index with spaces up to ROOM letters right
+  // of its last letter that is not a space. The same objects when it has them.
+  function withRoom(text, chords, index) {
+    var range = letterRange(text, index);
+    if (!range) {
+      return { text: text, chords: chords };
+    }
+    var points = look(text).points;
+    var lastLetter = range.last;
+    while (lastLetter >= range.first && points[lastLetter] === " ") {
+      lastLetter -= 1;
+    }
+    var end = range.last + 1;
+    var add = lastLetter + 1 + ROOM - end;
+    if (lastLetter < range.first || add <= 0) {
+      return { text: text, chords: chords };
+    }
+    var padded = points.slice(0, end).join("") + " ".repeat(add) + points.slice(end).join("");
+    return { text: padded, chords: shiftedChords(chords, end, add) };
+  }
+
+  // {text, chords, index}: the lines that hold a position of touched (by default
+  // index) without the spaces at their end past their last chord. Other lines
+  // keep theirs: Remove Trailing Spaces of the desktop is for those. index (a
+  // letter, or null) is where that letter is now.
+  function tidied(text, chords, index, touched) {
+    var lines = (touched || [index]).filter(function (at) { return at !== null && at !== undefined; });
+    var points = Array.from(text);
+    var taken = new Set(chords.map(function (chord) { return chord.characterNum; }));
+    var kept = [];
+    var removed = [];
+    var first = 0;
+    for (var i = 0; i <= points.length; i++) {
+      if (i < points.length && points[i] !== "\n") {
+        continue;
+      }
+      var cut = i;
+      while (cut > first && points[cut - 1] === " " && !taken.has(cut - 1)) {
+        cut -= 1;
+      }
+      var touches = lines.some(function (at) { return at >= first && at <= i; });
+      if (touches && cut > first && cut < i) {
+        removed.push({ from: cut, to: i });
+      }
+      first = i + 1;
+    }
+    if (!removed.length) {
+      return { text: text, chords: chords, index: index };
+    }
+    function moved(at) {
+      var by = 0;
+      removed.forEach(function (gap) {
+        if (at >= gap.to) {
+          by += gap.to - gap.from;
+        } else if (at >= gap.from) {
+          by += at - gap.from;
+        }
+      });
+      return at - by;
+    }
+    var at = 0;
+    removed.forEach(function (gap) {
+      kept.push(points.slice(at, gap.from).join(""));
+      at = gap.to;
+    });
+    kept.push(points.slice(at).join(""));
+    return {
+      text: kept.join(""),
+      chords: chords.map(function (chord) {
+        var to = moved(chord.characterNum);
+        if (to === chord.characterNum) {
+          return chord;
+        }
+        var copy = Object.assign({}, chord);
+        copy.characterNum = to;
+        return copy;
+      }),
+      index: index === null || index === undefined ? index : moved(index),
+    };
+  }
+
   // The m key: major becomes minor and any other chord becomes major. Null for no
   // chord and for an unrecognized chord. Same as the desktop editor's m key.
   function toggledMinor(chords, text, index) {
@@ -349,5 +453,8 @@
     toggledMinor: toggledMinor,
     displayedChordText: displayedChordText,
     entry: entry,
+    ROOM: ROOM,
+    withRoom: withRoom,
+    tidied: tidied,
   };
 });

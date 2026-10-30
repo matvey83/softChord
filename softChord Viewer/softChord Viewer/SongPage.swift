@@ -81,10 +81,11 @@ struct SongPage: View {
     @State private var draft = ""
     /// Chord positions for the edit in progress. Note ids stay as stored.
     @State private var editChords: [SongChord] = []
-    /// Undo and Redo in chord editing: the chords before each change. A drag is
-    /// one change. Dropped on Save and Discard. Mirror: the desktop edit's undo.
-    @State private var chordUndo: [[SongChord]] = []
-    @State private var chordRedo: [[SongChord]] = []
+    /// Undo and Redo in chord editing: the text and chords before each change (a
+    /// chord moved right of its line gives the line spaces). A drag is one change.
+    /// Dropped on Save and Discard. Mirror: the desktop edit's undo.
+    @State private var chordUndo: [SongChordEditState] = []
+    @State private var chordRedo: [SongChordEditState] = []
     /// Set when the first move of a drag has been put on the undo list.
     @State private var dragRecorded = false
     /// Lyrics drawn after Save. Nil means the songbook text.
@@ -434,24 +435,35 @@ struct SongPage: View {
         editingChords = true
     }
 
-    /// Puts the chords as they are now on the undo list, before a change.
-    private func setChords(_ chords: [SongChord]) {
-        guard chords != editChords else {
-            return
-        }
-        chordUndo.append(editChords)
-        chordRedo = []
-        editChords = chords
+    private var chordEditState: SongChordEditState {
+        SongChordEditState(text: draft, chords: editChords)
     }
 
-    private func moveChord(from: Int, to: Int) {
-        let moved = SongLyricChords.reattached(editChords, from: from, to: to)
+    /// Puts the text and chords as they are now on the undo list, before a change.
+    private func setChords(_ chords: [SongChord], text: String? = nil) {
+        let next = SongChordEditState(text: text ?? draft, chords: chords)
+        guard next != chordEditState else {
+            return
+        }
+        chordUndo.append(chordEditState)
+        chordRedo = []
+        draft = next.text
+        editChords = next.chords
+    }
+
+    /// One step of a drag. `to` is a letter of the text with room right of the
+    /// line that holds `roomAt` (SongLyricChords.withRoom), and the lines the
+    /// chord left and went to lose the spaces no chord needs.
+    /// MIRRORED: softchord_chord_mode.js dragTo, softchord_session.py placeChord.
+    private func moveChord(from: Int, to: Int, roomAt: Int?) {
+        let moved = SongLyricChords.movedWithRoom(editChords, in: draft, from: from, to: to, roomAt: roomAt)
         // Every step of one drag is the same change.
         if dragRecorded {
-            editChords = moved
+            draft = moved.text
+            editChords = moved.chords
         } else {
             dragRecorded = true
-            setChords(moved)
+            setChords(moved.chords, text: moved.text)
         }
     }
 
@@ -459,8 +471,9 @@ struct SongPage: View {
         guard editingChords, let previous = chordUndo.popLast() else {
             return
         }
-        chordRedo.append(editChords)
-        editChords = previous
+        chordRedo.append(chordEditState)
+        draft = previous.text
+        editChords = previous.chords
         chordSelection = nil
     }
 
@@ -468,8 +481,9 @@ struct SongPage: View {
         guard editingChords, let next = chordRedo.popLast() else {
             return
         }
-        chordUndo.append(editChords)
-        editChords = next
+        chordUndo.append(chordEditState)
+        draft = next.text
+        editChords = next.chords
         chordSelection = nil
     }
 
@@ -508,7 +522,11 @@ struct SongPage: View {
         guard editingChords, let selected = chordSelection else {
             return
         }
-        setChords(SongLyricChords.deleted(editChords, at: selected))
+        // The spaces only this chord needed at the end of its line go too.
+        let tidy = SongLyricChords.tidied(
+            SongLyricChords.deleted(editChords, at: selected), in: draft, touched: [selected])
+        setChords(tidy.chords, text: tidy.text)
+        chordSelection = tidy.moved(selected)
     }
 
     /// Save and Discard: the edit, with a transpose made before it, or while
@@ -1595,6 +1613,12 @@ private final class SongSheetUIView: UIView {
 /// The letters, read-only, drawn the way the song view draws them. Pinch zooms and a
 /// drag scrolls. A press picks a letter and its chord, and a drag moves the chord.
 /// Mirror: the desktop's Edit Chords mode, where lyric_editor_mode is off.
+/// The text and the chords of Edit chords, one step of its Undo.
+struct SongChordEditState: Equatable {
+    var text: String
+    var chords: [SongChord]
+}
+
 private struct SongChordEditor: UIViewRepresentable {
     var text: String
     var chords: [SongChord]
@@ -1602,7 +1626,7 @@ private struct SongChordEditor: UIViewRepresentable {
     var zoom: CGFloat
     var onPinched: (CGFloat) -> Void
     var onFit: (Int) -> Void
-    var onChordMoved: (Int, Int) -> Void
+    var onChordMoved: (Int, Int, Int?) -> Void
     var onDragBegan: () -> Void
     var onEditRequested: (Int) -> Void
 
@@ -1760,7 +1784,7 @@ private final class SongChordPress: UIGestureRecognizer {
 /// Mirror: determineClickedLetter and the chord drag in softchord_session.py.
 private final class SongChordZoomView: SongZoomScrollView {
     var onSelectionChanged: (Int?) -> Void = { _ in }
-    var onChordMoved: (Int, Int) -> Void = { _, _ in }
+    var onChordMoved: (Int, Int, Int?) -> Void = { _, _, _ in }
     /// A press on the selected chord, before it moves. The moves of one drag are one undo step.
     var onDragBegan: () -> Void = {}
     var onEditRequested: (Int) -> Void = { _ in }
@@ -1858,26 +1882,69 @@ private final class SongChordZoomView: SongZoomScrollView {
     /// A chord dragged onto a letter that has a chord jumps over it to the next free
     /// letter on the line in the direction of the drag. Mirror: the chord drag in
     /// softchord_session.py.
+    /// Right of the last letter of a line the line gets spaces for the chord, up to
+    /// SongLyricChords.room, and loses those the chord leaves again.
+    /// MIRRORED: softchord_chord_mode.js dragTo, softchord_session.py
+    /// dragChordPastLineEnd.
     func moveSelectedChord(at contentPoint: CGPoint) {
-        guard let from = selectedCharacterNum,
-              let target = sheetDrawing.nearestLetter(at: songPoint(contentPoint)) else {
+        let point = songPoint(contentPoint)
+        guard let from = selectedCharacterNum else {
+            return
+        }
+        var room = SongLyricChords.ChordRoom(text: text, chords: chords, at: text.unicodeScalars.count, count: 0)
+        var roomAt: Int?
+        var target: Int
+        if let letter = sheetDrawing.nearestLetter(at: point) {
+            target = letter
+        } else if let end = lineEnd(rightOf: point) {
+            room = SongLyricChords.withRoom(chords, in: text, at: end.characterNum)
+            guard let range = SongLyricChords.letterRange(in: room.text, at: end.characterNum) else {
+                return
+            }
+            let steps = Int(ceil((point.x - end.rect.maxX) / max(end.rect.width, 1)))
+            target = min(range.upperBound, end.characterNum + max(1, steps))
+            roomAt = end.characterNum
+        } else {
             return
         }
         guard let step = SongLyricChords.draggedChord(
-            chords, in: text, chordAt: from, finger: fingerLetter ?? from, target: target) else {
+            room.chords, in: room.text, chordAt: room.shifted(from),
+            finger: room.shifted(fingerLetter ?? from), target: target) else {
             return
         }
-        fingerLetter = step.finger
-        let to = step.chordAt
-        let next = step.chords
-        guard to != from else {
+        guard step.chordAt != room.shifted(from) else {
+            fingerLetter = roomAt == nil ? step.finger : fingerLetter
             return
         }
-        chords = next
+        let moved = SongLyricChords.movedWithRoom(chords, in: text, from: from, to: step.chordAt, roomAt: roomAt)
+        let to = moved.moved(step.chordAt)
+        fingerLetter = moved.moved(step.finger)
+        chords = moved.chords
+        if moved.text != text {
+            text = moved.text
+            setLines(SongText.sheet(text: text, chords: chords))
+        }
         selectedCharacterNum = to
-        onChordMoved(from, to)
+        onChordMoved(from, step.chordAt, roomAt)
         showSelection()
         onSelectionChanged(to)
+    }
+
+    /// The last letter of the line nearest the point, when the point is right of it.
+    private func lineEnd(rightOf point: CGPoint) -> (characterNum: Int, rect: CGRect)? {
+        let letters = sheetDrawing.letters
+        func gap(_ letter: SongSheetLayout.Letter) -> CGFloat {
+            max(letter.reach.minY - point.y, point.y - letter.reach.maxY, 0)
+        }
+        guard let nearest = letters.map(gap).min() else {
+            return nil
+        }
+        guard let last = letters.filter({ gap($0) - nearest < 0.01 }).max(by: { $0.rect.maxX < $1.rect.maxX }),
+              point.x >= last.rect.maxX,
+              SongLyricChords.letterRange(in: text, at: last.characterNum)?.upperBound == last.characterNum else {
+            return nil
+        }
+        return (last.characterNum, last.rect)
     }
 
     /// Light blue behind the letter, and behind its chord if it has one.

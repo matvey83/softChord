@@ -364,6 +364,127 @@ enum SongLyricChords {
         return ChordDragStep(finger: target, chordAt: to, chords: next)
     }
 
+    // MARK: Room right of a line
+    // A chord can go up to `room` letters right of the last letter of its line
+    // (not a space). The line gets spaces for it while it is dragged there
+    // (withRoom), and after a move or a delete the lines it touched lose the
+    // spaces at their end that no chord needs (tidied): a line keeps spaces only
+    // up to its last chord. Other lines keep theirs, and so do a line of only
+    // spaces and a tab. The text changes with the chords, so one undo has both.
+    // MIRRORED: softchord_text.py chord_room and tidy_chord_room,
+    // softchord_chord_edit.js withRoom and tidied.
+    nonisolated static let room = 10
+
+    /// The text and chords with a padded line, and where the spaces went in.
+    struct ChordRoom: Equatable {
+        var text: String
+        var chords: [SongChord]
+        /// count spaces went in at at: a position from at on moves by count.
+        var at: Int
+        var count: Int
+
+        func shifted(_ position: Int) -> Int {
+            position >= at ? position + count : position
+        }
+    }
+
+    /// The line that holds `index` with spaces up to `room` letters right of its
+    /// last letter that is not a space.
+    nonisolated static func withRoom(_ chords: [SongChord], in text: String, at index: Int) -> ChordRoom {
+        let letters = Array(text.unicodeScalars)
+        guard let range = letterRange(in: text, at: index) else {
+            return ChordRoom(text: text, chords: chords, at: letters.count, count: 0)
+        }
+        var last = range.upperBound
+        while last >= range.lowerBound && letters[last] == " " {
+            last -= 1
+        }
+        let end = range.upperBound + 1
+        let count = last + 1 + room - end
+        guard last >= range.lowerBound, count > 0 else {
+            return ChordRoom(text: text, chords: chords, at: end, count: 0)
+        }
+        var scalars = String.UnicodeScalarView()
+        scalars.append(contentsOf: letters[..<end])
+        scalars.append(contentsOf: Array(repeating: Unicode.Scalar(" "), count: count))
+        scalars.append(contentsOf: letters[end...])
+        let padded = ChordRoom(text: String(scalars), chords: chords, at: end, count: count)
+        return ChordRoom(text: padded.text, chords: chords.map { chord in
+            var moved = chord
+            moved.characterNum = padded.shifted(chord.characterNum)
+            return moved
+        }, at: end, count: count)
+    }
+
+    /// The text and chords after `tidied`, and where a position went.
+    struct ChordTidy: Equatable {
+        var text: String
+        var chords: [SongChord]
+        var gaps: [Range<Int>]
+
+        func moved(_ position: Int) -> Int {
+            var by = 0
+            for gap in gaps {
+                if position >= gap.upperBound {
+                    by += gap.count
+                } else if position >= gap.lowerBound {
+                    by += position - gap.lowerBound
+                }
+            }
+            return position - by
+        }
+    }
+
+    /// The lines that hold a position of `touched` without the spaces at their end
+    /// past their last chord.
+    nonisolated static func tidied(_ chords: [SongChord], in text: String, touched: [Int]) -> ChordTidy {
+        let letters = Array(text.unicodeScalars)
+        let taken = Set(chords.map(\.characterNum))
+        var gaps: [Range<Int>] = []
+        var first = 0
+        for i in 0...letters.count where i == letters.count || letters[i] == "\n" {
+            var cut = i
+            while cut > first && letters[cut - 1] == " " && !taken.contains(cut - 1) {
+                cut -= 1
+            }
+            if cut > first && cut < i && touched.contains(where: { $0 >= first && $0 <= i }) {
+                gaps.append(cut..<i)
+            }
+            first = i + 1
+        }
+        guard !gaps.isEmpty else {
+            return ChordTidy(text: text, chords: chords, gaps: [])
+        }
+        var scalars = String.UnicodeScalarView()
+        var at = 0
+        for gap in gaps {
+            scalars.append(contentsOf: letters[at..<gap.lowerBound])
+            at = gap.upperBound
+        }
+        scalars.append(contentsOf: letters[at...])
+        var tidy = ChordTidy(text: String(scalars), chords: chords, gaps: gaps)
+        tidy.chords = chords.map { chord in
+            var moved = chord
+            moved.characterNum = tidy.moved(chord.characterNum)
+            return moved
+        }
+        return tidy
+    }
+
+    /// A drag step with room: the chord on `from` (a letter of `text`) goes to `to`,
+    /// a letter of the text with room at `roomAt` (or of `text` itself), and the
+    /// lines it left and went to are tidied. The view and the page both call this,
+    /// so the drawn chords and the kept ones stay the same.
+    nonisolated static func movedWithRoom(
+        _ chords: [SongChord], in text: String, from: Int, to: Int, roomAt: Int?
+    ) -> ChordTidy {
+        let room = roomAt.map { withRoom(chords, in: text, at: $0) }
+            ?? ChordRoom(text: text, chords: chords, at: Array(text.unicodeScalars).count, count: 0)
+        let start = room.shifted(from)
+        let moved = reattached(room.chords, from: start, to: to)
+        return tidied(moved, in: room.text, touched: [start, to])
+    }
+
     /// The chord typed for a letter. It replaces the chord there, or is added.
     /// The page shows chords shifted by `steps` but keeps them as stored, so the
     /// typed name is shifted back by the same steps before it is kept.

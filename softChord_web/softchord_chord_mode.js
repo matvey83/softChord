@@ -164,12 +164,15 @@
     }
 
     // Keeps what the draft has now as one more step of Undo, and paints it.
-    function commit(chords, message) {
+    function commit(chords, message, text) {
       var d = host.draft();
       if (!d) {
         return;
       }
       d.chords = chords;
+      if (text !== undefined) {
+        d.text = text;
+      }
       d.index = root.SongTextEdit.pushSnapshot(d.history, d.index,
         { text: d.text, chords: copyChords(chords) });
       host.repaint();
@@ -184,6 +187,7 @@
         return;
       }
       d.index = index;
+      d.text = d.history[index].text;
       d.chords = copyChords(d.history[index].chords);
       host.repaint();
       announce(message);
@@ -235,29 +239,42 @@
     var drag = null;
     var scroller = null;
 
-    function pointerLetter(drag, x, y) {
-      // The chord is dragged by where the pointer took hold of it, not by its middle.
-      var box = letterAtPoint(x - drag.grabX, y, true);
-      return box ? Number(box.dataset.songChar) : null;
-    }
-
     // Moves the chord to where the pointer is, live: the draft has the chords as
     // they are now, and one Undo step is made only when the pointer lets go.
+    // Right of the last letter of a line the line gets spaces as the chord goes
+    // there, up to SongChordEdit.ROOM, and loses those the chord leaves again.
     function dragTo(x, y) {
       var d = host.draft();
-      var target = pointerLetter(drag, x, y);
-      if (!d || target === null) {
+      // The chord is dragged by where the pointer took hold of it, not by its middle.
+      var box = d ? letterAtPoint(x - drag.grabX, y, true) : null;
+      if (!box) {
         return;
       }
-      var step = root.SongChordEdit.draggedChord(d.chords, d.text, drag.chordAt, drag.finger, target);
+      var Edit = root.SongChordEdit;
+      var text = d.text;
+      var chords = d.chords;
+      var target = Number(box.dataset.songChar);
+      var rect = box.getBoundingClientRect();
+      var past = x - drag.grabX - rect.right;
+      if (past > 0 && Edit.neighbour(text, target, 1) === null) {
+        var room = Edit.withRoom(text, chords, target);
+        var range = Edit.letterRange(room.text, target);
+        text = room.text;
+        chords = room.chords;
+        target = Math.min(range.last, target + Math.ceil(past / Math.max(rect.width, 1)));
+      }
+      var step = Edit.draggedChord(chords, text, drag.chordAt, drag.finger, target);
       if (!step) {
         return;
       }
-      drag.finger = step.finger;
-      if (step.chords !== d.chords) {
-        d.chords = step.chords;
-        drag.chordAt = step.chordAt;
-        selected = step.chordAt;
+      var touched = [drag.chordAt, step.chordAt];
+      var tidy = Edit.tidied(text, step.chords, step.chordAt, touched);
+      drag.finger = Edit.tidied(text, step.chords, step.finger, touched).index;
+      if (tidy.chords !== d.chords || tidy.text !== d.text) {
+        d.text = tidy.text;
+        d.chords = tidy.chords;
+        drag.chordAt = tidy.index;
+        selected = tidy.index;
         host.repaint();
       }
     }
@@ -297,6 +314,7 @@
       var d = host.draft();
       stopDrag();
       if (was.active && d) {
+        d.text = was.startText;
         d.chords = copyChords(was.startChords);
         selected = was.letter;
         host.repaint();
@@ -312,14 +330,21 @@
       if (!was.active || !d) {
         return;
       }
-      var same = JSON.stringify(d.chords) === JSON.stringify(was.startChords);
+      // The spaces the drag gave the line go again, but those a chord needs.
+      var tidy = root.SongChordEdit.tidied(d.text, d.chords, was.chordAt, [was.letter, was.chordAt]);
+      d.text = tidy.text;
+      d.chords = tidy.chords;
+      was.chordAt = tidy.index;
+      var same = d.text === was.startText && JSON.stringify(d.chords) === JSON.stringify(was.startChords);
       if (same) {
+        d.text = was.startText;
+        d.chords = copyChords(was.startChords);
         selected = was.letter;
         applySelection();
         updateButtons();
         return;
       }
-      commit(d.chords);
+      commit(d.chords, null, d.text);
       select(was.chordAt, true);
       var box = letterBox(was.chordAt);
       announce("Moved chord " + box.querySelector(".chord").textContent + " to line " + lineNumber(box) +
@@ -377,6 +402,7 @@
           grabX: event.clientX - (rect.left + rect.right) / 2,
           active: false,
           startChords: copyChords(host.draft().chords),
+          startText: host.draft().text,
         };
         // The repaint of a move replaces boxes of the sheet, and the stream of the
         // pointer must not end with one: this element is never replaced.
@@ -453,8 +479,8 @@
     // cancels a move in progress, else clears the selection. Escape never leaves the
     // mode: Save or Discard does. Shortcuts of the browser (Cmd+R and the like) are
     // left alone: only Z with Ctrl or Meta is taken.
-    function edit(chords, prefix) {
-      commit(chords);
+    function edit(chords, prefix, text) {
+      commit(chords, null, text);
       applySelection();
       updateButtons();
       announce(prefix + ", " + selectionMessage());
@@ -613,19 +639,24 @@
     function removeChord() {
       var d = host.draft();
       if (d && selected !== null && chordOnSelection()) {
-        edit(root.SongChordEdit.deleted(d.chords, d.text, selected), "Deleted");
+        var tidy = root.SongChordEdit.tidied(d.text, root.SongChordEdit.deleted(d.chords, d.text, selected), selected);
+        selected = tidy.index;
+        edit(tidy.chords, "Deleted", tidy.text);
       }
     }
 
     function nudge(direction) {
       var d = host.draft();
-      var step = root.SongChordEdit.nudged(d.chords, d.text, selected, direction);
+      // Right of the last letter there is room for ROOM more (SongChordEdit.withRoom).
+      var room = root.SongChordEdit.withRoom(d.text, d.chords, selected);
+      var step = root.SongChordEdit.nudged(room.chords, room.text, selected, direction);
       if (!step) {
         announce("The chord cannot move " + (direction < 0 ? "left" : "right") + " from here");
         return;
       }
-      selected = step.chordAt;
-      edit(step.chords, "Moved");
+      var tidy = root.SongChordEdit.tidied(room.text, step.chords, step.chordAt, [selected, step.chordAt]);
+      selected = tidy.index;
+      edit(tidy.chords, "Moved", tidy.text);
     }
 
     host.sheet.addEventListener("keydown", function (event) {
