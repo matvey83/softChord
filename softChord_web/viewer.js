@@ -71,6 +71,13 @@
     // Blocked storage: zoom still works, it is just not remembered.
   }
   var zoomPercent = SongZoom.load(zoomStorage);
+  // A song wider than the screen opens smaller, so its widest line (chords
+  // that stick out included) fits: fitPercent, or null when it fits at
+  // zoomPercent. It only ever shrinks. It is worked out again when a song
+  // opens, is painted, or the window changes size, until the zoom buttons are
+  // used on the song (songZoomed); then the song shows at exactly that zoom.
+  var fitPercent = null;
+  var songZoomed = false;
   var menuSongId = null;
   var toastTimer = null;
   // Edit text and Edit chords. savedEdit is the text and chords the user kept
@@ -272,12 +279,18 @@
     });
   }
 
+  // The zoom the song is shown at.
+  function shownZoom() {
+    return songZoomed || fitPercent === null ? zoomPercent : Math.min(zoomPercent, fitPercent);
+  }
+
   function applyZoom() {
+    var shown = shownZoom();
     // The sheet and the editor over it read it from this one parent.
-    sheetWrap.style.setProperty("--zoom", String(zoomPercent / 100));
+    sheetWrap.style.setProperty("--zoom", String(shown / 100));
     // The room kept above every line while editing: about 1.15em, but an even
     // number of whole pixels (see viewer.css).
-    sheetWrap.style.setProperty("--edit-gap", 2 * Math.round(0.575 * 20 * zoomPercent / 100) + "px");
+    sheetWrap.style.setProperty("--edit-gap", 2 * Math.round(0.575 * 20 * shown / 100) + "px");
     // See --boost in viewer.css: the textarea is never set below 16px (the CSS
     // font-size is also max(16px, ...), so rounding cannot leave it just under).
     // A whole-number boost or a little more than 16px made the letters no closer
@@ -285,24 +298,60 @@
     // the letters can still differ from the sheet's by up to about a pixel
     // vertically, because the browser rounds ascent and line height to whole
     // pixels for each font size separately.
-    var size = 20 * zoomPercent / 100;
+    var size = 20 * shown / 100;
     var boost = size < 16 ? 16 / size : 1;
     sheetWrap.style.setProperty("--boost", String(boost));
     sheetWrap.classList.toggle("boosted", boost > 1);
-    zoomOutButton.disabled = zoomPercent <= SongZoom.MIN;
-    zoomInButton.disabled = zoomPercent >= SongZoom.MAX;
-    zoomResetButton.disabled = SongZoom.isDefault(zoomPercent);
+    zoomOutButton.disabled = shown <= SongZoom.MIN;
+    zoomInButton.disabled = shown >= SongZoom.MAX;
+    zoomResetButton.disabled = SongZoom.isDefault(shown);
     fitTabs();
     if (draft && draft.mode === "text") {
       sizeEditor();
     }
   }
 
-  function zoomBy(direction) {
-    var next = SongZoom.stepped(zoomPercent, direction);
-    if (next === zoomPercent) {
+  // Fits the open song to the width of the screen (see fitPercent). The width
+  // of every letter and chord follows the font size, so the zoom that fits is
+  // the shown zoom times the room over the width the song takes now.
+  function fitToWidth() {
+    if (songZoomed || draft || songView.hidden || !sheet.firstChild) {
       return;
     }
+    var style = getComputedStyle(sheet);
+    var padLeft = parseFloat(style.paddingLeft) || 0;
+    var padRight = parseFloat(style.paddingRight) || 0;
+    var left = sheet.getBoundingClientRect().left + padLeft;
+    var right = left;
+    var boxes = sheet.querySelectorAll(".char, .chord");
+    for (var i = 0; i < boxes.length; i++) {
+      var box = boxes[i].getBoundingClientRect();
+      left = Math.min(left, box.left);
+      right = Math.max(right, box.right);
+    }
+    var width = right - left;
+    // A pixel to spare for rounding.
+    var room = sheetScroll.clientWidth - padLeft - padRight - 1;
+    var next = null;
+    if (width > 0 && room > 0) {
+      var fit = Math.floor(shownZoom() * room / width);
+      if (fit < zoomPercent) {
+        next = Math.max(SongZoom.MIN, fit);
+      }
+    }
+    if (next !== fitPercent) {
+      fitPercent = next;
+      applyZoom();
+    }
+  }
+
+  function zoomBy(direction) {
+    var shown = shownZoom();
+    var next = SongZoom.stepped(shown, direction);
+    if (next === shown) {
+      return;
+    }
+    songZoomed = true;
     zoomPercent = next;
     SongZoom.save(zoomStorage, zoomPercent);
     applyZoom();
@@ -310,9 +359,10 @@
   }
 
   function resetZoom() {
-    if (zoomPercent === SongZoom.DEFAULT) {
+    if (shownZoom() === SongZoom.DEFAULT) {
       return;
     }
+    songZoomed = true;
     zoomPercent = SongZoom.DEFAULT;
     SongZoom.save(zoomStorage, zoomPercent);
     applyZoom();
@@ -541,6 +591,7 @@
     // amount brings steps back to 0, which dims it again, and so does a whole
     // octave (12), which shows the same chords.
     transposeReset.disabled = !transposed;
+    fitToWidth();
   }
 
   // ---- Edit text ----
@@ -944,6 +995,13 @@
     if (draft && draft.mode === "text") {
       sizeEditor();
     }
+    // Turning a phone or resizing the window: fit the song again, from the
+    // zoom the user chose, so it can also grow back.
+    if (!songZoomed && !draft && fitPercent !== null) {
+      fitPercent = null;
+      applyZoom();
+    }
+    fitToWidth();
   });
 
   function songIdFromHash() {
@@ -978,6 +1036,9 @@
     if (openId !== id) {
       openId = id;
       steps = 0;
+      songZoomed = false;
+      fitPercent = null;
+      applyZoom();
       forgetEdits();
       sheetScroll.scrollTop = 0;
       sheetScroll.scrollLeft = 0;
