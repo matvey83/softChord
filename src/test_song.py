@@ -7460,6 +7460,18 @@ class TestSaveAndDiscard(unittest.TestCase):
             self.assertEqual(flow.heightForWidth(width),
                              toolbar.heightForWidth(width), width)
 
+    def test_toolbar_separator_at_a_row_end_is_not_drawn(self):
+        toolbar = self.app.toolbar
+        flow = toolbar.layout()
+        flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
+        seps = [w for w in toolbar.findChildren(QtWidgets.QFrame)
+                if w.property("separator")]
+        # The one before the Edit group ends row 1 (Edit is on row 2): it is
+        # out of sight, not left at the top left corner.
+        inside = [w for w in seps if w.geometry().right() >= 0]
+        self.assertEqual(len(inside), len(seps) - 1)
+        self.assertTrue(all(w.geometry().x() > 0 for w in inside))
+
     def test_edit_buttons_carry_the_old_hint_labels_help(self):
         ui = self.app.ui
         chords = ui.actionChordEditorMode.toolTip()

@@ -111,6 +111,10 @@ def _shortcut_text(action):
     return " (%s)" % keys.toString(QtGui.QKeySequence.SequenceFormat.NativeText)
 
 
+# Where a separator that is not drawn is put: left of the toolbar, clipped.
+_OUT_OF_SIGHT = QtCore.QRect(-100, 0, 1, 20)
+
+
 class _FlowLayout(QtWidgets.QLayout):
     """Left to right, onto the next row when an item does not fit.
 
@@ -225,8 +229,11 @@ class _FlowLayout(QtWidgets.QLayout):
             for row, height in rows:
                 for item, geometry in row:
                     if geometry is None:
-                        # A separator at a row's end is not drawn.
-                        item.setGeometry(QtCore.QRect(0, 0, 0, 0))
+                        # A separator at a row's end is not drawn. It has a
+                        # fixed size, so it is moved out of sight (an empty
+                        # rect left it at the toolbar's top left, and the
+                        # layout item does not place it left of 0).
+                        item.widget().setGeometry(_OUT_OF_SIGHT)
                         continue
                     geometry.moveTop(geometry.top()
                                      + (height - geometry.height()) // 2)
