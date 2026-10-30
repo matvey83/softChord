@@ -11,6 +11,9 @@ const LONG = "Lorem ipsum dolor sit amet ".repeat(8).trim();
 const SONGS = [
   { title: "Short", text: "Hello world\nSecond line", chords: [[0, "C"], [6, "Am"], [12, "G"]] },
   { title: "Long line", text: LONG, chords: [[0, "C"], [40, "F"], [100, "G"], [150, "Am"]] },
+  { title: "Short too", text: "La la la", chords: [[0, "D"]] },
+  // About 550px at the normal size, with a chord on the last letter.
+  { title: "Wide", text: "Ой, то не вечер, то не вечер, мне малым-мало спалось\nДа", chords: [[0, "Am"], [51, "Cmaj7(#11)"]] },
 ];
 
 async function openSong(page, id) {
@@ -180,11 +183,51 @@ test("zoom buttons change only the song area and stop at their limits", { skip: 
     for (i = 0; i < 40; i++) { await click(page, "zoom-in"); }
     assert.equal(await page.eval(sheetSize), 60);
     assert.equal(await state(page, "zoom-in"), true);
-    // The zoom is kept when another song opens.
+    // The zoom is kept when another song opens (one that fits at 300%).
     await page.eval("location.hash = '#/'");
-    await openSong(page, 2);
+    await openSong(page, 3);
     assert.equal(await page.eval(sheetSize), 60);
   });
+});
+
+test("a song wider than the screen opens smaller so it fits, until the zoom buttons are used", { skip: skip }, async function () {
+  var page = await helper.openViewer(SONGS, { viewport: { width: 390, height: 700 } });
+  var sheetSize = "parseFloat(getComputedStyle(document.getElementById('sheet')).fontSize)";
+  // How far the widest letter or chord reaches past the room inside the padding.
+  var overflow = "(function () {" +
+    "var sheet = document.getElementById('sheet');" +
+    "var room = document.getElementById('sheet-scroll').getBoundingClientRect().left +" +
+    "  document.getElementById('sheet-scroll').clientWidth - parseFloat(getComputedStyle(sheet).paddingRight);" +
+    "var right = 0;" +
+    "sheet.querySelectorAll('.char, .chord').forEach(function (b) { right = Math.max(right, b.getBoundingClientRect().right); });" +
+    "return right - room; })()";
+  try {
+    await openSong(page, 4);
+    var fitted = await page.eval(sheetSize);
+    assert.ok(fitted < 20 && fitted >= 10, "shrunk to fit: " + fitted);
+    assert.ok(await page.eval(overflow) <= 0.5, "the last chord fits");
+    assert.equal(await state(page, "zoom-reset"), false);
+    // A short song keeps the normal size.
+    await page.eval("location.hash = '#/'");
+    await openSong(page, 1);
+    assert.equal(await page.eval(sheetSize), 20);
+    // Wider window: the wide song fits at a larger size again.
+    await page.eval("location.hash = '#/'");
+    await openSong(page, 4);
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 600, height: 700, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(sheetSize + " > " + fitted, "the fit after the resize");
+    assert.ok(await page.eval(overflow) <= 0.5);
+    // A zoom button wins for this song, also after a resize.
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 700, deviceScaleFactor: 1, mobile: false });
+    await page.waitFor(sheetSize + " <= " + fitted + " + 0.5", "the fit at 390px");
+    await click(page, "zoom-reset");
+    assert.equal(await page.eval(sheetSize), 20);
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 380, height: 700, deviceScaleFactor: 1, mobile: false });
+    await page.eval("new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); })");
+    assert.equal(await page.eval(sheetSize), 20);
+  } finally {
+    await page.close();
+  }
 });
 
 test("a line longer than the page wraps when printed, chords stay over their letters", { skip: skip }, function () {

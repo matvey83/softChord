@@ -699,7 +699,7 @@ test("the Reset zoom button sits between Zoom out and Zoom in and is wired in vi
   var reset = html.indexOf("id=\"zoom-reset\"");
   var inn = html.indexOf("id=\"zoom-in\"");
   assert.ok(out < reset && reset < inn);
-  assert.ok(/zoomResetButton\.disabled = SongZoom\.isDefault\(zoomPercent\)/.test(code));
+  assert.ok(/zoomResetButton\.disabled = SongZoom\.isDefault\(shown\)/.test(code));
   assert.ok(/zoomResetButton\.addEventListener\("click", resetZoom\)/.test(code));
   assert.ok(/function resetZoom[\s\S]*?zoomPercent = SongZoom\.DEFAULT[\s\S]*?SongZoom\.save/.test(code));
 });

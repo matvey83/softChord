@@ -407,6 +407,8 @@ test("tabs and spaces stay as typed", { skip: skip }, function () {
 test("a long line scrolls sideways, the textarea grows with it and the caret stays in view", { skip: skip }, function () {
   var long = { title: "Long", text: "word ".repeat(60).trim() + "\nshort", chords: [[0, "C"], [100, "G"]] };
   return inEditor([long], async function (page) {
+    // The song opens shrunk to fit the window; Reset zoom shows it at the normal size.
+    await page.eval("document.getElementById('zoom-reset').click()");
     await startEditing(page);
     var sizes = await page.eval("(function () { var e = document.getElementById('sheet-editor');" +
       "var s = document.getElementById('sheet-scroll'); return { editorW: e.offsetWidth, editorScrollW: e.scrollWidth," +
