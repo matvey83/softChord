@@ -89,7 +89,10 @@ function startServer(songbook, transformHtml) {
 function launchChrome(chrome, profile) {
   var child = spawn(chrome, [
     "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-    "--remote-debugging-port=0", "--user-data-dir=" + profile, "--window-size=1000,900", "about:blank",
+    "--remote-debugging-port=0",
+    // Headless Chrome has no mouse, so (hover: hover) would be false; this makes
+    // it a browser with a mouse, as on a desktop (2 = hover, 4 = a fine pointer).
+    "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4", "--user-data-dir=" + profile, "--window-size=1000,900", "about:blank",
   ], { stdio: ["ignore", "ignore", "pipe"] });
   return new Promise(function (resolve, reject) {
     var seen = "";
