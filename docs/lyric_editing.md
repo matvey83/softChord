@@ -114,9 +114,10 @@ a desktop browser with a phone-sized window, not on a real phone.
   "Discard changes?" first; Keep editing is the default. A reload does not ask, and
   loses the edit. See [chord_editing.md](chord_editing.md) for the details, which
   are the same for Edit chords.
-- While editing, Print, the three Copy buttons, Transpose down/up, Reset
-  transpose and Edit text are disabled. Zoom stays on, because the textarea and the
-  sheet take their size from the same variable.
+- While editing, the three Copy buttons and Print (one group) and Transpose
+  down/up and Reset transpose (another group) are hidden, and Edit text is
+  disabled. Zoom stays on, because the textarea and the sheet take their size
+  from the same variable.
 - The textarea's font is never smaller than 16px. iPhone Safari zooms the whole
   page when a text field under 16px gets focus. The sheet is under 16px below 80%
   zoom (50%, 60%, 70%), so there the textarea is laid out with a 16px font and

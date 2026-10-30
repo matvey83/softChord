@@ -7377,11 +7377,10 @@ class TestSaveAndDiscard(unittest.TestCase):
                  for a in toolbar.toolbarActions()]
         self.assertEqual(names, [
             "actionCopySongText", "actionCopySongTextWithChords",
-            "actionCopySongAsImage", "|",
+            "actionCopySongAsImage", "actionPrint", "|",
             "actionTransposeDown", "actionTransposeUp", "actionTransposeReset",
             "|", "actionZoomOut", "actionZoomActual", "actionZoomIn",
-            "actionZoomPercent", "|", "actionPrint", "|",
-            "actionLyricsFont", "actionChordsFont", "|",
+            "actionZoomPercent", "|", "actionLyricsFont", "actionChordsFont", "|",
             "actionLyricEditorMode", "actionChordEditorMode",
             "actionChordEdit", "actionChordDelete", "actionUndoTool",
             "actionRedoTool", "actionDiscardTool", "actionSaveEditTool"])
@@ -7412,58 +7411,86 @@ class TestSaveAndDiscard(unittest.TestCase):
             self.assertEqual(self.app.chords_font.pointSizeF(), 17)
         self.assertEqual(get_font.call_count, 2)
 
-    def test_toolbar_edit_group_is_always_on_the_last_row(self):
+    def test_toolbar_is_one_row_in_every_mode_when_the_widest_fits(self):
         toolbar = self.app.toolbar
         ui = self.app.ui
         flow = toolbar.layout()
         box = lambda action: toolbar.widgetForAction(action).parentWidget()
-        copy, fonts, edit = (box(ui.actionCopySongText),
-                             box(ui.actionLyricsFont),
-                             box(ui.actionLyricEditorMode))
+        copy, edit = box(ui.actionCopySongText), box(ui.actionLyricEditorMode)
+        finish = box(toolbar.save)
         rows = lambda: sorted({w.geometry().y() for w in toolbar.findChildren(
             QtWidgets.QWidget) if w.parentWidget() is toolbar
             and not w.isHidden() and w.geometry().width() > 1})
+        widest = toolbar.widestRowWidth()
+        # Viewing with Discard and Save (a change made while viewing) is the
+        # widest mode, and the width is the same whichever mode is open.
+        self.assertEqual(widest, toolbar.rowWidth(None))
+        self.assertGreater(widest, toolbar.rowWidth(None, False))
+        self.assertGreater(widest, toolbar.rowWidth("text"))
+        self.assertGreater(widest, toolbar.rowWidth("chords"))
+        modes = ((lambda: None, None), (self.app.lyricEditorSelected, "text"),
+                 (self.app.chordEditorSelected, "chords"))
+        for start, mode in modes:
+            start()
+            self.assertEqual(toolbar.widestRowWidth(), widest, mode)
+            # The row is as wide as rowWidth says.
+            flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
+            shown = [w for w in toolbar.findChildren(QtWidgets.QWidget)
+                     if w.parentWidget() is toolbar and not w.isHidden()
+                     and w.geometry().right() >= 0]
+            self.assertEqual(max(w.geometry().right() for w in shown) + 1,
+                             toolbar.rowWidth(mode, mode is not None), mode)
+            for width in (widest, widest + 40, 2000):
+                flow.setGeometry(QtCore.QRect(0, 0, width,
+                                              flow.heightForWidth(width)))
+                self.assertEqual(len(rows()), 1, (mode, width))
+            self.app.discardEdit()
 
-        # Wide: everything else fits on row 1, the edit group is alone on row 2.
-        flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
-        self.assertEqual(len(rows()), 2)
-        self.assertGreater(edit.geometry().y(), copy.geometry().y())
-        self.assertEqual(fonts.geometry().y(), copy.geometry().y())
-        self.assertEqual(edit.geometry().x(), flow.contentsMargins().left())
-        two_rows = flow.heightForWidth(2000)
-
-        # Narrower: the fonts group no longer fits on row 1 and goes onto the
-        # last row in front of the edit group; still two rows.
-        width = fonts.geometry().right()
-        flow.setGeometry(QtCore.QRect(0, 0, width, flow.heightForWidth(width)))
-        self.assertEqual(fonts.geometry().y(), edit.geometry().y())
-        self.assertLess(fonts.geometry().x(), edit.geometry().x())
-        self.assertEqual(len(rows()), 2)
-        self.assertEqual(flow.heightForWidth(width), two_rows)
-
-        # Very narrow: more rows, the edit group still on the last one.
-        flow.setGeometry(QtCore.QRect(0, 0, 150, flow.heightForWidth(150)))
-        self.assertGreater(len(rows()), 2)
-        self.assertEqual(edit.geometry().y(), rows()[-1])
-
-        # Editing: the edit groups (Edit, chord, Discard/Save) stay together
-        # on the last row whenever the pane can hold all of them.
-        self.app.chordEditorSelected()
-        finish = box(toolbar.save)
-        flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
-        tail = finish.geometry().right() - edit.geometry().left() + 1
-        for width in range(tail + 1, 1200, 25):
-            flow.setGeometry(QtCore.QRect(0, 0, width,
-                                          flow.heightForWidth(width)))
-            self.assertEqual(finish.geometry().y(), edit.geometry().y(), width)
-            self.assertEqual(edit.geometry().y(), rows()[-1], width)
-            self.assertEqual(flow.heightForWidth(width),
-                             toolbar.heightForWidth(width), width)
+    def test_toolbar_edit_groups_start_a_row_in_every_mode_when_narrow(self):
+        toolbar = self.app.toolbar
+        ui = self.app.ui
+        flow = toolbar.layout()
+        box = lambda action: toolbar.widgetForAction(action).parentWidget()
+        zoom, edit = box(ui.actionZoomOut), box(ui.actionLyricEditorMode)
+        finish, chords = box(toolbar.save), box(toolbar.chord_edit)
+        widest = toolbar.widestRowWidth()
+        left = flow.contentsMargins().left()
+        modes = ((lambda: None, None), (self.app.lyricEditorSelected, "text"),
+                 (self.app.chordEditorSelected, "chords"))
+        for start, mode in modes:
+            start()
+            # One short of the widest mode: the edit groups start row 2 even
+            # where this mode's buttons would all fit on one row.
+            for width in (widest - 1, 520, 400):
+                flow.setGeometry(QtCore.QRect(0, 0, width,
+                                              flow.heightForWidth(width)))
+                self.assertEqual(edit.geometry().x(), left, (mode, width))
+                self.assertGreater(edit.geometry().y(), zoom.geometry().y(),
+                                   (mode, width))
+                if mode is not None:
+                    # The edit groups stay together while they fit.
+                    self.assertEqual(finish.geometry().y(),
+                                     edit.geometry().y(), (mode, width))
+                if mode == "chords":
+                    self.assertEqual(chords.geometry().y(),
+                                     edit.geometry().y(), (mode, width))
+            # Very narrow: the groups before them and the edit groups wrap
+            # among themselves, whole; every button stays inside.
+            flow.setGeometry(QtCore.QRect(0, 0, 150, flow.heightForWidth(150)))
+            self.assertEqual(edit.geometry().x(), left, mode)
+            for w in toolbar.findChildren(QtWidgets.QWidget):
+                if (w.parentWidget() is toolbar and not w.isHidden()
+                        and w.geometry().right() >= 0):
+                    self.assertLessEqual(w.geometry().right(), 149, mode)
+            self.assertEqual(flow.heightForWidth(150),
+                             toolbar.heightForWidth(150), mode)
+            self.app.discardEdit()
 
     def test_toolbar_separator_at_a_row_end_is_not_drawn(self):
         toolbar = self.app.toolbar
         flow = toolbar.layout()
-        flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
+        width = toolbar.widestRowWidth() - 1
+        flow.setGeometry(QtCore.QRect(0, 0, width, flow.heightForWidth(width)))
         seps = [w for w in toolbar.findChildren(QtWidgets.QFrame)
                 if w.property("separator")]
         # The one before the Edit group ends row 1 (Edit is on row 2): it is
@@ -7471,6 +7498,9 @@ class TestSaveAndDiscard(unittest.TestCase):
         inside = [w for w in seps if w.geometry().right() >= 0]
         self.assertEqual(len(inside), len(seps) - 1)
         self.assertTrue(all(w.geometry().x() > 0 for w in inside))
+        # On one row every separator is drawn.
+        flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
+        self.assertTrue(all(w.geometry().x() > 0 for w in seps))
 
     def test_edit_buttons_carry_the_old_hint_labels_help(self):
         ui = self.app.ui
@@ -7508,6 +7538,75 @@ class TestSaveAndDiscard(unittest.TestCase):
         self.app.discardEdit()
         self.assertFalse(toolbar.isActive(self.app.ui.actionChordEditorMode))
         self.assertEqual([shown(a) for a in extra], [False] * 6)
+
+    def test_toolbar_hides_copy_print_and_transpose_while_editing(self):
+        toolbar = self.app.toolbar
+        ui = self.app.ui
+        flow = toolbar.layout()
+        copy = toolbar.widgetForAction(ui.actionCopySongText).parentWidget()
+        transpose = toolbar.widgetForAction(toolbar.transpose_down).parentWidget()
+        self.assertIs(toolbar.widgetForAction(ui.actionPrint).parentWidget(),
+                      copy)
+        seps = [w for w in toolbar.findChildren(QtWidgets.QFrame)
+                if w.property("separator")]
+        drawn = lambda: [w for w in seps if not w.isHidden()
+                         and w.geometry().right() >= 0]
+        flow.setGeometry(QtCore.QRect(0, 0, 2000, flow.heightForWidth(2000)))
+        self.assertFalse(copy.isHidden())
+        self.assertLess(copy.geometry().x(), transpose.geometry().x())
+        fonts = toolbar.widgetForAction(ui.actionLyricsFont).parentWidget()
+        self.assertIs(toolbar.widgetForAction(ui.actionChordsFont).parentWidget(),
+                      fonts)
+        self.assertFalse(fonts.isHidden())
+        zoom = toolbar.widgetForAction(ui.actionZoomOut).parentWidget()
+        self.assertFalse(transpose.isHidden())
+        self.assertLess(transpose.geometry().x(), zoom.geometry().x())
+        viewing = len(drawn())
+        for start, fonts_shown in ((self.app.lyricEditorSelected, True),
+                                   (self.app.chordEditorSelected, False)):
+            start()
+            flow.setGeometry(QtCore.QRect(0, 0, 2000,
+                                          flow.heightForWidth(2000)))
+            self.assertTrue(copy.isHidden())
+            self.assertTrue(transpose.isHidden())
+            # Zoom starts the row, with no separator in front of it.
+            self.assertEqual(zoom.geometry().x(),
+                             flow.contentsMargins().left())
+            # Fonts shows in Edit Text, not in Edit Chords; its divider goes
+            # with it (no double divider between Zoom and Edit).
+            self.assertEqual(fonts.isHidden(), not fonts_shown)
+            self.assertEqual(len(drawn()), viewing - (2 if fonts_shown else 3))
+            # Every divider is between two shown groups on its row: none
+            # starts or ends a row, and none is doubled.
+            boxes = {w.parentWidget() for w in
+                     (toolbar.widgetForAction(a)
+                      for a in toolbar.toolbarActions() if a != "|")
+                     if w is not None}
+            shown = [(w.geometry().center().y() // 10, w.geometry().x(),
+                      w in seps) for w in list(boxes) + drawn()
+                     if not w.isHidden()]
+            shown.sort()
+            for k, (row, _, is_sep) in enumerate(shown):
+                if is_sep:
+                    self.assertTrue(0 < k < len(shown) - 1, shown)
+                    self.assertEqual(shown[k - 1][::2], (row, False), shown)
+                    self.assertEqual(shown[k + 1][::2], (row, False), shown)
+            # Only the toolbar hides them: the menu actions still work.
+            for action in (ui.actionCopySongText, ui.actionPrint,
+                           ui.actionCopySongAsImage, ui.actionLyricsFont,
+                           ui.actionChordsFont):
+                self.assertTrue(action.isVisible(), action.objectName())
+            self.assertFalse(ui.actionPrint.shortcut().isEmpty())
+            # An action change does not show the group again.
+            ui.actionCopySongText.changed.emit()
+            self.assertTrue(copy.isHidden())
+            # An action change does not show Transpose again either.
+            toolbar.transpose_down.changed.emit()
+            self.assertTrue(transpose.isHidden())
+            self.app.discardEdit()
+            self.assertFalse(copy.isHidden())
+            self.assertFalse(transpose.isHidden())
+            self.assertFalse(fonts.isHidden())
 
     def test_toolbar_add_or_edit_chord(self):
         toolbar = self.app.toolbar

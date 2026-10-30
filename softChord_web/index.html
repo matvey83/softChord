@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>softChord Viewer</title>
-  <link rel="stylesheet" href="viewer.css?v=2026-10-29e">
+  <link rel="stylesheet" href="viewer.css?v=2026-10-30a">
   <!-- The app icon (an open songbook with a clef), as in the iOS and desktop apps.
        The 16, 32 and 48 px sizes are cropped to the book with thicker lines. -->
   <link rel="icon" href="icons/favicon.ico" sizes="16x16 32x32 48x48">
@@ -43,11 +43,12 @@
            (src/softchord_toolbar.py, the SVGs in icons/toolbar/). The buttons,
            their order and groups, the icons, the labels and tooltips, and when
            each shows or is dimmed are the same in all three apps: change them in
-           all three. iOS and the desktop also wrap whole groups onto more rows
-           like this page (the desktop only when they do not fit, with no 940 px
-           rule) and the desktop has no Back or title. -->
+           all three. All three wrap the same way (layoutToolbar in the viewer
+           script): when the buttons of the widest mode fit on one row they are on one row in
+           every mode, and when they do not the edit groups start the next row
+           in every mode. The desktop has no Back or title. -->
       <div class="toolbar-actions">
-        <div class="tool-group" role="group" aria-label="Copy song">
+        <div id="copy-actions" class="tool-group" role="group" aria-label="Copy and print">
           <button id="copy-text" class="tool" type="button" title="Copy song text" aria-label="Copy song text">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 15V5a2 2 0 0 1 2-2h8"/><rect x="8" y="7" width="13" height="15" rx="2"/><path d="M11.5 12h6M11.5 15.5h6M11.5 19h3.5"/></svg>
           </button>
@@ -57,9 +58,12 @@
           <button id="copy-image" class="tool" type="button" title="Copy song as image" aria-label="Copy song as image">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M3.5 17.5 8.5 13l4 3.8 3-2.8 5.5 5"/></svg>
           </button>
+          <button id="print" class="tool" type="button" title="Print / Save as PDF" aria-label="Print / Save as PDF">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M7 9V3.5h10V9"/><rect x="3" y="9" width="18" height="8" rx="2"/><rect x="7" y="14" width="10" height="6.5" rx="1"/><path d="M17.5 12h.01"/></svg>
+          </button>
         </div>
-        <span class="tool-sep" aria-hidden="true"></span>
-        <div class="tool-group" role="group" aria-label="Transpose">
+        <span id="copy-sep" class="tool-sep" aria-hidden="true"></span>
+        <div id="transpose-actions" class="tool-group" role="group" aria-label="Transpose">
           <button id="transpose-down" class="tool" type="button" title="Transpose down" aria-label="Transpose down">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M12 4v16M6 14l6 6 6-6"/></svg>
           </button>
@@ -70,7 +74,7 @@
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4.6 12a7.4 7.4 0 1 0 2.2-5.2"/><path d="M4.4 3.8v4.4h4.4"/></svg>
           </button>
         </div>
-        <span class="tool-sep" aria-hidden="true"></span>
+        <span id="transpose-sep" class="tool-sep" aria-hidden="true"></span>
         <div class="tool-group" role="group" aria-label="Zoom">
           <button id="zoom-out" class="tool" type="button" title="Zoom out" aria-label="Zoom out">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4 21 21M7.5 10.5h6"/></svg>
@@ -83,13 +87,11 @@
           </button>
         </div>
         <span class="tool-sep" aria-hidden="true"></span>
-        <div class="tool-group" role="group" aria-label="Print">
-          <button id="print" class="tool" type="button" title="Print / Save as PDF" aria-label="Print / Save as PDF">
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M7 9V3.5h10V9"/><rect x="3" y="9" width="18" height="8" rx="2"/><rect x="7" y="14" width="10" height="6.5" rx="1"/><path d="M17.5 12h.01"/></svg>
-          </button>
-        </div>
-        <span class="tool-sep" aria-hidden="true"></span>
-        <div class="tool-group" role="group" aria-label="Edit">
+        <!-- Shown when the buttons of the widest mode do not fit on one row:
+             the edit groups then start the next row in every mode (layoutToolbar
+             in the viewer script). -->
+        <span id="edit-row-break" class="tool-break" aria-hidden="true"></span>
+        <div id="edit-group" class="tool-group" role="group" aria-label="Edit">
           <button id="edit-text" class="tool" type="button" title="Edit Text…" aria-label="Edit Text…">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 20l1-4.2L16.6 4.2a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.3l3.2 3.2"/></svg>
           </button>
@@ -174,15 +176,15 @@
        folder, so a browser that kept an old index.html does not mix it with new
        scripts, or the other way round. sql-wasm.js never changes, so it has none. -->
   <script src="sql-wasm.js"></script>
-  <script src="softchord_chords.js?v=2026-10-29e"></script>
-  <script src="softchord_text.js?v=2026-10-29e"></script>
-  <script src="softchord_text_edit.js?v=2026-10-29e"></script>
-  <script src="softchord_chord_edit.js?v=2026-10-29e"></script>
-  <script src="song_filter.js?v=2026-10-29e"></script>
-  <script src="songbook.js?v=2026-10-29e"></script>
-  <script src="softchord_zoom.js?v=2026-10-29e"></script>
-  <script src="softchord_sheet_image.js?v=2026-10-29e"></script>
-  <script src="softchord_chord_mode.js?v=2026-10-29e"></script>
-  <script src="viewer.js?v=2026-10-29e"></script>
+  <script src="softchord_chords.js?v=2026-10-30a"></script>
+  <script src="softchord_text.js?v=2026-10-30a"></script>
+  <script src="softchord_text_edit.js?v=2026-10-30a"></script>
+  <script src="softchord_chord_edit.js?v=2026-10-30a"></script>
+  <script src="song_filter.js?v=2026-10-30a"></script>
+  <script src="songbook.js?v=2026-10-30a"></script>
+  <script src="softchord_zoom.js?v=2026-10-30a"></script>
+  <script src="softchord_sheet_image.js?v=2026-10-30a"></script>
+  <script src="softchord_chord_mode.js?v=2026-10-30a"></script>
+  <script src="viewer.js?v=2026-10-30a"></script>
 </body>
 </html>

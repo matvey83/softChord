@@ -27,15 +27,37 @@ struct softChord_ViewerTests {
     @Test func songToolbarMatchesTheWebToolbar() {
         var state = SongToolbarState()
         #expect(state.groups.flatMap(\.buttons).map(\.rawValue) == [
-            "copy-text", "copy-chords", "copy-image", "transpose-down", "transpose-up", "transpose-reset",
-            "zoom-out", "zoom-reset", "zoom-in", "print", "edit-text", "edit-chords",
+            "copy-text", "copy-chords", "copy-image", "print", "transpose-down", "transpose-up",
+            "transpose-reset", "zoom-out", "zoom-reset", "zoom-in", "edit-text", "edit-chords",
         ])
+        #expect(state.groups.first?.name == "Copy and print")
         #expect(!state.isEnabled(.transposeReset) && !state.isEnabled(.zoomReset) && state.isEnabled(.print))
         state.editing = true
         state.chordMode = true
-        #expect(state.groups.map(\.name).suffix(2) == ["Chord", "Finish editing"])
-        #expect(!state.isEnabled(.copyText) && state.isEnabled(.zoomIn) && state.label(.chordEdit) == "Add chord")
+        #expect(state.groups.map(\.name) == ["Zoom", "Edit", "Chord", "Finish editing"])
+        #expect(!state.isEnabled(.transposeUp) && state.isEnabled(.zoomIn) && state.label(.chordEdit) == "Add chord")
         #expect(SongZoom.stepped(105, 1) == 110 && SongZoom.stepped(105, -1) == 100 && SongZoom.stepped(50, -1) == 50)
+    }
+
+    /// MIRRORED UI: viewer.js layoutToolbar. The widest mode (viewing with Discard
+    /// and Save) decides the rows, so they are the same in every mode.
+    @Test func songToolbarRowsFollowTheWidestMode() {
+        let metrics = SongToolbarMetrics()
+        for oneRow in [true, false] {
+            let widths = SongToolbarMetrics.modes.map { metrics.rowWidth($0, oneRow: oneRow, width: 700) }
+            #expect(widths[0] == metrics.widestRow(oneRow: oneRow, width: 700))
+            #expect(widths[0] > widths[1] && widths[0] > widths[2])
+        }
+        #expect(metrics.rows(width: 1200) == .oneRow)
+        #expect(metrics.rows(width: 320) == .editRow && metrics.rows(width: 402) == .editRow)
+        // Narrower never gives fewer rows.
+        var last = SongToolbarRows.oneRow
+        for width in stride(from: CGFloat(1200), through: 320, by: -10) {
+            let rows = metrics.rows(width: width)
+            let order: [SongToolbarRows] = [.oneRow, .buttonRow, .editRow]
+            #expect(order.firstIndex(of: rows)! >= order.firstIndex(of: last)!, "\(width)")
+            last = rows
+        }
     }
 
     @Test func songPageMenuAddsEdit() {
@@ -87,11 +109,15 @@ struct softChord_ViewerTests {
             window.frame = CGRect(x: 0, y: 0, width: width, height: 874)
             window.layoutIfNeeded()
             await settle()
-            for name in ["Copy song text", "Print / Save as PDF", "Add chord", "Redo", "Save"] {
+            for name in ["Zoom in", "Add chord", "Redo", "Save"] {
                 #expect(onScreen(name), "\(name) \(width)")
             }
+            // Copy and Print, and Transpose, wait until Save or Discard.
+            for name in ["Copy song text", "Print / Save as PDF", "Transpose up"] {
+                #expect(!onScreen(name), "\(name) \(width)")
+            }
             // Back and the title, then at least one row of buttons (34 pt) on a phone.
-            let bottom = window.safeAreaInsets.top + (width > 940 ? 38 : 34 * 2)
+            let bottom = window.safeAreaInsets.top + (SongToolbarMetrics().rows(width: width) == .oneRow ? 38 : 34 * 2)
             let chords = try #require(window.descendants(of: UIScrollView.self).first {
                 $0.accessibilityIdentifier == "Song chords"
             })

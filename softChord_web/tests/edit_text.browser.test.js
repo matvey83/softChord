@@ -41,8 +41,15 @@ test("the Edit text button opens the editor over the sheet and locks what must w
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), false);
     assert.equal(await editorValue(page), HELLO.text);
     assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), false);
-    for (var id of ["print", "copy-text", "copy-chords", "copy-image", "transpose-down", "transpose-up",
-      "transpose-reset", "edit-text"]) {
+    // Copy and Print, and Transpose, are hidden (each whole group, and the
+    // separator after it). Transpose is disabled too.
+    for (var group of ["copy-actions", "copy-sep", "transpose-actions", "transpose-sep"]) {
+      assert.equal(await page.eval("document.getElementById('" + group + "').hidden"), true, group);
+    }
+    for (var id of ["print", "transpose-up"]) {
+      assert.equal(await page.eval("document.getElementById('" + id + "').offsetParent"), null, id);
+    }
+    for (id of ["transpose-down", "transpose-up", "transpose-reset", "edit-text"]) {
       assert.equal(await disabled(page, id), true, id + " waits until Save or Discard");
     }
     // Zoom still works: the textarea is sized in em from the same variable as the sheet.
@@ -199,6 +206,10 @@ test("Save keeps the edited text and chords, shows the note, and later reads use
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false);
     assert.equal(await page.eval("document.getElementById('persist-note').textContent"), "Changes do not persist");
     // The buttons that waited are back (Reset transpose has nothing to reset).
+    assert.equal(await page.eval("document.getElementById('copy-actions').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('copy-sep').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('transpose-sep').hidden"), false);
     for (var id of ["print", "copy-text", "copy-chords", "copy-image", "transpose-down", "transpose-up",
       "edit-text"]) {
       assert.equal(await disabled(page, id), false, id);

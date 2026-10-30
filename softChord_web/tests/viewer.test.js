@@ -560,13 +560,13 @@ test("the song toolbar has a labelled button for every action", function () {
     "copy-text": "Copy song text",
     "copy-chords": "Copy song text (with chords)",
     "copy-image": "Copy song as image",
+    "print": "Print / Save as PDF",
     "transpose-down": "Transpose down",
     "transpose-up": "Transpose up",
     "transpose-reset": "Reset transpose",
     "zoom-out": "Zoom out",
     "zoom-reset": "Reset zoom (100%)",
     "zoom-in": "Zoom in",
-    "print": "Print / Save as PDF",
   };
   var order = [];
   Object.keys(expected).forEach(function (id) {
@@ -578,7 +578,19 @@ test("the song toolbar has a labelled button for every action", function () {
     order.push(html.indexOf("id=\"" + id + "\""));
   });
   var sorted = order.slice().sort(function (a, b) { return a - b; });
-  assert.deepEqual(order, sorted, "copy, then transpose, then zoom, then print buttons");
+  assert.deepEqual(order, sorted, "copy and print, then transpose, then zoom buttons");
+  // Print is the last button of the Copy group, with no separator before it.
+  var group = /<div id="copy-actions" class="tool-group" role="group" aria-label="Copy and print">([\s\S]*?)<\/div>/.exec(html);
+  assert.ok(group, "the Copy and print group");
+  assert.deepEqual(group[1].match(/<button id="[^"]+"/g),
+    ["<button id=\"copy-text\"", "<button id=\"copy-chords\"", "<button id=\"copy-image\"", "<button id=\"print\""]);
+  assert.ok(!html.includes("aria-label=\"Print\">"), "no Print group of its own");
+  // The Transpose group and the separator after it have ids: both are hidden
+  // while editing, like the Copy and print group.
+  var transpose = /<div id="transpose-actions" class="tool-group" role="group" aria-label="Transpose">([\s\S]*?)<\/div>\s*<span id="transpose-sep" class="tool-sep"/.exec(html);
+  assert.ok(transpose, "the Transpose group and its separator");
+  assert.deepEqual(transpose[1].match(/<button id="[^"]+"/g),
+    ["<button id=\"transpose-down\"", "<button id=\"transpose-up\"", "<button id=\"transpose-reset\""]);
   assert.ok(html.indexOf("id=\"back\"") < order[0]);
   assert.ok(html.includes("softchord_sheet_image.js"));
   assert.ok(html.indexOf("<!--") < html.indexOf("<html"), "README link comment stays at the top");

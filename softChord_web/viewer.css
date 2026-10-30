@@ -157,47 +157,69 @@ main {
   border-radius: 4px;
 }
 
-/* MIRRORED UI: the iOS app mirrors this toolbar and how it wraps (planned in
-   softChord Viewer/softChord Viewer/SongToolbar.swift). The desktop editor
+/* MIRRORED UI: the iOS app mirrors this toolbar and how it wraps
+   (softChord Viewer/softChord Viewer/SongToolbar.swift). The desktop editor
    (src/softchord_toolbar.py) mirrors the groups, the flat look and the
-   wrapping of whole groups, but wraps only when they do not fit (no 940 px
-   rule) and keeps the separators between groups on a row. A change to the
-   button sizes, gaps, groups or the wrapping rules below is made in both apps,
-   and a change to the groups or the look in the desktop editor too. */
-/* Narrow window (phones, and a desktop window dragged narrow): Back and the title
-   share the first row, and the buttons get rows of their own below. The buttons
-   are in groups and the groups wrap onto the next row when they do not all fit,
-   so every button, and Save and Discard while the text is edited, stays inside
-   the window and never scrolls off it. The thin separators are dropped because a
-   wrapped row would start or end with one. Edit text stays on small screens: the
-   editor is a plain textarea and works there. 940 px is where Back, the title
-   and every button, with the Edit Chords buttons and Save and Discard, still
-   fit on one row (they need about 920). */
-@media (max-width: 940px) {
-  .toolbar { flex-wrap: wrap; row-gap: 2px; padding: 6px 8px; }
-  #back { order: 1; }
-  #song-title {
-    order: 2;
-    font-size: 16px;
-    padding-right: 44px; /* keeps the title centred, balancing the Back button */
-  }
-  .toolbar-actions {
-    order: 3;
-    flex: 1 1 100%;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 2px 12px;
-  }
-  .tool-sep { display: none; }
-  .tool-group { gap: 0; flex: none; }
-  #edit-actions { margin-left: 0; gap: 6px; }
-  .tool { width: 34px; height: 34px; }
+   wrapping rule, and keeps the separators between groups on a row. A change to
+   the button sizes, gaps, groups or the wrapping rules below is made in all
+   three apps.
+
+   viewer.js layoutToolbar measures the buttons of every mode (viewing, Edit
+   Text, Edit Chords, each with what it hides, and with Save and Discard) and
+   takes the widest, so the rows do not move when the mode changes:
+   - One row (no class): Back, the title and the buttons share one row when the
+     widest mode's buttons fit next to Back and a short title.
+   - .narrow: otherwise Back and the title share the first row and the buttons
+     get rows of their own below, with smaller buttons and no separators. When
+     the widest mode's buttons fit on one row there, they are on one row in
+     every mode.
+   - .narrow.edit-row: when they do not, the edit groups (Edit Text and Edit
+     Chords, the chord buttons, Discard and Save) start the next row in every
+     mode. The groups before them, and the edit groups among themselves, wrap
+     whole onto the next row when they do not fit, so every button stays inside
+     the window and never scrolls off it.
+   Edit text stays on small screens: the editor is a plain textarea and works
+   there. */
+.tool-break { display: none; }
+
+.toolbar.narrow { flex-wrap: wrap; row-gap: 2px; padding: 6px 8px; }
+.toolbar.narrow #back { order: 1; }
+.toolbar.narrow #song-title {
+  order: 2;
+  font-size: 16px;
+  padding-right: 44px; /* keeps the title centred, balancing the Back button */
+}
+.toolbar.narrow .toolbar-actions {
+  order: 3;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  /* The 2px between rows is each item's top margin (the row gap would also
+     come before the line of the break below). */
+  gap: 0 12px;
+  margin-top: -2px;
+}
+.toolbar.narrow .toolbar-actions > * { margin-top: 2px; }
+.toolbar.narrow .tool-sep { display: none; }
+.toolbar.narrow .tool-group { gap: 0; flex: none; }
+.toolbar.narrow #edit-actions { margin-left: 0; gap: 6px; }
+.toolbar.narrow .tool { width: 34px; height: 34px; }
+/* A line of its own with no height: what follows starts the next row. */
+.toolbar.narrow.edit-row .tool-break {
+  display: block;
+  flex: 0 0 100%;
+  height: 0;
+  margin-top: 0;
 }
 
 @media (max-width: 360px) {
-  .tool { width: 30px; height: 30px; }
-  .toolbar-actions { column-gap: 8px; }
+  .toolbar.narrow .tool { width: 30px; height: 30px; }
+  .toolbar.narrow .toolbar-actions { column-gap: 8px; }
 }
+
+/* While viewer.js measures the groups: every group shows, on one line. */
+.toolbar.measuring .toolbar-actions { flex-wrap: nowrap; width: max-content; }
+.toolbar.measuring .toolbar-actions > .tool-group[hidden] { display: flex !important; }
 
 #toast {
   position: fixed;

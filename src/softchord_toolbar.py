@@ -8,14 +8,15 @@ the one copy, bundled by softchord.spec), the tooltips, and when each button
 shows or is dimmed are the same in all three apps: change them in all three.
 
 Intended desktop differences:
-- It wraps like the web and iOS toolbars: whole groups move to the next row
-  when the pane is too narrow, and a separator is dropped at a row's start or
-  end. There is no 940 px rule: it wraps only when the groups do not fit.
-- Desktop-only: Edit Text / Edit Chords and the edit groups after them are
-  always on the last row, even when they would fit on the row above. When
-  the pane narrows, the groups before them that no longer fit join that last
-  row in front of them, and a new row starts only when they do not fit (the
-  edit groups stay together on one row while the pane is wide enough).
+- It wraps by the same rule as the web and iOS toolbars. When every button
+  of the widest mode (viewing, Edit Text or Edit Chords, each with what it
+  hides) fits on one row, all of them are on one row in every mode. When they
+  do not, Edit Text / Edit Chords and the edit groups after them (chord
+  buttons, Undo and Redo, Discard and Save) start the next row in every mode.
+  The groups before them, and the edit groups among themselves, move whole
+  to a new row when they do not fit. The width does not depend on the open
+  mode, so switching modes does not move the rows. A separator is dropped at
+  a row's start or end.
   It sits below the Number/Title and Notes fields, above the song.
 - No Back button and no title: the song list and the Title field are always
   there. No "Changes do not persist" banner and no brief notes: Save really
@@ -25,7 +26,13 @@ Intended desktop differences:
   QActions where there is one, so both are dimmed together.
 - The zoom percentage after the zoom buttons is plain text (not a button).
 - Print opens the desktop print dialog for the selected songs.
-- Desktop-only: a Fonts group after Print with "Select font for lyrics" and
+- While editing, the Copy and Print group and the Transpose group are hidden
+  as in the other apps, but only on the toolbar: the menu items and their
+  shortcuts keep working (Transpose has none, so it waits until Save or
+  Discard as on the web and iOS).
+- Desktop-only: the Fonts group is hidden the same way in Edit Chords (it
+  stays in Edit Text and while viewing).
+- Desktop-only: a Fonts group after Zoom with "Select font for lyrics" and
   "Select font for chords" (the Settings menu's Lyrics Font and Chords Font
   dialogs). Their icons, font-lyrics.svg and font-chords.svg, sit with the
   others in softChord_web/icons/toolbar/ but are not drawn in index.html, so
@@ -119,19 +126,23 @@ class _FlowLayout(QtWidgets.QLayout):
     """Left to right, onto the next row when an item does not fit.
 
     A separator item is shown only between two groups on the same row.
-    The item with the "tailStart" property (the Edit Text / Edit Chords group)
-    and everything after it are the tail, kept on the last row: the tail
-    starts a new row unless the groups before it have already wrapped, in
-    which case it joins their last (wrapped) row if all of it fits there.
-    It wraps inside itself only when it is wider than the pane.
+    widest() is the one-row width of the widest mode. When the area is
+    narrower, the item with the "tailStart" property (the Edit Text / Edit
+    Chords group) starts a new row, and so the items after it follow it.
+
+    MIRRORED UI: viewer.js layoutToolbar, SongToolbar.swift SongToolbarFlow.
     """
 
-    def __init__(self, parent=None, spacing=2, row_spacing=2):
+    def __init__(self, parent=None, spacing=2, row_spacing=2, widest=None):
         super().__init__(parent)
         self._items = []
         self._spacing = spacing
         self._row_spacing = row_spacing
+        self._widest = widest
         self.setContentsMargins(0, 2, 0, 2)
+
+    def spacing(self):
+        return self._spacing
 
     def addItem(self, item):
         self._items.append(item)
@@ -177,33 +188,33 @@ class _FlowLayout(QtWidgets.QLayout):
         area = rect.adjusted(margins.left(), margins.top(),
                              -margins.right(), -margins.bottom())
         items = [item for item in self._items if not item.isEmpty()]
-        # The tail's width when on one row, to keep it together.
-        tail_width, in_tail = 0, False
-        for item in items:
-            in_tail = in_tail or bool(item.widget().property("tailStart"))
-            if in_tail:
-                tail_width += item.sizeHint().width() + self._spacing
-        tail_width -= self._spacing
+        one_row = (self._widest is None
+                   or self._widest() <= area.width())
         x, y, row_height = area.x(), area.y(), 0
         placed = []  # (item, rect) of the row being filled
         pending_sep = None
         rows = []
+        dropped = []  # separators with no group before them on their row
         for item in items:
             hint = item.sizeHint()
             if item.widget().property("separator"):
                 if placed:
+                    if pending_sep is not None:
+                        # Two in a row: a group between them is hidden.
+                        dropped.append(pending_sep)
                     pending_sep = item
+                else:
+                    # The first groups are hidden (Copy and Print, and
+                    # Transpose, while editing).
+                    dropped.append(item)
                 continue
             sep_width = 0
             if pending_sep is not None:
                 sep_width = pending_sep.sizeHint().width() + self._spacing
             width = hint.width()
-            if item.widget().property("tailStart"):
-                # Not on the first row; on a wrapped row only all of it.
-                if not rows:
-                    width = area.width() + 1
-                else:
-                    width = tail_width
+            if item.widget().property("tailStart") and not one_row:
+                # The edit groups start a row of their own.
+                width = area.width() + 1
             if placed and x + sep_width + width > area.right() + 1:
                 rows.append((placed, row_height))
                 if pending_sep is not None:
@@ -226,6 +237,8 @@ class _FlowLayout(QtWidgets.QLayout):
         if pending_sep is not None:
             rows[-1][0].append((pending_sep, None))
         if apply:
+            for item in dropped:
+                item.widget().setGeometry(_OUT_OF_SIGHT)
             for row, height in rows:
                 for item, geometry in row:
                     if geometry is None:
@@ -243,7 +256,7 @@ class _FlowLayout(QtWidgets.QLayout):
 
 
 class SongToolbar(QtWidgets.QWidget):
-    """Copy | Transpose | Zoom | Print | Fonts | Edit [Chord] [Discard Save]."""
+    """Copy+Print | Transpose | Zoom | Fonts | Edit [Chord] [Discard Save]."""
 
     def __init__(self, session, parent=None):
         super().__init__(parent)
@@ -256,7 +269,9 @@ class SongToolbar(QtWidgets.QWidget):
         self._buttons = {}  # action -> its QToolButton
         self._order = []  # actions and "|" in toolbar order
         self._restyling = False
-        self._flow = _FlowLayout(self, spacing=6)
+        self._built = False
+        self._mode_hidden = set()  # group boxes hidden while editing
+        self._flow = _FlowLayout(self, spacing=6, widest=self.widestRowWidth)
 
         def new(name, text, slot, tip=None):
             action = QtGui.QAction(text, self)
@@ -320,7 +335,8 @@ class SongToolbar(QtWidgets.QWidget):
         groups = (
             ((ui.actionCopySongText, "copy-text"),
              (ui.actionCopySongTextWithChords, "copy-chords"),
-             (ui.actionCopySongAsImage, "copy-image")),
+             (ui.actionCopySongAsImage, "copy-image"),
+             (ui.actionPrint, "print")),
             ((self.transpose_down, "transpose-down"),
              (self.transpose_up, "transpose-up"),
              (self.transpose_reset, "transpose-reset")),
@@ -328,14 +344,13 @@ class SongToolbar(QtWidgets.QWidget):
              (ui.actionZoomActual, "zoom-reset"),
              (ui.actionZoomIn, "zoom-in"),
              (self.zoom_percent, "label")),
-            ((ui.actionPrint, "print"),),
             ((ui.actionLyricsFont, "font-lyrics"),
              (ui.actionChordsFont, "font-chords")),
             ((ui.actionLyricEditorMode, "edit-text"),
              (ui.actionChordEditorMode, "edit-chords")),
         )
         for num, group in enumerate(groups):
-            # The edit group (the last) starts the tail kept on the last row.
+            # The edit group (the last) starts the next row when not all fit.
             self._addGroup(group, separator=bool(num),
                            tail_start=num == len(groups) - 1)
         # Shown only while editing, without a separator, as on the web.
@@ -349,6 +364,7 @@ class SongToolbar(QtWidgets.QWidget):
             self.widgetForAction(action).setProperty("textButton", True)
         for action in (self.discard, self.save):
             self.widgetForAction(action).setProperty("finishButton", True)
+        self._built = True
         self._restyle()
         self.applyMode(None, False)
 
@@ -404,7 +420,7 @@ class SongToolbar(QtWidgets.QWidget):
         box = button.parentWidget()
         shown = any(not child.isHidden()
                     for child in box.findChildren(QtWidgets.QToolButton))
-        box.setVisible(shown)
+        box.setVisible(shown and box not in self._mode_hidden)
 
     def widgetForAction(self, action):
         return self._buttons.get(action)
@@ -465,12 +481,82 @@ QFrame#song_toolbar_separator { background: %(border)s; border: 0; }
                 button.setProperty("active", mode == name)
                 button.style().unpolish(button)
                 button.style().polish(button)
-        for action in self.chord_group:
-            action.setVisible(mode == "chords")
-        for action in (self.undo, self.redo):
-            action.setVisible(mode in ("text", "chords"))
-        self.discard.setVisible(finish_shown)
-        self.save.setVisible(finish_shown)
+        # As on the web and iOS, the Copy and Print group and the Transpose
+        # group are hidden until Save or Discard. Only the toolbar boxes are
+        # hidden: the menu items and their shortcuts (Ctrl+P, the copy
+        # shortcuts) still work as before (Transpose has no menu items). The
+        # flow layout skips a hidden box and drops the separator that would
+        # then start the row or follow another one.
+        # Desktop-only: the Fonts group is hidden the same way in Edit Chords.
+        for action, shown in self._modeBoxes(mode):
+            box = self.widgetForAction(action).parentWidget()
+            if shown:
+                self._mode_hidden.discard(box)
+            else:
+                self._mode_hidden.add(box)
+            box.setVisible(shown)
+        for action, shown in self._modeActions(mode, finish_shown):
+            action.setVisible(shown)
+
+    def _modeBoxes(self, mode):
+        """(an action of the group, whether its group shows) in this mode."""
+        ui = self.session.ui
+        return ((ui.actionCopySongText, mode is None),
+                (self.transpose_down, mode is None),
+                (ui.actionLyricsFont, mode != "chords"))
+
+    def _modeActions(self, mode, finish_shown):
+        """(action, whether it shows) for the buttons shown by mode."""
+        return ([(action, mode == "chords") for action in self.chord_group]
+                + [(action, mode in ("text", "chords"))
+                   for action in (self.undo, self.redo)]
+                + [(self.discard, finish_shown), (self.save, finish_shown)])
+
+    def rowWidth(self, mode, finish_shown=True):
+        """The width of the buttons of a mode on one row, shown or not.
+
+        From each button's size hint, so it is the same whichever mode is
+        open. MIRRORED UI: viewer.js rowWidth, SongToolbar.swift rowWidth.
+        """
+        hidden_boxes = {self.widgetForAction(action).parentWidget()
+                        for action, shown in self._modeBoxes(mode)
+                        if not shown}
+        by_mode = dict(self._modeActions(mode, finish_shown))
+        actions = {widget: action for action, widget in self._buttons.items()}
+        spacing = self._flow.spacing()
+        x, have_group, separator = 0, False, None
+        for index in range(self._flow.count()):
+            item = self._flow.itemAt(index)
+            box = item.widget()
+            if box.property("separator"):
+                if have_group:
+                    separator = item
+                continue
+            if box in hidden_boxes:
+                continue
+            row = box.layout()
+            widths = []
+            for num in range(row.count()):
+                child = row.itemAt(num).widget()
+                action = actions.get(child)
+                if by_mode.get(action, action is None or action.isVisible()):
+                    widths.append(child.sizeHint().width())
+            if not widths:
+                continue
+            if separator is not None:
+                x += separator.sizeHint().width() + spacing
+                separator = None
+            x += (sum(widths) + row.spacing() * (len(widths) - 1)
+                  + spacing)
+            have_group = True
+        return max(0, x - spacing)
+
+    def widestRowWidth(self):
+        """The one-row width of the widest mode (with Discard and Save, which
+        also show while viewing after a change)."""
+        if not self._built:
+            return 0
+        return max(self.rowWidth(mode) for mode in (None, "text", "chords"))
 
     def isActive(self, action):
         return bool(self.widgetForAction(action).property("active"))
