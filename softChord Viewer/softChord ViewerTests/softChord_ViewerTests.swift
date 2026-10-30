@@ -491,10 +491,17 @@ struct softChord_ViewerTests {
         ]
         let text = "Test line one\nTest line two"
         let withChords = SongText.render(text: text, chords: chords, includeChords: true)
-        #expect(withChords == "C    Am\r\nTest line one\r\n" + String(repeating: " ", count: 11) + "G\r\nTest line two")
+        #expect(withChords == "C    Am\r\nTest line one\r\n" + String(repeating: " ", count: 12) + "G\r\nTest line two")
 
         let plain = SongText.render(text: text, chords: chords, includeChords: false)
         #expect(plain == "Test line one\r\nTest line two")
+    }
+
+    @Test func songTextNamesStartAboveTheirLetterAndKeepASpaceBetween() {
+        // Am on the S, D on the h (moved past a space after Am), Em on the last e.
+        let chords = [chord(at: 10, note: 4, type: 1), chord(at: 1, note: 2), chord(at: 0, note: 9, type: 1)]
+        let rendered = SongText.render(text: "Shine on me", chords: chords, includeChords: true)
+        #expect(rendered == "Am D" + String(repeating: " ", count: 6) + "Em\r\nShine on me")
     }
 
     @Test func sheetAnchorsChordsOnTheirLetters() {
@@ -781,9 +788,10 @@ struct softChord_ViewerTests {
             let rendered = SongText.render(text: text, chords: chords, includeChords: true)
             #expect(rendered == "C\r\nab\r\nG\r\ncd")
         }
-        // A name longer than its line is kept inside it.
-        let long = SongText.render(text: "Oh", chords: [chord(at: 0, note: 0, type: 11)], includeChords: true)
-        #expect(long.contains("\r\nOh"))
+        // A name longer than its line runs past its end.
+        let long = SongChord(
+            characterNum: 1, noteId: 0, chordTypeId: 11, bassNoteId: 7, marker: "", inParentheses: false)
+        #expect(SongText.render(text: "Oh", chords: [long], includeChords: true) == " C°/G\r\nOh")
     }
 
     @Test func blankLinesStayInTheSheet() {

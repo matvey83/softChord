@@ -24,36 +24,24 @@
     return chars.slice(0, end).join("");
   }
 
-  // Center the chord on the anchor letter. An even-length name sits one
-  // column to the right, and a name that would hang off the line is moved in.
-  function place(chordText, cells, anchor) {
+  // Write one chord name into a monospace chord row, starting above its letter
+  // (where a text import reads it from). free is the first column it may use
+  // (one space after the name before it); a name past the end of the line adds
+  // columns. Returns the first column the next name may use.
+  // Mirror: softchord_text.py place_chord_on_line.
+  function place(chordText, cells, anchor, free) {
     var chars = Array.from(chordText);
-    var chordLen = chars.length;
-    if (chordLen === 0 || cells.length === 0) {
-      return;
+    if (chars.length === 0) {
+      return free;
     }
-    var left = anchor - Math.floor(chordLen / 2);
-    if (chordLen % 2 === 0) {
-      left += 1;
-    }
-    var right = left + chordLen;
-    while (left < 0) {
-      left += 1;
-      right += 1;
-    }
-    while (right >= cells.length) {
-      right -= 1;
-      left -= 1;
+    var left = Math.max(anchor, free, 0);
+    while (cells.length < left + chars.length) {
+      cells.push(" ");
     }
     for (var offset = 0; offset < chars.length; offset++) {
-      var index = offset + left;
-      if (index < 0) {
-        index += cells.length;
-      }
-      if (index >= 0 && index < cells.length) {
-        cells[index] = chars[offset];
-      }
+      cells[left + offset] = chars[offset];
     }
+    return left + chars.length + 1;
   }
 
   // The letters a reader sees: a base letter with its accents, an emoji with its
@@ -206,10 +194,17 @@
         for (var cell = 0; cell < line.length; cell++) {
           cells.push(" ");
         }
+        // Left to right; of two chords on one letter the later is written.
+        var names = new Map();
         for (var i = 0; i < onLine.length; i++) {
           var chord = chords[onLine[i]];
           var prefer = preferFor(chord.characterNum, spelling);
-          place(SoftchordChords.chordText(chord, prefer), cells, placed.found[onLine[i]][1]);
+          names.set(placed.found[onLine[i]][1], SoftchordChords.chordText(chord, prefer));
+        }
+        var anchors = Array.from(names.keys()).sort(function (a, b) { return a - b; });
+        var free = 0;
+        for (var k = 0; k < anchors.length; k++) {
+          free = place(names.get(anchors[k]), cells, anchors[k], free);
         }
         song += rstrip(cells) + "\n";
       }

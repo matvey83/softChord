@@ -473,24 +473,29 @@ class TestSongChord(unittest.TestCase):
 class TestPlaceChordOnLine(unittest.TestCase):
     """Monospace chord row used by Copy Song Text."""
 
-    def test_odd_name_is_centered_on_the_anchor(self):
-        cells = [" "] * 8
-        place_chord_on_line(cells, 4, "C")
-        self.assertEqual("".join(cells), "    C   ")
+    def test_name_starts_on_the_anchor(self):
+        for name, row in (("C", "    C   "), ("Am", "    Am  "),
+                          ("E/G\u266f", "    E/G\u266f")):
+            cells = [" "] * 8
+            place_chord_on_line(cells, 4, name)
+            self.assertEqual("".join(cells), row, name)
 
-    def test_two_letter_name_starts_on_the_anchor(self):
-        cells = [" "] * 8
-        place_chord_on_line(cells, 4, "Am")
-        self.assertEqual("".join(cells), "    Am  ")
-
-    def test_name_is_shifted_to_stay_on_the_line(self):
+    def test_name_past_the_line_end_adds_columns(self):
         cells = [" "] * 4
-        place_chord_on_line(cells, 0, "(C)")
-        self.assertEqual("".join(cells), "(C) ")
+        self.assertEqual(place_chord_on_line(cells, 3, "Am7"), 7)
+        self.assertEqual("".join(cells), "   Am7")
 
         cells = [" "] * 8
         place_chord_on_line(cells, 7, "G7")
-        self.assertEqual("".join(cells), "     G7 ")
+        self.assertEqual("".join(cells), "       G7")
+
+    def test_name_keeps_a_space_after_the_name_before_it(self):
+        cells = [" "] * 8
+        free = place_chord_on_line(cells, 0, "Am7")
+        self.assertEqual(free, 4)
+        free = place_chord_on_line(cells, 1, "G", free)
+        self.assertEqual("".join(cells), "Am7 G   ")
+        self.assertEqual(free, 6)
 
 
 class TestSongChar(unittest.TestCase):
@@ -650,13 +655,13 @@ class TestSong(unittest.TestCase):
         # "Test line one": C on column 0, Am (even length) starts on column 5.
         self.song._addChord(SongChord(self.song, 0, 0, 0, -1, "", 0))
         self.song._addChord(SongChord(self.song, 5, 9, 1, -1, "", 0))
-        # G on the last letter is shifted left so the name stays on the line.
+        # G on the last letter stays above it.
         self.song._addChord(SongChord(self.song, 14 + 12, 7, 0, -1, "", 0))
 
         lines = self.song.getAsText().split("\r\n")
         self.assertEqual(lines[0], "C    Am")
         self.assertEqual(lines[1], "Test line one")
-        self.assertEqual(lines[2], " " * 11 + "G")
+        self.assertEqual(lines[2], " " * 12 + "G")
         self.assertEqual(lines[3], "Test line two")
 
     def test_get_as_chordpro_with_bass_and_marker(self):
@@ -768,10 +773,12 @@ class TestSong(unittest.TestCase):
 
     def test_a_chord_name_longer_than_its_line_does_not_crash_the_copy(self):
         song = create_test_song(self.app, song_id=79, text="Oh\nNo")
-        song._addChord(SongChord(song, 0, 0, 11, -1, "", 0))
-        song.getAsText(include_chords=True)
+        song._addChord(SongChord(song, 1, 0, 11, 7, "", 0))
+        self.assertEqual(song.getAsText(include_chords=True),
+                         " C\u00b0/G\r\nOh\r\nNo")
         cells = list(" ")
         place_chord_on_line(cells, 0, "Cmaj7/G")
+        self.assertEqual("".join(cells), "Cmaj7/G")
         place_chord_on_line([], 0, "C")
         with self.assertRaises(RuntimeError):
             self.song.lineCharToSongChar(9, 0)
@@ -5171,11 +5178,11 @@ KOSARI_TEXT = """\
 KOSARI_MONOSPACED = """\
             Cm                     Fm
 Косари на лугу размахалися острыми косами,
-                Cm             G              Cm
+                Cm             G                Cm
 Что им Божий цветок, им бы закончить работу свою.
                   Fm                        Cm
 Я на милость Твою уповаю, Спаситель мой, Господи,
-               G                                 Cm
+               G                                  Cm
 На милость, на милость, лишь только на милость Твою.
 """
 
@@ -5202,14 +5209,14 @@ B                        E
 ZHATVA_MONOSPACED = """\
    E
 1. “Жатва есть кончина века” –
-  B                E
+  B                 E
   Так Господь сказал.
   И всегда у человека 
-  B                E
+  B                 E
   В жизни есть финал.
          A            B
 Пр: Небо для меня открыто,
-  G♯m       C♯m
+   G♯m         C♯m
 Я  навек спасен.
 A         E
 Иисус моя защита,

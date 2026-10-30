@@ -61,35 +61,24 @@ nonisolated struct SongSheetLine: Equatable {
 /// Lyrics, or lyrics with a chord line above each line that has chords.
 /// Names and columns match the editor's Copy Song Text commands.
 enum SongText {
+    /// Write one chord name into a monospace chord row, starting above its
+    /// letter (where a text import reads it from). `free` is the first column
+    /// it may use (one space after the name before it); a name past the end
+    /// of the line adds columns. Returns the first column the next name may use.
     /// Mirror: softchord_text.py place_chord_on_line.
-    private nonisolated static func place(_ chordText: String, on cells: inout [Unicode.Scalar], anchor: Int) {
+    private nonisolated static func place(_ chordText: String, on cells: inout [Unicode.Scalar], anchor: Int, free: Int) -> Int {
         let chars = Array(chordText.unicodeScalars)
-        let chordLen = chars.count
-        guard chordLen > 0, !cells.isEmpty else {
-            return
+        guard !chars.isEmpty else {
+            return free
         }
-        var left = anchor - (chordLen / 2)
-        if chordLen % 2 == 0 {
-            left += 1
-        }
-        var right = left + chordLen
-        while left < 0 {
-            left += 1
-            right += 1
-        }
-        while right >= cells.count {
-            right -= 1
-            left -= 1
+        let left = max(anchor, free, 0)
+        if cells.count < left + chars.count {
+            cells.append(contentsOf: Array(repeating: Unicode.Scalar(" "), count: left + chars.count - cells.count))
         }
         for (offset, char) in chars.enumerated() {
-            var index = offset + left
-            if index < 0 {
-                index += cells.count
-            }
-            if cells.indices.contains(index) {
-                cells[index] = char
-            }
+            cells[left + offset] = char
         }
+        return left + chars.count + 1
     }
 
     /// Mirror: softchord_text.py format_song_text, via Song.getAsText.
@@ -101,13 +90,19 @@ enum SongText {
         for (lineNum, line) in lines.enumerated() {
             if includeChords && lineHasChords(lineNum, chords: chords, lines: lines) {
                 var cells = Array(repeating: Unicode.Scalar(" "), count: line.count)
+                // Left to right; of two chords on one letter the later is written.
+                var names: [Int: String] = [:]
                 for chord in chords {
                     guard let (chordLine, anchor) = lineAndColumn(chord.characterNum, lines: lines),
                           chordLine == lineNum else {
                         continue
                     }
                     let prefer = prefer(for: chord.characterNum, regions: spelling)
-                    place(SoftchordChords.chordText(chord, prefer: prefer), on: &cells, anchor: anchor)
+                    names[anchor] = SoftchordChords.chordText(chord, prefer: prefer)
+                }
+                var free = 0
+                for anchor in names.keys.sorted() {
+                    free = place(names[anchor]!, on: &cells, anchor: anchor, free: free)
                 }
                 song += rstrip(cells) + "\n"
             }
