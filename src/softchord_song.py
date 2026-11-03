@@ -498,8 +498,23 @@ class SongsProxyModel(QtCore.QSortFilterProxyModel):
 
         return False
 
+    def titleStartsWithFilter(self, source_row):
+        """True if the filter is set and the song title starts with it."""
+        filter_string = self.session.filter_string
+        if not filter_string:
+            return False
+        title = self.sourceModel().getRow(source_row).title or ""
+        return title.casefold().startswith(filter_string.casefold())
+
     def lessThan(self, left, right):
         model = self.sourceModel()
+        # While filtering, titles that start with the filter come first, in
+        # either sort order; each group keeps the chosen column's order.
+        left_first = self.titleStartsWithFilter(left.row())
+        right_first = self.titleStartsWithFilter(right.row())
+        if left_first != right_first:
+            ascending = self.sortOrder() == Qt.SortOrder.AscendingOrder
+            return left_first == ascending
         value = getattr(model, "sortValue", None) or model.data
         leftData = value(left)
         rightData = value(right)

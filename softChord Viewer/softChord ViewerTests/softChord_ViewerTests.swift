@@ -908,6 +908,10 @@ struct SongFilterTests {
         #expect(SongFilter.matching("zzz", in: songs).isEmpty)
     }
 
+    @Test func titlesStartingWithTheFilterComeFirst() {
+        #expect(SongFilter.matching("A", in: sampleSongs).map(\.id) == [1, 3, 2])
+    }
+
     private var sampleSongs: [SongTitle] {
         [
             SongTitle(id: 1, title: "Alpha"),

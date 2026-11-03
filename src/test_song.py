@@ -1067,6 +1067,13 @@ class TestSongsTableModels(unittest.TestCase):
         self.assertFalse(
             self.proxy_model.filterAcceptsRow(0, QtCore.QModelIndex()))
 
+    def test_proxy_model_titles_starting_with_filter_come_first(self):
+        self.app.filter_string = "a"
+        self.proxy_model.sort(0, QtCore.Qt.SortOrder.DescendingOrder)
+        titles = [self.proxy_model.index(row, 1).data()
+                  for row in range(self.proxy_model.rowCount())]
+        self.assertEqual(titles, ["Amazing Grace", "How Great Thou Art"])
+
     def test_proxy_model_filter_case_insensitive(self):
         self.app.filter_string = "VISION"
         self.assertTrue(

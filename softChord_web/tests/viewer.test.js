@@ -210,6 +210,11 @@ test("filter matches inside the title ignoring case", function () {
   assert.deepEqual(SongFilter.matching("zzz", songs), []);
 });
 
+test("filter lists titles that start with the query first", function () {
+  var songs = [{ id: 1, title: "Alpha" }, { id: 2, title: "beta Song" }, { id: 3, title: "Alpine" }];
+  assert.deepEqual(SongFilter.matching("A", songs).map(function (song) { return song.id; }), [1, 3, 2]);
+});
+
 test("a songbook file is read in id order", async function () {
   var SQL = await initSqlJs({
     locateFile: function (file) {
