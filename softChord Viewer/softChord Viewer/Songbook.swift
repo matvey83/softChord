@@ -28,7 +28,7 @@ enum SongbookError: Error, Equatable, CustomStringConvertible {
     var description: String {
         switch self {
         case .missingFile:
-            return "zvuki_neba.songbook was not copied into the app."
+            return "\(Songbook.demoResourceName).songbook was not copied into the app."
         case .openFailed(let message), .queryFailed(let message):
             return message
         case .songNotFound:
@@ -41,18 +41,52 @@ enum SongbookError: Error, Equatable, CustomStringConvertible {
     }
 }
 
+/// The songbook the app is reading: a display name and where its file is.
+/// Defaults to the bundled demo. Open from Files can replace this later.
+nonisolated struct CurrentSongbook: Equatable {
+    var displayName: String
+    var url: URL
+}
+
 enum Songbook {
     /// The songbook format this app reads. See docs/chord_format.md.
     nonisolated static let formatVersion = 2
+
+    /// Bundled demo resource name (without the .songbook extension).
+    nonisolated static let demoResourceName = "zvuki_neba"
+
+    /// Songbook opened for this run instead of the bundled demo, if any.
+    /// nonisolated(unsafe): read from nonisolated Songbook helpers on any queue.
+    nonisolated(unsafe) private static var opened: CurrentSongbook?
+
+    /// The songbook being read. The bundled demo until something else is opened.
+    nonisolated static var current: CurrentSongbook {
+        get throws {
+            if let opened {
+                return opened
+            }
+            guard let url = Bundle.main.url(forResource: demoResourceName, withExtension: "songbook") else {
+                throw SongbookError.missingFile
+            }
+            return CurrentSongbook(displayName: demoResourceName, url: url)
+        }
+    }
+
+    /// Use a different songbook for this run (for example Open from Files).
+    nonisolated static func setCurrent(_ songbook: CurrentSongbook) {
+        opened = songbook
+    }
+
+    /// Go back to the bundled demo songbook.
+    nonisolated static func useBundledDemo() {
+        opened = nil
+    }
 
     /// Titles in the same order as the editor's song table.
     /// TODO: Include the song number, blank when it is -1. The editor's list
     /// shows that number, and its search matches it.
     nonisolated static func titles() throws -> [SongTitle] {
-        guard let url = Bundle.main.url(forResource: "zvuki_neba", withExtension: "songbook") else {
-            throw SongbookError.missingFile
-        }
-        return try titles(in: url)
+        try titles(in: current.url)
     }
 
     nonisolated static func titles(in url: URL) throws -> [SongTitle] {
@@ -76,10 +110,7 @@ enum Songbook {
 
     /// Song text in the editor's clipboard format, with Windows line endings.
     nonisolated static func songText(id: Int, includeChords: Bool) throws -> String {
-        guard let url = Bundle.main.url(forResource: "zvuki_neba", withExtension: "songbook") else {
-            throw SongbookError.missingFile
-        }
-        return try songText(id: id, includeChords: includeChords, in: url)
+        try songText(id: id, includeChords: includeChords, in: current.url)
     }
 
     nonisolated static func songText(id: Int, includeChords: Bool, in url: URL) throws -> String {
@@ -91,10 +122,7 @@ enum Songbook {
 
     /// Lyric lines with chord names centered on the same letters as the editor.
     nonisolated static func sheet(id: Int) throws -> [SongSheetLine] {
-        guard let url = Bundle.main.url(forResource: "zvuki_neba", withExtension: "songbook") else {
-            throw SongbookError.missingFile
-        }
-        return try sheet(id: id, in: url)
+        try sheet(id: id, in: current.url)
     }
 
     nonisolated static func sheet(id: Int, in url: URL) throws -> [SongSheetLine] {
@@ -106,10 +134,7 @@ enum Songbook {
 
     /// The stored lyrics and chords. Callers that transpose keep the result in memory.
     nonisolated static func source(id: Int) throws -> SongSource {
-        guard let url = Bundle.main.url(forResource: "zvuki_neba", withExtension: "songbook") else {
-            throw SongbookError.missingFile
-        }
-        return try source(id: id, in: url)
+        try source(id: id, in: current.url)
     }
 
     nonisolated static func source(id: Int, in url: URL) throws -> SongSource {
