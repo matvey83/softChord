@@ -57,8 +57,28 @@
   var noticeTitle = document.getElementById("notice-title");
   var noticeMessage = document.getElementById("notice-message");
 
-  // The .songbook next to this folder. A future server replaces Songbook.load.
-  var songbookUrl = "../zvuki_neba.songbook";
+  // The songbook this page is reading. Defaults to the bundled demo next to
+  // this folder. Open Songbook File will replace this for the session. A
+  // future server replaces Songbook.load.
+  var currentSongbook = {
+    displayName: "zvuki_neba",
+    url: "../zvuki_neba.songbook",
+  };
+  var songbookUrl = currentSongbook.url;
+
+  // One place for the songbook name chrome and the persist / "Not saved" note.
+  // Phase 1's header will drive the visible songbook name through this too.
+  // pageTitle: document.title (song title while a song is open, else SoftChord).
+  // showPersistNote: whether the persist note is shown.
+  function updateSongbookChrome(opts) {
+    opts = opts || {};
+    if (Object.prototype.hasOwnProperty.call(opts, "pageTitle")) {
+      document.title = opts.pageTitle || "SoftChord";
+    }
+    if (Object.prototype.hasOwnProperty.call(opts, "showPersistNote")) {
+      persistNote.hidden = !opts.showPersistNote;
+    }
+  }
 
   var allTitles = [];
   var loadError = null;
@@ -576,11 +596,10 @@
       songError.hidden = false;
       songError.textContent = String(error.message || error);
       sheet.replaceChildren();
-      persistNote.hidden = true;
       toolbarActions.hidden = true;
       leaveEditing();
       transposeReset.disabled = true;
-      document.title = "SoftChord";
+      updateSongbookChrome({ pageTitle: "SoftChord", showPersistNote: false });
       return;
     }
     songError.hidden = true;
@@ -589,14 +608,16 @@
       layoutToolbar();
     }
     songTitle.textContent = source.title;
-    document.title = source.title;
     var chords = SongTranspose.shifted(source.chords, steps);
     paintSheet(SongText.sheet(source.text, chords));
     // The note and Reset follow the same rule: a whole octave (12) shows the
     // same chords, so it counts as not transposed. So does a song with no chord
     // that can move (text that is not a chord stays as it is).
     var transposed = SongTranspose.changesChords(source.chords, steps);
-    persistNote.hidden = !(transposed || savedEdit);
+    updateSongbookChrome({
+      pageTitle: source.title,
+      showPersistNote: !!(transposed || savedEdit),
+    });
     // While viewing, Save and Discard show only for a transpose not yet kept.
     editActions.hidden = !(draft || stepsChanged());
     // Dimmed until the song has been transposed. Up then down by the same
@@ -888,7 +909,7 @@
     // Nothing is written anywhere, so say so before the first key is typed, not
     // only after Save. Save, Discard and paintSong set the note again from what
     // is really kept.
-    persistNote.hidden = false;
+    updateSongbookChrome({ showPersistNote: true });
     showDraft(mode, anchor);
   }
 
@@ -1184,7 +1205,7 @@
       forgetEdits();
       listView.hidden = false;
       songView.hidden = true;
-      document.title = "SoftChord";
+      updateSongbookChrome({ pageTitle: "SoftChord" });
       paintList();
       return;
     }
@@ -1350,7 +1371,7 @@
   applyZoom();
   window.addEventListener("hashchange", showFromHash);
   showListMessage("Opening songbook…", false);
-  Songbook.load(songbookUrl).then(function () {
+  Songbook.load(currentSongbook.url).then(function () {
     allTitles = Songbook.titles();
     loadError = null;
     showListMessage("", false);

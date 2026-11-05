@@ -771,7 +771,9 @@ test("Reset transpose is wired to the transpose state in viewer.js", function ()
   assert.ok(/var transposed = SongTranspose\.changesChords\(source\.chords, steps\);/.test(code));
   assert.ok(/transposeReset\.disabled = !transposed/.test(code));
   // The note also stays after Save (savedEdit), see the Edit text tests.
-  assert.ok(/persistNote\.hidden = !\(transposed \|\| savedEdit\)/.test(code));
+  // Routed through updateSongbookChrome so Phase 1's header can share it.
+  assert.ok(/function updateSongbookChrome\(/.test(code));
+  assert.ok(/showPersistNote:\s*!!\(transposed \|\| savedEdit\)/.test(code));
   assert.ok(/transposeReset\.addEventListener\("click"[\s\S]*?steps = 0;[\s\S]*?paintSong\(\)/.test(code));
   // Opening a song starts from 0 again, so "original" means as opened.
   assert.ok(/openId = id;\s*steps = 0;/.test(code));
