@@ -11,6 +11,7 @@ from PyQt6.QtSvg import QSvgGenerator
 
 PageSizeId = QPageSize.PageSizeId
 import sys, os
+import json
 import copy
 import math
 import platform
@@ -62,7 +63,11 @@ from softchord_store import (
     database_file_was_replaced,
     readonly_database_error,
 )
-from softchord_layout import QtDocumentLayout, SongLayout
+from softchord_layout import (ChordGapDocumentLayout, QtDocumentLayout,
+                               SongLayout)
+
+# Clipboard type for lyrics copied with their chords (SoftChord only).
+SOFTCHORD_LYRICS_MIME = "application/x-softchord-lyrics+json"
 from softchord_text import (chord_room, tidy_chord_room, tidy_moved,
                              line_letter_range, chord_drag_direction, lyric_renumber_map,
                             next_free_character)
@@ -292,6 +297,53 @@ class CustomTextEdit(QtWidgets.QTextEdit):
         painter.setBrush(QtGui.QColor(color.red(), color.green(), color.blue(),
                                       40))
         painter.drawRect(band)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        layout = self.document().documentLayout()
+        if isinstance(layout, ChordGapDocumentLayout):
+            layout.set_view_width(self.viewport().width())
+
+    def createMimeDataFromSelection(self):
+        """Plain text for other apps, plus the chords for SoftChord."""
+        mime = super().createMimeDataFromSelection()
+        song = self.app.current_song
+        cursor = self.textCursor()
+        if song is None or not cursor.hasSelection():
+            return mime
+        start = cursor.selectionStart()
+        end = cursor.selectionEnd()
+        chords = [{"offset": c.character_num - start,
+                   "chord": c.getChordText()}
+                  for c in song.iterateAllChords()
+                  if start <= c.character_num < end]
+        payload = {"text": mime.text(), "chords": chords}
+        mime.setData(SOFTCHORD_LYRICS_MIME,
+                     QtCore.QByteArray(json.dumps(payload).encode("utf-8")))
+        return mime
+
+    def canInsertFromMimeData(self, source):
+        return (source.hasFormat(SOFTCHORD_LYRICS_MIME)
+                or super().canInsertFromMimeData(source))
+
+    def insertFromMimeData(self, source):
+        """Paste lyrics. Chords copied from SoftChord come along."""
+        payload = None
+        if source.hasFormat(SOFTCHORD_LYRICS_MIME):
+            try:
+                payload = json.loads(
+                    bytes(source.data(SOFTCHORD_LYRICS_MIME)).decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                payload = None
+        if payload is None or not self.app.textEditing():
+            super().insertFromMimeData(source)
+            return
+        text = payload.get("text", "")
+        cursor = self.textCursor()
+        start = cursor.selectionStart()
+        cursor.insertText(text)
+        self.setTextCursor(cursor)
+        self.app.pasteLyricChords(start, len(text), payload.get("chords", []))
 
     def paintEvent(self, event):
         """
@@ -3506,17 +3558,53 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         Copy the selected chord (if any) into the clipboard.
         """
+        if self.textEditing():
+            self.editor.copy()
+            return
         chord = self.getSelectedChord()
         if chord:
             chord_text = chord.getChordText()
             self.clipboard.setText(chord_text)
+
+    def pasteLyricChords(self, start, length, chords):
+        """Put pasted chords back on the pasted lyrics.
+
+        The text paste is already one undo step. The chords go into that
+        step's snapshot, so undo and redo take them away and back.
+        """
+        song = self.current_song
+        if song is None:
+            return
+        added = False
+        for item in chords:
+            offset = item.get("offset")
+            if not isinstance(offset, int) or not 0 <= offset < length:
+                continue
+            num = start + offset
+            if song.getChordAtPosition(num) is not None:
+                continue
+            try:
+                marker, note_id, type_id, bass_id, in_parens = \
+                    self.convertChordFromString(item.get("chord", ""))
+            except (ValueError, TypeError):
+                continue
+            song._chords.append(SongChord(song, num, note_id, type_id,
+                                          bass_id, marker, in_parens))
+            added = True
+        if not added:
+            return
+        song.updateSharpsOrFlats()
+        self._lyric_chord_snapshots[self._lyric_undo_steps] = \
+            self._capture_lyric_chords()
+        QtDocumentLayout.apply_margins(song, self)
+        self.editor.viewport().update()
 
     def pasteSelected(self):
         """
         Paste the chord of the clipboard (if any) onto the selected character (if any)
         """
 
-        if self.editor.lyric_editor_mode:
+        if self.textEditing():
             self.editor.paste()
             return
         if not self.chordEditing():

@@ -66,7 +66,17 @@ class ChordGapDocumentLayout(QtGui.QAbstractTextDocumentLayout):
         self._by_position = {}
         self._size = QtCore.QSizeF()
         self._in_relayout = False
+        # Width of the editor's viewport. Line boxes are at least this wide,
+        # so an empty line has a box to draw its caret in, and redraws reach
+        # the right margin where a selection is painted.
+        self._view_width = 0.0
         super().__init__(document)
+
+    def set_view_width(self, width):
+        width = max(0.0, float(width))
+        if width != self._view_width:
+            self._view_width = width
+            self._relayout()
 
     def set_chord_gap(self, top, line_gap, left, chord_block_numbers):
         """Space above the first line, and above later lines that have chords."""
@@ -84,8 +94,10 @@ class ChordGapDocumentLayout(QtGui.QAbstractTextDocumentLayout):
             self._rebuild()
         finally:
             self._in_relayout = False
-        self.update.emit(QtCore.QRectF(0.0, 0.0, self._size.width(),
-                                       self._size.height()))
+        # Repaint out to the editor's right edge, where a selection can be.
+        self.update.emit(QtCore.QRectF(
+            0.0, 0.0, max(self._size.width(), self._view_width),
+            self._size.height()))
         self.documentSizeChanged.emit(self._size)
 
     def _rebuild(self):
@@ -125,7 +137,8 @@ class ChordGapDocumentLayout(QtGui.QAbstractTextDocumentLayout):
             if line_y == 0.0:
                 line_y = QtGui.QFontMetricsF(font).height()
 
-            rect = QtCore.QRectF(margin, y, natural, line_y)
+            width = max(natural, self._view_width - 2.0 * margin, 1.0)
+            rect = QtCore.QRectF(margin, y, width, line_y)
             text_layout.setPosition(rect.topLeft())
             by_position[block.position()] = rect
             max_right = max(max_right, margin + natural)
@@ -140,17 +153,20 @@ class ChordGapDocumentLayout(QtGui.QAbstractTextDocumentLayout):
 
     def draw(self, painter, context):
         doc = self.document()
+        cursor_pos = context.cursorPosition
         block = doc.begin()
         while block.isValid():
             rect = self.blockBoundingRect(block)
             clip = context.clip
-            if clip.isValid() and not rect.intersects(clip):
+            block_pos = block.position()
+            has_cursor = block_pos <= cursor_pos < block_pos + block.length()
+            if (clip.isValid() and not rect.intersects(clip)
+                    and not has_cursor):
                 block = block.next()
                 continue
 
             text_layout = block.layout()
             selections = []
-            block_pos = block.position()
             block_length = block.length()
             for selection in context.selections:
                 start = selection.cursor.selectionStart() - block_pos
@@ -165,8 +181,7 @@ class ChordGapDocumentLayout(QtGui.QAbstractTextDocumentLayout):
 
             # draw() adds the position already stored on the layout.
             text_layout.draw(painter, QtCore.QPointF(0.0, 0.0), selections, clip)
-            cursor_pos = context.cursorPosition
-            if block_pos <= cursor_pos < block_pos + block_length:
+            if has_cursor:
                 text_layout.drawCursor(painter, QtCore.QPointF(0.0, 0.0),
                                        cursor_pos - block_pos)
             block = block.next()
@@ -367,6 +382,10 @@ class QtDocumentLayout:
             song.doc.setDocumentLayout(layout)
         # The document owns the C++ layout. Keep the Python object too.
         song.doc._softchord_layout = layout
+        editor = getattr(session, "editor", None)
+        if (hasattr(editor, "document") and hasattr(editor, "viewport")
+                and editor.document() is song.doc):
+            layout._view_width = float(editor.viewport().width())
         layout.set_chord_gap(chord_gap + session.doc_editor_offset, chord_gap,
                              session.doc_editor_offset, chord_blocks)
 

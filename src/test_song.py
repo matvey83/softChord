@@ -42,6 +42,7 @@ from softchord_io import (
     text_is_proportionally_spaced,
 )
 from softchord_session import (
+    SOFTCHORD_LYRICS_MIME,
     fit_scale_ratio,
     scale_message,
     song_document_size,
@@ -3407,6 +3408,85 @@ class TestMoreAppOperations(unittest.TestCase):
         self.assertEqual(self.app.editor.toPlainText(), "Hello")
         self.assertEqual(song.getChordAtPosition(0).note_id, 0)
         self.assertIsNone(song.getChordAtPosition(1))
+
+    def _start_text_edit_with(self, text, chords):
+        song = self._song_ready_for_lyric_edit(text, chords)
+        self.assertTrue(self.app.textEditing())
+        return song
+
+    def test_copy_in_edit_text_carries_chords_and_paste_restores_them(self):
+        song = self._start_text_edit_with("Hello\nWorld", [(1, 0), (7, 5)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(3, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.app.editor.setTextCursor(cursor)
+        mime = self.app.editor.createMimeDataFromSelection()
+        self.assertEqual(mime.text(), "Hel")
+        self.assertTrue(mime.hasFormat(SOFTCHORD_LYRICS_MIME))
+
+        cursor.setPosition(len("Hello\nWorld"))
+        self.app.editor.setTextCursor(cursor)
+        self.app.editor.insertFromMimeData(mime)
+        self.assertEqual(self.app.editor.toPlainText(), "Hello\nWorldHel")
+        pasted = song.getChordAtPosition(12)
+        self.assertIsNotNone(pasted)
+        self.assertEqual(pasted.note_id, 0)
+        self.assertIsNotNone(song.getChordAtPosition(7))
+
+        self.app.editor.undo()
+        self.assertEqual(self.app.editor.toPlainText(), "Hello\nWorld")
+        self.assertEqual(len(list(song.iterateAllChords())), 2)
+        self.app.editor.redo()
+        self.assertIsNotNone(song.getChordAtPosition(12))
+
+    def test_plain_text_paste_adds_no_chords(self):
+        song = self._start_text_edit_with("Hello", [(0, 0)])
+        mime = QtCore.QMimeData()
+        mime.setText("abc")
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(5)
+        self.app.editor.setTextCursor(cursor)
+        self.app.editor.insertFromMimeData(mime)
+        self.assertEqual(self.app.editor.toPlainText(), "Helloabc")
+        self.assertEqual(len(list(song.iterateAllChords())), 1)
+
+    def test_cut_in_edit_text_removes_chords(self):
+        song = self._start_text_edit_with("Hello", [(1, 0)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(3, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.app.editor.setTextCursor(cursor)
+        self.app.cutSelected()
+        self.assertEqual(self.app.editor.toPlainText(), "lo")
+        self.assertEqual(len(list(song.iterateAllChords())), 0)
+
+    def test_copy_in_edit_text_uses_the_editor_not_the_chord(self):
+        self._start_text_edit_with("Hello", [(1, 0)])
+        self.app.selected_char_num = 1
+        calls = []
+        original = self.app.editor.copy
+        self.app.editor.copy = lambda: calls.append(1)
+        try:
+            self.app.copySelected()
+        finally:
+            self.app.editor.copy = original
+        self.assertEqual(calls, [1])
+
+    def test_line_boxes_span_the_editor_width_and_empty_last_line(self):
+        song = self._start_text_edit_with("Hello\n", [(0, 0)])
+        layout = song.doc.documentLayout()
+        layout.set_view_width(self.app.editor.viewport().width())
+        view = layout._view_width
+        last = song.doc.lastBlock()
+        self.assertEqual(last.text(), "")
+        rect = layout.blockBoundingRect(last)
+        margin = layout.document().documentMargin()
+        self.assertGreater(view, 100)
+        self.assertGreaterEqual(rect.width(), view - 2 * margin - 0.5)
+        # A repaint of the right margin reaches the empty line's caret.
+        self.assertTrue(rect.intersects(
+            QtCore.QRectF(view - 20, rect.top(), 10, 1)))
+        self.assertLess(layout.documentSize().width(), 50000)
 
     def test_line_spacing_is_not_a_lyric_undo_step(self):
         song = self._song_ready_for_lyric_edit("Hello\nWorld", [(6, 5)])
