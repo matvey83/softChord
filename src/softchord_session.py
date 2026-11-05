@@ -118,6 +118,7 @@ else:
 import softchord_main_window_ui, softchord_chord_dialog_ui, softchord_pdf_dialog_ui
 from softchord_toolbar import SongToolbar
 from softchord_note import BriefNote
+from softchord_menus import wire_menus
 
 paper_sizes_list = [
     (PageSizeId.Letter, "Letter (8.5 x 11 inches, 216 x 279 mm)"),
@@ -1378,62 +1379,8 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.ui.song_num_ef.setValidator(
             QtGui.QIntValidator(0, 1000000000, self.win))
 
-        # Menu actions:
-        self.ui.actionNewSongbook.triggered.connect(self.newSongbook)
-        self.ui.actionOpenSongbook.triggered.connect(self.openSongbook)
-        self.ui.actionCloseSongbook.triggered.connect(self.closeSongbook)
-        self.ui.actionSaveSongbook.triggered.connect(self.saveSongbook)
-        self.ui.actionAppendSongbook.triggered.connect(
-            self.appendSongbookSelected)
-
-        self.ui.actionPrint.triggered.connect(self.printSelectedSongs)
-        self.ui.actionQuit.triggered.connect(self.win.close)
-        self.ui.actionNewSong.triggered.connect(self.createNewSong)
-
-        self.ui.actionDeleteSongs.triggered.connect(self.deleteSelectedSongs)
-        self.ui.actionRemoveTrailingSpaces.triggered.connect(
-            self.removeTrailingSpaces)
-        self.ui.actionDeleteSong.triggered.connect(self.deleteSelectedSongs)
-        self.ui.actionRenumberSongs.triggered.connect(self.renumberAllSongs)
-
-        self.ui.actionExportSinglePdf.triggered.connect(self.exportToSinglePdf)
-        self.ui.actionExportSongToPdf.triggered.connect(self.exportToSinglePdf)
-        self.ui.actionExportMultiplePdfs.triggered.connect(
-            self.exportToMultiplePdfs)
-        self.ui.actionExportText.triggered.connect(self.exportToText)
-
-        self.ui.actionExportChordPro.triggered.connect(self.exportToChordPro)
-        self.ui.actionImportText.triggered.connect(self.browseForTextFile)
-        self.ui.actionImportChordPro.triggered.connect(self.importFromChordPro)
-        self.ui.actionLyricsFont.triggered.connect(self.changeLyricsFont)
-        self.ui.actionChordsFont.triggered.connect(self.changeChordFont)
-
-        self.ui.actionUndo.triggered.connect(self.undo)
-        self.ui.actionRedo.triggered.connect(self.redo)
-        self.ui.actionCut.triggered.connect(self.cutSelected)
-        self.ui.actionCopy.triggered.connect(self.copySelected)
-        self.ui.actionPaste.triggered.connect(self.pasteSelected)
-        self.ui.actionCopySongText.triggered.connect(self.copySongText)
-        self.ui.actionCopySongTextWithChords.triggered.connect(self.copySongTextWithChords)
-        self.ui.actionCopySongAsImage.triggered.connect(self.copySongAsImage)
-        self.ui.actionExportClipboard.triggered.connect(self.copySongText)
-
-        # FIXME we need only one way to import a song from the clipboard. Remove one of these actions:
-        self.ui.actionPasteAsNewSong.triggered.connect(self.pasteAsNewSong)
-        self.ui.actionImportClipboard.triggered.connect(self.pasteAsNewSong)
-
-        # Edit Chords... and Edit Text... start an edit. They are actions,
-        # not modes: the song is only viewed until one of them is chosen.
-        self.ui.actionChordEditorMode.triggered.connect(
-            self.chordEditorSelected)
-        self.ui.actionLyricEditorMode.triggered.connect(
-            self.lyricEditorSelected)
-        self.ui.actionSaveEdit.triggered.connect(self.saveEdit)
-        self.ui.actionDiscardEdit.triggered.connect(self.requestDiscardEdit)
-
-        self.ui.actionZoomIn.triggered.connect(self.zoomIn)
-        self.ui.actionZoomOut.triggered.connect(self.zoomOut)
-        self.ui.actionZoomActual.triggered.connect(self.zoomActual)
+        # Menu actions (see softchord_menus.py):
+        wire_menus(self)
 
         self.zoom_levels = [1.0]
         zoom1 = 1.0

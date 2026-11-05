@@ -22,6 +22,7 @@ from softchord_store import (
 )
 # TODO(remove-v1-compat): old songbook files are converted when opened.
 import softchord_v1_compat
+from softchord_menus import update_window_title
 
 # File extensions that can be used for the ChordPro file format:
 chordpro_extensions = [".pro", ".chopro", ".chordpro", ".cpm"]
@@ -785,20 +786,12 @@ class SongbookIO:
         # Set when the open file is a converted copy of an old-format original
         # that could not be changed. Save Songbook As keeps the work.
         self.songbook_original_path = original_path
-        if filename is None:
-            self.win.setWindowTitle("SoftChord[*]")
-        elif original_path is not None:
-            songbook_name = os.path.splitext(
-                os.path.basename(original_path))[0]
-            self.win.setWindowTitle(
-                "SoftChord - %s (converted copy, not saved)[*]" % songbook_name)
-        else:
-            songbook_name = os.path.splitext(os.path.basename(filename))[0]
-            suffix = ""
-            if opened is not None and opened.read_only:
-                suffix = " (read-only)"
-            self.win.setWindowTitle("SoftChord - %s%s[*]" %
-                                    (songbook_name, suffix))
+        update_window_title(
+            self.win,
+            filename,
+            original_path=original_path,
+            read_only=bool(opened is not None and opened.read_only),
+        )
 
         self.songs_model.updateFromDatabase()
         self.updateStates()
