@@ -1,6 +1,6 @@
 //
 //  softchord_layout.swift
-//  softChord Viewer
+//  SoftChord
 //
 //  Paired with src/softchord_layout.py.
 

@@ -1,6 +1,6 @@
 //
 //  SongPhotoLibrary.swift
-//  softChord Viewer
+//  SoftChord
 //
 
 import Photos

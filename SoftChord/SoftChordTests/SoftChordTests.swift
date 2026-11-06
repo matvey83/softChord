@@ -1,6 +1,6 @@
 //
-//  softChord_ViewerTests.swift
-//  softChord ViewerTests
+//  SoftChordTests.swift
+//  SoftChordTests
 //
 //  Created by Matvey Adzhigirey on 10/21/26.
 //
@@ -9,9 +9,9 @@ import SQLite3
 import SwiftUI
 import Testing
 import UIKit
-@testable import softChord_Viewer
+@testable import SoftChord
 
-struct softChord_ViewerTests {
+struct SoftChordTests {
 
     @Test func songMenuListsTheShareCommands() {
         let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: nil)

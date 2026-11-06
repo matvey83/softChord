@@ -1,6 +1,6 @@
 """Monospace chord lines shared with the iOS viewer.
 
-Paired with softChord Viewer/softChord Viewer/softchord_text.swift.
+Paired with SoftChord/SoftChord/softchord_text.swift.
 place_chord_on_line and format_song_text stay in this order.
 """
 

@@ -1,6 +1,6 @@
 //
 //  Songbook.swift
-//  softChord Viewer
+//  SoftChord
 //
 
 import Foundation

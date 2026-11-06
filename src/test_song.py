@@ -5075,7 +5075,7 @@ class TestSongsContextMenu(unittest.TestCase):
 class TestChordRoom(unittest.TestCase):
     """A chord goes up to 10 letters right of its line (chord_room).
 
-    MIRRORED: chord_edit.test.js and softChord_ViewerTests chordRoomRightOfTheLine
+    MIRRORED: chord_edit.test.js and SoftChordTests chordRoomRightOfTheLine
     use the same text and moves.
     """
 

@@ -1,6 +1,6 @@
 """Chord names, chord strings, transpose, and auto-detected key (no Qt).
 
-Paired with softChord Viewer/softChord Viewer/softchord_chords.swift and
+Paired with SoftChord/SoftChord/softchord_chords.swift and
 softChord_web/softchord_chords.js.
 Shared functions stay in this order: prefer_from_major_tonic, score_key,
 family_score, best_detected_key, detect_region_start_indices, transpose_note,

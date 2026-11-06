@@ -148,13 +148,13 @@ jobs:
       - name: Xcode and schemes
         run: |
           xcodebuild -version
-          xcodebuild -list -project "softChord Viewer/softChord Viewer.xcodeproj"
+          xcodebuild -list -project "SoftChord/SoftChord.xcodeproj"
 
       - name: iOS tests
         run: |
           xcodebuild test \
-            -project "softChord Viewer/softChord Viewer.xcodeproj" \
-            -scheme "softChord Viewer" \
+            -project "SoftChord/SoftChord.xcodeproj" \
+            -scheme "SoftChord" \
             -destination "platform=iOS Simulator,name=iPhone 17,OS=latest" \
             CODE_SIGNING_ALLOWED=NO
 

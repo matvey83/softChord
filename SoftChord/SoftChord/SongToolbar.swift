@@ -1,6 +1,6 @@
 //
 //  SongToolbar.swift
-//  softChord Viewer
+//  SoftChord
 //
 //  MIRRORED UI: this is the song toolbar of the web app. The buttons, their
 //  order and groups, the icons (Assets.xcassets/Toolbar, exported from

@@ -1,6 +1,6 @@
 //
 //  SongSheetImage.swift
-//  softChord Viewer
+//  SoftChord
 //
 
 import CoreText

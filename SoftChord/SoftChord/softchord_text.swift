@@ -1,6 +1,6 @@
 //
 //  softchord_text.swift
-//  softChord Viewer
+//  SoftChord
 //
 //  Paired with src/softchord_text.py.
 //  place, then render, match place_chord_on_line and format_song_text.

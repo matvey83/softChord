@@ -4,7 +4,7 @@ QtDocumentLayout is the Qt document adapter. A new lyric renderer
 replaces that class. SongLayout centers each chord on the anchor
 character it reports. On-screen painting and PDF/print both use that.
 
-Paired with softChord Viewer/softChord Viewer/softchord_layout.swift.
+Paired with SoftChord/SoftChord/softchord_layout.swift.
 """
 
 from PyQt6 import QtCore, QtGui

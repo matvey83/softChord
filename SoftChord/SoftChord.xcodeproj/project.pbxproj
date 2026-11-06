@@ -12,37 +12,37 @@
 			containerPortal = 81A7BB8330890AC4000497B9 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 81A7BB8A30890AC4000497B9;
-			remoteInfo = "softChord Viewer";
+			remoteInfo = "SoftChord";
 		};
 		81A7BBA530890AC6000497B9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 81A7BB8330890AC4000497B9 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 81A7BB8A30890AC4000497B9;
-			remoteInfo = "softChord Viewer";
+			remoteInfo = "SoftChord";
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		81A7BB8B30890AC4000497B9 /* softChord Viewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "softChord Viewer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		81A7BB9A30890AC6000497B9 /* softChord ViewerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "softChord ViewerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		81A7BBA430890AC6000497B9 /* softChord ViewerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "softChord ViewerUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		81A7BB8B30890AC4000497B9 /* SoftChord.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "SoftChord.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		81A7BB9A30890AC6000497B9 /* SoftChordTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "SoftChordTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		81A7BBA430890AC6000497B9 /* SoftChordUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "SoftChordUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		81A7BB8D30890AC4000497B9 /* softChord Viewer */ = {
+		81A7BB8D30890AC4000497B9 /* SoftChord */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "softChord Viewer";
+			path = "SoftChord";
 			sourceTree = "<group>";
 		};
-		81A7BB9D30890AC6000497B9 /* softChord ViewerTests */ = {
+		81A7BB9D30890AC6000497B9 /* SoftChordTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "softChord ViewerTests";
+			path = "SoftChordTests";
 			sourceTree = "<group>";
 		};
-		81A7BBA730890AC6000497B9 /* softChord ViewerUITests */ = {
+		81A7BBA730890AC6000497B9 /* SoftChordUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "softChord ViewerUITests";
+			path = "SoftChordUITests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,9 +75,9 @@
 		81A7BB8230890AC4000497B9 = {
 			isa = PBXGroup;
 			children = (
-				81A7BB8D30890AC4000497B9 /* softChord Viewer */,
-				81A7BB9D30890AC6000497B9 /* softChord ViewerTests */,
-				81A7BBA730890AC6000497B9 /* softChord ViewerUITests */,
+				81A7BB8D30890AC4000497B9 /* SoftChord */,
+				81A7BB9D30890AC6000497B9 /* SoftChordTests */,
+				81A7BBA730890AC6000497B9 /* SoftChordUITests */,
 				81A7BB8C30890AC4000497B9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -85,9 +85,9 @@
 		81A7BB8C30890AC4000497B9 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				81A7BB8B30890AC4000497B9 /* softChord Viewer.app */,
-				81A7BB9A30890AC6000497B9 /* softChord ViewerTests.xctest */,
-				81A7BBA430890AC6000497B9 /* softChord ViewerUITests.xctest */,
+				81A7BB8B30890AC4000497B9 /* SoftChord.app */,
+				81A7BB9A30890AC6000497B9 /* SoftChordTests.xctest */,
+				81A7BBA430890AC6000497B9 /* SoftChordUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,9 +95,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		81A7BB8A30890AC4000497B9 /* softChord Viewer */ = {
+		81A7BB8A30890AC4000497B9 /* SoftChord */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 81A7BBAE30890AC6000497B9 /* Build configuration list for PBXNativeTarget "softChord Viewer" */;
+			buildConfigurationList = 81A7BBAE30890AC6000497B9 /* Build configuration list for PBXNativeTarget "SoftChord" */;
 			buildPhases = (
 				81A7BB8730890AC4000497B9 /* Sources */,
 				81A7BB8830890AC4000497B9 /* Frameworks */,
@@ -109,18 +109,18 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				81A7BB8D30890AC4000497B9 /* softChord Viewer */,
+				81A7BB8D30890AC4000497B9 /* SoftChord */,
 			);
-			name = "softChord Viewer";
+			name = "SoftChord";
 			packageProductDependencies = (
 			);
-			productName = "softChord Viewer";
-			productReference = 81A7BB8B30890AC4000497B9 /* softChord Viewer.app */;
+			productName = "SoftChord";
+			productReference = 81A7BB8B30890AC4000497B9 /* SoftChord.app */;
 			productType = "com.apple.product-type.application";
 		};
-		81A7BB9930890AC6000497B9 /* softChord ViewerTests */ = {
+		81A7BB9930890AC6000497B9 /* SoftChordTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 81A7BBB130890AC6000497B9 /* Build configuration list for PBXNativeTarget "softChord ViewerTests" */;
+			buildConfigurationList = 81A7BBB130890AC6000497B9 /* Build configuration list for PBXNativeTarget "SoftChordTests" */;
 			buildPhases = (
 				81A7BB9630890AC6000497B9 /* Sources */,
 				81A7BB9730890AC6000497B9 /* Frameworks */,
@@ -132,18 +132,18 @@
 				81A7BB9C30890AC6000497B9 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				81A7BB9D30890AC6000497B9 /* softChord ViewerTests */,
+				81A7BB9D30890AC6000497B9 /* SoftChordTests */,
 			);
-			name = "softChord ViewerTests";
+			name = "SoftChordTests";
 			packageProductDependencies = (
 			);
-			productName = "softChord ViewerTests";
-			productReference = 81A7BB9A30890AC6000497B9 /* softChord ViewerTests.xctest */;
+			productName = "SoftChordTests";
+			productReference = 81A7BB9A30890AC6000497B9 /* SoftChordTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		81A7BBA330890AC6000497B9 /* softChord ViewerUITests */ = {
+		81A7BBA330890AC6000497B9 /* SoftChordUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 81A7BBB430890AC6000497B9 /* Build configuration list for PBXNativeTarget "softChord ViewerUITests" */;
+			buildConfigurationList = 81A7BBB430890AC6000497B9 /* Build configuration list for PBXNativeTarget "SoftChordUITests" */;
 			buildPhases = (
 				81A7BBA030890AC6000497B9 /* Sources */,
 				81A7BBA130890AC6000497B9 /* Frameworks */,
@@ -155,13 +155,13 @@
 				81A7BBA630890AC6000497B9 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				81A7BBA730890AC6000497B9 /* softChord ViewerUITests */,
+				81A7BBA730890AC6000497B9 /* SoftChordUITests */,
 			);
-			name = "softChord ViewerUITests";
+			name = "SoftChordUITests";
 			packageProductDependencies = (
 			);
-			productName = "softChord ViewerUITests";
-			productReference = 81A7BBA430890AC6000497B9 /* softChord ViewerUITests.xctest */;
+			productName = "SoftChordUITests";
+			productReference = 81A7BBA430890AC6000497B9 /* SoftChordUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -187,7 +187,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 81A7BB8630890AC4000497B9 /* Build configuration list for PBXProject "softChord Viewer" */;
+			buildConfigurationList = 81A7BB8630890AC4000497B9 /* Build configuration list for PBXProject "SoftChord" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -201,9 +201,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				81A7BB8A30890AC4000497B9 /* softChord Viewer */,
-				81A7BB9930890AC6000497B9 /* softChord ViewerTests */,
-				81A7BBA330890AC6000497B9 /* softChord ViewerUITests */,
+				81A7BB8A30890AC4000497B9 /* SoftChord */,
+				81A7BB9930890AC6000497B9 /* SoftChordTests */,
+				81A7BBA330890AC6000497B9 /* SoftChordUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -279,12 +279,12 @@
 /* Begin PBXTargetDependency section */
 		81A7BB9C30890AC6000497B9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 81A7BB8A30890AC4000497B9 /* softChord Viewer */;
+			target = 81A7BB8A30890AC4000497B9 /* SoftChord */;
 			targetProxy = 81A7BB9B30890AC6000497B9 /* PBXContainerItemProxy */;
 		};
 		81A7BBA630890AC6000497B9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 81A7BB8A30890AC4000497B9 /* softChord Viewer */;
+			target = 81A7BB8A30890AC4000497B9 /* SoftChord */;
 			targetProxy = 81A7BBA530890AC6000497B9 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -497,7 +497,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/softChord Viewer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/softChord Viewer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SoftChord.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SoftChord";
 			};
 			name = Debug;
 		};
@@ -519,7 +519,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/softChord Viewer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/softChord Viewer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SoftChord.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SoftChord";
 			};
 			name = Release;
 		};
@@ -539,7 +539,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = "softChord Viewer";
+				TEST_TARGET_NAME = "SoftChord";
 			};
 			name = Debug;
 		};
@@ -559,14 +559,14 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = "softChord Viewer";
+				TEST_TARGET_NAME = "SoftChord";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		81A7BB8630890AC4000497B9 /* Build configuration list for PBXProject "softChord Viewer" */ = {
+		81A7BB8630890AC4000497B9 /* Build configuration list for PBXProject "SoftChord" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				81A7BBAC30890AC6000497B9 /* Debug */,
@@ -575,7 +575,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		81A7BBAE30890AC6000497B9 /* Build configuration list for PBXNativeTarget "softChord Viewer" */ = {
+		81A7BBAE30890AC6000497B9 /* Build configuration list for PBXNativeTarget "SoftChord" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				81A7BBAF30890AC6000497B9 /* Debug */,
@@ -584,7 +584,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		81A7BBB130890AC6000497B9 /* Build configuration list for PBXNativeTarget "softChord ViewerTests" */ = {
+		81A7BBB130890AC6000497B9 /* Build configuration list for PBXNativeTarget "SoftChordTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				81A7BBB230890AC6000497B9 /* Debug */,
@@ -593,7 +593,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		81A7BBB430890AC6000497B9 /* Build configuration list for PBXNativeTarget "softChord ViewerUITests" */ = {
+		81A7BBB430890AC6000497B9 /* Build configuration list for PBXNativeTarget "SoftChordUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				81A7BBB530890AC6000497B9 /* Debug */,

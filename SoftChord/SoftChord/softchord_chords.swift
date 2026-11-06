@@ -1,6 +1,6 @@
 //
 //  softchord_chords.swift
-//  softChord Viewer
+//  SoftChord
 //
 //  Paired with src/softchord_chords.py. Shared functions stay in this order:
 //  preferFromMajorTonic, scoreKey, familyScore, bestDetectedKey,

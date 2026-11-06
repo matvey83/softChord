@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  softChord Viewer
+//  SoftChord
 //
 //  Created by Matvey Adzhigirey on 10/21/26.
 //

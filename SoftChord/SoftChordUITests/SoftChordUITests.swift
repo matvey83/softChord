@@ -1,13 +1,13 @@
 //
-//  softChord_ViewerUITests.swift
-//  softChord ViewerUITests
+//  SoftChordUITests.swift
+//  SoftChordUITests
 //
 //  Created by Matvey Adzhigirey on 10/21/26.
 //
 
 import XCTest
 
-final class softChord_ViewerUITests: XCTestCase {
+final class SoftChordUITests: XCTestCase {
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.

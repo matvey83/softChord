@@ -1,13 +1,13 @@
 //
-//  softChord_ViewerUITestsLaunchTests.swift
-//  softChord ViewerUITests
+//  SoftChordUITestsLaunchTests.swift
+//  SoftChordUITests
 //
 //  Created by Matvey Adzhigirey on 10/21/26.
 //
 
 import XCTest
 
-final class softChord_ViewerUITestsLaunchTests: XCTestCase {
+final class SoftChordUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

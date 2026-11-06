@@ -1,6 +1,6 @@
 //
 //  SongPage.swift
-//  softChord Viewer
+//  SoftChord
 //
 
 import SwiftUI

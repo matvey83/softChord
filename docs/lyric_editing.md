@@ -7,7 +7,7 @@ same rule, and run the same cases from `tests/lyric_chord_vectors.json`.
 | Platform | Code | Tests |
 | --- | --- | --- |
 | Desktop (Python) | `lyric_renumber_map` in `src/softchord_text.py` | `src/test_song.py` |
-| iOS | `SongLyricChords.renumberMap` | `softChord ViewerTests` |
+| iOS | `SongLyricChords.renumberMap` | `SoftChordTests` |
 | Web | `moveChords` in `softChord_web/softchord_text_edit.js` | `softChord_web/tests/text_edit.test.js` |
 
 ## The rule

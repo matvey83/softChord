@@ -1,6 +1,6 @@
 //
 //  SongFilter.swift
-//  softChord Viewer
+//  SoftChord
 //
 
 import Foundation

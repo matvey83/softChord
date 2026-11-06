@@ -54,21 +54,20 @@ The tests of the Edit text and Edit chords modes and the layout drive the real p
 
 ### iOS
 
-The project is `softChord Viewer/softChord Viewer.xcodeproj`, with the app
-target `softChord Viewer` and the test targets `softChord ViewerTests` and
-`softChord ViewerUITests` (iOS 26.4 or newer). The repository has no shared
-scheme; Xcode and `xcodebuild` use the scheme they create for the app,
-`softChord Viewer`. Run the tests on a simulator (use one you have installed,
+The project is `SoftChord/SoftChord.xcodeproj`, with the app
+target `SoftChord` and the test targets `SoftChordTests` and
+`SoftChordUITests` (iOS 26.4 or newer). The repository includes the shared
+`SoftChord` scheme for Xcode and `xcodebuild`. Run the tests on a simulator (use one you have installed,
 see `xcrun simctl list devices available`):
 
 ```bash
 xcodebuild test \
-  -project "softChord Viewer/softChord Viewer.xcodeproj" \
-  -scheme "softChord Viewer" \
+  -project "SoftChord/SoftChord.xcodeproj" \
+  -scheme "SoftChord" \
   -destination "platform=iOS Simulator,name=iPhone 17"
 ```
 
-A build step (`softChord Viewer/copy_songbook.sh`) copies `zvuki_neba.songbook`
+A build step (`SoftChord/copy_songbook.sh`) copies `zvuki_neba.songbook`
 into the app; the app reads that copy and never writes it.
 
 The shared cases in `tests/` are run by the Python, Swift and JS tests alike:
@@ -114,7 +113,7 @@ dimmed. Code marked `MIRRORED UI` (or `Mirror:`) has a counterpart in the other
 apps; change all of them together. The main places:
 
 - Web: `softChord_web/index.html` (the toolbar) and `softChord_web/viewer.css`.
-- iOS: `softChord Viewer/softChord Viewer/SongToolbar.swift`, with the icons in
+- iOS: `SoftChord/SoftChord/SongToolbar.swift`, with the icons in
   `Assets.xcassets/Toolbar`.
 - Desktop: `src/softchord_toolbar.py`. Its header comment lists the intended
   desktop differences (for example the desktop-only Fonts group).

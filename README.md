@@ -22,7 +22,7 @@ The songbook can be shared as a file, or exported to a printable PDF.
   Shows the songbook in this repository. Changes are not saved yet.
 - **iOS app, SoftChord** (iPhone and iPad). Shows the songbook in this
   repository. Changes are not saved yet. It is not on the App Store: build it
-  from source in Xcode (`softChord Viewer/softChord Viewer.xcodeproj`).
+  from source in Xcode (`SoftChord/SoftChord.xcodeproj`).
 
 ## Features
 

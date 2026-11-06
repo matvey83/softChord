@@ -2,7 +2,7 @@
 
 MIRRORED UI: this toolbar mirrors the web app's song toolbar
 (softChord_web/index.html .toolbar, softChord_web/viewer.css) and the iOS
-app's (softChord Viewer/softChord Viewer/SongToolbar.swift). The buttons,
+app's (SoftChord/SoftChord/SongToolbar.swift). The buttons,
 their order and groups, the icons (the SVGs in softChord_web/icons/toolbar/,
 the one copy, bundled by softchord.spec), the tooltips, and when each button
 shows or is dimmed are the same in all three apps: change them in all three.
