@@ -378,7 +378,7 @@ enum SongLyricChords {
         var at: Int
         var count: Int
 
-        func shifted(_ position: Int) -> Int {
+        nonisolated func shifted(_ position: Int) -> Int {
             position >= at ? position + count : position
         }
     }
@@ -417,7 +417,7 @@ enum SongLyricChords {
         var chords: [SongChord]
         var gaps: [Range<Int>]
 
-        func moved(_ position: Int) -> Int {
+        nonisolated func moved(_ position: Int) -> Int {
             var by = 0
             for gap in gaps {
                 if position >= gap.upperBound {

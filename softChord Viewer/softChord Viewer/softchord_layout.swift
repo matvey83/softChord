@@ -23,7 +23,7 @@ enum SongSheetLayout {
 
     /// A lyric letter, by its place in the song. The rectangle is the letter itself.
     /// The reach adds the chord row above it, so a finger there still belongs to the letter.
-    struct Letter: Equatable {
+    nonisolated struct Letter: Equatable {
         var characterNum: Int
         var rect: CGRect
         var reach: CGRect
@@ -286,7 +286,7 @@ enum SongChordBoxes {
 /// the selection.
 enum SongChordPick {
     /// A few pixels around the painted chord still count as a press on it.
-    static let slop: CGFloat = 6
+    nonisolated static let slop: CGFloat = 6
 
     enum Action: Equatable {
         case select(Int)
@@ -295,7 +295,7 @@ enum SongChordPick {
         case edit
     }
 
-    static func action(
+    nonisolated static func action(
         selected: Int?,
         hit: Int?,
         pressedSelectedChord: Bool,
