@@ -25,7 +25,7 @@ function click(page, id) {
 }
 
 async function startEditing(page) {
-  await click(page, "edit-text");
+  await click(page, "segment-lyrics");
   await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor to take focus");
 }
 
