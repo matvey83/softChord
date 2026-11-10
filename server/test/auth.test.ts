@@ -414,6 +414,9 @@ describe("magic-link auth", () => {
     assert.match(webHtml, /Sign in as m\*\*\*@gmail\.com/);
     const policy = web.headers.get("content-security-policy") ?? "";
     const nonce = /script-src 'nonce-([^']+)'/.exec(policy)?.[1] ?? "";
+    assert.match(policy, /default-src 'none'/);
+    assert.match(policy, /connect-src 'self'/);
+    assert.match(policy, /form-action 'none'/);
     assert.match(policy, /frame-ancestors 'none'/);
     assert.match(webHtml, new RegExp(`<script nonce="${nonce}">`));
     const verifyAt = webHtml.indexOf('"/api/auth/verify"');

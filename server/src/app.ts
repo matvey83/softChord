@@ -208,7 +208,7 @@ export function createApp(deps: AppDeps): Hono {
     const nonce = crypto.randomUUID().replaceAll("-", "");
     c.header(
       "content-security-policy",
-      `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`,
+      `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'`,
     );
     return c.html(renderLoginPage(isClient(client) ? client : null, hint, nonce));
   });
