@@ -73,7 +73,8 @@
   var activeSongbook = null;
   // Bumped when a songbook becomes current. Song addresses include it
   // (#/e/<epoch>/song/<id>) so Back cannot open that number in a later book.
-  // Untagged #/song/<id> still opens in the current book (tests and old links).
+  // An untagged #/song/<id> is epoch 0, this first songbook. After a switch,
+  // Back to that address goes to the list.
   var songbookEpoch = 0;
   // The address of the song on screen, so a cancelled leave puts the same
   // address back. Null until a song is shown.
@@ -210,12 +211,24 @@
   }
 
   // openBuffer already replaced the songs. Put the songbook that is actually
-  // current back when this request lost to a later one.
+  // current back when this request lost to a later one. If a newer request
+  // wins while this read is in flight, start over with that songbook.
   function reopenActiveSongbook() {
     if (!activeSongbook || !activeSongbook.bytes) {
       return Promise.resolve();
     }
-    return Songbook.openBuffer(activeSongbook.bytes.slice(0));
+    var request = songbookRequest;
+    var bytes = activeSongbook.bytes.slice(0);
+    return Songbook.openBuffer(bytes).then(function () {
+      if (!songbookRequestCurrent(request)) {
+        return reopenActiveSongbook();
+      }
+    }, function (error) {
+      if (!songbookRequestCurrent(request)) {
+        return reopenActiveSongbook();
+      }
+      throw error;
+    });
   }
 
   function songHash(id) {
@@ -1495,10 +1508,17 @@
     return /^#\/e\/(\d+)\/song\/(\d+)$/.exec(location.hash);
   }
 
-  // A song route from an earlier songbook. Untagged #/song/<id> is the current book.
+  function untaggedSongHash() {
+    return /^#\/song\/(\d+)$/.exec(location.hash);
+  }
+
+  // A song route from an earlier songbook. Untagged #/song/<id> is epoch 0.
   function staleSongHash() {
     var tagged = taggedSongHash();
-    return !!(tagged && Number(tagged[1]) !== songbookEpoch);
+    if (tagged) {
+      return Number(tagged[1]) !== songbookEpoch;
+    }
+    return !!(untaggedSongHash() && songbookEpoch !== 0);
   }
 
   function songIdFromHash() {
@@ -1509,8 +1529,11 @@
       }
       return Number(tagged[2]);
     }
-    var match = /^#\/song\/(\d+)$/.exec(location.hash);
-    return match ? Number(match[1]) : null;
+    var match = untaggedSongHash();
+    if (match && songbookEpoch === 0) {
+      return Number(match[1]);
+    }
+    return null;
   }
 
   function showFromHash() {

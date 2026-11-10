@@ -336,7 +336,9 @@ test("switching songbooks or opening a file asks while a song has unsaved edits,
     await waitForTitle(page, "Filed");
     assert.equal(await page.eval("document.getElementById('song-view').hidden"), true);
     assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "other");
-    await page.eval("location.hash = '#/song/1'");
+    // After the switch this songbook is epoch 1. An untagged #/song/1 is the
+    // previous songbook, so the open song uses the tagged address.
+    await page.eval("location.hash = '#/e/1/song/1'");
     await page.waitFor("!document.getElementById('song-view').hidden", "the filed song");
     assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true, "the previous songbook's edits were dropped");
     assert.equal(await page.eval("document.getElementById('transpose-reset').disabled"), true);
@@ -348,7 +350,7 @@ test("switching songbooks or opening a file asks while a song has unsaved edits,
       "return b.querySelector('.menu-item-label').textContent === 'zvuki_neba'; }).click()");
     await page.waitFor("document.getElementById('leave-confirm').open", "the prompt before switching");
     await click(page, "leave-confirm-keep");
-    assert.equal(await page.eval("location.hash"), "#/song/1");
+    assert.equal(await page.eval("location.hash"), "#/e/1/song/1");
     assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "other");
     assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), false);
 
@@ -433,6 +435,129 @@ test("Back after a switch does not open a song from the previous songbook", { sk
   } finally {
     await page.close();
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Back to an old #/song/N after a switch stays on the new list", { skip: skip }, async function () {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), "softchord-songbook-"));
+  var page = await helper.openViewer(SONGS);
+  try {
+    var other = await writeBytes(dir, "other.songbook",
+      await helper.songbookBytes([{ title: "Filed", text: "From the file", chords: [[0, "G"]] }]));
+    await page.eval("location.hash = '#/song/1'");
+    await page.waitFor("location.hash === '#/song/1' && !document.getElementById('song-view').hidden", "the old-style song route");
+    await click(page, "back");
+    await page.waitFor("location.hash === '#/'", "back on the list");
+    await openMenu(page);
+    await page.eval("document.querySelector('#songbook-menu button[data-action=open-file]').click()");
+    await chooseFile(page, other);
+    await waitForTitle(page, "Filed");
+    await page.eval("window.__backs = 0; window.addEventListener('popstate', function () { window.__backs++; });");
+    await page.eval("history.back()");
+    await page.waitFor("window.__backs > 0 && location.hash === '#/' && document.getElementById('song-view').hidden",
+      "Back to stay on the new songbook's list");
+    assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "other");
+    assert.deepEqual(await page.eval(titlesExpr()), ["Filed"]);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function holdOpens(page) {
+  return page.eval("(function () {" +
+    "window.__opens = [];" +
+    "var real = Songbook.openBuffer;" +
+    "Songbook.openBuffer = function (bytes) {" +
+    "  var slot = { n: window.__opens.length };" +
+    "  window.__opens.push(slot);" +
+    "  return new Promise(function (resolve, reject) {" +
+    "    slot.succeed = function () { return real(bytes).then(resolve, reject); };" +
+    "    slot.fail = function (message) { reject(new Error(message)); };" +
+    "  });" +
+    "};" +
+    "})()");
+}
+
+async function openHeldFile(page, filePath, count) {
+  await openMenu(page);
+  await page.eval("document.querySelector('#songbook-menu button[data-action=open-file]').click()");
+  await chooseFile(page, filePath);
+  await page.waitFor("window.__opens && window.__opens.length === " + count, "open " + count);
+}
+
+test("a slow open that fails does not replace a songbook that finished later", { skip: skip }, async function () {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), "softchord-songbook-"));
+  var page = await helper.openViewer(SONGS);
+  try {
+    var late = await writeBytes(dir, "late.songbook",
+      await helper.songbookBytes([{ title: "Alpha", text: "Late", chords: [[0, "C"]] }]));
+    var kept = await writeBytes(dir, "kept.songbook",
+      await helper.songbookBytes([{ title: "Beta", text: "Kept", chords: [[0, "D"]] }]));
+    await holdOpens(page);
+    await openHeldFile(page, late, 1);
+    await openHeldFile(page, kept, 2);
+    await page.eval("window.__opens[1].succeed()");
+    await waitForTitle(page, "Beta");
+    await page.eval("window.__opens[0].fail('too late')");
+    await page.eval("new Promise(function (r) { setTimeout(r, 0); })");
+    assert.equal(await page.eval("document.getElementById('notice').open"), false, "a stale error stays quiet");
+    assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "kept");
+    assert.deepEqual(await page.eval(titlesExpr()), ["Beta"]);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a slow open that succeeds does not replace a songbook that finished later", { skip: skip }, async function () {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), "softchord-songbook-"));
+  var page = await helper.openViewer(SONGS);
+  try {
+    var late = await writeBytes(dir, "late.songbook",
+      await helper.songbookBytes([{ title: "Alpha", text: "Late", chords: [[0, "C"]] }]));
+    var kept = await writeBytes(dir, "kept.songbook",
+      await helper.songbookBytes([{ title: "Beta", text: "Kept", chords: [[0, "D"]] }]));
+    var newer = await writeBytes(dir, "newer.songbook",
+      await helper.songbookBytes([{ title: "Gamma", text: "Newer", chords: [[0, "G"]] }]));
+    await holdOpens(page);
+    await openHeldFile(page, late, 1);
+    await openHeldFile(page, kept, 2);
+    await page.eval("window.__opens[1].succeed()");
+    await waitForTitle(page, "Beta");
+    await page.eval("window.__opens[0].succeed()");
+    await page.waitFor("window.__opens.length === 3", "the stale open to restore the winner");
+    await openHeldFile(page, newer, 4);
+    await page.eval("window.__opens[3].succeed()");
+    await waitForTitle(page, "Gamma");
+    await page.eval("window.__opens[2].succeed()");
+    await page.waitFor("window.__opens.length === 5", "the late restore to follow the newer songbook");
+    await page.eval("window.__opens[4].succeed()");
+    await waitForTitle(page, "Gamma");
+    assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "newer");
+    assert.deepEqual(await page.eval(titlesExpr()), ["Gamma"]);
+    assert.equal(await page.eval("document.getElementById('notice').open"), false);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a click outside the songbook menu closes it", { skip: skip }, async function () {
+  var page = await helper.openViewer(SONGS);
+  try {
+    await openMenu(page);
+    await page.eval("document.getElementById('songbook-menu-label').click()");
+    assert.equal(await page.eval("document.getElementById('songbook-menu').hidden"), false, "a click inside the menu leaves it open");
+    await page.eval("document.getElementById('search').click()");
+    assert.equal(await page.eval("document.getElementById('songbook-menu').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('songbook-menu-button').getAttribute('aria-expanded')"), "false");
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
   }
 });
 

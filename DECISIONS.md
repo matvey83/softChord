@@ -16,10 +16,17 @@
 
 ## 2026-11-10 — Songbook switch history and open races
 
-- Switching songbooks replaces the current history entry with the list (`history.replaceState` to `#/`) and bumps a songbook epoch. Song routes the page creates are `#/e/<epoch>/song/<id>`. Back to an older epoch stays on the new songbook's list instead of opening that song number. Untagged `#/song/<id>` still opens in the current songbook, so existing links and the tests keep working.
+- Switching songbooks replaces the current history entry with the list (`history.replaceState` to `#/`) and bumps a songbook epoch. Song routes the page creates are `#/e/<epoch>/song/<id>`. Back to an older epoch stays on the new songbook's list instead of opening that song number. Untagged `#/song/<id>` was left as the current songbook here; the later entry on this date treats those routes as epoch 0.
 - `readySql` does not keep a rejected SQLite init. The next open tries again.
 - Each file open and each menu switch takes a request token. A slower open that finishes later does not become current. If it already parsed, the songbook that won is opened again.
 - The search box is cleared when a songbook becomes current.
 - The songbook menu still has no arrow keys, no focus move on open, and Escape does not return focus to the name button. Opening the same file name twice still adds a second row. Both are recorded in `KNOWN_ISSUES.md` and left as they are.
 - The header comments and `docs/development.md` say the iOS row is pending. iOS does not have it yet.
 - The cache buster is `?v=2026-11-10c` so a browser that kept `2026-11-10b` does not mix these scripts.
+
+## 2026-11-10 — SQLite retry, old song routes, and a late reopen
+
+- `sql-wasm.js` keeps its own `initSqlJsPromise`, including a rejection, so clearing the promise in `songbook.js` did not retry. The wrapper now drops that promise when the load rejects and keeps it when the load succeeds. A later open tries again. The wasm loader's own failure is not reported a second time, because the outer promise already rejected. The file is generated in the middle; only this outer promise and that extra rejection handler changed.
+- An untagged `#/song/<id>` address is epoch 0, the songbook the page opened with. On that first songbook it still opens the song, which is what the existing links and tests do. After a switch, Back to that address goes to the new songbook's list.
+- `reopenActiveSongbook` remembers the request token. If a newer open wins while it is reading, it reads the songbook that won instead of leaving the older bytes in place.
+- The cache buster is `?v=2026-11-10d`, including `sql-wasm.js`, so a browser that kept `2026-11-10c` does not mix these files.

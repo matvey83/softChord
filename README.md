@@ -20,6 +20,7 @@ The songbook can be shared as a file, or exported to a printable PDF.
   from source on any system with Python (see below).
 - **Web app**: [open it in any browser](https://matvey83.github.io/softChord/softChord_web/).
   Shows the songbook in this repository. Changes are not saved yet.
+  A local songbook file can be opened into memory for this session only.
 - **iOS app, SoftChord** (iPhone and iPad). Shows the songbook in this
   repository. Changes are not saved yet. It is not on the App Store: build it
   from source in Xcode (`SoftChord/SoftChord.xcodeproj`).

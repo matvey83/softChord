@@ -18,8 +18,9 @@ var initSqlJs = function (moduleConfig) {
     if (initSqlJsPromise){
       return initSqlJsPromise;
     }
-    // If we're here, we've never called this function before
-    initSqlJsPromise = new Promise(function (resolveModule, reject) {
+    // A rejected load is dropped so the next call can try again. A resolved
+    // load stays cached: this file must not instantiate the module twice.
+    var loading = new Promise(function (resolveModule, reject) {
 
         // We are modularizing this manually because the current modularize setting in Emscripten has some issues:
         // https://github.com/kripken/emscripten/issues/5820
@@ -161,12 +162,18 @@ async function cd(){Na();var a=k.setStatus;a&&(a("Running..."),await new Promise
 (async function(){function a(c){c=dd=c.exports;k._sqlite3_free=c.Q;k._sqlite3_value_text=c.R;k._sqlite3_prepare_v2=c.S;k._sqlite3_step=c.T;k._sqlite3_reset=c.U;k._sqlite3_exec=c.V;k._sqlite3_finalize=c.W;k._sqlite3_column_name=c.X;k._sqlite3_column_text=c.Y;k._sqlite3_column_type=c.Z;k._sqlite3_errmsg=c._;k._sqlite3_clear_bindings=c.$;k._sqlite3_value_blob=c.aa;k._sqlite3_value_bytes=c.ba;k._sqlite3_value_double=c.ca;k._sqlite3_value_int=c.da;k._sqlite3_value_type=c.ea;k._sqlite3_result_blob=c.fa;
 k._sqlite3_result_double=c.ga;k._sqlite3_result_error=c.ha;k._sqlite3_result_int=c.ia;k._sqlite3_result_int64=c.ja;k._sqlite3_result_null=c.ka;k._sqlite3_result_text=c.la;k._sqlite3_aggregate_context=c.ma;k._sqlite3_column_count=c.na;k._sqlite3_data_count=c.oa;k._sqlite3_column_blob=c.pa;k._sqlite3_column_bytes=c.qa;k._sqlite3_column_double=c.ra;k._sqlite3_bind_blob=c.sa;k._sqlite3_bind_double=c.ta;k._sqlite3_bind_int=c.ua;k._sqlite3_bind_text=c.va;k._sqlite3_bind_parameter_index=c.wa;k._sqlite3_sql=
 c.xa;k._sqlite3_normalized_sql=c.ya;k._sqlite3_changes=c.za;k._sqlite3_close_v2=c.Aa;k._sqlite3_create_function_v2=c.Ba;k._sqlite3_update_hook=c.Ca;k._sqlite3_open=c.Da;da=k._malloc=c.Ea;x=k._free=c.Fa;k._RegisterExtensionFunctions=c.Ga;Cb=c.Ha;ad=c.Ia;ta=c.Ja;C=c.Ka;ra=c.La;Ja=c.N;Z=c.P;Ia();return dd}var b={a:bd},d=k.instantiateWasm;if(d)return new Promise(c=>{d(b,e=>c(a(e)))});Va??=k.locateFile?k.locateFile("sql-wasm.wasm",Aa):Aa+"sql-wasm.wasm";return function(c){return a(c.instance)}(await Ya(b))})().then(()=>
-cd());
+cd(),function(){});
 
 
         // The shell-pre.js and emcc-generated code goes above
         return Module;
     }); // The end of the promise being returned
+    initSqlJsPromise = loading.then(function (sqlModule) {
+      return sqlModule;
+    }, function (error) {
+      initSqlJsPromise = undefined;
+      throw error;
+    });
 
   return initSqlJsPromise;
 } // The end of our initSqlJs function

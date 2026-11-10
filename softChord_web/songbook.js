@@ -114,8 +114,8 @@
   }
 
   // One SQLite module for the page. The wasm file is fetched on the first use.
-  // A failed load is not kept: the next open tries again. A cached rejection
-  // would make a later file look like it was not a songbook.
+  // A failed load is not kept, here or inside sql-wasm.js. The next open tries
+  // again. A cached rejection would make a later file look like it was not a songbook.
   var sqlJsPromise = null;
   function readySql() {
     if (sqlJsPromise) {
