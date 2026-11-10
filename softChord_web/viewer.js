@@ -59,18 +59,44 @@
   var noticeMessage = document.getElementById("notice-message");
 
   // The songbook this page is reading. Defaults to the bundled demo next to
-  // this folder. Open Songbook File will replace this for the session. A
-  // future server replaces Songbook.load.
+  // this folder. Open Songbook File replaces this for the session only. A
+  // future server replaces Songbook.load. Nothing here is written to disk or
+  // sent over the network.
   var currentSongbook = {
     displayName: "zvuki_neba",
     url: "../zvuki_neba.songbook",
   };
   var songbookUrl = currentSongbook.url;
+  // Demo plus every file opened this visit, oldest first. Each entry keeps
+  // its bytes so switching reloads the list from memory.
+  var sessionSongbooks = [];
+  var activeSongbook = null;
+  // Over 50 MB (1024-based) is refused before the file is read.
+  var MAX_SONGBOOK_BYTES = 50 * 1024 * 1024;
+
+  var songbookNameEl = document.getElementById("songbook-name");
+  var songbookIndicator = document.getElementById("songbook-indicator");
+  var songbookMenuButton = document.getElementById("songbook-menu-button");
+  var songbookMenu = document.getElementById("songbook-menu");
+  var songbookMenuList = document.getElementById("songbook-menu-list");
+  var songbookFile = document.getElementById("songbook-file");
+  var signInButton = document.getElementById("sign-in");
+
+  // Titles and messages for items that need an account or a server. One OK
+  // button, from the notice dialog. Choosing one does not fetch anything.
+  var NOT_AVAILABLE = {
+    "sign-in": ["Sign-in isn't available yet", "softChord accounts are coming in a later update."],
+    download: ["Not available yet", "Saving songbooks from this app is coming in a later update."],
+    rename: ["Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
+    "delete": ["Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
+    share: ["Sharing isn't available yet", "Sharing needs a softChord account, which is coming in a later update."],
+  };
 
   // One place for the songbook name chrome and the persist / "Not saved" note.
-  // Phase 1's header will drive the visible songbook name through this too.
   // pageTitle: document.title (song title while a song is open, else SoftChord).
   // showPersistNote: whether the persist note is shown.
+  // The header name and the grey indicator follow currentSongbook. In Phase 1
+  // the indicator is always "Not saved".
   function updateSongbookChrome(opts) {
     opts = opts || {};
     if (Object.prototype.hasOwnProperty.call(opts, "pageTitle")) {
@@ -79,6 +105,179 @@
     if (Object.prototype.hasOwnProperty.call(opts, "showPersistNote")) {
       persistNote.hidden = !opts.showPersistNote;
     }
+    if (songbookNameEl) {
+      songbookNameEl.textContent = currentSongbook.displayName;
+    }
+    if (songbookIndicator) {
+      songbookIndicator.hidden = false;
+      songbookIndicator.textContent = "Not saved";
+    }
+  }
+
+  function displayNameFromFile(name) {
+    var stripped = String(name || "").replace(/\.songbook$/i, "");
+    return stripped || name || "songbook";
+  }
+
+  function rememberSongbook(displayName, bytes, url) {
+    var entry = { displayName: displayName, bytes: bytes };
+    if (url) {
+      entry.url = url;
+    }
+    sessionSongbooks.push(entry);
+    return entry;
+  }
+
+  function renderSongbookMenu() {
+    if (!songbookMenuList) {
+      return;
+    }
+    songbookMenuList.replaceChildren();
+    sessionSongbooks.forEach(function (entry) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "songbook-menu-item";
+      button.setAttribute("role", "menuitemradio");
+      var open = entry === activeSongbook;
+      button.setAttribute("aria-checked", open ? "true" : "false");
+      var mark = document.createElement("span");
+      mark.className = "menu-check";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = open ? "\u2713" : "";
+      var label = document.createElement("span");
+      label.className = "menu-item-label";
+      label.textContent = entry.displayName;
+      button.appendChild(mark);
+      button.appendChild(label);
+      button.addEventListener("click", function () {
+        if (entry === activeSongbook) {
+          closeSongbookMenu();
+          return;
+        }
+        requestSongbook(entry);
+      });
+      songbookMenuList.appendChild(button);
+    });
+  }
+
+  function closeSongbookMenu() {
+    if (!songbookMenu) {
+      return;
+    }
+    songbookMenu.hidden = true;
+    if (songbookMenuButton) {
+      songbookMenuButton.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function openSongbookMenu() {
+    if (!songbookMenu || !songbookMenuButton) {
+      return;
+    }
+    if (menu) {
+      menu.hidden = true;
+    }
+    songbookMenu.hidden = false;
+    songbookMenuButton.setAttribute("aria-expanded", "true");
+    var rect = songbookMenuButton.getBoundingClientRect();
+    songbookMenu.style.left = Math.max(8, rect.left) + "px";
+    songbookMenu.style.top = (rect.bottom + 4) + "px";
+    var box = songbookMenu.getBoundingClientRect();
+    if (box.right > window.innerWidth - 8) {
+      songbookMenu.style.left = Math.max(8, window.innerWidth - box.width - 8) + "px";
+    }
+    if (box.bottom > window.innerHeight - 8) {
+      songbookMenu.style.top = Math.max(8, rect.top - box.height - 4) + "px";
+    }
+  }
+
+  // The list now shows this songbook. Session edits from the previous one are
+  // dropped. Call only after its bytes are already open in Songbook.
+  function activateSongbook(entry) {
+    toast.hidden = true;
+    clearTimeout(toastTimer);
+    activeSongbook = entry;
+    currentSongbook.displayName = entry.displayName;
+    currentSongbook.url = entry.url || "";
+    songbookUrl = currentSongbook.url;
+    keptEdits = {};
+    loadError = null;
+    allTitles = Songbook.titles();
+    dropChanges();
+    updateSongbookChrome({ pageTitle: "SoftChord", showPersistNote: false });
+    renderSongbookMenu();
+    if (songIdFromHash() != null) {
+      location.hash = "#/";
+    } else {
+      showFromHash();
+    }
+  }
+
+  function applyStoredSongbook(entry) {
+    Songbook.openBuffer(entry.bytes.slice(0)).then(function () {
+      activateSongbook(entry);
+    }).catch(function (error) {
+      showOpenError(entry.displayName, error);
+    });
+  }
+
+  // Save / Don't Save / Cancel, the same dialog as leaving a song. Cancel
+  // leaves this songbook and its draft alone. Save and Don't Save continue.
+  // The Saved toast is cleared on a menu switch because those edits are then
+  // dropped with the songbook.
+  function requestSongbook(entry) {
+    closeSongbookMenu();
+    askBeforeLeaving(function () {
+      toast.hidden = true;
+      clearTimeout(toastTimer);
+      applyStoredSongbook(entry);
+    });
+  }
+
+  function requestOpenSongbookFile() {
+    closeSongbookMenu();
+    askBeforeLeaving(function () {
+      if (!songbookFile) {
+        return;
+      }
+      songbookFile.value = "";
+      songbookFile.click();
+    });
+  }
+
+  function showOpenError(fileName, error) {
+    var message;
+    if (error && error.formatProblem) {
+      message = error.message;
+    } else {
+      message = "\u201c" + fileName + "\u201d isn't a softChord songbook.";
+    }
+    notify("Can't open songbook", message);
+  }
+
+  function openSongbookFile(file) {
+    if (!file) {
+      return;
+    }
+    if (file.size > MAX_SONGBOOK_BYTES) {
+      notify("Can't open songbook",
+        "This songbook is too large to open here. Open it in softChord on your computer.");
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var opened = new Uint8Array(reader.result);
+      var kept = opened.slice(0);
+      Songbook.openBuffer(opened).then(function () {
+        activateSongbook(rememberSongbook(displayNameFromFile(file.name), kept));
+      }).catch(function (error) {
+        showOpenError(file.name, error);
+      });
+    };
+    reader.onerror = function () {
+      showOpenError(file.name);
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   var allTitles = [];
@@ -1253,6 +1452,7 @@
       return;
     }
     menu.hidden = true;
+    closeSongbookMenu();
     if (id == null) {
       openId = null;
       steps = 0;
@@ -1343,7 +1543,55 @@
     if (!menu.hidden && !menu.contains(event.target)) {
       menu.hidden = true;
     }
+    if (songbookMenu && !songbookMenu.hidden && !songbookMenu.contains(event.target)) {
+      closeSongbookMenu();
+    }
   });
+
+  if (songbookMenuButton) {
+    songbookMenuButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      if (songbookMenu.hidden) {
+        openSongbookMenu();
+      } else {
+        closeSongbookMenu();
+      }
+    });
+  }
+
+  if (songbookMenu) {
+    songbookMenu.addEventListener("click", function (event) {
+      var button = event.target.closest("button");
+      if (!button || !button.dataset.action) {
+        return;
+      }
+      if (button.dataset.action === "open-file") {
+        requestOpenSongbookFile();
+        return;
+      }
+      var note = NOT_AVAILABLE[button.dataset.action];
+      if (!note) {
+        return;
+      }
+      closeSongbookMenu();
+      notify(note[0], note[1]);
+    });
+  }
+
+  if (signInButton) {
+    signInButton.addEventListener("click", function () {
+      var note = NOT_AVAILABLE["sign-in"];
+      notify(note[0], note[1]);
+    });
+  }
+
+  if (songbookFile) {
+    songbookFile.addEventListener("change", function () {
+      var file = songbookFile.files && songbookFile.files[0];
+      songbookFile.value = "";
+      openSongbookFile(file);
+    });
+  }
 
   document.getElementById("back").addEventListener("click", function () {
     askBeforeLeaving(function () {
@@ -1438,6 +1686,10 @@
     if (event.defaultPrevented || notice.open || leaveDialog.open) {
       return;
     }
+    if (songbookMenu && !songbookMenu.hidden) {
+      closeSongbookMenu();
+      return;
+    }
     if (!menu.hidden) {
       menu.hidden = true;
       return;
@@ -1462,10 +1714,13 @@
   applyZoom();
   window.addEventListener("hashchange", showFromHash);
   showListMessage("Opening songbook…", false);
-  Songbook.load(currentSongbook.url).then(function () {
+  Songbook.load(currentSongbook.url).then(function (bytes) {
+    activeSongbook = rememberSongbook(currentSongbook.displayName, bytes, currentSongbook.url);
     allTitles = Songbook.titles();
     loadError = null;
     showListMessage("", false);
+    updateSongbookChrome();
+    renderSongbookMenu();
     showFromHash();
     if (songIdFromHash() == null) {
       search.focus();

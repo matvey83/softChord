@@ -743,7 +743,8 @@ test("print styles keep only the song, in black on white, at a fixed size", func
   var print = css.slice(at);
   // The chrome around the song is not printed.
   var hide = /([^{}]*)\{\s*display: none !important;\s*\}/.exec(print)[1];
-  ["#back", ".toolbar-actions", "#persist-note", "#toast", "#menu", "#notice"].forEach(function (sel) {
+  ["#back", ".toolbar-actions", "#persist-note", "#toast", "#menu", "#notice",
+    "#songbook-header", "#songbook-menu"].forEach(function (sel) {
     assert.ok(hide.includes(sel), sel + " is hidden when printing");
   });
   assert.equal(hide.includes("#song-title"), false, "the title is printed");

@@ -21,6 +21,78 @@ main {
   background: #fff;
 }
 
+/* MIRRORED UI: the iOS song list (SoftChord/SoftChord/ContentView.swift)
+   uses this same header: songbook name, ▾, grey "Not saved", Sign in on the
+   right, Search below. It is on the song list only. A change to this row is
+   made there too. The name truncates first; the arrow, the indicator and
+   Sign in stay on screen. */
+.songbook-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 2px;
+  min-width: 0;
+}
+
+.songbook-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#songbook-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+
+#songbook-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.songbook-caret { flex: none; }
+
+#songbook-indicator {
+  flex: none;
+  color: #8e8e93;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+#sign-in {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  color: #007aff;
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+#songbook-menu-button:focus-visible,
+#sign-in:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .search-bar {
   display: flex;
   gap: 8px;
@@ -644,6 +716,47 @@ main {
   background: #f2f2f7;
 }
 
+#songbook-menu {
+  z-index: 30;
+  min-width: 260px;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+}
+
+.menu-label {
+  padding: 6px 14px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8e8e93;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #e5e5ea;
+}
+
+.menu button.songbook-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.menu-check {
+  flex: none;
+  width: 1.1em;
+  text-align: center;
+}
+
+.menu-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #notice {
   border: none;
   border-radius: 12px;
@@ -709,7 +822,8 @@ main {
     color: #000;
   }
 
-  #list-view, #back, .toolbar-actions, #persist-note, #toast, #menu, #notice, #leave-confirm,
+  #list-view, #songbook-header, #songbook-menu, #back, .toolbar-actions, #persist-note,
+  #toast, #menu, #notice, #leave-confirm,
   #song-error, #sheet-editor, #chord-live, #chord-entry {
     display: none !important;
   }
