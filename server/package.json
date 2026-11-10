@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test --test-concurrency=1 test/*.test.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "wrangler types && tsc --noEmit",
     "types": "wrangler types"
   },
   "dependencies": {

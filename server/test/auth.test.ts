@@ -89,7 +89,6 @@ describe("magic-link auth", () => {
       linkBody("singer@example.com", "ios"),
       {
         ...linkHeaders("ios"),
-        origin: "https://evil.example",
         "x-forwarded-host": "evil.example",
       },
     );
@@ -263,6 +262,9 @@ describe("magic-link auth", () => {
     const wrong = await postJson(app, "/api/auth/verify", { token, verifier: WRONG_VERIFIER });
     assert.equal(wrong.status, 400);
     assert.deepEqual(await wrong.json(), { error: "invalid_or_expired" });
+    const short = await postJson(app, "/api/auth/verify", { token, verifier: "abc" });
+    assert.equal(short.status, 400);
+    assert.deepEqual(await short.json(), { error: "invalid_or_expired" });
     assert.equal(await count(db, "users"), 0);
     assert.equal(await count(db, "sessions"), 0);
 
@@ -392,13 +394,10 @@ describe("magic-link auth", () => {
     const html = await response.text();
     assert.equal(html.includes("super-secret-token"), false);
     assert.equal(html.includes("ignored"), false);
-    assert.match(html, /Sign in as m\*\*\*@gmail\.com/);
+    assert.equal(html.includes("id=\"sign-in\""), false);
+    assert.equal(html.includes('"/api/auth/verify"'), false);
     assert.match(html, /Open in SoftChord/);
-    assert.match(html, /Open this link on the device where you requested it\./);
-    assert.match(html, /id="form-error" hidden/);
-    const verifyAt = html.indexOf('"/api/auth/verify"');
-    const clickAt = html.lastIndexOf('addEventListener("click"', verifyAt);
-    assert.ok(clickAt !== -1 && clickAt < verifyAt);
+    assert.match(html, /Paste this link into SoftChord if the button does not open the app\./);
     const assignAt = html.indexOf("window.location.assign");
     const openAt = html.indexOf('getElementById("open-app").addEventListener');
     assert.ok(openAt !== -1 && openAt < assignAt);
@@ -406,13 +405,23 @@ describe("magic-link auth", () => {
     assert.equal(html.includes(".click()"), false);
     assert.equal(await count(db, "users"), 0);
 
+    const desktop = await app.fetch(new Request(`${PUBLIC_ORIGIN}/login?client=desktop`));
+    assert.equal((await desktop.text()).includes("id=\"sign-in\""), false);
+
     const web = await app.fetch(new Request(`${PUBLIC_ORIGIN}/login?client=web&hint=m***%40gmail.com`));
     const webHtml = await web.text();
     assert.equal(webHtml.includes("Open in SoftChord"), false);
     assert.match(webHtml, /Sign in as m\*\*\*@gmail\.com/);
+    const policy = web.headers.get("content-security-policy") ?? "";
+    const nonce = /script-src 'nonce-([^']+)'/.exec(policy)?.[1] ?? "";
+    assert.match(policy, /frame-ancestors 'none'/);
+    assert.match(webHtml, new RegExp(`<script nonce="${nonce}">`));
+    const verifyAt = webHtml.indexOf('"/api/auth/verify"');
+    const clickAt = webHtml.lastIndexOf('addEventListener("click"', verifyAt);
+    assert.ok(clickAt !== -1 && clickAt < verifyAt);
 
     const hostile = await app.fetch(new Request(
-      `${PUBLIC_ORIGIN}/login?client=ios&hint=${encodeURIComponent("<script>alert(1)</script>")}`,
+      `${PUBLIC_ORIGIN}/login?client=web&hint=${encodeURIComponent("<script>alert(1)</script>")}`,
     ));
     const hostileHtml = await hostile.text();
     assert.equal(hostileHtml.includes("<script>alert"), false);

@@ -52,6 +52,9 @@ describe("recording mailer guard", () => {
     assert.throws(() => mailerFromEnv({ ENVIRONMENT: "production", MAILER: "unconfigured" }));
     const local = mailerFromEnv({ ENVIRONMENT: "development", MAILER: "recording" });
     assert.equal(local instanceof RecordingMailer, true);
+    assert.equal(mailerFromEnv({ ENVIRONMENT: "test", MAILER: "recording" }) instanceof RecordingMailer, true);
+    assert.throws(() => mailerFromEnv({ ENVIRONMENT: "staging", MAILER: "recording" }));
+    assert.throws(() => assertMailerAllowed({ ENVIRONMENT: "qa", MAILER: "unconfigured" }, new RecordingMailer()));
     assert.throws(() => createTestApp({
       env: {
         ENVIRONMENT: "production",

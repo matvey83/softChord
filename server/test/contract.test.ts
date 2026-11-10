@@ -115,7 +115,10 @@ describe("api contract", () => {
         const before = recorded(mailer).length;
         const request = substitute(step.request, state) as ContractStep["request"];
         const headers = new Headers(request.headers);
-        if (request.json !== undefined) headers.set("content-type", "application/json");
+        if (request.method === "POST" && !headers.has("content-type")) {
+          headers.set("content-type", "application/json");
+        }
+        if (request.json !== undefined) headers.set("content-type", headers.get("content-type") ?? "application/json");
         if (request.cookies) {
           headers.set("cookie", request.cookies.map((name) => `${name}=${jar.get(name) ?? ""}`).join("; "));
         }

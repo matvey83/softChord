@@ -7,6 +7,20 @@ export function normalizeEmail(input: unknown): string | null {
   return email;
 }
 
+/** Cap key. The message is still sent to the normalized typed address. */
+export function canonicalEmail(normalized: string): string {
+  const at = normalized.lastIndexOf("@");
+  let local = normalized.slice(0, at);
+  let domain = normalized.slice(at + 1);
+  const plus = local.indexOf("+");
+  if (plus >= 0) local = local.slice(0, plus);
+  if (domain === "gmail.com" || domain === "googlemail.com") {
+    local = local.replaceAll(".", "");
+    domain = "gmail.com";
+  }
+  return `${local}@${domain}`;
+}
+
 /** First character of the local part, then ***, then the domain. */
 export function maskEmail(email: string): string {
   const at = email.indexOf("@");

@@ -36,3 +36,9 @@ export function clearCookie(c: CookieContext, env: AppConfig, name: string): voi
 export function originAllowed(request: Request, publicOrigin: string): boolean {
   return request.headers.get("origin") === publicOrigin;
 }
+
+/** A present Origin that is not the configured origin. A missing Origin is allowed. */
+export function hasForeignOrigin(request: Request, publicOrigin: string): boolean {
+  const origin = request.headers.get("origin");
+  return origin !== null && origin !== publicOrigin;
+}

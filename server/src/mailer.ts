@@ -9,7 +9,7 @@ export interface LoginMailer {
 
 /**
  * Records messages in memory. This is the only mailer in this slice.
- * mailerFromEnv refuses to return it when ENVIRONMENT is production.
+ * mailerFromEnv returns it only when ENVIRONMENT is development, dev, or test.
  */
 export class RecordingMailer implements LoginMailer {
   readonly sent: LoginEmail[] = [];
@@ -20,19 +20,23 @@ export class RecordingMailer implements LoginMailer {
   }
 }
 
+export function recordingEnvironment(environment: string): boolean {
+  return environment === "development" || environment === "dev" || environment === "test";
+}
+
 export function assertMailerAllowed(
   env: { ENVIRONMENT: string; MAILER: string },
   mailer?: LoginMailer,
 ): void {
   const recordingBinding = env.MAILER === "recording" || mailer instanceof RecordingMailer;
-  if (env.ENVIRONMENT === "production" && recordingBinding) {
-    throw new Error("The recording mailer cannot be the production binding");
+  if (recordingBinding && !recordingEnvironment(env.ENVIRONMENT)) {
+    throw new Error("The recording mailer can only be used when ENVIRONMENT is dev or test");
   }
 }
 
 export function mailerFromEnv(env: { ENVIRONMENT: string; MAILER: string }): LoginMailer {
   assertMailerAllowed(env);
-  if (env.ENVIRONMENT !== "production" && env.MAILER === "recording") {
+  if (recordingEnvironment(env.ENVIRONMENT) && env.MAILER === "recording") {
     return new RecordingMailer();
   }
   throw new Error("No mailer is configured");

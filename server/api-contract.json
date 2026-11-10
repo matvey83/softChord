@@ -27,31 +27,31 @@
       "id": "request-link",
       "method": "POST",
       "path": "/api/auth/request-link",
-      "errors": ["invalid_request", "forbidden"]
+      "errors": ["invalid_request", "forbidden", "method_not_allowed"]
     },
     {
       "id": "login",
       "method": "GET",
       "path": "/login",
-      "errors": []
+      "errors": ["method_not_allowed"]
     },
     {
       "id": "verify",
       "method": "POST",
       "path": "/api/auth/verify",
-      "errors": ["invalid_or_expired", "forbidden"]
+      "errors": ["invalid_or_expired", "forbidden", "method_not_allowed"]
     },
     {
       "id": "me",
       "method": "GET",
       "path": "/api/me",
-      "errors": ["unauthorized"]
+      "errors": ["unauthorized", "method_not_allowed"]
     },
     {
       "id": "logout",
       "method": "POST",
       "path": "/api/auth/logout",
-      "errors": ["unauthorized", "forbidden"]
+      "errors": ["unauthorized", "forbidden", "method_not_allowed"]
     }
   ],
   "cases": [
@@ -71,7 +71,11 @@
               "verifier_hash": "409a1dfd38791e76dbd352152207e00a8a3379fe17a96122eb07eb449b7d288e"
             }
           },
-          "response": { "status": 200, "json": { "ok": true } }
+          "response": {
+            "status": 200,
+            "headers": { "cache-control": "no-store" },
+            "json": { "ok": true }
+          }
         }
       ]
     },
@@ -95,7 +99,7 @@
       ]
     },
     {
-      "name": "web request-link requires Origin",
+      "name": "request-link rejects a foreign Origin",
       "endpoint": "request-link",
       "steps": [
         {
@@ -103,6 +107,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/request-link",
+            "headers": { "origin": "https://evil.example" },
             "json": {
               "email": "singer@example.com",
               "client": "web",
@@ -124,13 +129,11 @@
             "status": 200,
             "headers": { "cache-control": "no-store", "referrer-policy": "no-referrer" },
             "textIncludes": [
-              "Sign in as m***@gmail.com",
               "Open in SoftChord",
               "softchord://login?token=",
-              "Open this link on the device where you requested it.",
-              "id=\"form-error\" hidden"
+              "Paste this link into SoftChord if the button does not open the app."
             ],
-            "textExcludes": ["super-secret-token"]
+            "textExcludes": ["super-secret-token", "id=\"sign-in\"", "\"/api/auth/verify\""]
           }
         }
       ]
@@ -385,6 +388,56 @@
         {
           "request": { "method": "POST", "path": "/api/auth/logout" },
           "response": { "status": 401, "json": { "error": "unauthorized" } }
+        }
+      ]
+    },
+    {
+      "name": "request-link rejects GET",
+      "endpoint": "request-link",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/api/auth/request-link" },
+          "response": { "status": 405, "json": { "error": "method_not_allowed" } }
+        }
+      ]
+    },
+    {
+      "name": "login rejects POST",
+      "endpoint": "login",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/login" },
+          "response": { "status": 405, "json": { "error": "method_not_allowed" } }
+        }
+      ]
+    },
+    {
+      "name": "verify rejects GET",
+      "endpoint": "verify",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/api/auth/verify" },
+          "response": { "status": 405, "json": { "error": "method_not_allowed" } }
+        }
+      ]
+    },
+    {
+      "name": "me rejects POST",
+      "endpoint": "me",
+      "steps": [
+        {
+          "request": { "method": "POST", "path": "/api/me" },
+          "response": { "status": 405, "json": { "error": "method_not_allowed" } }
+        }
+      ]
+    },
+    {
+      "name": "logout rejects GET",
+      "endpoint": "logout",
+      "steps": [
+        {
+          "request": { "method": "GET", "path": "/api/auth/logout" },
+          "response": { "status": 405, "json": { "error": "method_not_allowed" } }
         }
       ]
     }

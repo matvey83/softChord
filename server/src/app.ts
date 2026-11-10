@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 
-import { clearCookie, originAllowed, readCookie, writeCookie } from "./cookies.ts";
+import { clearCookie, hasForeignOrigin, originAllowed, readCookie, writeCookie } from "./cookies.ts";
 import {
   assertRuntimeConfig,
   DEVICE_LABEL_MAX,
@@ -14,20 +14,18 @@ import {
 } from "./config.ts";
 import {
   consumeLoginToken,
-  countRecentLoginTokens,
   deleteSession,
   findLiveLoginToken,
   findSession,
-  insertLoginToken,
   insertSession,
+  issueLoginToken,
   touchSession,
   upsertUser,
-  voidUnusedLoginTokens,
   type ClientKind,
   type SessionRow,
   type SqlDatabase,
 } from "./db.ts";
-import { maskEmail, normalizeEmail } from "./email.ts";
+import { canonicalEmail, maskEmail, normalizeEmail } from "./email.ts";
 import { renderLoginPage } from "./login-page.ts";
 import { assertMailerAllowed, type LoginMailer } from "./mailer.ts";
 import { clientIp, type IpRateLimiter } from "./rate-limit.ts";
@@ -102,14 +100,29 @@ function accepted(c: { json: (body: unknown, status?: number) => Response }): Re
   return c.json({ ok: true });
 }
 
+function isJsonContentType(value: string | undefined): boolean {
+  if (!value) return false;
+  const mediaType = value.split(";", 1)[0]?.trim().toLowerCase();
+  return mediaType === "application/json";
+}
+
 async function readJson(c: { req: { header: (name: string) => string | undefined; json: () => Promise<unknown> } }): Promise<unknown> {
-  const type = c.req.header("content-type") ?? "";
-  if (!type.toLowerCase().includes("application/json")) return undefined;
+  if (!isJsonContentType(c.req.header("content-type"))) return undefined;
   try {
     return await c.req.json();
   } catch {
     return undefined;
   }
+}
+
+function methodNotAllowed(c: { json: (body: unknown, status?: number) => Response }): Response {
+  return c.json({ error: "method_not_allowed" }, 405);
+}
+
+async function privateHeaders(c: { res: { headers: Headers } }, next: () => Promise<void>): Promise<void> {
+  await next();
+  c.res.headers.set("cache-control", "no-store");
+  c.res.headers.set("referrer-policy", "no-referrer");
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -118,31 +131,24 @@ export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
 
   app.use("/login", async (c, next) => {
-    await next();
-    c.res.headers.set("cache-control", "no-store");
-    c.res.headers.set("referrer-policy", "no-referrer");
+    await privateHeaders(c, next);
     c.res.headers.set("x-content-type-options", "nosniff");
   });
-  app.use("/api/auth/verify", async (c, next) => {
+  app.use("/api/auth/request-link", privateHeaders);
+  app.use("/api/auth/verify", privateHeaders);
+  app.use("/api/me", privateHeaders);
+  app.use("/api/auth/logout", privateHeaders);
+  app.use("/api/*", async (c, next) => {
+    if (c.req.method === "POST" && !isJsonContentType(c.req.header("content-type"))) {
+      return c.json({ error: "invalid_request" }, 400);
+    }
     await next();
-    c.res.headers.set("cache-control", "no-store");
-    c.res.headers.set("referrer-policy", "no-referrer");
-  });
-  app.use("/api/me", async (c, next) => {
-    await next();
-    c.res.headers.set("cache-control", "no-store");
-    c.res.headers.set("referrer-policy", "no-referrer");
-  });
-  app.use("/api/auth/logout", async (c, next) => {
-    await next();
-    c.res.headers.set("cache-control", "no-store");
-    c.res.headers.set("referrer-policy", "no-referrer");
   });
 
   app.post("/api/auth/request-link", async (c) => {
     const parsed = parseRequestLink(await readJson(c));
     if (!parsed) return c.json({ error: "invalid_request" }, 400);
-    if (parsed.client === "web" && !originAllowed(c.req.raw, deps.env.PUBLIC_ORIGIN)) {
+    if (hasForeignOrigin(c.req.raw, deps.env.PUBLIC_ORIGIN)) {
       return c.json({ error: "forbidden" }, 403);
     }
     if (parsed.verifier) {
@@ -162,23 +168,23 @@ export function createApp(deps: AppDeps): Hono {
       return accepted(c);
     }
 
-    const recent = await countRecentLoginTokens(deps.db, parsed.email, now - EMAIL_WINDOW_SECONDS);
-    if (recent >= EMAIL_LIMIT) {
-      console.log(JSON.stringify({ event: "login_link_suppressed", reason: "email_cap" }));
-      return accepted(c);
-    }
-
     const token = randomToken();
     const tokenHash = await sha256Hex(token);
-    await voidUnusedLoginTokens(deps.db, parsed.email, now);
-    await insertLoginToken(deps.db, {
+    const issued = await issueLoginToken(deps.db, {
       tokenHash,
       email: parsed.email,
+      emailKey: canonicalEmail(parsed.email),
       client: parsed.client,
       verifierHash: parsed.verifierHash,
       createdAt: now,
       expiresAt: now + LOGIN_TTL_SECONDS,
+      since: now - EMAIL_WINDOW_SECONDS,
+      limit: EMAIL_LIMIT,
     });
+    if (!issued) {
+      console.log(JSON.stringify({ event: "login_link_suppressed", reason: "email_cap" }));
+      return accepted(c);
+    }
     const loginUrl = buildLoginUrl(deps.env.PUBLIC_ORIGIN, parsed.client, maskEmail(parsed.email), token);
     const sending = deps.mailer.sendLoginEmail({ to: parsed.email, loginUrl }).then(
       () => {
@@ -199,7 +205,12 @@ export function createApp(deps: AppDeps): Hono {
   app.get("/login", (c) => {
     const client = c.req.query("client");
     const hint = (c.req.query("hint") ?? "").trim().slice(0, 254);
-    return c.html(renderLoginPage(isClient(client) ? client : null, hint));
+    const nonce = crypto.randomUUID().replaceAll("-", "");
+    c.header(
+      "content-security-policy",
+      `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'`,
+    );
+    return c.html(renderLoginPage(isClient(client) ? client : null, hint, nonce));
   });
 
   app.post("/api/auth/verify", async (c) => {
@@ -213,7 +224,7 @@ export function createApp(deps: AppDeps): Hono {
     const verifier = row.client === "web"
       ? readCookie(c, deps.env.VERIFIER_COOKIE_NAME) ?? null
       : parsed.verifier;
-    if (!verifier) return c.json({ error: "invalid_or_expired" }, 400);
+    if (!verifier || !isVerifier(verifier)) return c.json({ error: "invalid_or_expired" }, 400);
     const verifierHash = await sha256Hex(verifier);
     if (!hashesEqual(verifierHash, row.verifier_hash)) {
       return c.json({ error: "invalid_or_expired" }, 400);
@@ -224,6 +235,10 @@ export function createApp(deps: AppDeps): Hono {
 
     const consumed = await consumeLoginToken(deps.db, tokenHash, now);
     if (!consumed) return c.json({ error: "invalid_or_expired" }, 400);
+    if (row.client === "web") {
+      const existing = readCookie(c, deps.env.SESSION_COOKIE_NAME);
+      if (existing) await deleteSession(deps.db, await sha256Hex(existing));
+    }
     const userId = await upsertUser(deps.db, row.email, now);
     const sessionToken = randomToken();
     const sessionHash = await sha256Hex(sessionToken);
@@ -236,6 +251,7 @@ export function createApp(deps: AppDeps): Hono {
     });
     if (row.client === "web") {
       writeCookie(c, deps.env, deps.env.SESSION_COOKIE_NAME, sessionToken, SESSION_COOKIE_SECONDS);
+      clearCookie(c, deps.env, deps.env.VERIFIER_COOKIE_NAME);
       return c.json({ email: row.email });
     }
     return c.json({ email: row.email, token: sessionToken });
@@ -259,6 +275,10 @@ export function createApp(deps: AppDeps): Hono {
     if (found.via === "cookie") clearCookie(c, deps.env, deps.env.SESSION_COOKIE_NAME);
     return c.json({ ok: true });
   });
+
+  for (const path of ["/login", "/api/auth/request-link", "/api/auth/verify", "/api/me", "/api/auth/logout"]) {
+    app.all(path, (c) => methodNotAllowed(c));
+  }
 
   return app;
 }

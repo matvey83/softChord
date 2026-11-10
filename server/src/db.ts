@@ -6,6 +6,8 @@ export interface Prepared {
 
 export interface SqlDatabase {
   prepare(sql: string): Prepared;
+  /** Runs the statements in one transaction. */
+  batch(statements: Prepared[]): Promise<Array<{ changes: number }>>;
 }
 
 export type ClientKind = "web" | "ios" | "desktop";
@@ -26,75 +28,96 @@ export interface SessionRow {
   email: string;
 }
 
-type Bindable = {
-  bind(...values: unknown[]): Bindable;
-  first<T>(): Promise<T | null>;
-  run(): Promise<{ meta?: { changes?: number } }>;
-};
+const d1Statement = Symbol("d1Statement");
 
-export function adaptDatabase(db: { prepare(sql: string): Bindable }): SqlDatabase {
+type Tracked = Prepared & { [d1Statement]?: D1PreparedStatement };
+
+export function adaptDatabase(db: D1Database): SqlDatabase {
+  const wrap = (bound: D1PreparedStatement): Tracked => {
+    const statement: Tracked = {
+      bind(...values: Array<string | number | null>) {
+        return wrap(bound.bind(...values));
+      },
+      async first<T>() {
+        const row = await bound.first<T>();
+        return row ?? null;
+      },
+      async run() {
+        const result = await bound.run();
+        return { changes: Number(result.meta?.changes ?? 0) };
+      },
+      [d1Statement]: bound,
+    };
+    return statement;
+  };
   return {
     prepare(sql: string): Prepared {
-      const wrap = (bound: Bindable): Prepared => ({
-        bind(...values: Array<string | number | null>) {
-          return wrap(bound.bind(...values));
-        },
-        async first<T>() {
-          const row = await bound.first<T>();
-          return row ?? null;
-        },
-        async run() {
-          const result = await bound.run();
-          return { changes: Number(result.meta?.changes ?? 0) };
-        },
-      });
       return wrap(db.prepare(sql));
+    },
+    async batch(statements: Prepared[]): Promise<Array<{ changes: number }>> {
+      const bound = statements.map((statement) => {
+        const inner = (statement as Tracked)[d1Statement];
+        if (!inner) throw new Error("cannot batch this statement");
+        return inner;
+      });
+      const results = await db.batch(bound);
+      return results.map((result) => ({ changes: Number(result.meta?.changes ?? 0) }));
     },
   };
 }
 
-export async function countRecentLoginTokens(
-  db: SqlDatabase,
-  email: string,
-  since: number,
-): Promise<number> {
-  const row = await db
-    .prepare("SELECT COUNT(*) AS n FROM login_tokens WHERE email = ? AND created_at > ?")
-    .bind(email, since)
-    .first<{ n: number }>();
-  return Number(row?.n ?? 0);
-}
+const ISSUE_TOKEN = `
+INSERT INTO login_tokens
+  (token_hash, email, email_key, client, verifier_hash, created_at, expires_at, consumed_at)
+SELECT ?, ?, ?, ?, ?, ?, ?, NULL
+WHERE (
+  SELECT COUNT(*) FROM login_tokens
+  WHERE email_key = ? AND created_at > ?
+) < ?
+`;
 
-export async function voidUnusedLoginTokens(
-  db: SqlDatabase,
-  email: string,
-  consumedAt: number,
-): Promise<void> {
-  await db
-    .prepare("UPDATE login_tokens SET consumed_at = ? WHERE email = ? AND consumed_at IS NULL")
-    .bind(consumedAt, email)
-    .run();
-}
+const VOID_OTHERS = `
+UPDATE login_tokens
+SET consumed_at = ?
+WHERE email_key = ?
+  AND consumed_at IS NULL
+  AND token_hash != ?
+  AND EXISTS (
+    SELECT 1 FROM login_tokens AS issued WHERE issued.token_hash = ?
+  )
+`;
 
-export async function insertLoginToken(
+/** Inserts under the cap and voids older unused tokens for that key, in one transaction. */
+export async function issueLoginToken(
   db: SqlDatabase,
   row: {
     tokenHash: string;
     email: string;
+    emailKey: string;
     client: ClientKind;
     verifierHash: string;
     createdAt: number;
     expiresAt: number;
+    since: number;
+    limit: number;
   },
-): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO login_tokens
-        (token_hash, email, client, verifier_hash, created_at, expires_at, consumed_at)
-       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-    )
-    .bind(row.tokenHash, row.email, row.client, row.verifierHash, row.createdAt, row.expiresAt)
-    .run();
+): Promise<boolean> {
+  const [inserted] = await db.batch([
+    db.prepare(ISSUE_TOKEN).bind(
+      row.tokenHash,
+      row.email,
+      row.emailKey,
+      row.client,
+      row.verifierHash,
+      row.createdAt,
+      row.expiresAt,
+      row.emailKey,
+      row.since,
+      row.limit,
+    ),
+    db.prepare(VOID_OTHERS).bind(row.createdAt, row.emailKey, row.tokenHash, row.tokenHash),
+  ]);
+  return inserted?.changes === 1;
 }
 
 export async function findLiveLoginToken(

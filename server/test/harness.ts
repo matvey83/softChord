@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,18 +32,24 @@ export interface TestApp {
   tasks: Promise<unknown>[];
 }
 
+function migrationSql(): string {
+  const directory = join(dirname(fileURLToPath(import.meta.url)), "../migrations");
+  return readdirSync(directory)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()
+    .map((name) => readFileSync(join(directory, name), "utf8"))
+    .join("\n");
+}
+
 export function createTestApp(options?: {
   now?: () => number;
   limiter?: IpRateLimiter;
   mailer?: LoginMailer;
   env?: AppConfig;
+  yield?: boolean;
 }): TestApp {
   const mailer = options?.mailer ?? new RecordingMailer();
-  const migration = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "../migrations/0001_init.sql"),
-    "utf8",
-  );
-  const db = openSqlite(migration);
+  const db = openSqlite(migrationSql(), { yield: options?.yield });
   const tasks: Promise<unknown>[] = [];
   const env = options?.env ?? testEnv;
   const deps: AppDeps = {

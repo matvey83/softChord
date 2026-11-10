@@ -11,6 +11,7 @@ CREATE TABLE users (
 CREATE TABLE login_tokens (
   token_hash TEXT PRIMARY KEY,
   email TEXT NOT NULL,
+  email_key TEXT NOT NULL,
   client TEXT NOT NULL CHECK (client IN ('web', 'ios', 'desktop')),
   verifier_hash TEXT NOT NULL,
   created_at INTEGER NOT NULL,
@@ -18,8 +19,8 @@ CREATE TABLE login_tokens (
   consumed_at INTEGER
 );
 
-CREATE INDEX idx_login_tokens_email_created
-  ON login_tokens (email, created_at);
+CREATE INDEX idx_login_tokens_email_key_created
+  ON login_tokens (email_key, created_at);
 
 CREATE TABLE sessions (
   token_hash TEXT PRIMARY KEY,

@@ -2,14 +2,21 @@ import { escapeHtml } from "./email.ts";
 import type { ClientKind } from "./db.ts";
 
 const FAILURE = "Open this link on the device where you requested it.";
+const PASTE_HINT = "Paste this link into SoftChord if the button does not open the app.";
 
-function signInScript(): string {
+function tokenScript(): string {
   return `
     function tokenFromFragment() {
       var hash = window.location.hash;
       if (hash.charAt(0) === "#") hash = hash.slice(1);
       return new URLSearchParams(hash).get("t") || "";
     }
+  `;
+}
+
+function signInScript(): string {
+  return `
+    ${tokenScript()}
     var errorEl = document.getElementById("form-error");
     document.getElementById("sign-in").addEventListener("click", function () {
       var token = tokenFromFragment();
@@ -33,6 +40,7 @@ function signInScript(): string {
 
 function openAppScript(): string {
   return `
+    ${tokenScript()}
     document.getElementById("open-app").addEventListener("click", function () {
       var token = tokenFromFragment();
       window.location.assign("softchord://login?token=" + encodeURIComponent(token));
@@ -40,13 +48,15 @@ function openAppScript(): string {
   `;
 }
 
-export function renderLoginPage(client: ClientKind | null, hint: string): string {
-  const label = hint ? `Sign in as ${escapeHtml(hint)}` : "Sign in";
+export function renderLoginPage(client: ClientKind | null, hint: string, nonce: string): string {
   const native = client === "ios" || client === "desktop";
-  const openButton = native
-    ? `<button type="button" id="open-app">Open in SoftChord</button>`
-    : "";
-  const script = native ? `${signInScript()}\n${openAppScript()}` : signInScript();
+  const label = hint ? `Sign in as ${escapeHtml(hint)}` : "Sign in";
+  const controls = native
+    ? `<button type="button" id="open-app">Open in SoftChord</button>
+    <p>${PASTE_HINT}</p>`
+    : `<button type="button" id="sign-in">${label}</button>
+    <p id="form-error" hidden>${FAILURE}</p>`;
+  const script = native ? openAppScript() : signInScript();
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65,11 +75,9 @@ export function renderLoginPage(client: ClientKind | null, hint: string): string
   <main>
     <h1>Sign in to SoftChord</h1>
     <p>This link signs in the device that asked for it.</p>
-    <button type="button" id="sign-in">${label}</button>
-    ${openButton}
-    <p id="form-error" hidden>${FAILURE}</p>
+    ${controls}
   </main>
-  <script>${script}</script>
+  <script nonce="${escapeHtml(nonce)}">${script}</script>
 </body>
 </html>
 `;
