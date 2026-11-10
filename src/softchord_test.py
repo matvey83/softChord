@@ -31,6 +31,8 @@ class SoftChordEditorTest(unittest.TestCase):
         cls.app.warning = lambda text: None
         cls.app.error = lambda text: None
         cls.app.question = lambda *args, **kwargs: True   # auto-accept (for renumber etc.)
+        # A song is already a draft. Leaving a dirty one must not block.
+        cls.app._askSaveChanges = lambda: "discard"
 
         # Copy the sample songbook so tests do not write the original file.
         src = os.path.abspath(
@@ -305,6 +307,48 @@ class SoftChordEditorTest(unittest.TestCase):
         moved = self.app.current_song.getChordAtPosition(6)
         self.assertIsNotNone(moved)
         self.assertEqual(moved.note_id, chord.note_id)
+
+    def test_dirty_leave_cancel_discard_and_save(self):
+        """Save, Don't Save and Cancel while a song stays the one on screen."""
+        app = self.app
+        app.createNewSong()
+        song_id = app.current_song.id
+        self.addCleanup(self._delete_song, song_id)
+        app.currentSongTitleEdited("Leave Me")
+        self.assertTrue(app.editChanged())
+        self.assertTrue(app.textEditing())
+
+        app._askSaveChanges = lambda: "cancel"
+        self.assertFalse(app.confirmLeaveEdit())
+        self.assertTrue(app.editing())
+        self.assertTrue(app.textEditing())
+        self.assertEqual(app.current_song.title, "Leave Me")
+        stored = app.curs.execute(
+            "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0]
+        self.assertEqual(stored, "")
+
+        app._askSaveChanges = lambda: "discard"
+        self.assertTrue(app.confirmLeaveEdit())
+        self.assertFalse(app.editing())
+        self.assertEqual(app.current_song.title, "")
+        self.assertEqual(app.curs.execute(
+            "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0], "")
+
+        app.currentSongTitleEdited("Saved Title")
+        self.assertTrue(app.editChanged())
+        app._askSaveChanges = lambda: "save"
+        self.assertTrue(app.confirmLeaveEdit())
+        self.assertFalse(app.editing())
+        self.assertEqual(app.current_song.title, "Saved Title")
+        self.assertEqual(app.curs.execute(
+            "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0],
+            "Saved Title")
+
+    def _delete_song(self, song_id):
+        self.app._askSaveChanges = lambda: "discard"
+        if (self.app.current_song is not None
+                and self.app.current_song.id == song_id):
+            self.app.deleteSelectedSongs()
 
     def test_keyboard_up_does_not_transpose_selected_chord(self):
         """Up/Down arrows do not change the selected chord."""

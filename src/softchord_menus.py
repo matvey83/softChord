@@ -54,12 +54,12 @@ def wire_menus(session):
     ui.actionPasteAsNewSong.triggered.connect(session.pasteAsNewSong)
     ui.actionImportClipboard.triggered.connect(session.pasteAsNewSong)
 
-    # Edit Chords... and Edit Text... start an edit. They are actions,
-    # not modes: the song is only viewed until one of them is chosen.
+    # Chords and Lyrics select the segment of the open draft. A song is
+    # already editing when it opens.
     ui.actionChordEditorMode.triggered.connect(session.chordEditorSelected)
     ui.actionLyricEditorMode.triggered.connect(session.lyricEditorSelected)
     ui.actionSaveEdit.triggered.connect(session.saveEdit)
-    ui.actionDiscardEdit.triggered.connect(session.requestDiscardEdit)
+    ui.actionDiscardEdit.triggered.connect(session.discardEdit)
 
     ui.actionZoomIn.triggered.connect(session.zoomIn)
     ui.actionZoomOut.triggered.connect(session.zoomOut)
