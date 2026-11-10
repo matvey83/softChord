@@ -21,3 +21,10 @@
 - iOS: tapping Lyrics is ignored while a switch waits for the keyboard.
 - iOS: `commitEdit` can save `steps:0` and lose the key.
 - iOS: Lyrics now zooms with the toolbar buttons, fit-to-width applies on Chords, and Copy and Print use the unsaved draft.
+
+- Login (iOS): `SoftChordAPIOrigin` is empty, so sign-in shows "Sign-in not configured" and does not call the network. The production origin still needs the account owner.
+- Login (iOS): The email's https link is pasted into the app. There is no associated domain and no apple-app-site-association file, so that link does not open the app by itself. `softchord://login?token=` does, once the system delivers it. Say if universal links should wait for a domain.
+- Login (iOS): `device_label` is the device model (`iPhone` or `iPad`), not the device name. Say if that label should be different.
+- Login (iOS): The session token and the pending verifier stay in the Keychain on this device only (not iCloud Keychain) until sign-out. Say if a session should sync to the user's other devices.
+- Login (iOS): A new sign-in on this phone replaces the Keychain token and does not revoke the previous server session. Sign Out Everywhere does. Say if a new sign-in should revoke the previous session on this phone.
+- Login (iOS): This was not built or run. It needs a Mac with Xcode to compile SoftChordTests, confirm the plist key and `softchord` scheme, and walk through sign-in against the local server.

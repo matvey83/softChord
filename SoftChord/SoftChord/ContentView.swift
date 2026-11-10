@@ -15,8 +15,10 @@ struct ContentView: View {
     @State private var filter = ""
     @State private var noticeTitle: String?
     @State private var noticeMessage: String?
+    @ObservedObject private var auth: AuthModel
 
-    init(songs: [SongTitle]? = nil) {
+    init(songs: [SongTitle]? = nil, auth: AuthModel = .shared) {
+        _auth = ObservedObject(wrappedValue: auth)
         if let songs {
             self.songs = songs
             self.errorMessage = nil
@@ -48,9 +50,12 @@ struct ContentView: View {
                     .contentMargins(.top, 0, for: .scrollContent)
                     // Kept outside the scrolling rows, so the field stays put while the list moves.
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        HStack(spacing: 8) {
-                            Text("Search:")
-                            SongFilterField(text: $filter)
+                        VStack(alignment: .leading, spacing: 8) {
+                            AccountHeader(auth: auth)
+                            HStack(spacing: 8) {
+                                Text("Search:")
+                                SongFilterField(text: $filter)
+                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
@@ -68,6 +73,7 @@ struct ContentView: View {
                 Task.detached(priority: .utility) {
                     SongSheetLayout.warm()
                 }
+                await auth.restore()
             }
             .alert(noticeTitle ?? "", isPresented: noticeIsPresented) {
                 Button("OK", role: .cancel) {}
