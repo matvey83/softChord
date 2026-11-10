@@ -341,6 +341,15 @@ describe("login request guards", () => {
     });
     assert.equal(extra.status, 400);
     assert.deepEqual(await extra.json(), { error: "invalid_request" });
+    for (const body of ["", " \n\t ", "[]"]) {
+      const rejected = await app.fetch(new Request(`${PUBLIC_ORIGIN}/api/auth/logout-all`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${second}` },
+        body,
+      }));
+      assert.equal(rejected.status, 400, JSON.stringify(body));
+      assert.deepEqual(await rejected.json(), { error: "invalid_request" });
+    }
     assert.equal((await me(first)).status, 200);
     assert.equal((await me(second)).status, 200);
     const ended = await postJson(app, "/api/auth/logout-all", {}, {

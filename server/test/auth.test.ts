@@ -292,6 +292,15 @@ describe("magic-link auth", () => {
     const extra = await postJson(app, "/api/auth/logout", { extra: true }, headers);
     assert.equal(extra.status, 400);
     assert.deepEqual(await extra.json(), { error: "invalid_request" });
+    for (const body of ["", " \n\t ", "[]"]) {
+      const rejected = await app.fetch(new Request(`${PUBLIC_ORIGIN}/api/auth/logout`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body,
+      }));
+      assert.equal(rejected.status, 400, JSON.stringify(body));
+      assert.deepEqual(await rejected.json(), { error: "invalid_request" });
+    }
     assert.equal((await app.fetch(new Request(`${PUBLIC_ORIGIN}/api/me`, { headers }))).status, 200);
     const loggedOut = await postJson(app, "/api/auth/logout", {}, headers);
     assert.equal(loggedOut.status, 200);

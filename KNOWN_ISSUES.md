@@ -7,3 +7,5 @@
 - Login: The masked address is in the login link query (`hint`), so it can show up in access logs.
 - Login: Check what Workers tracing records for `/login` and `verify`, so a trace cannot keep the token or the address.
 - Login (Low): The cap key doesn't cover other provider aliases (Yahoo '-', Fastmail subdomains, IDN).
+- Login: api-contract.json logout errors omit invalid_request; add it, then re-copy the contract to web, desktop and iOS fixtures.
+- Login: The web and desktop mocks don't enforce a {} body.
