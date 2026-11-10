@@ -38,13 +38,13 @@ The sample songbook in `softchord_test.py` was already resolved from `__file__`.
 
 ## Login
 
-### 2026-11-10 — Desktop tests copy the auth contract from 42ca7c9
+### 2026-11-10 — Desktop tests copy the auth contract from 0775e82
 
-`src/fixtures/api-contract.json` is `server/api-contract.json` from `42ca7c921a6d811dd80eb7fc533ede4e5964bb9d` (Login PR 1, branch `cursor/magic-link-auth-server-c270`). `src/fixtures/api-contract.sha` is that commit. The desktop tests load the fixture and mock HTTP. They do not start the server, send mail, or open a socket.
+`src/fixtures/api-contract.json` is `server/api-contract.json` from `0775e8211158c57ff0869d1dbcf961c72ef167bd` (Login PR 1, branch `cursor/magic-link-auth-server-c270`). `src/fixtures/api-contract.sha` is that commit. It replaces the earlier copy from `42ca7c921a6d811dd80eb7fc533ede4e5964bb9d`, which did not yet have `/api/auth/logout-all`. The desktop tests load the fixture, hash its bytes, and mock HTTP. They do not start the server, send mail, or open a socket.
 
 ### 2026-11-10 — The API origin is the env var, then the setting
 
-`SOFTCHORD_API_ORIGIN` wins over QSettings `auth/apiOrigin` (Ini file, organization `softChord`, application `softChord`). The value is an `http` or `https` origin with no userinfo, path, query, or fragment. A trailing slash is dropped. Anything else, including an empty string, counts as unset. Sign In then shows a message box titled `Sign in` whose text is `Sign-in not configured`, and the client does not build a request. Sign out with no origin only clears the local session.
+`SOFTCHORD_API_ORIGIN` wins over QSettings `auth/apiOrigin` (Ini file, organization `softChord`, application `softChord`). The value is an origin with no userinfo, path, query, or fragment. A trailing slash is dropped. It must be `https`, except `http://localhost` and `http://127.0.0.1` (a port is allowed). Any other `http` origin counts as unset, as does an empty string. Sign In then shows a message box titled `Sign in` whose text is `Sign-in not configured`, and the client does not build a request. Sign out with no origin only clears the local session.
 
 ### 2026-11-10 — Desktop sign-in is the contract's native verifier flow
 
@@ -54,12 +54,24 @@ The paste accepts the email link (`#t=<token>`), `softchord://login?token=<token
 
 ### 2026-11-10 — Every POST is application/json, including logout
 
-`POST` sets `Content-Type` to exactly `application/json` and a JSON object body. Logout's body is `{}`. No `Origin` header is sent (a foreign Origin is 403 on the server; a missing one is allowed for a native client). `JsonEnforcingTransport`, the test mock, answers 400 `{ "error": "invalid_request" }` for a POST whose content type is not exactly that value or whose body is not a JSON object, and it does not consume the scripted success response.
+`POST` sets `Content-Type` to exactly `application/json` and a JSON object body. Logout and logout-all send `{}`. No `Origin` header is sent (a foreign Origin is 403 on the server; a missing one is allowed for a native client). `JsonEnforcingTransport`, the test mock, answers 400 `{ "error": "invalid_request" }` for a POST whose content type is not exactly that value or whose body is not a JSON object, and it does not consume the scripted success response.
 
 ### 2026-11-10 — The session token is in QSettings for this slice
 
-`auth/sessionToken` and `auth/pendingVerifier` are plain Ini values. The OS keychain is not used. See KNOWN_ISSUES. Sign Out does not ask for confirmation. A logout response of 200 or 401 clears the local session. Any other status or a transport error leaves the token and shows `Could not sign out.` After a successful logout the client does not call `/api/me` again.
+`auth/sessionToken` and `auth/pendingVerifier` are plain Ini values. The OS keychain is not used, and that blocks a public build. See KNOWN_ISSUES. Sign Out does not ask for confirmation. A logout response of 200 or 401 clears the local session. Any other status or a transport error leaves the token and shows `Could not sign out.` After a successful logout the client does not call `/api/me` again.
+
+### 2026-11-10 — Sign Out Everywhere posts logout-all
+
+The Account menu item `Sign Out Everywhere` is shown with `Sign Out` while an email is on the menu. It `POST`s `/api/auth/logout-all` with `Authorization: Bearer <session>`, `Content-Type: application/json`, and body `{}`, then clears the local session on 200 or 401. A failure leaves the token and shows `Could not sign out everywhere.` It does not ask for confirmation. With no origin it only clears the local session.
+
+### 2026-11-10 — Redirects are errors, and HTTP is off the UI thread
+
+`urllib_transport` builds an opener whose redirect handler never makes a follow-up request, so `Authorization` is not copied onto another URL. A 3xx is a transport error. The timeout is 15 seconds. request-link, verify, `/api/me`, logout, logout-all, and the startup refresh run on `QThreadPool`. Widgets and QSettings change only from the GUI thread. An exception in those calls is logged and does not leave the slot.
+
+### 2026-11-10 — The pending verifier expires with the server login token
+
+The verifier is kept for `LOGIN_TTL_SECONDS` from the server at `0775e8211158c57ff0869d1dbcf961c72ef167bd`, which is 15 minutes (`15 * 60`). The server treats `expires_at > now` as still live, so a verifier that is exactly that old is dropped and verify is not attempted. The clock is `time.time`. Tests replace it.
 
 ### 2026-11-10 — The Account menu keeps the three-dot Sign In label
 
-The label stays `Sign In...`, matching the earlier menu decision. `Sign Out` has no dots. While signed out, the visible items are `Sign In...` and the disabled `Account Settings...`. While signed in, the visible items are the email (a non-command label), `Sign Out`, and `Account Settings...`. Account Settings is still disabled and has no slot. Open From Account, Upload to Account, Share, and Open Link are still the not-available stubs. None of these actions call `confirmLeaveEdit`.
+The label stays `Sign In...`, matching the earlier menu decision. `Sign Out` has no dots. While signed out, the visible items are `Sign In...` and the disabled `Account Settings...`. While signed in, the visible items are the email (a non-command label), `Sign Out`, `Sign Out Everywhere`, and `Account Settings...`. Account Settings is still disabled and has no slot. Open From Account, Upload to Account, Share, and Open Link are still the not-available stubs. None of these actions call `confirmLeaveEdit`.

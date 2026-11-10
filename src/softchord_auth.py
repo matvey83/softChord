@@ -4,7 +4,9 @@ Passwordless. The Account menu asks for an email, POSTs /api/auth/request-link
 with client "desktop" and a verifier hash, then the person pastes the link
 from the email. /api/auth/verify exchanges that token plus the saved verifier
 for a session token. The menu's email comes from /api/me. Sign out POSTs
-/api/auth/logout and clears the local session.
+/api/auth/logout. Sign out everywhere POSTs /api/auth/logout-all. Both
+clear the local session. HTTP runs on a worker; the menu changes on the
+GUI thread.
 
 No request is made when the API origin is unset. Tests pass a transport;
 JsonEnforcingTransport is the mock that rejects a POST unless it is exactly
@@ -18,6 +20,8 @@ import json
 import os
 import re
 import secrets
+import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,9 +33,16 @@ REQUEST_LINK_PATH = "/api/auth/request-link"
 VERIFY_PATH = "/api/auth/verify"
 ME_PATH = "/api/me"
 LOGOUT_PATH = "/api/auth/logout"
+LOGOUT_ALL_PATH = "/api/auth/logout-all"
 
 # Sent on verify. The server stores it on the session, trimmed to 200.
 DEVICE_LABEL = "SoftChord desktop"
+
+# server/src/config.ts LOGIN_TTL_SECONDS at 0775e8211158c57ff0869d1dbcf961c72ef167bd.
+# A live login token requires expires_at > now, so this age is already expired.
+VERIFIER_TTL_SECONDS = 15 * 60
+
+HTTP_TIMEOUT_SECONDS = 15
 
 CHECK_EMAIL = "Check your email"
 NOT_CONFIGURED = "Sign-in not configured"
@@ -41,12 +52,14 @@ SIGN_IN_FAILED = "Could not sign in."
 # Same sentence the server shows when verify fails.
 LINK_FAILED = "Open this link on the device where you requested it."
 SIGN_OUT_FAILED = "Could not sign out."
+SIGN_OUT_EVERYWHERE_FAILED = "Could not sign out everywhere."
 
 _EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _TOKEN = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
 
 _SESSION_KEY = "auth/sessionToken"
 _VERIFIER_KEY = "auth/pendingVerifier"
+_VERIFIER_AT_KEY = "auth/pendingVerifierAt"
 _ORIGIN_KEY = "auth/apiOrigin"
 
 
@@ -140,7 +153,11 @@ def normalize_email(value):
 
 
 def normalize_origin(value):
-    """http(s) origin with no path, or None. A trailing slash is dropped."""
+    """https origin, or http://localhost / http://127.0.0.1. A trailing slash is dropped.
+
+    Any other http origin is unset. No userinfo, path, query, or fragment.
+    A port on the two local hosts is kept.
+    """
     if value is None:
         return None
     text = str(value).strip()
@@ -154,7 +171,17 @@ def normalize_origin(value):
         return None
     if parsed.path not in ("", "/") or parsed.params or parsed.query or parsed.fragment:
         return None
-    return "%s://%s" % (parsed.scheme, parsed.netloc)
+    host = parsed.hostname
+    if not host:
+        return None
+    local = host == "localhost" or host == "127.0.0.1"
+    if parsed.scheme == "http" and not local:
+        return None
+    if parsed.scheme != "https" and not local:
+        return None
+    port = parsed.port
+    netloc = host if port is None else "%s:%s" % (host, port)
+    return "%s://%s" % (parsed.scheme, netloc)
 
 
 def login_token_from_text(value):
@@ -191,20 +218,50 @@ def default_account_settings():
         "softChord")
 
 
-def urllib_transport(exchange):
-    """Send one request with urllib. HTTP errors become HttpResult."""
+class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
+    """Do not follow a redirect, so Authorization is never copied to the next URL."""
+
+    def http_error_302(self, req, fp, code, msg, headers):
+        try:
+            fp.read()
+        except Exception:
+            pass
+        try:
+            fp.close()
+        except Exception:
+            pass
+        raise TransportError("redirect")
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
+
+
+def _opener():
+    return urllib.request.build_opener(_RefuseRedirect())
+
+
+def urllib_transport(exchange, opener=None):
+    """Send one request. A 3xx is an error. The timeout is 15 seconds."""
+    opener = opener or _opener()
     request = urllib.request.Request(
         exchange.url,
         data=exchange.body,
         headers=dict(exchange.headers),
         method=exchange.method)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return HttpResult(response.status, response.read())
+        with opener.open(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+            status = response.status
+            if 300 <= status < 400:
+                raise TransportError("redirect")
+            body = response.read()
+    except TransportError:
+        raise
     except urllib.error.HTTPError as error:
+        if 300 <= error.code < 400:
+            raise TransportError("redirect")
         return HttpResult(error.code, error.read())
     except (urllib.error.URLError, TimeoutError, OSError) as error:
         raise TransportError(str(error))
+    return HttpResult(status, body)
 
 
 def _dumps(payload):
@@ -225,17 +282,50 @@ def _setting_text(settings, key):
     return str(value)
 
 
-class AccountController:
-    """Session token, the pending verifier, and the Account menu label."""
+class _TaskSignals(QtCore.QObject):
+    finished = QtCore.pyqtSignal(object)
+
+
+class _AuthTask(QtCore.QRunnable):
+    """One auth HTTP call. The result is delivered back on the GUI thread."""
+
+    def __init__(self, work, signals):
+        super().__init__()
+        self.work = work
+        self.signals = signals
+
+    def run(self):
+        try:
+            result = self.work()
+        except Exception:
+            traceback.print_exc()
+            result = None
+        try:
+            self.signals.finished.emit(result)
+        except Exception:
+            traceback.print_exc()
+
+
+class AccountController(QtCore.QObject):
+    """Session token, the pending verifier, and the Account menu label.
+
+    HTTP runs on the global thread pool. settled is emitted on the GUI
+    thread after each call's widgets and settings have been updated.
+    """
+
+    settled = QtCore.pyqtSignal()
 
     def __init__(self, session, settings=None, transport=None, env=None,
                  verifier_factory=None):
+        super().__init__()
         self.session = session
         self.settings = settings or default_account_settings()
         self.transport = transport or urllib_transport
         # None reads os.environ. Tests pass a dict so the process env is ignored.
         self.env = env
         self.verifier_factory = verifier_factory or new_verifier
+        # Tests replace this so the verifier TTL does not depend on the clock.
+        self.now = time.time
         self.refresh()
 
     def origin(self):
@@ -251,100 +341,191 @@ class AccountController:
         return _setting_text(self.settings, _SESSION_KEY)
 
     def pending_verifier(self):
-        return _setting_text(self.settings, _VERIFIER_KEY)
+        """The saved verifier, or "" once it is as old as the server login token."""
+        verifier = _setting_text(self.settings, _VERIFIER_KEY)
+        if not verifier:
+            return ""
+        raw = self.settings.value(_VERIFIER_AT_KEY, None)
+        try:
+            stored = int(raw)
+        except (TypeError, ValueError):
+            stored = None
+        if stored is None or int(self.now()) - stored >= VERIFIER_TTL_SECONDS:
+            self._clear_verifier()
+            self.settings.sync()
+            return ""
+        return verifier
 
     def sign_in(self, checked=False):
         """Sign In.... Unset origin shows a message and does not connect."""
-        if self.origin() is None:
-            self._tell("Sign in", NOT_CONFIGURED)
-            return
-        dialog = SignInDialog(self, self.session.win)
-        dialog.exec()
+        try:
+            if self.origin() is None:
+                self._tell("Sign in", NOT_CONFIGURED)
+                return
+            dialog = SignInDialog(self, self.session.win)
+            dialog.exec()
+        except Exception:
+            traceback.print_exc()
 
     def sign_out(self, checked=False):
-        """POST /api/auth/logout, then drop the local session.
+        """POST /api/auth/logout, then drop the local session."""
+        try:
+            self._end_session(LOGOUT_PATH, "Sign out", SIGN_OUT_FAILED)
+        except Exception:
+            traceback.print_exc()
+
+    def sign_out_everywhere(self, checked=False):
+        """POST /api/auth/logout-all, then drop the local session."""
+        try:
+            self._end_session(
+                LOGOUT_ALL_PATH, "Sign out everywhere",
+                SIGN_OUT_EVERYWHERE_FAILED)
+        except Exception:
+            traceback.print_exc()
+
+    def _end_session(self, path, title, failure):
+        """POST {} with the bearer token. 200 or 401 clears the local session.
 
         With no origin, or no token, nothing is sent. The local session is
-        still cleared. A failed call leaves the token so the person can retry.
+        still cleared. Any other result leaves the token so the person can retry.
         """
         origin = self.origin()
         token = self.session_token()
-        if origin and token:
+        if not origin or not token:
+            self._clear_local()
+            self.show_signed_in(None)
+            self.settled.emit()
+            return
+
+        def work():
             try:
-                result = self._send(
-                    origin, "POST", LOGOUT_PATH, {}, bearer=token)
-            except TransportError:
-                self._tell("Sign out", SIGN_OUT_FAILED)
-                return
-            if result.status not in (200, 401):
-                self._tell("Sign out", SIGN_OUT_FAILED)
-                return
-        self._clear_local()
-        self.show_signed_in(None)
+                return self._send(origin, "POST", path, {}, bearer=token)
+            except Exception:
+                traceback.print_exc()
+                return None
 
-    def request_link(self, email):
-        """POST request-link. Returns ok, invalid, unconfigured, or error."""
-        origin = self.origin()
-        if origin is None:
-            return "unconfigured"
-        normalized = normalize_email(email)
-        if normalized is None:
-            return "invalid"
-        verifier = self.verifier_factory()
-        body = {
-            "email": normalized,
-            "client": "desktop",
-            "verifier_hash": verifier_hash(verifier),
-        }
+        def done(result):
+            if result is None or result.status not in (200, 401):
+                self._tell(title, failure)
+                return
+            self._clear_local()
+            self.show_signed_in(None)
+
+        self._start(work, done)
+
+    def request_link(self, email, done):
+        """POST request-link. done(status) runs on the GUI thread."""
         try:
-            result = self._send(origin, "POST", REQUEST_LINK_PATH, body)
-        except TransportError:
-            return "error"
-        payload = _read_json(result)
-        if result.status != 200 or not isinstance(payload, dict) or payload.get("ok") is not True:
-            return "error"
-        self.settings.setValue(_VERIFIER_KEY, verifier)
-        self.settings.sync()
-        return "ok"
+            origin = self.origin()
+            if origin is None:
+                self._finish_now(done, "unconfigured")
+                return
+            normalized = normalize_email(email)
+            if normalized is None:
+                self._finish_now(done, "invalid")
+                return
+            verifier = self.verifier_factory()
+            issued = int(self.now())
+            body = {
+                "email": normalized,
+                "client": "desktop",
+                "verifier_hash": verifier_hash(verifier),
+            }
 
-    def complete_sign_in(self, pasted):
+            def work():
+                try:
+                    result = self._send(origin, "POST", REQUEST_LINK_PATH, body)
+                except Exception:
+                    traceback.print_exc()
+                    return "error"
+                payload = _read_json(result)
+                if (result.status == 200 and isinstance(payload, dict)
+                        and payload.get("ok") is True):
+                    return "ok"
+                return "error"
+
+            def after(status):
+                if status == "ok":
+                    self.settings.setValue(_VERIFIER_KEY, verifier)
+                    self.settings.setValue(_VERIFIER_AT_KEY, issued)
+                    self.settings.sync()
+                done(status if status else "error")
+
+            self._start(work, after)
+        except Exception:
+            traceback.print_exc()
+            self._finish_now(done, "error")
+
+    def complete_sign_in(self, pasted, done):
         """Verify the pasted link, then load the email from /api/me.
 
-        Returns ok, invalid, unconfigured, or error. The menu label is the
-        email from /api/me.
+        done receives ok, invalid, unconfigured, or error on the GUI thread.
+        The menu label is the email from /api/me.
         """
-        origin = self.origin()
-        if origin is None:
-            return "unconfigured"
-        token = login_token_from_text(pasted)
-        verifier = self.pending_verifier()
-        if not token or not verifier:
-            return "invalid"
-        body = {
-            "token": token,
-            "verifier": verifier,
-            "device_label": DEVICE_LABEL,
-        }
         try:
-            result = self._send(origin, "POST", VERIFY_PATH, body)
-        except TransportError:
-            return "error"
-        payload = _read_json(result)
-        if (result.status != 200 or not isinstance(payload, dict)
-                or not isinstance(payload.get("token"), str)
-                or not payload["token"].strip()):
-            return "invalid"
-        session_token = payload["token"].strip()
-        self.settings.setValue(_SESSION_KEY, session_token)
-        self.settings.remove(_VERIFIER_KEY)
-        self.settings.sync()
-        email = self._email_from_me(origin, session_token)
-        if email is None:
-            return "error"
-        if email == "":
-            return "invalid"
-        self.show_signed_in(email)
-        return "ok"
+            origin = self.origin()
+            if origin is None:
+                self._finish_now(done, "unconfigured")
+                return
+            token = login_token_from_text(pasted)
+            verifier = self.pending_verifier()
+            if not token or not verifier:
+                self._finish_now(done, "invalid")
+                return
+            body = {
+                "token": token,
+                "verifier": verifier,
+                "device_label": DEVICE_LABEL,
+            }
+
+            def work():
+                try:
+                    verified = self._send(origin, "POST", VERIFY_PATH, body)
+                except Exception:
+                    traceback.print_exc()
+                    return ("error", None)
+                payload = _read_json(verified)
+                if (verified.status != 200 or not isinstance(payload, dict)
+                        or not isinstance(payload.get("token"), str)
+                        or not payload["token"].strip()):
+                    return ("invalid", None)
+                session_token = payload["token"].strip()
+                try:
+                    me = self._send(
+                        origin, "GET", ME_PATH, bearer=session_token)
+                except Exception:
+                    traceback.print_exc()
+                    return ("me-error", session_token)
+                return ("me", session_token, me)
+
+            def after(result):
+                if not isinstance(result, tuple) or not result:
+                    done("error")
+                    return
+                kind = result[0]
+                if kind in ("invalid", "error"):
+                    done(kind)
+                    return
+                session_token = result[1]
+                self.settings.setValue(_SESSION_KEY, session_token)
+                self._clear_verifier()
+                self.settings.sync()
+                if kind == "me-error":
+                    done("error")
+                    return
+                email = self._apply_me(result[2])
+                if email:
+                    self.show_signed_in(email)
+                    done("ok")
+                elif email == "":
+                    done("invalid")
+                else:
+                    done("error")
+
+            self._start(work, after)
+        except Exception:
+            traceback.print_exc()
+            self._finish_now(done, "error")
 
     def refresh(self):
         """Show the signed-in email when a stored token and an origin exist.
@@ -353,16 +534,35 @@ class AccountController:
         the stored token. Any other failure leaves the token and shows
         signed out.
         """
+        try:
+            self._refresh()
+        except Exception:
+            traceback.print_exc()
+            self.settled.emit()
+
+    def _refresh(self):
         origin = self.origin()
         token = self.session_token()
         if not origin or not token:
             self.show_signed_in(None)
+            self.settled.emit()
             return
-        email = self._email_from_me(origin, token)
-        if email:
-            self.show_signed_in(email)
-        else:
-            self.show_signed_in(None)
+
+        def work():
+            try:
+                return self._send(origin, "GET", ME_PATH, bearer=token)
+            except Exception:
+                traceback.print_exc()
+                return None
+
+        def done(result):
+            email = self._apply_me(result)
+            if email:
+                self.show_signed_in(email)
+            else:
+                self.show_signed_in(None)
+
+        self._start(work, done)
 
     def show_signed_in(self, email):
         """Email label and Sign Out, or Sign In when email is empty."""
@@ -373,12 +573,14 @@ class AccountController:
         ui.actionSignedInEmail.setVisible(signed_in)
         ui.actionSignIn.setVisible(not signed_in)
         ui.actionSignOut.setVisible(signed_in)
+        ui.actionSignOutEverywhere.setVisible(signed_in)
 
-    def _email_from_me(self, origin, token):
-        """Email string, '' when the session is rejected, None on any other failure."""
-        try:
-            result = self._send(origin, "GET", ME_PATH, bearer=token)
-        except TransportError:
+    def _apply_me(self, result):
+        """Email string, '' when the session is rejected, None on any other failure.
+
+        A 401 clears the local session. This runs on the GUI thread.
+        """
+        if result is None:
             return None
         payload = _read_json(result)
         if result.status == 401:
@@ -391,10 +593,48 @@ class AccountController:
             return None
         return email
 
+    def _clear_verifier(self):
+        self.settings.remove(_VERIFIER_KEY)
+        self.settings.remove(_VERIFIER_AT_KEY)
+
     def _clear_local(self):
         self.settings.remove(_SESSION_KEY)
-        self.settings.remove(_VERIFIER_KEY)
+        self._clear_verifier()
         self.settings.sync()
+
+    def _start(self, work, done):
+        """Run work on a pool thread. done runs on the GUI thread, then settled."""
+        signals = _TaskSignals(self)
+        task = _AuthTask(work, signals)
+
+        def on_finished(result):
+            try:
+                done(result)
+            except Exception:
+                traceback.print_exc()
+            try:
+                signals.deleteLater()
+            except Exception:
+                traceback.print_exc()
+            try:
+                self.settled.emit()
+            except Exception:
+                traceback.print_exc()
+
+        signals.finished.connect(
+            on_finished, QtCore.Qt.ConnectionType.QueuedConnection)
+        QtCore.QThreadPool.globalInstance().start(task)
+
+    def _finish_now(self, done, result):
+        """A result that did not need the network, still on the GUI thread."""
+        try:
+            done(result)
+        except Exception:
+            traceback.print_exc()
+        try:
+            self.settled.emit()
+        except Exception:
+            traceback.print_exc()
 
     def _send(self, origin, method, path, payload=None, bearer=None):
         headers = {}
@@ -447,31 +687,62 @@ class SignInDialog(QtWidgets.QDialog):
         layout.addWidget(self.complete_button)
         self.link_edit.hide()
         self.complete_button.hide()
+        self._alive = True
         if account.pending_verifier():
             self.status_label.setText(CHECK_EMAIL)
             self._show_paste()
 
+    def closeEvent(self, event):
+        self._alive = False
+        super().closeEvent(event)
+
     def send_link(self, checked=False):
-        result = self.account.request_link(self.email_edit.text())
-        if result == "ok":
-            self.status_label.setText(CHECK_EMAIL)
-            self._show_paste()
-        elif result == "invalid":
-            self.status_label.setText(INVALID_EMAIL)
-        elif result == "unconfigured":
-            self.status_label.setText(NOT_CONFIGURED)
-        else:
-            self.status_label.setText(SEND_FAILED)
+        try:
+            self.send_button.setEnabled(False)
+            self.account.request_link(self.email_edit.text(), self._on_link)
+        except Exception:
+            traceback.print_exc()
+            self.send_button.setEnabled(True)
 
     def complete(self, checked=False):
-        result = self.account.complete_sign_in(self.link_edit.text())
-        if result == "ok":
-            self.accept()
-            return
-        if result == "invalid" or result == "unconfigured":
-            self.status_label.setText(LINK_FAILED)
-            return
-        self.status_label.setText(SIGN_IN_FAILED)
+        try:
+            self.complete_button.setEnabled(False)
+            self.account.complete_sign_in(self.link_edit.text(), self._on_complete)
+        except Exception:
+            traceback.print_exc()
+            self.complete_button.setEnabled(True)
+
+    def _on_link(self, result):
+        try:
+            if not self._alive:
+                return
+            self.send_button.setEnabled(True)
+            if result == "ok":
+                self.status_label.setText(CHECK_EMAIL)
+                self._show_paste()
+            elif result == "invalid":
+                self.status_label.setText(INVALID_EMAIL)
+            elif result == "unconfigured":
+                self.status_label.setText(NOT_CONFIGURED)
+            else:
+                self.status_label.setText(SEND_FAILED)
+        except Exception:
+            traceback.print_exc()
+
+    def _on_complete(self, result):
+        try:
+            if not self._alive:
+                return
+            self.complete_button.setEnabled(True)
+            if result == "ok":
+                self.accept()
+                return
+            if result == "invalid" or result == "unconfigured":
+                self.status_label.setText(LINK_FAILED)
+                return
+            self.status_label.setText(SIGN_IN_FAILED)
+        except Exception:
+            traceback.print_exc()
 
     def _show_paste(self):
         self.link_edit.show()

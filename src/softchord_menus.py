@@ -84,7 +84,7 @@ def _add_file_account_actions(session):
 
 
 def _add_account_menu(session):
-    """Account, after Settings. Sign in, the email label, and Sign out."""
+    """Account, after Settings. Sign in, the email, Sign out, and Sign out everywhere."""
     ui = session.ui
     menu = QtWidgets.QMenu(ui.menubar)
     menu.setObjectName("menuAccount")
@@ -105,6 +105,9 @@ def _add_account_menu(session):
     ui.actionSignIn = _action(menu, "actionSignIn", "Sign In...")
     ui.actionSignOut = _action(menu, "actionSignOut", "Sign Out")
     ui.actionSignOut.setVisible(False)
+    ui.actionSignOutEverywhere = _action(
+        menu, "actionSignOutEverywhere", "Sign Out Everywhere")
+    ui.actionSignOutEverywhere.setVisible(False)
     ui.actionAccountSettings = _action(
         menu, "actionAccountSettings", "Account Settings...")
     ui.actionAccountSettings.setEnabled(False)
@@ -112,11 +115,14 @@ def _add_account_menu(session):
     menu.addAction(ui.actionSignedInEmail)
     menu.addAction(ui.actionSignIn)
     menu.addAction(ui.actionSignOut)
+    menu.addAction(ui.actionSignOutEverywhere)
     menu.addAction(ui.actionAccountSettings)
 
     session.account = AccountController(session)
     ui.actionSignIn.triggered.connect(session.account.sign_in)
     ui.actionSignOut.triggered.connect(session.account.sign_out)
+    ui.actionSignOutEverywhere.triggered.connect(
+        session.account.sign_out_everywhere)
     ui.menubar.addMenu(menu)
 
 
