@@ -145,6 +145,12 @@ test("a signed-in /api/me shows the email and Sign out, and the other items stay
     var meBefore = await page.eval(callsExpr(mePath) + ".length");
     await page.eval("document.dispatchEvent(new Event('visibilitychange'))");
     await page.waitFor(callsExpr(mePath) + ".length > " + meBefore, "a visible page checks the session again");
+    var meOnce = await page.eval(callsExpr(mePath) + ".length");
+    await page.eval("document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('focus'));");
+    assert.equal(await page.eval(callsExpr(mePath) + ".length"), meOnce, "focus and visibility share one check per 5 seconds");
+    await page.eval("(function () { var now = Date.now(); Date.now = function () { return now + 5000; }; })()");
+    await page.eval("window.dispatchEvent(new Event('focus'))");
+    await page.waitFor(callsExpr(mePath) + ".length > " + meOnce, "a focus 5 seconds later checks again");
     await click(page, "sign-in");
     await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu");
     assert.equal(await page.eval("document.getElementById('sign-out').textContent"), "Sign out (this device)");
@@ -258,6 +264,17 @@ test("a 400 sign-out says it was not accepted, and a 401 clears the signed-in he
     await page.eval("document.querySelector('#notice button').click()");
     await page.waitFor("!document.getElementById('notice').open", "the error to close");
 
+    await page.eval("window.__logoutStatus = 500");
+    await click(page, "sign-in");
+    await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu for a server error");
+    await click(page, "sign-out");
+    await page.waitFor("document.getElementById('notice').open", "the server-error notice");
+    assert.equal(await page.eval("document.getElementById('notice-title').textContent"), "Could not sign out");
+    assert.equal(await page.eval("document.getElementById('notice-message').textContent"), "The server had an error.");
+    assert.equal(await page.eval("document.getElementById('sign-in').textContent"), email, "a 500 leaves the account signed in");
+    await page.eval("document.querySelector('#notice button').click()");
+    await page.waitFor("!document.getElementById('notice').open", "the server-error to close");
+
     await page.eval("window.__logoutStatus = 401");
     await click(page, "sign-in");
     await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu again");
@@ -270,7 +287,7 @@ test("a 400 sign-out says it was not accepted, and a 401 clears the signed-in he
   }
 });
 
-test("the mock rejects a POST without exactly application/json, a wrong method, and a foreign Origin", { skip: skip }, async function () {
+test("the mock accepts application/json with a charset, and rejects another type, a wrong method, and a foreign Origin", { skip: skip }, async function () {
   var logout = auth.endpoint("logout");
   var link = auth.endpoint("request-link");
   var page = await helper.openViewer(SONGS, { html: auth.pageHtml({ signedIn: true }) });
@@ -285,17 +302,20 @@ test("the mock rejects a POST without exactly application/json, a wrong method, 
       "  return { status: response.status, body: await response.json() };" +
       "}" +
       "var missing = await call('/api/auth/logout', { method: 'POST', credentials: 'include', body: '{}' });" +
-      "var charset = await call('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json; charset=utf-8' }, body: '{}' });" +
+      "var other = await call('/api/auth/request-link', { method: 'POST', credentials: 'include', headers: { 'content-type': 'text/plain; charset=utf-8' }, body: '{}' });" +
       "var wrong = await call('/api/auth/logout', { method: 'GET', credentials: 'include' });" +
       "var foreign = await call('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' });" +
       "var link = await call('/api/auth/request-link', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' });" +
       "var posted = await call('/api/me', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{}' });" +
-      "return { missing: missing, charset: charset, wrong: wrong, foreign: foreign, link: link, posted: posted };" +
+      "var charset = await call('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json; charset=utf-8' }, body: '{}' });" +
+      "return { missing: missing, charset: charset, other: other, wrong: wrong, foreign: foreign, link: link, posted: posted };" +
       "})()");
     assert.equal(result.missing.status, 400);
     assert.deepEqual(result.missing.body, auth.responseJson("POST", link.path, 400));
-    assert.equal(result.charset.status, 400);
-    assert.deepEqual(result.charset.body, { error: "invalid_request" });
+    assert.equal(result.charset.status, 200);
+    assert.deepEqual(result.charset.body, auth.responseJson("POST", logout.path, 200));
+    assert.equal(result.other.status, 400);
+    assert.deepEqual(result.other.body, auth.responseJson("POST", link.path, 400));
     assert.equal(result.wrong.status, 405);
     assert.deepEqual(result.wrong.body, auth.responseJson("GET", logout.path, 405));
     assert.equal(result.foreign.status, 403);

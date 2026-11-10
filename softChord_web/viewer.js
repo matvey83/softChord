@@ -2002,6 +2002,8 @@
     renderAccount();
   }
 
+  var lastVisibleRefresh = 0;
+
   function refreshMe() {
     var origin = configuredApiOrigin();
     if (!origin) {
@@ -2053,7 +2055,20 @@
     if (status >= 400 && status < 500) {
       return "The server rejected sign-out.";
     }
+    if (status >= 500) {
+      return "The server had an error.";
+    }
     return "The server could not be reached.";
+  }
+
+  // Focus and visibility can fire together. Share one check, at most every 5 seconds.
+  function refreshMeIfVisible() {
+    var now = Date.now();
+    if (now - lastVisibleRefresh < 5000) {
+      return;
+    }
+    lastVisibleRefresh = now;
+    refreshMe();
   }
 
   function signOut() {
@@ -2159,10 +2174,10 @@
   });
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") {
-      refreshMe();
+      refreshMeIfVisible();
     }
   });
-  window.addEventListener("focus", refreshMe);
+  window.addEventListener("focus", refreshMeIfVisible);
   renderAccount();
   refreshMe();
 

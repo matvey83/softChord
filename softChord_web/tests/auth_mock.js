@@ -1,4 +1,4 @@
-// Source: server/api-contract.json at 42ca7c921a6d811dd80eb7fc533ede4e5964bb9d
+// Source: server/api-contract.json at 611ad074d066063b9540fdedff9837337fde032b
 // on branch cursor/magic-link-auth-server-c270 (Login PR 9, not merged).
 // This file is a copy of that contract. Web auth mocks load it.
 // JSON has no comments, so the source note lives here.
@@ -101,7 +101,7 @@ function pageHtml(options) {
     "  }",
     "  var entry = { url: href, method: method, credentials: (options && options.credentials) || '', body: (options && options.body) || null, headers: headers };",
     "  window.__auth.push(entry);",
-    "  var contentType = typeof headers['content-type'] === 'string' ? headers['content-type'].trim().toLowerCase() : '';",
+    "  var contentType = typeof headers['content-type'] === 'string' ? headers['content-type'].split(';')[0].trim().toLowerCase() : '';",
     "  var sentOrigin = typeof headers.origin === 'string' && headers.origin ? headers.origin : location.origin;",
     "  var urlOrigin = parsed ? parsed.origin : '';",
     "  var expected = endpointMethod(path);",
