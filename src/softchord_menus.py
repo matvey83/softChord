@@ -7,15 +7,13 @@ them into the editor.
 
 import os
 
-from PyQt6 import QtGui, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
+
+from softchord_auth import AccountController
 
 
-# Phase 1 copy, shown with one OK button. These actions do not open a
-# songbook and do not use the network.
-_SIGN_IN = (
-    "Sign-in isn't available yet",
-    "softChord accounts are coming in a later update.",
-)
+# File items that are still stubs. One OK button. They do not open a
+# songbook and do not use the network. Sign In is the real dialog.
 _SHARE = (
     "Sharing isn't available yet",
     "Sharing needs a softChord account, which is coming in a later update.",
@@ -86,21 +84,39 @@ def _add_file_account_actions(session):
 
 
 def _add_account_menu(session):
-    """Account, after Settings. Sign In explains itself; Settings is dimmed."""
+    """Account, after Settings. Sign in, the email label, and Sign out."""
     ui = session.ui
     menu = QtWidgets.QMenu(ui.menubar)
     menu.setObjectName("menuAccount")
     menu.setTitle("Account")
     ui.menuAccount = menu
+
+    email_label = QtWidgets.QLabel()
+    email_label.setObjectName("signedInEmail")
+    email_label.setContentsMargins(12, 4, 12, 4)
+    email_label.setTextInteractionFlags(
+        QtCore.Qt.TextInteractionFlag.NoTextInteraction)
+    ui.signedInEmailLabel = email_label
+    ui.actionSignedInEmail = QtWidgets.QWidgetAction(menu)
+    ui.actionSignedInEmail.setObjectName("actionSignedInEmail")
+    ui.actionSignedInEmail.setDefaultWidget(email_label)
+    ui.actionSignedInEmail.setVisible(False)
+
     ui.actionSignIn = _action(menu, "actionSignIn", "Sign In...")
+    ui.actionSignOut = _action(menu, "actionSignOut", "Sign Out")
+    ui.actionSignOut.setVisible(False)
     ui.actionAccountSettings = _action(
         menu, "actionAccountSettings", "Account Settings...")
     ui.actionAccountSettings.setEnabled(False)
-    title, message = _SIGN_IN
-    ui.actionSignIn.triggered.connect(
-        _on_not_available(session.win, title, message))
+
+    menu.addAction(ui.actionSignedInEmail)
     menu.addAction(ui.actionSignIn)
+    menu.addAction(ui.actionSignOut)
     menu.addAction(ui.actionAccountSettings)
+
+    session.account = AccountController(session)
+    ui.actionSignIn.triggered.connect(session.account.sign_in)
+    ui.actionSignOut.triggered.connect(session.account.sign_out)
     ui.menubar.addMenu(menu)
 
 

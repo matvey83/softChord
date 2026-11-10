@@ -2,6 +2,10 @@
 
 - Desktop: Undo cannot cross a Save. Save drops the draft's undo steps (by design).
 - Desktop tests: under pytest, `softchord_test.py` can exit 139 when Qt tears down after the tests have passed. pytest is not a repo dependency. The direct runner is `python softchord_test.py` from `src/` (it reports the test result and exits before that teardown).
+- Login: The desktop session token and the pending verifier are stored in QSettings as plain text (on Linux, the Ini file under the `softChord` organization), not the OS keychain. Say if a public build should use the keychain instead.
+- Login: The desktop app does not register the `softchord://` URL scheme, so the email's Open in SoftChord button does not launch it. Paste the link into the sign-in dialog. Say if the desktop should register that scheme.
+- Login: There is no Account Settings field for the API origin. Set `SOFTCHORD_API_ORIGIN` or QSettings `auth/apiOrigin`. Say if Account Settings should edit it.
+- Login: Sign-in and sign-out HTTP runs on the UI thread, so the window waits until the server answers.
 
 ## Fixed
 

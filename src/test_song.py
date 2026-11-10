@@ -358,6 +358,14 @@ def _unexpected_message_box(box):
     return QtWidgets.QMessageBox.StandardButton.Discard
 
 
+# Sign-in reads the API origin and QSettings. Keep both empty for the suite
+# so constructing App does not open a connection.
+os.environ.pop("SOFTCHORD_API_ORIGIN", None)
+QtCore.QSettings.setPath(
+    QtCore.QSettings.Format.IniFormat,
+    QtCore.QSettings.Scope.UserScope,
+    tempfile.mkdtemp(prefix="softchord-qsettings-"))
+
 QtWidgets.QMessageBox.exec = _unexpected_message_box
 _test_app_fonts = None
 

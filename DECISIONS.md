@@ -18,7 +18,7 @@ Save Songbook As... was already followed by a separator. The four new items sit 
 
 ## 2026-11-10 — Not-available actions do not ask about a dirty draft
 
-Sign In, Open From Account, Upload to Account, Share, and Open Link only show a message. They do not open or switch a songbook, so they do not call `confirmLeaveEdit`. Open, New, Close, Save Songbook As, Append, and `setCurrentSongbook` (including a file opened from the Finder) already ask first. Cancel returns before the file dialog and leaves the draft.
+Open From Account, Upload to Account, Share, and Open Link only show a message. They do not open or switch a songbook, so they do not call `confirmLeaveEdit`. Sign In used to be in that list; it is the real dialog now (see Login). Open, New, Close, Save Songbook As, Append, and `setCurrentSongbook` (including a file opened from the Finder) already ask first. Cancel returns before the file dialog and leaves the draft.
 
 ## 2026-11-10 — The not-available dialog lives with the menu wiring
 
@@ -35,3 +35,31 @@ The sample songbook in `softchord_test.py` was already resolved from `__file__`.
 ## 2026-11-10 — The read-only title assertion matches the new capitalization
 
 `test_read_only_new_format_file_opens_read_only_with_a_message` looked for lowercase `read-only` in the window title. It now expects `(Read-only)`. The message shown when a read-only songbook opens is unchanged and still says `read-only`.
+
+## Login
+
+### 2026-11-10 — Desktop tests copy the auth contract from 42ca7c9
+
+`src/fixtures/api-contract.json` is `server/api-contract.json` from `42ca7c921a6d811dd80eb7fc533ede4e5964bb9d` (Login PR 1, branch `cursor/magic-link-auth-server-c270`). `src/fixtures/api-contract.sha` is that commit. The desktop tests load the fixture and mock HTTP. They do not start the server, send mail, or open a socket.
+
+### 2026-11-10 — The API origin is the env var, then the setting
+
+`SOFTCHORD_API_ORIGIN` wins over QSettings `auth/apiOrigin` (Ini file, organization `softChord`, application `softChord`). The value is an `http` or `https` origin with no userinfo, path, query, or fragment. A trailing slash is dropped. Anything else, including an empty string, counts as unset. Sign In then shows a message box titled `Sign in` whose text is `Sign-in not configured`, and the client does not build a request. Sign out with no origin only clears the local session.
+
+### 2026-11-10 — Desktop sign-in is the contract's native verifier flow
+
+There is no password field. The dialog asks for an email, then `POST /api/auth/request-link` with a JSON object `email` (trimmed and lowercased), `client` `desktop`, and `verifier_hash` (hex SHA-256 of a 32-byte base64url verifier). The raw verifier is not in that body. A locally invalid address is not sent. On `{ "ok": true }` the verifier is saved and the dialog says `Check your email`, with a field to paste the link. The person can close the dialog and paste later; the verifier stays until verify or sign-out.
+
+The paste accepts the email link (`#t=<token>`), `softchord://login?token=<token>`, or the raw token. `POST /api/auth/verify` sends `token`, `verifier`, and `device_label` `SoftChord desktop`. The session token is the string `token` in that response. It is stored under QSettings `auth/sessionToken`. The Account menu label is the `email` from `GET /api/me` with `Authorization: Bearer <session>`, not the email in the verify body. 401 from `/api/me` clears the local session. Any other failure leaves the token and leaves the menu signed out.
+
+### 2026-11-10 — Every POST is application/json, including logout
+
+`POST` sets `Content-Type` to exactly `application/json` and a JSON object body. Logout's body is `{}`. No `Origin` header is sent (a foreign Origin is 403 on the server; a missing one is allowed for a native client). `JsonEnforcingTransport`, the test mock, answers 400 `{ "error": "invalid_request" }` for a POST whose content type is not exactly that value or whose body is not a JSON object, and it does not consume the scripted success response.
+
+### 2026-11-10 — The session token is in QSettings for this slice
+
+`auth/sessionToken` and `auth/pendingVerifier` are plain Ini values. The OS keychain is not used. See KNOWN_ISSUES. Sign Out does not ask for confirmation. A logout response of 200 or 401 clears the local session. Any other status or a transport error leaves the token and shows `Could not sign out.` After a successful logout the client does not call `/api/me` again.
+
+### 2026-11-10 — The Account menu keeps the three-dot Sign In label
+
+The label stays `Sign In...`, matching the earlier menu decision. `Sign Out` has no dots. While signed out, the visible items are `Sign In...` and the disabled `Account Settings...`. While signed in, the visible items are the email (a non-command label), `Sign Out`, and `Account Settings...`. Account Settings is still disabled and has no slot. Open From Account, Upload to Account, Share, and Open Link are still the not-available stubs. None of these actions call `confirmLeaveEdit`.
