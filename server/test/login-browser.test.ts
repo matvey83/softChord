@@ -24,6 +24,8 @@ const CHROME = [
   "/usr/bin/chromium-browser",
 ].find((path) => path !== undefined && existsSync(path));
 
+const CHROME_SKIP = "No Chrome or Chromium binary found. Set CHROME_PATH to run the login browser test.";
+
 async function readBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -69,7 +71,9 @@ function serve(app: () => Hono): Promise<{ origin: string; close: () => Promise<
 }
 
 describe("login page in a browser", () => {
-  it("sends the verify POST when Sign in is clicked", async () => {
+  it("sends the verify POST when Sign in is clicked", { skip: CHROME ? false : CHROME_SKIP }, async () => {
+    const chrome = CHROME;
+    if (!chrome) return;
     let handler: Hono | undefined;
     const { origin, close } = await serve(() => {
       if (!handler) throw new Error("app is not ready");
@@ -79,9 +83,8 @@ describe("login page in a browser", () => {
       env: { ...testEnv, PUBLIC_ORIGIN: origin },
     });
     handler = app;
-    assert.ok(CHROME, "set CHROME_PATH to a Chrome or Chromium binary");
     const browser = await puppeteer.launch({
-      executablePath: CHROME,
+      executablePath: chrome,
       headless: true,
       args: ["--no-sandbox", "--disable-dev-shm-usage"],
     });
