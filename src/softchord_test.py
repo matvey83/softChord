@@ -14,6 +14,11 @@ import softchord
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
 
+# Fixtures live next to this file (the sample songbook is one directory up).
+# Resolving them from __file__ lets the suite run from any working directory.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_TEXT_SONG = os.path.join(_HERE, "test_тест_song.txt")
+
 
 class SoftChordEditorTest(unittest.TestCase):
     """Integration tests that exercise the main App / main window / panels."""
@@ -35,8 +40,7 @@ class SoftChordEditorTest(unittest.TestCase):
         cls.app._askSaveChanges = lambda: "discard"
 
         # Copy the sample songbook so tests do not write the original file.
-        src = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "zvuki_neba.songbook"))
+        src = os.path.abspath(os.path.join(_HERE, "..", "zvuki_neba.songbook"))
         cls._td = tempfile.TemporaryDirectory()
         songbook_path = os.path.join(cls._td.name, "zvuki_neba.songbook")
         shutil.copyfile(src, songbook_path)
@@ -103,7 +107,7 @@ class SoftChordEditorTest(unittest.TestCase):
         A chord name is written starting above its letter, which is where a
         text import reads it from, so export -> import -> export is the same.
         """
-        song_file = "test_тест_song.txt"
+        song_file = _TEXT_SONG
         exported = self._import_then_export(song_file)
         with open(song_file, encoding="utf-8", newline="") as fh:
             original = fh.read().splitlines(keepends=True)
@@ -163,7 +167,7 @@ class SoftChordEditorTest(unittest.TestCase):
     def test_transpose_up_and_down(self):
         """Test the App-level transpose buttons/panel actions."""
         # Import a song that has chords
-        self.app.importTextFiles(["test_тест_song.txt"])
+        self.app.importTextFiles([_TEXT_SONG])
         self.assertEqual(self.app.songs_model.rowCount(), self.prev_rows + 1)
 
         # Select the newly imported song (last one)
@@ -185,7 +189,7 @@ class SoftChordEditorTest(unittest.TestCase):
 
     def test_reset_transpose_button(self):
         """Reset transpose is dimmed until the song is moved, then restores the opened key."""
-        self.app.importTextFiles(["test_тест_song.txt"])
+        self.app.importTextFiles([_TEXT_SONG])
         last_row = self.app.songs_model.rowCount() - 1
         self.app.ui.songs_view.selectRow(last_row)
         button = self.app.toolbar.transpose_reset
@@ -213,7 +217,7 @@ class SoftChordEditorTest(unittest.TestCase):
 
     def test_export_to_chordpro(self):
         """Test exporting the current song to ChordPro format via the App."""
-        self.app.importTextFiles(["test_тест_song.txt"])
+        self.app.importTextFiles([_TEXT_SONG])
         self.assertEqual(self.app.songs_model.rowCount(), self.prev_rows + 1)
 
         with tempfile.NamedTemporaryFile(suffix=".chordpro", delete=False) as tmp:
@@ -343,6 +347,55 @@ class SoftChordEditorTest(unittest.TestCase):
         self.assertEqual(app.curs.execute(
             "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0],
             "Saved Title")
+
+    def test_dirty_keep_open_cancel_discard_and_save(self):
+        """Save, Don't Save and Cancel while the same song stays on screen.
+
+        keep_open is the path used by a right-click, trim, or renumber: the
+        song is not closed, and the same segment starts again.
+        """
+        app = self.app
+        app.createNewSong()
+        song_id = app.current_song.id
+        self.addCleanup(self._delete_song, song_id)
+        self.assertTrue(app.textEditing())
+        app.currentSongTitleEdited("Keep Open")
+        self.assertTrue(app.editChanged())
+
+        app._askSaveChanges = lambda: "cancel"
+        self.assertFalse(app.confirmLeaveEdit(keep_open=True))
+        self.assertTrue(app.editing())
+        self.assertTrue(app.textEditing())
+        self.assertTrue(app.editChanged())
+        self.assertEqual(app.current_song.id, song_id)
+        self.assertEqual(app.current_song.title, "Keep Open")
+        self.assertEqual(app.curs.execute(
+            "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0],
+            "")
+
+        app._askSaveChanges = lambda: "discard"
+        self.assertTrue(app.confirmLeaveEdit(keep_open=True))
+        self.assertTrue(app.editing())
+        self.assertTrue(app.textEditing())
+        self.assertFalse(app.editChanged())
+        self.assertEqual(app.current_song.id, song_id)
+        self.assertEqual(app.current_song.title, "")
+        self.assertEqual(app.curs.execute(
+            "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0],
+            "")
+
+        app.currentSongTitleEdited("Kept Title")
+        self.assertTrue(app.editChanged())
+        app._askSaveChanges = lambda: "save"
+        self.assertTrue(app.confirmLeaveEdit(keep_open=True))
+        self.assertTrue(app.editing())
+        self.assertTrue(app.textEditing())
+        self.assertFalse(app.editChanged())
+        self.assertEqual(app.current_song.id, song_id)
+        self.assertEqual(app.current_song.title, "Kept Title")
+        self.assertEqual(app.curs.execute(
+            "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0],
+            "Kept Title")
 
     def _delete_song(self, song_id):
         self.app._askSaveChanges = lambda: "discard"
