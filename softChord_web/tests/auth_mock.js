@@ -1,4 +1,4 @@
-// Source: server/api-contract.json at 611ad074d066063b9540fdedff9837337fde032b
+// Source: server/api-contract.json at 0775e8211158c57ff0869d1dbcf961c72ef167bd
 // on branch cursor/magic-link-auth-server-c270 (Login PR 9, not merged).
 // This file is a copy of that contract. Web auth mocks load it.
 // JSON has no comments, so the source note lives here.
@@ -118,13 +118,13 @@ function pageHtml(options) {
     "    reply(session.signedIn ? 200 : 401, example('GET', '/api/me', session.signedIn ? 200 : 401));",
     "  } else if (method === 'POST' && path === '/api/auth/request-link') {",
     "    reply(200, example('POST', '/api/auth/request-link', 200));",
-    "  } else if (method === 'POST' && path === '/api/auth/logout') {",
+    "  } else if (method === 'POST' && (path === '/api/auth/logout' || path === '/api/auth/logout-all')) {",
     "    if (!session.signedIn) {",
-    "      reply(401, example('POST', '/api/auth/logout', 401));",
+    "      reply(401, example('POST', path, 401));",
     "    } else if (sentOrigin !== urlOrigin) {",
-    "      reply(403, example('POST', '/api/auth/logout', 403));",
+    "      reply(403, example('POST', path, 403));",
     "    } else {",
-    "      reply(200, example('POST', '/api/auth/logout', 200));",
+    "      reply(200, example('POST', path, 200));",
     "      session.signedIn = false;",
     "    }",
     "  }",

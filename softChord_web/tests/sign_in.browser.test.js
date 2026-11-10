@@ -154,6 +154,7 @@ test("a signed-in /api/me shows the email and Sign out, and the other items stay
     await click(page, "sign-in");
     await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu");
     assert.equal(await page.eval("document.getElementById('sign-out').textContent"), "Sign out (this device)");
+    assert.equal(await page.eval("document.getElementById('sign-out-all').textContent"), "Sign out everywhere");
     await click(page, "sign-out");
     await page.waitFor("document.getElementById('sign-in').textContent === 'Sign in'", "signed out");
     assert.equal(await page.eval("document.getElementById('account-menu').hidden"), true);
@@ -167,6 +168,36 @@ test("a signed-in /api/me shows the email and Sign out, and the other items stay
     assert.equal(calls[0].body, "{}");
     assert.equal(calls[0].headers.authorization, undefined);
     assert.deepEqual(await page.eval(titlesExpr()), titles, "sign-out keeps the open songbook");
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("Sign out everywhere posts logout-all and clears the signed-in header", { skip: skip }, async function () {
+  var email = auth.responseJson("GET", "/api/me", 200).email;
+  var logoutAll = auth.endpoint("logout-all");
+  var page = await helper.openViewer(SONGS, { html: auth.pageHtml({ signedIn: true }) });
+  try {
+    await page.waitFor(
+      "document.getElementById('sign-in').textContent === " + JSON.stringify(email),
+      "the signed-in email");
+    var titles = await page.eval(titlesExpr());
+    await click(page, "sign-in");
+    await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu");
+    await click(page, "sign-out-all");
+    await page.waitFor("document.getElementById('sign-in').textContent === 'Sign in'", "signed out everywhere");
+    assert.equal(await page.eval("document.getElementById('account-menu').hidden"), true);
+    var calls = await page.eval(callsExpr(logoutAll.path));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].method, logoutAll.method);
+    assert.equal(calls[0].credentials, "include");
+    assert.equal(new URL(calls[0].url).origin, page.origin);
+    assert.equal(new URL(calls[0].url).pathname, logoutAll.path);
+    assert.equal(calls[0].headers["content-type"], "application/json");
+    assert.equal(calls[0].body, "{}");
+    assert.equal(calls[0].headers.authorization, undefined);
+    assert.deepEqual(await page.eval(titlesExpr()), titles, "sign-out everywhere keeps the open songbook");
     assert.deepEqual(page.errors, []);
   } finally {
     await page.close();
@@ -307,8 +338,12 @@ test("the mock accepts application/json with a charset, and rejects another type
       "var foreign = await call('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' });" +
       "var link = await call('/api/auth/request-link', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' });" +
       "var posted = await call('/api/me', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{}' });" +
+      "var everywhereWrong = await call('/api/auth/logout-all', { method: 'GET', credentials: 'include' });" +
+      "var everywhereForeign = await call('/api/auth/logout-all', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' });" +
+      "var everywherePlain = await call('/api/auth/logout-all', { method: 'POST', credentials: 'include', headers: { 'content-type': 'text/plain' }, body: '{}' });" +
       "var charset = await call('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json; charset=utf-8' }, body: '{}' });" +
-      "return { missing: missing, charset: charset, other: other, wrong: wrong, foreign: foreign, link: link, posted: posted };" +
+      "var everywhereGone = await call('/api/auth/logout-all', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{}' });" +
+      "return { missing: missing, charset: charset, other: other, wrong: wrong, foreign: foreign, link: link, posted: posted, everywhereWrong: everywhereWrong, everywhereForeign: everywhereForeign, everywherePlain: everywherePlain, everywhereGone: everywhereGone };" +
       "})()");
     assert.equal(result.missing.status, 400);
     assert.deepEqual(result.missing.body, auth.responseJson("POST", link.path, 400));
@@ -324,6 +359,15 @@ test("the mock accepts application/json with a charset, and rejects another type
     assert.deepEqual(result.link.body, { error: "forbidden" });
     assert.equal(result.posted.status, 405);
     assert.deepEqual(result.posted.body, auth.responseJson("POST", "/api/me", 405));
+    var logoutAll = auth.endpoint("logout-all");
+    assert.equal(result.everywhereWrong.status, 405);
+    assert.deepEqual(result.everywhereWrong.body, auth.responseJson("GET", logoutAll.path, 405));
+    assert.equal(result.everywhereForeign.status, 403);
+    assert.deepEqual(result.everywhereForeign.body, auth.responseJson("POST", logoutAll.path, 403));
+    assert.equal(result.everywherePlain.status, 400);
+    assert.deepEqual(result.everywherePlain.body, auth.responseJson("POST", logoutAll.path, 400));
+    assert.equal(result.everywhereGone.status, 401);
+    assert.deepEqual(result.everywhereGone.body, auth.responseJson("POST", logoutAll.path, 401));
     assert.equal(await page.eval("document.getElementById('sign-in').textContent"), auth.responseJson("GET", "/api/me", 200).email, "a rejected logout leaves the session");
     assert.deepEqual(page.errors, []);
   } finally {

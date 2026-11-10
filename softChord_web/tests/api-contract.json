@@ -52,6 +52,12 @@
       "method": "POST",
       "path": "/api/auth/logout",
       "errors": ["unauthorized", "forbidden", "method_not_allowed"]
+    },
+    {
+      "id": "logout-all",
+      "method": "POST",
+      "path": "/api/auth/logout-all",
+      "errors": ["unauthorized", "forbidden", "invalid_request", "method_not_allowed"]
     }
   ],
   "cases": [
@@ -466,6 +472,191 @@
         {
           "request": { "method": "GET", "path": "/api/auth/logout" },
           "response": { "status": 405, "json": { "error": "method_not_allowed" } }
+        }
+      ]
+    },
+    {
+      "name": "logout-all ends every session for the user",
+      "endpoint": "logout-all",
+      "steps": [
+        {
+          "mailerDelta": 1,
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/request-link",
+            "headers": { "content-type": "application/json", "cf-connecting-ip": "203.0.113.30" },
+            "json": {
+              "email": "singer@example.com",
+              "client": "ios",
+              "verifier_hash": "409a1dfd38791e76dbd352152207e00a8a3379fe17a96122eb07eb449b7d288e"
+            }
+          },
+          "response": { "status": 200, "json": { "ok": true } }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/verify",
+            "headers": { "content-type": "application/json" },
+            "json": {
+              "token": "$lastLoginToken",
+              "verifier": "Gom_dJiEsQeMik8sm58Q4xt4rDESd-H8z2s-jNvPnAE"
+            }
+          },
+          "response": {
+            "status": 200,
+            "json": { "email": "singer@example.com", "token": { "$type": "string" } }
+          }
+        },
+        {
+          "mailerDelta": 1,
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/request-link",
+            "headers": { "content-type": "application/json", "cf-connecting-ip": "203.0.113.31" },
+            "json": {
+              "email": "singer@example.com",
+              "client": "desktop",
+              "verifier_hash": "409a1dfd38791e76dbd352152207e00a8a3379fe17a96122eb07eb449b7d288e"
+            }
+          },
+          "response": { "status": 200, "json": { "ok": true } }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/verify",
+            "headers": { "content-type": "application/json" },
+            "json": {
+              "token": "$lastLoginToken",
+              "verifier": "Gom_dJiEsQeMik8sm58Q4xt4rDESd-H8z2s-jNvPnAE"
+            }
+          },
+          "response": {
+            "status": 200,
+            "json": { "email": "singer@example.com", "token": { "$type": "string" } }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/api/me",
+            "headers": { "authorization": "Bearer $previousSessionToken" }
+          },
+          "response": { "status": 200, "json": { "email": "singer@example.com" } }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/logout-all",
+            "headers": {
+              "content-type": "application/json",
+              "authorization": "Bearer $sessionToken"
+            },
+            "json": {}
+          },
+          "response": {
+            "status": 200,
+            "headers": { "cache-control": "no-store" },
+            "json": { "ok": true }
+          }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/api/me",
+            "headers": { "authorization": "Bearer $sessionToken" }
+          },
+          "response": { "status": 401, "json": { "error": "unauthorized" } }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/api/me",
+            "headers": { "authorization": "Bearer $previousSessionToken" }
+          },
+          "response": { "status": 401, "json": { "error": "unauthorized" } }
+        }
+      ]
+    },
+    {
+      "name": "logout-all rejects a missing session, a non-JSON body, and GET",
+      "endpoint": "logout-all",
+      "steps": [
+        {
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/logout-all",
+            "headers": { "content-type": "application/json" },
+            "json": {}
+          },
+          "response": { "status": 401, "json": { "error": "unauthorized" } }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/logout-all",
+            "headers": { "content-type": "text/plain" },
+            "json": {}
+          },
+          "response": { "status": 400, "json": { "error": "invalid_request" } }
+        },
+        {
+          "request": { "method": "GET", "path": "/api/auth/logout-all" },
+          "response": { "status": 405, "json": { "error": "method_not_allowed" } }
+        }
+      ]
+    },
+    {
+      "name": "logout-all rejects a foreign Origin",
+      "endpoint": "logout-all",
+      "steps": [
+        {
+          "mailerDelta": 1,
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/request-link",
+            "headers": {
+              "content-type": "application/json",
+              "origin": "https://songs.example",
+              "cf-connecting-ip": "203.0.113.32"
+            },
+            "json": {
+              "email": "singer@example.com",
+              "client": "web",
+              "verifier": "Gom_dJiEsQeMik8sm58Q4xt4rDESd-H8z2s-jNvPnAE",
+              "verifier_hash": "409a1dfd38791e76dbd352152207e00a8a3379fe17a96122eb07eb449b7d288e"
+            }
+          },
+          "response": { "status": 200, "json": { "ok": true } }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/verify",
+            "headers": { "content-type": "application/json", "origin": "https://songs.example" },
+            "cookies": ["sc_verifier"],
+            "json": { "token": "$lastLoginToken" }
+          },
+          "response": { "status": 200, "json": { "email": "singer@example.com" } }
+        },
+        {
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/logout-all",
+            "headers": { "content-type": "application/json", "origin": "https://evil.example" },
+            "cookies": ["sc_session"],
+            "json": {}
+          },
+          "response": { "status": 403, "json": { "error": "forbidden" } }
+        },
+        {
+          "request": {
+            "method": "GET",
+            "path": "/api/me",
+            "cookies": ["sc_session"]
+          },
+          "response": { "status": 200, "json": { "email": "singer@example.com" } }
         }
       ]
     }

@@ -2071,14 +2071,14 @@
     refreshMe();
   }
 
-  function signOut() {
+  function signOut(path) {
     var origin = configuredApiOrigin();
     closeAccountMenu();
     if (!origin) {
       applySignedOut();
       return;
     }
-    fetch(origin + "/api/auth/logout", {
+    fetch(origin + path, {
       method: "POST",
       credentials: "include",
       cache: "no-store",
@@ -2162,7 +2162,9 @@
     accountMenu.addEventListener("click", function (event) {
       var button = event.target.closest("button");
       if (button && button.id === "sign-out") {
-        signOut();
+        signOut("/api/auth/logout");
+      } else if (button && button.id === "sign-out-all") {
+        signOut("/api/auth/logout-all");
       }
     });
   }
