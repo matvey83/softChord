@@ -623,6 +623,81 @@ final class AuthTests: XCTestCase {
         XCTAssertEqual(model.phase, .signedIn(email: "singer@example.com"))
     }
 
+    @MainActor
+    func testOldTokenMe401DoesNotWipeANewerSession() async throws {
+        let parts = makeClient(bytes: contractVerifierBytes)
+        try parts.store.saveSession(sessionToken)
+        let newer = String(repeating: "f", count: 43)
+        let holdVerify = RequestHold()
+        let holdMe = RequestHold()
+        parts.mock.beforeResponse = { request in
+            if request.url.path == "/api/auth/verify" {
+                await holdVerify.wait()
+            } else if request.url.path == "/api/me" {
+                await holdMe.wait()
+            }
+        }
+        parts.mock.handler = { request in
+            switch request.url.path {
+            case "/api/auth/verify":
+                let body = "{\"email\":\"singer@example.com\",\"token\":\"\(newer)\"}"
+                return AuthHTTPResponse(status: 200, body: Data(body.utf8))
+            case "/api/me":
+                if request.headers["authorization"] == "Bearer \(sessionToken)" {
+                    return AuthHTTPResponse(status: 401, body: Data("{\"error\":\"unauthorized\"}".utf8))
+                }
+                return AuthHTTPResponse(status: 200, body: Data("{\"email\":\"singer@example.com\"}".utf8))
+            default:
+                return AuthHTTPResponse(status: 200, body: Data("{\"ok\":true}".utf8))
+            }
+        }
+        let model = AuthModel(client: parts.client, deviceLabel: "iPhone")
+        model.emailDraft = "singer@example.com"
+        await model.requestLink()
+        let signingIn = Task {
+            await model.open(url: URL(string: "softchord://login?token=\(loginToken)")!)
+        }
+        await waitFor(parts.mock, path: "/api/auth/verify")
+        let reloading = Task { await model.reloadAccount() }
+        await waitForCount(parts.mock, path: "/api/me", count: 1)
+        holdVerify.release()
+        await waitForCount(parts.mock, path: "/api/me", count: 2)
+        XCTAssertEqual(try parts.store.loadSession(), newer)
+        holdMe.release()
+        await signingIn.value
+        await reloading.value
+        XCTAssertEqual(try parts.store.loadSession(), newer)
+        XCTAssertEqual(model.phase, .signedIn(email: "singer@example.com"))
+    }
+
+    @MainActor
+    func testSignOutDoesNotClearBusyWhileAnotherCallIsRunning() async throws {
+        let parts = makeClient()
+        try parts.store.saveSession(sessionToken)
+        let hold = RequestHold()
+        parts.mock.beforeResponse = { request in
+            if request.url.path == "/api/me" {
+                await hold.wait()
+            }
+        }
+        parts.mock.handler = { request in
+            if request.url.path == "/api/me" {
+                return AuthHTTPResponse(status: 200, body: Data("{\"email\":\"singer@example.com\"}".utf8))
+            }
+            return AuthHTTPResponse(status: 200, body: Data("{\"ok\":true}".utf8))
+        }
+        let model = AuthModel(client: parts.client, deviceLabel: "iPhone")
+        let loading = Task { await model.reloadAccount() }
+        await waitFor(parts.mock, path: "/api/me")
+        XCTAssertTrue(model.busy)
+        await model.signOut()
+        XCTAssertTrue(model.busy)
+        hold.release()
+        await loading.value
+        XCTAssertFalse(model.busy)
+        XCTAssertNil(try parts.store.loadSession())
+    }
+
     private var songsOrigin: APIOrigin {
         APIOrigin.resolve("https://songs.example")
     }
@@ -650,8 +725,12 @@ final class AuthTests: XCTestCase {
     }
 
     private func waitFor(_ mock: MockAuthHTTP, path: String) async {
+        await waitForCount(mock, path: path, count: 1)
+    }
+
+    private func waitForCount(_ mock: MockAuthHTTP, path: String, count: Int) async {
         for _ in 0..<50 {
-            if mock.requests.contains(where: { $0.url.path == path }) {
+            if mock.requests.filter({ $0.url.path == path }).count >= count {
                 return
             }
             try? await Task.sleep(nanoseconds: 20_000_000)

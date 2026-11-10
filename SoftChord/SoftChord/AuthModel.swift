@@ -52,6 +52,8 @@ final class AuthModel: ObservableObject {
     private var didRestore = false
     /// Bumped when sign-in is dismissed or a session is replaced, so a late response is ignored.
     private var generation = 0
+    /// In-flight calls. Sign-out must not clear `busy` while another call is still running.
+    private var operations = 0
     private var queuedToken: String?
 
     static let shared = AuthModel()
@@ -146,8 +148,8 @@ final class AuthModel: ObservableObject {
             return
         }
         let ticket = generation
-        busy = true
-        defer { busy = false }
+        beginOperation()
+        defer { endOperation() }
         do {
             try await client.requestLink(email: email)
             guard ticket == generation else {
@@ -177,8 +179,8 @@ final class AuthModel: ObservableObject {
             return
         }
         let ticket = generation
-        busy = true
-        defer { busy = false }
+        beginOperation()
+        defer { endOperation() }
         await loadEmail(ticket: ticket)
     }
 
@@ -231,22 +233,29 @@ final class AuthModel: ObservableObject {
     }
 
     private func verify(token: String) async {
+        generation += 1
         let ticket = generation
-        busy = true
-        defer { busy = false }
+        beginOperation()
+        defer { endOperation() }
         do {
             let session = try await client.verify(token: token, deviceLabel: deviceLabel)
             guard ticket == generation else {
                 return
             }
-            try client.storeSession(session)
-            await loadEmail(ticket: ticket)
+            try storeSession(session)
+            await loadEmail(ticket: generation)
         } catch {
             guard ticket == generation else {
                 return
             }
             banner = message(for: error, everywhere: false)
         }
+    }
+
+    /// Saving a session retires every call that still belongs to the previous token.
+    private func storeSession(_ token: String) throws {
+        try client.storeSession(token)
+        generation += 1
     }
 
     private func loadEmail(ticket: Int) async {
@@ -279,8 +288,8 @@ final class AuthModel: ObservableObject {
         generation += 1
         let ticket = generation
         queuedToken = nil
-        busy = true
-        defer { busy = false }
+        beginOperation()
+        defer { endOperation() }
         do {
             if everywhere {
                 try await client.logoutEverywhere()
@@ -325,6 +334,16 @@ final class AuthModel: ObservableObject {
         case .allowed:
             return true
         }
+    }
+
+    private func beginOperation() {
+        operations += 1
+        busy = true
+    }
+
+    private func endOperation() {
+        operations = max(0, operations - 1)
+        busy = operations > 0
     }
 
     private func signedOutPhase() -> Phase {
