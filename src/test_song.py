@@ -6491,7 +6491,7 @@ class TestOpeningOldSongbooksInTheEditor(unittest.TestCase):
         self.assertEqual(len(self.messages), 1)
         self.assertIn("read-only", self.messages[0])
         self.assertIn("Save Songbook As", self.messages[0])
-        self.assertIn("read-only", self.app.win.windowTitle())
+        self.assertIn("(Read-only)", self.app.win.windowTitle())
         self.assertIsNone(self.app.songbook_original_path)
 
     def test_new_songbooks_are_version_2(self):
