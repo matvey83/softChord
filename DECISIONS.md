@@ -66,11 +66,11 @@ The Account menu item `Sign Out Everywhere` is shown with `Sign Out` while an em
 
 ### 2026-11-10 — Redirects are errors, and HTTP is off the UI thread
 
-`urllib_transport` builds an opener whose redirect handler never makes a follow-up request, so `Authorization` is not copied onto another URL. A 3xx is a transport error. The timeout is 15 seconds. request-link, verify, `/api/me`, logout, logout-all, and the startup refresh run on `QThreadPool`. Widgets and QSettings change only from the GUI thread. An exception in those calls is logged as its type name only, with no traceback and no `Authorization` value, and does not leave the slot.
+`urllib_transport` builds an opener whose redirect handler never makes a follow-up request, so `Authorization` is not copied onto another URL. A 3xx is a transport error. The timeout is 15 seconds. request-link, verify, `/api/me`, logout, logout-all, and the startup refresh run on a daemon thread, so process exit does not wait out that timeout. Quit also calls `QThreadPool.waitForDone(0)` after clearing queued pool work. Widgets and QSettings change only from the GUI thread. An exception in those calls is logged as its type name only, with no traceback and no `Authorization` value, and does not leave the slot.
 
 ### 2026-11-10 — Esc, Cancel, and a newer session drop an in-flight result
 
-Each dialog request (request-link and verify) is tagged with a request generation. Esc and Cancel call `reject()`, which advances that generation, so a verify that finishes afterward does not save a session. A second Sign In while the dialog is open raises the same dialog. Each request is also tagged with a session generation, advanced when the saved token is stored or cleared. A late `/api/me` 401 therefore cannot wipe a newer token, and a late 200 after sign-out cannot show the email again. Quit advances both generations and returns without waiting for the thread pool.
+Each dialog request (request-link and verify) is tagged with a request generation. Esc and Cancel call `reject()`, which advances that generation, so a verify that finishes afterward does not save a session. A second Sign In while the dialog is open raises the same dialog. Each request is also tagged with a session generation, advanced when the saved token is stored or cleared. A late `/api/me` 401 therefore cannot wipe a newer token, and a late 200 after sign-out cannot show the email again. If that 401 arrives while the sign-in dialog still has a request in flight, the dialog result does not change the session, and the dialog re-enables its button and shows its failure text. Quit advances both generations and returns without waiting for workers.
 
 ### 2026-11-10 — The pending verifier expires with the server login token
 

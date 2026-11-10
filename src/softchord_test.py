@@ -1497,6 +1497,106 @@ class SoftChordEditorTest(unittest.TestCase):
         self.assertEqual(len(transport.calls), 1)
         self.assertTrue(transport.calls[0].url.endswith("/api/auth/logout-all"))
 
+    def test_logout_all_401_403_network_and_timeout(self):
+        """401 clears the local session. 403, network, and timeout keep it."""
+        from softchord_auth import HttpResult, SIGN_OUT_EVERYWHERE_FAILED
+
+        origin = self._contract()["publicOrigin"]
+        token = "desktop-session-token"
+
+        def run(transport, clears):
+            account = self._swap_account(transport, origin=origin)
+            account.settings.setValue("auth/sessionToken", token)
+            account.show_signed_in("singer@example.com")
+            shown = []
+            original = QtWidgets.QMessageBox.exec
+            QtWidgets.QMessageBox.exec = (
+                lambda box: shown.append(box.text())
+                or QtWidgets.QMessageBox.StandardButton.Ok)
+            try:
+                self._settle(
+                    lambda: self.app.ui.actionSignOutEverywhere.trigger())
+            finally:
+                QtWidgets.QMessageBox.exec = original
+            if clears:
+                self.assertEqual(account.session_token(), "")
+                self.assertEqual(shown, [])
+                self.assertTrue(self.app.ui.actionSignIn.isVisible())
+            else:
+                self.assertEqual(account.session_token(), token)
+                self.assertEqual(shown, [SIGN_OUT_EVERYWHERE_FAILED])
+                self.assertTrue(self.app.ui.actionSignOutEverywhere.isVisible())
+
+        run(lambda exchange: HttpResult(401, b'{"error":"unauthorized"}'), True)
+        run(lambda exchange: HttpResult(403, b'{"error":"forbidden"}'), False)
+
+        def network(exchange):
+            raise OSError("network down")
+
+        def timed_out(exchange):
+            raise TimeoutError("timed out")
+
+        run(network, False)
+        run(timed_out, False)
+
+    def test_refresh_401_tells_the_open_dialog(self):
+        """A startup 401 must not leave the in-flight dialog button disabled."""
+        from softchord_auth import HttpResult, SIGN_IN_FAILED, SignInDialog
+
+        contract = self._contract()
+        verifier = contract["verifier"]["value"]
+        old = "stale-session-token"
+        new = self._session_token("newerSession")
+        refresh_started = threading.Event()
+        refresh_release = threading.Event()
+        dialog_started = threading.Event()
+        dialog_release = threading.Event()
+
+        def transport(exchange):
+            header = exchange.headers.get("Authorization", "")
+            if exchange.method == "GET" and header == "Bearer %s" % old:
+                refresh_started.set()
+                if not refresh_release.wait(5):
+                    raise TimeoutError("refresh was not released")
+                return HttpResult(401, b'{"error":"unauthorized"}')
+            dialog_started.set()
+            if not dialog_release.wait(5):
+                raise TimeoutError("dialog request was not released")
+            if exchange.url.endswith("/api/auth/verify"):
+                return HttpResult(200, json.dumps({
+                    "token": new,
+                    "email": "nope@example.com",
+                }).encode())
+            if exchange.method == "GET":
+                return HttpResult(200, b'{"email":"singer@example.com"}')
+            raise AssertionError(exchange.url)
+
+        account = self._swap_account(transport, origin=contract["publicOrigin"])
+        account.settings.setValue("auth/sessionToken", old)
+        account.show_signed_in("old@example.com")
+        try:
+            account.refresh()
+            self.assertTrue(refresh_started.wait(2))
+            account.settings.setValue("auth/pendingVerifier", verifier)
+            account.settings.setValue("auth/pendingVerifierAt", int(time.time()))
+            dialog = SignInDialog(account, self.app.win)
+            dialog.link_edit.setText(contract["wrongVerifier"])
+            dialog.complete()
+            self.assertTrue(dialog_started.wait(2))
+            self.assertFalse(dialog.complete_button.isEnabled())
+            self._settle(lambda: refresh_release.set())
+            self.assertEqual(account.session_token(), "")
+            self.assertFalse(dialog.complete_button.isEnabled())
+            self._settle(lambda: dialog_release.set())
+        finally:
+            refresh_release.set()
+            dialog_release.set()
+        self.assertTrue(dialog.complete_button.isEnabled())
+        self.assertEqual(dialog.status_label.text(), SIGN_IN_FAILED)
+        self.assertEqual(account.session_token(), "")
+        self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
+        self.assertNotEqual(dialog.result(), QtWidgets.QDialog.DialogCode.Accepted)
+
     def test_auth_failure_does_not_print_the_bearer_token(self):
         secret = self._session_token("secretBearer")
 
@@ -1689,11 +1789,13 @@ class SoftChordEditorTest(unittest.TestCase):
         self.assertTrue(self.app.ui.actionSignIn.isVisible())
 
     def test_quit_does_not_wait_for_pending_requests(self):
-        from softchord_auth import HttpResult
+        from softchord_auth import HttpResult, release_thread_pool
 
         token = self._session_token("quitSession")
         started = threading.Event()
         release = threading.Event()
+        pool_started = threading.Event()
+        pool_release = threading.Event()
 
         def transport(exchange):
             started.set()
@@ -1701,13 +1803,23 @@ class SoftChordEditorTest(unittest.TestCase):
                 raise TimeoutError("quit request was not released")
             return HttpResult(200, b'{"email":"late@example.com"}')
 
+        class Blocker(QtCore.QRunnable):
+            def run(self):
+                pool_started.set()
+                pool_release.wait(5)
+
         account = self._swap_account(
             transport, origin=self._contract()["publicOrigin"])
         self.app.aboutToQuit.disconnect(account.abandon_pending)
         self.app.aboutToQuit.connect(account.abandon_pending)
         account.settings.setValue("auth/sessionToken", token)
         account.show_signed_in(None)
+        QtCore.QThreadPool.globalInstance().start(Blocker())
         try:
+            self.assertTrue(pool_started.wait(2))
+            began = time.monotonic()
+            release_thread_pool()
+            self.assertLess(time.monotonic() - began, 0.5)
             account.refresh()
             self.assertTrue(started.wait(2))
             began = time.monotonic()
@@ -1716,6 +1828,7 @@ class SoftChordEditorTest(unittest.TestCase):
             self._settle(lambda: release.set())
         finally:
             release.set()
+            pool_release.set()
         self.assertEqual(account.session_token(), token)
         self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
         self.assertFalse(self.app.ui.actionSignOut.isVisible())

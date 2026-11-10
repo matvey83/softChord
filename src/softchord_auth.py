@@ -21,6 +21,7 @@ import os
 import re
 import secrets
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -303,24 +304,16 @@ class _TaskSignals(QtCore.QObject):
     finished = QtCore.pyqtSignal(object)
 
 
-class _AuthTask(QtCore.QRunnable):
-    """One auth HTTP call. The result is delivered back on the GUI thread."""
+def release_thread_pool():
+    """Drop queued pool work without waiting for a request that is still running.
 
-    def __init__(self, work, signals):
-        super().__init__()
-        self.work = work
-        self.signals = signals
-
-    def run(self):
-        try:
-            result = self.work()
-        except Exception as exc:
-            _log_failure(exc)
-            result = None
-        try:
-            self.signals.finished.emit(result)
-        except Exception as exc:
-            _log_failure(exc)
+    QThreadPool's destructor waits forever for active workers. waitForDone(0)
+    returns immediately, so shutdown is not held for the HTTP timeout.
+    Auth requests themselves run on daemon threads and are not in this pool.
+    """
+    pool = QtCore.QThreadPool.globalInstance()
+    pool.clear()
+    pool.waitForDone(0)
 
 
 class AccountController(QtCore.QObject):
@@ -357,10 +350,11 @@ class AccountController(QtCore.QObject):
     def abandon_pending(self):
         """Drop in-flight results when the process is leaving.
 
-        This does not wait for the thread pool. A late response is ignored.
+        Late responses are ignored. The thread pool is not waited on.
         """
         self._request_generation += 1
         self._session_generation += 1
+        release_thread_pool()
 
     def cancel_inflight(self):
         """Ignore dialog requests that have not been applied yet."""
@@ -664,21 +658,25 @@ class AccountController(QtCore.QObject):
     def _start(self, work, done, dialog=False):
         """Run work on a pool thread. done runs on the GUI thread, then settled.
 
-        dialog requests are ignored after Esc, Cancel, or quit. Every
-        request is ignored when the session generation has moved on.
-        Neither path waits for the worker.
+        dialog requests are ignored after Esc, Cancel, or quit. A dialog
+        request whose session generation has moved on (a startup refresh
+        401, for example) does not change the session, but the dialog is
+        told so its button comes back and a message is shown. Other stale
+        results are ignored. The worker is a daemon thread, so process
+        exit does not wait for it.
         """
         signals = _TaskSignals(self)
-        task = _AuthTask(work, signals)
-        task.dialog_generation = self._request_generation if dialog else None
-        task.session_generation = self._session_generation
+        dialog_generation = self._request_generation if dialog else None
+        session_generation = self._session_generation
 
         def on_finished(result):
             try:
-                if (task.dialog_generation is not None
-                        and task.dialog_generation != self._request_generation):
+                if (dialog_generation is not None
+                        and dialog_generation != self._request_generation):
                     return
-                if task.session_generation != self._session_generation:
+                if session_generation != self._session_generation:
+                    if dialog_generation is not None:
+                        done("error")
                     return
                 done(result)
             except Exception as exc:
@@ -693,9 +691,20 @@ class AccountController(QtCore.QObject):
                 except Exception as exc:
                     _log_failure(exc)
 
+        def run():
+            try:
+                result = work()
+            except Exception as exc:
+                _log_failure(exc)
+                result = None
+            try:
+                signals.finished.emit(result)
+            except Exception as exc:
+                _log_failure(exc)
+
         signals.finished.connect(
             on_finished, QtCore.Qt.ConnectionType.QueuedConnection)
-        QtCore.QThreadPool.globalInstance().start(task)
+        threading.Thread(target=run, daemon=True).start()
 
     def _finish_now(self, done, result):
         """A result that did not need the network, still on the GUI thread."""
