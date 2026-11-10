@@ -1,4 +1,8 @@
 
+// Local patch (softChord): a failed init is not cached, so the next call can
+// try again. A successful load stays cached. This file is sql.js 1.15.1
+// (SQLite 3.54.0). Re-apply the patch if the vendored file is replaced.
+//
 // We are modularizing this manually because the current modularize setting in Emscripten has some issues:
 // https://github.com/kripken/emscripten/issues/5820
 // In addition, When you use emcc's modularization, it still expects to export a global object called `Module`,

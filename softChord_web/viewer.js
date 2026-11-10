@@ -212,19 +212,24 @@
 
   // openBuffer already replaced the songs. Put the songbook that is actually
   // current back when this request lost to a later one. If a newer request
-  // wins while this read is in flight, start over with that songbook.
+  // wins while this read is in flight, or the current songbook is no longer
+  // the one whose bytes were read, drop that result and open the current one.
   function reopenActiveSongbook() {
     if (!activeSongbook || !activeSongbook.bytes) {
       return Promise.resolve();
     }
     var request = songbookRequest;
-    var bytes = activeSongbook.bytes.slice(0);
+    var entry = activeSongbook;
+    var bytes = entry.bytes.slice(0);
+    function dropped() {
+      return !songbookRequestCurrent(request) || activeSongbook !== entry;
+    }
     return Songbook.openBuffer(bytes).then(function () {
-      if (!songbookRequestCurrent(request)) {
+      if (dropped()) {
         return reopenActiveSongbook();
       }
     }, function (error) {
-      if (!songbookRequestCurrent(request)) {
+      if (dropped()) {
         return reopenActiveSongbook();
       }
       throw error;

@@ -30,3 +30,10 @@
 - An untagged `#/song/<id>` address is epoch 0, the songbook the page opened with. On that first songbook it still opens the song, which is what the existing links and tests do. After a switch, Back to that address goes to the new songbook's list.
 - `reopenActiveSongbook` remembers the request token. If a newer open wins while it is reading, it reads the songbook that won instead of leaving the older bytes in place.
 - The cache buster is `?v=2026-11-10d`, including `sql-wasm.js`, so a browser that kept `2026-11-10c` does not mix these files.
+
+## 2026-11-10 — sql.js patch note, reopen identity, and the README line
+
+- `softChord_web/sql-wasm.js` is sql.js 1.15.1 (SQLite 3.54.0). The wasm file matches that release; 1.15.2 ships a different wasm. A comment at the top of the file marks the local patch: a failed init is not cached. Re-apply it if the vendored file is replaced.
+- After `reopenActiveSongbook` finishes a read, it keeps those songs only when the current songbook is still the one whose bytes were read. Otherwise that result is dropped and the current songbook is opened.
+- The README line about opening a local songbook file into memory, for this session only, was kept. QA asked for it. The Phase 1 spec lists README wording as out of scope.
+- The cache buster is `?v=2026-11-10e`.
