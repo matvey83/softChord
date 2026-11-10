@@ -22,6 +22,9 @@ private let contractVerifierBytes = Data([
 /// A second contract token, used as a session token. It matches the bearer syntax.
 private let sessionToken = "Qr4MgDAm0aB-s6pLkfOAoK-64CTFRrUNtVZLA0X-GJw"
 
+/// Login token. Same base64url length as a session token.
+private let loginToken = "Gom_dJiEsQeMik8sm58Q4xt4rDESd-H8z2s-jNvPnAE"
+
 final class AuthTests: XCTestCase {
     func testContractFixtureMatchesTheServerBytes() throws {
         let data = try contractData()
@@ -51,6 +54,9 @@ final class AuthTests: XCTestCase {
         XCTAssertEqual(APIOrigin.resolve("http://localhost.evil"), .needsHTTPS)
         XCTAssertEqual(APIOrigin.resolve("https://songs.example/api"), .notConfigured)
         XCTAssertEqual(APIOrigin.resolve("https://user@songs.example"), .notConfigured)
+        XCTAssertEqual(APIOrigin.resolve("http://127.0.0.1.evil"), .needsHTTPS)
+        XCTAssertEqual(APIOrigin.resolve("http://localhost@evil"), .notConfigured)
+        XCTAssertEqual(APIOrigin.resolve("http://localhost@evil.com"), .notConfigured)
 
         guard case .allowed(let local) = APIOrigin.resolve("http://localhost:8787") else {
             return XCTFail("localhost should be allowed")
@@ -82,6 +88,8 @@ final class AuthTests: XCTestCase {
         XCTAssertEqual(request.url.path, "/api/auth/request-link")
         XCTAssertNil(request.url.query)
         XCTAssertEqual(request.headers, ["content-type": "application/json"])
+        XCTAssertEqual(request.timeout, AuthTiming.requestTimeout)
+        XCTAssertEqual(AuthTiming.requestTimeout, 15)
         let body = try jsonObject(request.body)
         XCTAssertEqual(body["client"] as? String, "ios")
         XCTAssertEqual(body["email"] as? String, "singer@example.com")
@@ -120,7 +128,8 @@ final class AuthTests: XCTestCase {
         let parts = makeClient(bytes: contractVerifierBytes)
         parts.mock.handler = scripted
         try await parts.client.requestLink(email: "singer@example.com")
-        try await parts.client.verify(token: "login-token", deviceLabel: "  iPhone  ")
+        let session = try await parts.client.verify(token: loginToken, deviceLabel: "  iPhone  ")
+        try parts.client.storeSession(session)
         let email = try await parts.client.currentEmail()
         XCTAssertEqual(email, "singer@example.com")
         try await parts.client.logout()
@@ -136,7 +145,7 @@ final class AuthTests: XCTestCase {
         XCTAssertEqual(verify.headers["content-type"], "application/json")
         XCTAssertNil(verify.headers["authorization"])
         let verifyBody = try jsonObject(verify.body)
-        XCTAssertEqual(verifyBody["token"] as? String, "login-token")
+        XCTAssertEqual(verifyBody["token"] as? String, loginToken)
         XCTAssertEqual(verifyBody["verifier"] as? String, "Gom_dJiEsQeMik8sm58Q4xt4rDESd-H8z2s-jNvPnAE")
         XCTAssertEqual(verifyBody["device_label"] as? String, "iPhone")
         XCTAssertEqual(Set(verifyBody.keys), ["device_label", "token", "verifier"])
@@ -262,42 +271,57 @@ final class AuthTests: XCTestCase {
             ("softchord://login?token=\(token)", .token(token)),
             ("softchord://Login?token=\(token)", .token(token)),
             ("softchord://login/?token=\(token)", .token(token)),
-            ("softchord://login?token=a%2Bb", .token("a+b")),
+            ("softchord://login?token=a%2Bb", .invalid),
+            ("softchord://login?token=\(String(repeating: "a", count: 43))", .token(String(repeating: "a", count: 43))),
+            ("softchord://login?token=\(String(repeating: "a", count: 42))", .invalid),
+            ("softchord://login?token=\(String(repeating: "b", count: 128))", .token(String(repeating: "b", count: 128))),
+            ("softchord://login?token=\(String(repeating: "b", count: 129))", .invalid),
             ("softchord://other?token=\(token)", .ignore),
             ("softchord://login", .invalid),
             ("softchord://login?token=", .invalid),
             ("softchord://login?token=\(String(repeating: "a", count: 201))", .invalid),
             ("https://songs.example/login?client=ios&hint=m%2A%2A%2A%40gmail.com#t=\(token)", .token(token)),
             ("https://songs.example/login#t=\(token)", .token(token)),
-            ("https://songs.example/login#t=a%2Bb", .token("a+b")),
+            ("https://songs.example/login#t=a%2Bb", .invalid),
+            ("https://evil.example/login#t=\(token)", .invalid),
             ("https://songs.example/login?token=\(token)", .ignore),
             ("https://songs.example/songs#t=\(token)", .ignore),
-            ("http://localhost:8787/login?client=ios#t=\(token)", .token(token)),
-            ("http://127.0.0.1/login#t=\(token)", .token(token)),
+            ("http://localhost:8787/login?client=ios#t=\(token)", .invalid),
+            ("http://127.0.0.1/login#t=\(token)", .invalid),
             ("http://songs.example/login#t=\(token)", .invalid),
             ("https://user:pass@songs.example/login#t=\(token)", .invalid),
             ("https://songs.example/login#t=", .invalid),
         ]
         for (text, expected) in cases {
             let url = try XCTUnwrap(URL(string: text), text)
-            XCTAssertEqual(LoginLink.classify(url), expected, text)
+            XCTAssertEqual(LoginLink.classify(url, origin: songsOrigin), expected, text)
         }
         XCTAssertEqual(
-            LoginLink.classify(pasted: " <softchord://login?token=\(token)> "),
+            LoginLink.classify(pasted: " <softchord://login?token=\(token)> ", origin: songsOrigin),
             .token(token)
         )
-        XCTAssertEqual(LoginLink.classify(pasted: "not a link"), .invalid)
+        XCTAssertEqual(
+            LoginLink.classify(pasted: "https://evil.example/login#t=\(token)", origin: songsOrigin),
+            .invalid
+        )
+        XCTAssertEqual(LoginLink.classify(pasted: "not a link", origin: songsOrigin), .invalid)
+        let local = APIOrigin.resolve("http://127.0.0.1:8787")
+        let localURL = try XCTUnwrap(URL(string: "http://127.0.0.1:8787/login#t=\(token)"))
+        XCTAssertEqual(LoginLink.classify(localURL, origin: local), .token(token))
+        let localhost = APIOrigin.resolve("http://localhost:8787")
+        let localhostURL = try XCTUnwrap(URL(string: "http://localhost:8787/login#t=\(token)"))
+        XCTAssertEqual(LoginLink.classify(localhostURL, origin: localhost), .token(token))
     }
 
     func testRedirectIsRefusedAndDoesNotStoreASession() async throws {
         let parts = makeClient(bytes: contractVerifierBytes)
         try await parts.client.requestLink(email: "singer@example.com")
-        parts.mock.requests.removeAll()
+        parts.mock.removeAll()
         parts.mock.handler = { _ in
             AuthHTTPResponse(status: 302, body: Data("{\"email\":\"nope\"}".utf8))
         }
         do {
-            try await parts.client.verify(token: "login-token", deviceLabel: "iPhone")
+            _ = try await parts.client.verify(token: loginToken, deviceLabel: "iPhone")
             XCTFail("redirect should fail")
         } catch AuthError.redirectRefused {
         }
@@ -311,7 +335,10 @@ final class AuthTests: XCTestCase {
         let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         let url = try XCTUnwrap(URL(string: "https://songs.example/api/me"))
-        let task = session.dataTask(with: url)
+        var authed = URLRequest(url: url)
+        authed.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
+        let task = session.dataTask(with: authed)
+        XCTAssertTrue(RedirectRefusal.carriesBearer(task.originalRequest))
         defer { task.cancel() }
         let response = try XCTUnwrap(HTTPURLResponse(
             url: url,
@@ -374,7 +401,7 @@ final class AuthTests: XCTestCase {
         await model.requestLink()
         XCTAssertEqual(model.phase, .checkEmail)
         XCTAssertEqual(model.statusText, "Check your email")
-        await model.open(url: try XCTUnwrap(URL(string: "softchord://login?token=login-token")))
+        await model.open(url: try XCTUnwrap(URL(string: "softchord://login?token=\(loginToken)")))
         XCTAssertEqual(model.phase, .signedIn(email: "singer@example.com"))
         XCTAssertEqual(parts.mock.requests.map(\.url.path), [
             "/api/auth/request-link",
@@ -390,6 +417,245 @@ final class AuthTests: XCTestCase {
         XCTAssertEqual(parts.mock.requests.last?.url.path, "/api/auth/logout-all")
         XCTAssertEqual(parts.mock.requests.last?.body, Data("{}".utf8))
         XCTAssertNil(try parts.store.loadSession())
+    }
+
+    @MainActor
+    func testVerifierExpiresAtExactly900Seconds() async throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let clock = TestClock(start)
+        let parts = makeClient(bytes: contractVerifierBytes, now: { clock.date })
+        let model = AuthModel(client: parts.client, deviceLabel: "iPhone")
+        model.emailDraft = "singer@example.com"
+        await model.requestLink()
+        XCTAssertEqual(model.phase, .checkEmail)
+        XCTAssertEqual(AuthTiming.verifierLifetime, 900)
+
+        clock.date = start.addingTimeInterval(899)
+        model.refreshPendingLink()
+        XCTAssertEqual(model.phase, .checkEmail)
+        XCTAssertNotNil(try parts.store.loadVerifier())
+
+        clock.date = start.addingTimeInterval(900)
+        let before = parts.mock.requests.count
+        do {
+            _ = try await parts.client.verify(token: loginToken, deviceLabel: "iPhone")
+            XCTFail("an expired verifier must not call verify")
+        } catch AuthError.missingVerifier {
+        }
+        XCTAssertEqual(parts.mock.requests.count, before)
+        XCTAssertNil(try parts.store.loadSession())
+        XCTAssertNil(try parts.store.loadVerifier())
+        model.refreshPendingLink()
+        XCTAssertEqual(model.phase, .signedOut)
+        XCTAssertNil(model.statusText)
+    }
+
+    func testSessionTokenIsCheckedBeforeItIsStored() async throws {
+        let parts = makeClient(bytes: contractVerifierBytes)
+        try await parts.client.requestLink(email: "singer@example.com")
+        parts.mock.handler = { _ in
+            AuthHTTPResponse(status: 200, body: Data("{\"token\":\"short\"}".utf8))
+        }
+        do {
+            _ = try await parts.client.verify(token: loginToken, deviceLabel: "iPhone")
+            XCTFail("a short token must not be stored")
+        } catch AuthError.missingToken {
+        }
+        XCTAssertNil(try parts.store.loadSession())
+        XCTAssertFalse(String(describing: AuthError.missingToken).contains(sessionToken))
+
+        let tooShort = String(repeating: "a", count: 42)
+        let tooLong = String(repeating: "a", count: 129)
+        let badChar = String(repeating: "a", count: 42) + "+"
+        for bad in [tooShort, tooLong, badChar] {
+            XCTAssertThrowsError(try parts.client.storeSession(bad))
+            XCTAssertNil(try parts.store.loadSession())
+        }
+        let accepted = String(repeating: "c", count: 43)
+        try parts.client.storeSession(accepted)
+        XCTAssertEqual(try parts.store.loadSession(), accepted)
+        let max = String(repeating: "d", count: 128)
+        try parts.client.storeSession(max)
+        XCTAssertEqual(try parts.store.loadSession(), max)
+    }
+
+    func testAuthenticatedRedirectsAreRefused() async throws {
+        for status in [302, 307, 308] {
+            let parts = makeClient()
+            try parts.store.saveSession(sessionToken)
+            parts.mock.handler = { _ in
+                AuthHTTPResponse(status: status, body: Data())
+            }
+            do {
+                _ = try await parts.client.currentEmail()
+                XCTFail("status \(status)")
+            } catch AuthError.redirectRefused {
+            }
+            XCTAssertEqual(parts.mock.requests.count, 1)
+            XCTAssertEqual(parts.mock.requests[0].headers["authorization"], "Bearer \(sessionToken)")
+            XCTAssertEqual(try parts.store.loadSession(), sessionToken)
+            XCTAssertFalse(String(describing: AuthError.redirectRefused).contains(sessionToken))
+        }
+    }
+
+    func testLogoutAllStatusCodes() async throws {
+        try await assertLogoutAll(status: 401, code: "unauthorized", clears: true)
+        try await assertLogoutAll(status: 403, code: "forbidden", clears: false)
+        try await assertLogoutAll(status: 405, code: "method_not_allowed", clears: false)
+    }
+
+    @MainActor
+    func testFailedSignOutEverywhereNamesThatAction() async throws {
+        let parts = makeClient()
+        try parts.store.saveSession(sessionToken)
+        parts.mock.handler = { _ in
+            AuthHTTPResponse(status: 403, body: Data("{\"error\":\"forbidden\"}".utf8))
+        }
+        let model = AuthModel(client: parts.client, deviceLabel: "iPhone")
+        model.requestSignOutEverywhere()
+        XCTAssertTrue(model.confirmSignOutEverywhere)
+        XCTAssertTrue(parts.mock.requests.isEmpty)
+        await model.signOutEverywhere()
+        XCTAssertEqual(model.banner, "Could not sign out everywhere.")
+        XCTAssertEqual(try parts.store.loadSession(), sessionToken)
+        XCTAssertFalse(model.confirmSignOutEverywhere)
+    }
+
+    @MainActor
+    func testDismissStopsAnInFlightVerifyFromSavingASession() async {
+        let parts = makeClient(bytes: contractVerifierBytes)
+        let hold = RequestHold()
+        parts.mock.beforeResponse = { request in
+            if request.url.path == "/api/auth/verify" {
+                await hold.wait()
+            }
+        }
+        parts.mock.handler = scripted
+        let model = AuthModel(client: parts.client, deviceLabel: "iPhone")
+        model.emailDraft = "singer@example.com"
+        await model.requestLink()
+        let task = Task {
+            await model.open(url: URL(string: "softchord://login?token=\(loginToken)")!)
+        }
+        await waitFor(parts.mock, path: "/api/auth/verify")
+        model.dismissSignIn()
+        hold.release()
+        await task.value
+        XCTAssertNil(try? parts.store.loadSession())
+        XCTAssertEqual(model.phase, .signedOut)
+    }
+
+    @MainActor
+    func testLateMe401DoesNotClearANewerToken() async throws {
+        let parts = makeClient()
+        try parts.store.saveSession(sessionToken)
+        let newer = String(repeating: "e", count: 43)
+        let hold = RequestHold()
+        parts.mock.beforeResponse = { request in
+            if request.url.path == "/api/me" {
+                await hold.wait()
+            }
+        }
+        parts.mock.handler = { request in
+            if request.url.path == "/api/me" {
+                return AuthHTTPResponse(status: 401, body: Data("{\"error\":\"unauthorized\"}".utf8))
+            }
+            return AuthHTTPResponse(status: 200, body: Data("{\"ok\":true}".utf8))
+        }
+        let model = AuthModel(client: parts.client, deviceLabel: "iPhone")
+        let loading = Task { await model.reloadAccount() }
+        await waitFor(parts.mock, path: "/api/me")
+        await model.signOut()
+        try parts.store.saveSession(newer)
+        hold.release()
+        await loading.value
+        XCTAssertEqual(try parts.store.loadSession(), newer)
+        XCTAssertNotEqual(model.phase, .signedIn(email: "singer@example.com"))
+    }
+
+    @MainActor
+    func testLateMe200AfterSignOutDoesNotShowTheEmail() async throws {
+        let parts = makeClient()
+        try parts.store.saveSession(sessionToken)
+        let hold = RequestHold()
+        parts.mock.beforeResponse = { request in
+            if request.url.path == "/api/me" {
+                await hold.wait()
+            }
+        }
+        parts.mock.handler = { request in
+            if request.url.path == "/api/me" {
+                return AuthHTTPResponse(status: 200, body: Data("{\"email\":\"singer@example.com\"}".utf8))
+            }
+            return AuthHTTPResponse(status: 200, body: Data("{\"ok\":true}".utf8))
+        }
+        let model = AuthModel(client: parts.client, deviceLabel: "iPhone")
+        let loading = Task { await model.reloadAccount() }
+        await waitFor(parts.mock, path: "/api/me")
+        await model.signOut()
+        hold.release()
+        await loading.value
+        XCTAssertEqual(model.phase, .signedOut)
+        XCTAssertNil(try parts.store.loadSession())
+        XCTAssertNil(model.statusText)
+    }
+
+    @MainActor
+    func testALinkThatArrivesWhileBusyIsNotDropped() async {
+        let parts = makeClient(bytes: contractVerifierBytes)
+        let hold = RequestHold()
+        parts.mock.beforeResponse = { request in
+            if request.url.path == "/api/auth/request-link" {
+                await hold.wait()
+            }
+        }
+        parts.mock.handler = scripted
+        let model = AuthModel(client: parts.client, deviceLabel: "iPhone")
+        model.emailDraft = "singer@example.com"
+        let requesting = Task { await model.requestLink() }
+        await waitFor(parts.mock, path: "/api/auth/request-link")
+        await model.open(url: URL(string: "softchord://login?token=\(loginToken)")!)
+        XCTAssertEqual(model.banner, AuthCopy.linkWaiting)
+        XCTAssertFalse(parts.mock.requests.contains { $0.url.path == "/api/auth/verify" })
+        hold.release()
+        await requesting.value
+        XCTAssertTrue(parts.mock.requests.contains { $0.url.path == "/api/auth/verify" })
+        XCTAssertEqual(model.phase, .signedIn(email: "singer@example.com"))
+    }
+
+    private var songsOrigin: APIOrigin {
+        APIOrigin.resolve("https://songs.example")
+    }
+
+    private func assertLogoutAll(status: Int, code: String, clears: Bool) async throws {
+        let parts = makeClient()
+        try parts.store.saveSession(sessionToken)
+        parts.mock.handler = { _ in
+            let body = "{\"error\":\"\(code)\"}"
+            return AuthHTTPResponse(status: status, body: Data(body.utf8))
+        }
+        do {
+            try await parts.client.logoutEverywhere()
+            XCTAssertTrue(clears, "status \(status) should have failed")
+        } catch let error as AuthError {
+            XCTAssertEqual(error, .rejected(status: status, code: code))
+            XCTAssertFalse(clears)
+            XCTAssertFalse(String(describing: error).contains(sessionToken))
+        }
+        if clears {
+            XCTAssertNil(try parts.store.loadSession())
+        } else {
+            XCTAssertEqual(try parts.store.loadSession(), sessionToken)
+        }
+    }
+
+    private func waitFor(_ mock: MockAuthHTTP, path: String) async {
+        for _ in 0..<50 {
+            if mock.requests.contains(where: { $0.url.path == path }) {
+                return
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
     }
 
     private func contractData() throws -> Data {
@@ -410,7 +676,8 @@ final class AuthTests: XCTestCase {
 
     private func makeClient(
         origin: String = "https://songs.example",
-        bytes: Data? = nil
+        bytes: Data? = nil,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) -> (client: AuthClient, mock: MockAuthHTTP, store: MemorySessionStore) {
         let mock = MockAuthHTTP()
         let store = MemorySessionStore()
@@ -423,7 +690,8 @@ final class AuthTests: XCTestCase {
                     return bytes
                 }
                 return Data(repeating: 7, count: 32)
-            }
+            },
+            now: now
         )
         return (client, mock, store)
     }
@@ -447,6 +715,7 @@ private struct CapturedAuthRequest: Sendable {
     var headers: [String: String]
     var body: Data?
     var onMainThread: Bool
+    var timeout: TimeInterval
 
     var contentType: String? { headers["content-type"] }
 
@@ -460,6 +729,33 @@ private struct CapturedAuthRequest: Sendable {
         headers = lowered
         body = request.httpBody
         onMainThread = Thread.isMainThread
+        timeout = request.timeoutInterval
+    }
+}
+
+private final class TestClock: @unchecked Sendable {
+    var date: Date
+    init(_ date: Date) { self.date = date }
+}
+
+private final class RequestHold: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            waiters.append(continuation)
+            lock.unlock()
+        }
+    }
+
+    func release() {
+        lock.lock()
+        let pending = waiters
+        waiters.removeAll()
+        lock.unlock()
+        pending.forEach { $0.resume() }
     }
 }
 
@@ -468,6 +764,7 @@ private final class MockAuthHTTP: AuthHTTPSending, @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [CapturedAuthRequest] = []
     var handler: (@Sendable (CapturedAuthRequest) -> AuthHTTPResponse)?
+    var beforeResponse: (@Sendable (CapturedAuthRequest) async -> Void)?
     var transportError: Error?
 
     var requests: [CapturedAuthRequest] {
@@ -476,13 +773,23 @@ private final class MockAuthHTTP: AuthHTTPSending, @unchecked Sendable {
         return stored
     }
 
+    func removeAll() {
+        lock.lock()
+        stored.removeAll()
+        lock.unlock()
+    }
+
     func send(_ request: URLRequest) async throws -> AuthHTTPResponse {
         let captured = CapturedAuthRequest(request)
         lock.lock()
         stored.append(captured)
         let handler = self.handler
+        let beforeResponse = self.beforeResponse
         let transportError = self.transportError
         lock.unlock()
+        if let beforeResponse {
+            await beforeResponse(captured)
+        }
         if request.httpMethod == "POST", captured.contentType != "application/json" {
             return AuthHTTPResponse(status: 400, body: Data("{\"error\":\"invalid_request\"}".utf8))
         }
@@ -500,6 +807,7 @@ private final class MemorySessionStore: SessionStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var session: String?
     private var verifier: String?
+    private var verifierIssuedAt: Date?
 
     func saveSession(_ token: String) throws {
         lock.lock()
@@ -513,9 +821,10 @@ private final class MemorySessionStore: SessionStoring, @unchecked Sendable {
         return session
     }
 
-    func saveVerifier(_ value: String) throws {
+    func saveVerifier(_ value: String, issuedAt: Date) throws {
         lock.lock()
         verifier = value
+        verifierIssuedAt = issuedAt
         lock.unlock()
     }
 
@@ -525,9 +834,16 @@ private final class MemorySessionStore: SessionStoring, @unchecked Sendable {
         return verifier
     }
 
+    func loadVerifierIssuedAt() throws -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return verifierIssuedAt
+    }
+
     func clearVerifier() throws {
         lock.lock()
         verifier = nil
+        verifierIssuedAt = nil
         lock.unlock()
     }
 
@@ -535,6 +851,7 @@ private final class MemorySessionStore: SessionStoring, @unchecked Sendable {
         lock.lock()
         session = nil
         verifier = nil
+        verifierIssuedAt = nil
         lock.unlock()
     }
 }

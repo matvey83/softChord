@@ -16,7 +16,7 @@ nonisolated enum LoginLinkResult: Equatable {
 
 /// `softchord://login?token=` and `https://<origin>/login#t=<token>`.
 nonisolated enum LoginLink {
-    static func classify(_ url: URL) -> LoginLinkResult {
+    static func classify(_ url: URL, origin: APIOrigin) -> LoginLinkResult {
         guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let scheme = parts.scheme?.lowercased()
         else {
@@ -26,15 +26,15 @@ nonisolated enum LoginLink {
         case "softchord":
             return appLink(parts)
         case "https":
-            return webLink(parts, allowCleartext: false)
+            return webLink(parts, allowCleartext: false, origin: origin)
         case "http":
-            return webLink(parts, allowCleartext: true)
+            return webLink(parts, allowCleartext: true, origin: origin)
         default:
             return .ignore
         }
     }
 
-    static func classify(pasted text: String) -> LoginLinkResult {
+    static func classify(pasted text: String, origin: APIOrigin) -> LoginLinkResult {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("<"), trimmed.hasSuffix(">"), trimmed.count >= 2 {
             trimmed = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -42,7 +42,7 @@ nonisolated enum LoginLink {
         guard let url = URL(string: trimmed) else {
             return .invalid
         }
-        let result = classify(url)
+        let result = classify(url, origin: origin)
         if case .ignore = result {
             return .invalid
         }
@@ -65,7 +65,7 @@ nonisolated enum LoginLink {
         return .token(accepted)
     }
 
-    private static func webLink(_ parts: URLComponents, allowCleartext: Bool) -> LoginLinkResult {
+    private static func webLink(_ parts: URLComponents, allowCleartext: Bool, origin: APIOrigin) -> LoginLinkResult {
         guard parts.path == "/login" || parts.path == "/login/" else {
             return .ignore
         }
@@ -85,7 +85,37 @@ nonisolated enum LoginLink {
         guard let token = fragmentToken(fragment), let accepted = acceptable(token) else {
             return .invalid
         }
+        guard matches(parts, origin: origin) else {
+            return .invalid
+        }
         return .token(accepted)
+    }
+
+    /// A pasted or opened https link has to be the configured API origin.
+    private static func matches(_ parts: URLComponents, origin: APIOrigin) -> Bool {
+        guard case .allowed(let allowed) = origin,
+              let allowedParts = URLComponents(url: allowed, resolvingAgainstBaseURL: false),
+              parts.scheme?.lowercased() == allowedParts.scheme?.lowercased(),
+              let host = parts.host?.lowercased(),
+              host == allowedParts.host?.lowercased()
+        else {
+            return false
+        }
+        return port(parts) == port(allowedParts)
+    }
+
+    private static func port(_ parts: URLComponents) -> Int {
+        if let port = parts.port {
+            return port
+        }
+        switch parts.scheme?.lowercased() {
+        case "https":
+            return 443
+        case "http":
+            return 80
+        default:
+            return -1
+        }
     }
 
     /// The fragment is `t=<token>`, the form the server builds.
@@ -96,14 +126,8 @@ nonisolated enum LoginLink {
         return pieces.queryItems?.first(where: { $0.name == "t" })?.value
     }
 
-    /// Printable ASCII, no spaces, within the server's 200-character verify limit.
+    /// The same base64url rule as a session token: 43 to 128 characters.
     private static func acceptable(_ token: String) -> String? {
-        guard (1...200).contains(token.count) else {
-            return nil
-        }
-        let printable = token.unicodeScalars.allSatisfy { scalar in
-            scalar.value > 32 && scalar.value < 127
-        }
-        return printable ? token : nil
+        AuthVerifier.isVerifier(token) ? token : nil
     }
 }

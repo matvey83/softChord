@@ -57,9 +57,31 @@ struct AccountHeader: View {
                 .onSubmit { Task { await auth.open(pasted: auth.pastedLink) } }
             actionButton(AuthCopy.continueLink) { await auth.open(pasted: auth.pastedLink) }
             Button(AuthCopy.differentEmail) {
-                auth.editEmailAgain()
+                auth.dismissSignIn()
             }
-            .disabled(auth.busy)
+            Button(AuthCopy.cancel) {
+                auth.dismissSignIn()
+            }
+        }
+        .onAppear { auth.refreshPendingLink() }
+        .task(id: auth.phase) {
+            guard case .checkEmail = auth.phase else {
+                return
+            }
+            while !Task.isCancelled {
+                let wait = auth.pendingLinkRemaining()
+                if wait <= 0 {
+                    auth.refreshPendingLink()
+                    return
+                }
+                do {
+                    let nanos = max(UInt64(1_000_000), UInt64((wait * 1_000_000_000).rounded()))
+                    try await Task.sleep(nanoseconds: nanos)
+                } catch {
+                    return
+                }
+                auth.refreshPendingLink()
+            }
         }
     }
 
@@ -74,10 +96,19 @@ struct AccountHeader: View {
             HStack(spacing: 12) {
                 actionButton(AuthCopy.signOut) { await auth.signOut() }
                 Button(AuthCopy.signOutEverywhere, role: .destructive) {
-                    Task { await auth.signOutEverywhere() }
+                    auth.requestSignOutEverywhere()
                 }
-                .disabled(auth.busy)
             }
+        }
+        .confirmationDialog(
+            AuthCopy.signOutEverywherePrompt,
+            isPresented: $auth.confirmSignOutEverywhere,
+            titleVisibility: .visible
+        ) {
+            Button(AuthCopy.signOutEverywhere, role: .destructive) {
+                Task { await auth.signOutEverywhere() }
+            }
+            Button(AuthCopy.cancel, role: .cancel) {}
         }
     }
 

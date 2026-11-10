@@ -14,16 +14,20 @@ nonisolated enum AuthCopy {
     static let emailLink = "Email me a link"
     static let continueLink = "Continue"
     static let differentEmail = "Use a different email"
+    static let cancel = "Cancel"
     static let signOut = "Sign out"
     static let signOutEverywhere = "Sign Out Everywhere"
+    static let signOutEverywherePrompt = "Sign out of every device?"
     static let verifyFailed = "Open this link on the device where you requested it."
     static let unreachable = "Could not reach SoftChord."
     static let invalidEmail = "Enter an email address."
     static let badEmail = "That email address is not valid."
     static let couldNotSignOut = "Could not sign out."
+    static let couldNotSignOutEverywhere = "Could not sign out everywhere."
     static let couldNotLoad = "Could not load the account."
     static let signedIn = "Signed in"
     static let retry = "Retry"
+    static let linkWaiting = "This link will be used when the current sign-in finishes."
 }
 
 @MainActor
@@ -41,10 +45,14 @@ final class AuthModel: ObservableObject {
     @Published var pastedLink: String
     @Published private(set) var banner: String?
     @Published private(set) var busy: Bool
+    @Published var confirmSignOutEverywhere = false
 
     let client: AuthClient
     private let deviceLabel: String
     private var didRestore = false
+    /// Bumped when sign-in is dismissed or a session is replaced, so a late response is ignored.
+    private var generation = 0
+    private var queuedToken: String?
 
     static let shared = AuthModel()
 
@@ -95,15 +103,33 @@ final class AuthModel: ObservableObject {
             return
         }
         didRestore = true
+        refreshPendingLink()
         guard applyOriginGate() else {
             return
         }
         if client.hasSession {
-            await loadEmail()
+            await loadEmail(ticket: generation)
             return
         }
         if client.hasVerifier {
             phase = .checkEmail
+        }
+    }
+
+    /// Seconds until "Check your email" should be cleared. Zero when it is already due.
+    func pendingLinkRemaining() -> TimeInterval {
+        client.pendingVerifierRemaining()
+    }
+
+    /// Drops "Check your email" once the verifier is 900 seconds old.
+    func refreshPendingLink() {
+        client.expireVerifierIfNeeded()
+        guard case .checkEmail = phase else {
+            return
+        }
+        if !client.hasVerifier {
+            phase = signedOutPhase()
+            banner = nil
         }
     }
 
@@ -119,62 +145,60 @@ final class AuthModel: ObservableObject {
             banner = AuthCopy.invalidEmail
             return
         }
+        let ticket = generation
         busy = true
         defer { busy = false }
         do {
             try await client.requestLink(email: email)
+            guard ticket == generation else {
+                return
+            }
             phase = .checkEmail
             banner = nil
         } catch {
-            banner = message(for: error, signingOut: false)
+            guard ticket == generation else {
+                return
+            }
+            banner = message(for: error, everywhere: false)
         }
+        await drainQueue()
     }
 
     func open(url: URL) async {
-        guard applyOriginGate() else {
-            return
-        }
-        switch LoginLink.classify(url) {
-        case .ignore:
-            return
-        case .invalid:
-            banner = AuthCopy.verifyFailed
-        case .token(let token):
-            await verify(token: token)
-        }
+        await receive(LoginLink.classify(url, origin: client.origin))
     }
 
     func open(pasted text: String) async {
-        guard applyOriginGate() else {
-            return
-        }
-        switch LoginLink.classify(pasted: text) {
-        case .ignore, .invalid:
-            banner = AuthCopy.verifyFailed
-        case .token(let token):
-            await verify(token: token)
-        }
+        await receive(LoginLink.classify(pasted: text, origin: client.origin))
     }
 
     func reloadAccount() async {
-        guard !busy else {
-            return
-        }
         guard applyOriginGate() else {
             return
         }
+        let ticket = generation
         busy = true
         defer { busy = false }
-        await loadEmail()
+        await loadEmail(ticket: ticket)
+    }
+
+    func dismissSignIn() {
+        generation += 1
+        queuedToken = nil
+        banner = nil
+        pastedLink = ""
+        if case .signedIn = phase {
+            return
+        }
+        phase = signedOutPhase()
     }
 
     func editEmailAgain() {
-        guard !busy, case .allowed = client.origin else {
-            return
-        }
-        phase = .signedOut
-        banner = nil
-        pastedLink = ""
+        dismissSignIn()
+    }
+
+    func requestSignOutEverywhere() {
+        confirmSignOutEverywhere = true
     }
 
     func signOut() async {
@@ -182,31 +206,62 @@ final class AuthModel: ObservableObject {
     }
 
     func signOutEverywhere() async {
+        confirmSignOutEverywhere = false
         await endSession(everywhere: true)
     }
 
-    private func verify(token: String) async {
-        guard !busy else {
+    private func receive(_ result: LoginLinkResult) async {
+        switch result {
+        case .ignore:
             return
+        case .invalid:
+            banner = AuthCopy.verifyFailed
+        case .token(let token):
+            guard applyOriginGate() else {
+                return
+            }
+            if busy {
+                queuedToken = token
+                banner = AuthCopy.linkWaiting
+                return
+            }
+            await verify(token: token)
+            await drainQueue()
         }
+    }
+
+    private func verify(token: String) async {
+        let ticket = generation
         busy = true
         defer { busy = false }
         do {
-            try await client.verify(token: token, deviceLabel: deviceLabel)
+            let session = try await client.verify(token: token, deviceLabel: deviceLabel)
+            guard ticket == generation else {
+                return
+            }
+            try client.storeSession(session)
+            await loadEmail(ticket: ticket)
         } catch {
-            banner = message(for: error, signingOut: false)
-            return
+            guard ticket == generation else {
+                return
+            }
+            banner = message(for: error, everywhere: false)
         }
-        await loadEmail()
     }
 
-    private func loadEmail() async {
+    private func loadEmail(ticket: Int) async {
         do {
             let email = try await client.currentEmail()
+            guard ticket == generation else {
+                return
+            }
             phase = .signedIn(email: email)
             banner = nil
             pastedLink = ""
         } catch {
+            guard ticket == generation else {
+                return
+            }
             if case AuthError.rejected(let status, _) = error, status == 401 {
                 try? client.clearLocal()
                 phase = signedOutPhase()
@@ -221,9 +276,9 @@ final class AuthModel: ObservableObject {
     }
 
     private func endSession(everywhere: Bool) async {
-        guard !busy else {
-            return
-        }
+        generation += 1
+        let ticket = generation
+        queuedToken = nil
         busy = true
         defer { busy = false }
         do {
@@ -232,13 +287,30 @@ final class AuthModel: ObservableObject {
             } else {
                 try await client.logout()
             }
+            guard ticket == generation else {
+                return
+            }
             emailDraft = ""
             pastedLink = ""
             banner = nil
             phase = signedOutPhase()
         } catch {
-            banner = message(for: error, signingOut: true)
+            guard ticket == generation else {
+                return
+            }
+            banner = message(for: error, everywhere: everywhere, signingOut: true)
         }
+    }
+
+    private func drainQueue() async {
+        guard let token = queuedToken else {
+            return
+        }
+        queuedToken = nil
+        if case .signedIn = phase {
+            return
+        }
+        await verify(token: token)
     }
 
     @discardableResult
@@ -266,9 +338,15 @@ final class AuthModel: ObservableObject {
         }
     }
 
-    private func message(for error: Error, signingOut: Bool) -> String {
+    private func message(for error: Error, everywhere: Bool, signingOut: Bool = false) -> String {
+        if everywhere {
+            return AuthCopy.couldNotSignOutEverywhere
+        }
+        if signingOut {
+            return AuthCopy.couldNotSignOut
+        }
         guard let error = error as? AuthError else {
-            return signingOut ? AuthCopy.couldNotSignOut : AuthCopy.unreachable
+            return AuthCopy.unreachable
         }
         switch error {
         case .notConfigured:
@@ -278,13 +356,10 @@ final class AuthModel: ObservableObject {
         case .invalidEmail:
             return AuthCopy.invalidEmail
         case .redirectRefused, .storage, .transport:
-            return signingOut ? AuthCopy.couldNotSignOut : AuthCopy.unreachable
+            return AuthCopy.unreachable
         case .missingVerifier, .missingToken:
             return AuthCopy.verifyFailed
         case .rejected(_, let code):
-            if signingOut {
-                return AuthCopy.couldNotSignOut
-            }
             if code == "invalid_request" {
                 return AuthCopy.badEmail
             }

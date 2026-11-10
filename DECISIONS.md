@@ -22,7 +22,11 @@ iOS has no account menu. The email field is a row above Search on the song list.
 
 `device_label` is `UIDevice.current.model`, trimmed, at most 200 characters, or `iOS` when that is empty.
 
-The session token and the pending verifier are generic passwords, service `com.matveygirey.softChord-Viewer.auth`, accessible after first unlock, this device only.
+The session token and the pending verifier are generic passwords, service `com.matveygirey.softChord-Viewer.auth`, accessible after first unlock, this device only. The verifier item also stores the issue time, in milliseconds. At 900 seconds it is deleted, and the row leaves "Check your email" (on appear, before verify, and from a timer while that row is showing). Requests time out at 15 seconds.
+
+Dismiss or sign-out bumps a generation counter. An in-flight verify does not save a session after dismiss. A late `/api/me` does not clear a newer token or show an email after sign-out. Logout clears the Keychain only when the stored token is still the one that started the call. 401 does that. 403 and 405 do not. A failed "Sign Out Everywhere" says "Could not sign out everywhere." The button asks "Sign out of every device?" before it calls the network.
+
+Pasted and opened `https` or `http` links must match `SoftChordAPIOrigin` and the token must be base64url, 43–128 characters. `softchord://login?token=` uses the same token rule. A link that arrives while a call is busy is kept and used when that call finishes, with "This link will be used when the current sign-in finishes." Redirects are refused for every request, including one that already carries `Authorization`. The bearer token is not logged.
 
 ### 2026-11-10 — Not built on this machine
 

@@ -27,7 +27,7 @@ nonisolated protocol AuthHTTPSending: Sendable {
     func send(_ request: URLRequest) async throws -> AuthHTTPResponse
 }
 
-/// Refuses redirects. `URLSession` would otherwise follow them.
+/// Refuses redirects. An authenticated redirect would send the bearer token to the new host.
 nonisolated final class RedirectRefusal: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,
@@ -35,7 +35,14 @@ nonisolated final class RedirectRefusal: NSObject, URLSessionTaskDelegate, @unch
         willPerformHTTPRedirection response: HTTPURLResponse,
         newRequest request: URLRequest
     ) async -> URLRequest? {
-        nil
+        if Self.carriesBearer(task.originalRequest) || Self.carriesBearer(request) {
+            return nil
+        }
+        return nil
+    }
+
+    static func carriesBearer(_ request: URLRequest?) -> Bool {
+        request?.value(forHTTPHeaderField: "Authorization") != nil
     }
 }
 
@@ -50,7 +57,7 @@ nonisolated final class URLSessionAuthTransport: AuthHTTPSending, @unchecked Sen
         configuration.httpCookieAcceptPolicy = .never
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.urlCache = nil
-        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForRequest = AuthTiming.requestTimeout
         configuration.waitsForConnectivity = false
         self.redirects = redirects
         self.session = URLSession(configuration: configuration, delegate: redirects, delegateQueue: nil)
@@ -74,17 +81,20 @@ nonisolated final class AuthClient: @unchecked Sendable {
     private let transport: any AuthHTTPSending
     private let store: any SessionStoring
     private let randomBytes: @Sendable () throws -> Data
+    private let now: @Sendable () -> Date
 
     init(
         originRaw: String?,
         transport: any AuthHTTPSending,
         store: any SessionStoring,
-        randomBytes: @escaping @Sendable () throws -> Data = { try AuthVerifier.randomBytes() }
+        randomBytes: @escaping @Sendable () throws -> Data = { try AuthVerifier.randomBytes() },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.origin = APIOrigin.resolve(originRaw)
         self.transport = transport
         self.store = store
         self.randomBytes = randomBytes
+        self.now = now
     }
 
     var hasSession: Bool {
@@ -95,10 +105,33 @@ nonisolated final class AuthClient: @unchecked Sendable {
     }
 
     var hasVerifier: Bool {
+        expireVerifierIfNeeded()
         guard let verifier = try? store.loadVerifier() else {
             return false
         }
         return AuthVerifier.isVerifier(verifier)
+    }
+
+    /// Seconds left before the pending verifier is cleared. Zero when there is none.
+    func pendingVerifierRemaining() -> TimeInterval {
+        expireVerifierIfNeeded()
+        guard let issued = try? store.loadVerifierIssuedAt() else {
+            return 0
+        }
+        return AuthTiming.verifierLifetime - now().timeIntervalSince(issued)
+    }
+
+    /// The pending verifier lasts 15 minutes. At 900 seconds it is cleared.
+    func expireVerifierIfNeeded() {
+        guard let issued = try? store.loadVerifierIssuedAt() else {
+            if (try? store.loadVerifier()) != nil {
+                try? store.clearVerifier()
+            }
+            return
+        }
+        if now().timeIntervalSince(issued) >= AuthTiming.verifierLifetime {
+            try? store.clearVerifier()
+        }
     }
 
     func clearLocal() throws {
@@ -119,11 +152,13 @@ nonisolated final class AuthClient: @unchecked Sendable {
         ])
         let response = try await post(originURL, path: "/api/auth/request-link", body: body, bearer: nil)
         try requireOK(response)
-        try store.saveVerifier(verifier.value)
+        try store.saveVerifier(verifier.value, issuedAt: now())
     }
 
-    func verify(token: String, deviceLabel: String) async throws {
+    /// Returns the session token. The caller stores it only if this sign-in was not cancelled.
+    func verify(token: String, deviceLabel: String) async throws -> String {
         let originURL = try allowedOrigin()
+        expireVerifierIfNeeded()
         guard let verifier = try store.loadVerifier(), AuthVerifier.isVerifier(verifier) else {
             throw AuthError.missingVerifier
         }
@@ -134,14 +169,24 @@ nonisolated final class AuthClient: @unchecked Sendable {
             "device_label": label,
         ])
         let response = try await post(originURL, path: "/api/auth/verify", body: body, bearer: nil)
-        guard response.status == 200,
-              let object = jsonDictionary(response.body),
+        guard response.status == 200 else {
+            throw AuthError.rejected(status: response.status, code: errorCode(response.body))
+        }
+        guard let object = jsonDictionary(response.body),
               let session = object["token"] as? String,
               AuthVerifier.isSessionToken(session)
         else {
-            throw AuthError.rejected(status: response.status, code: errorCode(response.body))
+            throw AuthError.missingToken
         }
-        try store.saveSession(session)
+        return session
+    }
+
+    /// Stores a session token only after it matches base64url, 43 to 128 characters.
+    func storeSession(_ token: String) throws {
+        guard AuthVerifier.isSessionToken(token) else {
+            throw AuthError.missingToken
+        }
+        try store.saveSession(token)
         try? store.clearVerifier()
     }
 
@@ -184,7 +229,10 @@ nonisolated final class AuthClient: @unchecked Sendable {
         }
         let response = try await post(originURL, path: path, body: Data("{}".utf8), bearer: session)
         if response.status == 200 || response.status == 401 {
-            try store.clear()
+            // A newer sign-in may have replaced the token while this call was in flight.
+            if try store.loadSession() == session {
+                try store.clear()
+            }
             return
         }
         throw AuthError.rejected(status: response.status, code: errorCode(response.body))
@@ -219,8 +267,9 @@ nonisolated final class AuthClient: @unchecked Sendable {
         var request = request
         request.httpShouldHandleCookies = false
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 30
+        request.timeoutInterval = AuthTiming.requestTimeout
         if let bearer {
+            // The bearer token is sent and never logged.
             request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         }
         let outbound = request
@@ -277,4 +326,9 @@ nonisolated final class AuthClient: @unchecked Sendable {
         let value = trimmed.isEmpty ? "iOS" : trimmed
         return String(value.prefix(200))
     }
+}
+
+nonisolated enum AuthTiming {
+    static let verifierLifetime: TimeInterval = 900
+    static let requestTimeout: TimeInterval = 15
 }

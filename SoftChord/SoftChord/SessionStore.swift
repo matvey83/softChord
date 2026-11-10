@@ -10,8 +10,9 @@ import Security
 nonisolated protocol SessionStoring: Sendable {
     func saveSession(_ token: String) throws
     func loadSession() throws -> String?
-    func saveVerifier(_ value: String) throws
+    func saveVerifier(_ value: String, issuedAt: Date) throws
     func loadVerifier() throws -> String?
+    func loadVerifierIssuedAt() throws -> Date?
     func clearVerifier() throws
     func clear() throws
 }
@@ -31,12 +32,28 @@ nonisolated final class KeychainSessionStore: SessionStoring, @unchecked Sendabl
         try read(account: sessionAccount)
     }
 
-    func saveVerifier(_ value: String) throws {
-        try write(value, account: verifierAccount)
+    func saveVerifier(_ value: String, issuedAt: Date) throws {
+        let millis = Int64((issuedAt.timeIntervalSince1970 * 1000).rounded())
+        try write("\(millis)\n\(value)", account: verifierAccount)
     }
 
     func loadVerifier() throws -> String? {
-        try read(account: verifierAccount)
+        try pending()?.value
+    }
+
+    func loadVerifierIssuedAt() throws -> Date? {
+        try pending()?.issuedAt
+    }
+
+    private func pending() throws -> (value: String, issuedAt: Date)? {
+        guard let raw = try read(account: verifierAccount),
+              let split = raw.firstIndex(of: "\n"),
+              let millis = Int64(raw[..<split])
+        else {
+            return nil
+        }
+        let value = String(raw[raw.index(after: split)...])
+        return (value, Date(timeIntervalSince1970: Double(millis) / 1000))
     }
 
     func clearVerifier() throws {
