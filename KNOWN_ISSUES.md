@@ -6,3 +6,6 @@
 - Login: The web session cookie lasts 400 days, and the server session lasts until sign-out. Say if sign-in on the web should expire sooner. There is no server-side session expiry yet.
 - Login: The masked address is in the login link query (`hint`), so it can show up in access logs.
 - Login: Check what Workers tracing records for `/login` and `verify`, so a trace cannot keep the token or the address.
+- Login (Low): The cap key doesn't cover other provider aliases (Yahoo '-', Fastmail subdomains, IDN).
+- Login: A new sign-in does not revoke the user's other sessions. Say if signing in on one device should sign out the others.
+- Login: There is no sign-out-everywhere. Say if logout should end every session for that user.

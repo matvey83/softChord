@@ -146,6 +146,36 @@ describe("login request guards", () => {
     assert.equal(await count(db, "SELECT COUNT(*) AS n FROM login_tokens"), 12);
   });
 
+  it("keeps a plus-only local part on its own cap key", async () => {
+    const { app, mailer, tasks } = createTestApp();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      assert.equal((await postJson(app, "/api/auth/request-link", {
+        email: "+tag@x.com",
+        client: "ios",
+        verifier_hash: VERIFIER_HASH,
+      })).status, 200);
+    }
+    await settle(tasks);
+    assert.equal(recorded(mailer).length, 5);
+    assert.equal(recorded(mailer)[0]?.to, "+tag@x.com");
+    const capped = await postJson(app, "/api/auth/request-link", {
+      email: "+tag@x.com",
+      client: "ios",
+      verifier_hash: VERIFIER_HASH,
+    });
+    assert.equal(capped.status, 200);
+    await settle(tasks);
+    assert.equal(recorded(mailer).length, 5);
+    const other = await postJson(app, "/api/auth/request-link", {
+      email: "+other@x.com",
+      client: "ios",
+      verifier_hash: VERIFIER_HASH,
+    });
+    assert.equal(other.status, 200);
+    await settle(tasks);
+    assert.equal(recorded(mailer).at(-1)?.to, "+other@x.com");
+  });
+
   it("lets only five of eight concurrent requests through, and only one verify", async () => {
     const { app, db, mailer, tasks } = createTestApp({ yield: true });
     const responses = await Promise.all(

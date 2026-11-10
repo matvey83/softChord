@@ -14,6 +14,7 @@ export function canonicalEmail(normalized: string): string {
   let domain = normalized.slice(at + 1);
   const plus = local.indexOf("+");
   if (plus >= 0) local = local.slice(0, plus);
+  if (local.length === 0) return normalized;
   if (domain === "gmail.com" || domain === "googlemail.com") {
     local = local.replaceAll(".", "");
     domain = "gmail.com";
