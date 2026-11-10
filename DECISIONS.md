@@ -13,3 +13,13 @@
 - The spec states the message for a bad file and not a title. The notice title is "Can't open songbook". A wrong format version shows the existing `checkFormat` message. Sign in and the account items use the same notice dialog, one OK button, and do not fetch.
 - The `?v=` cache buster on this branch was already `2026-11-10`, so this change uses `2026-11-10b`.
 - `tools/export_toolbar_icons.js` still pointed at `softChord Viewer/softChord Viewer/Assets.xcassets/Toolbar` after the iOS project was renamed. The check now uses `SoftChord/SoftChord/Assets.xcassets/Toolbar`. The icon files were not rewritten.
+
+## 2026-11-10 — Songbook switch history and open races
+
+- Switching songbooks replaces the current history entry with the list (`history.replaceState` to `#/`) and bumps a songbook epoch. Song routes the page creates are `#/e/<epoch>/song/<id>`. Back to an older epoch stays on the new songbook's list instead of opening that song number. Untagged `#/song/<id>` still opens in the current songbook, so existing links and the tests keep working.
+- `readySql` does not keep a rejected SQLite init. The next open tries again.
+- Each file open and each menu switch takes a request token. A slower open that finishes later does not become current. If it already parsed, the songbook that won is opened again.
+- The search box is cleared when a songbook becomes current.
+- The songbook menu still has no arrow keys, no focus move on open, and Escape does not return focus to the name button. Opening the same file name twice still adds a second row. Both are recorded in `KNOWN_ISSUES.md` and left as they are.
+- The header comments and `docs/development.md` say the iOS row is pending. iOS does not have it yet.
+- The cache buster is `?v=2026-11-10c` so a browser that kept `2026-11-10b` does not mix these scripts.

@@ -71,6 +71,15 @@
   // its bytes so switching reloads the list from memory.
   var sessionSongbooks = [];
   var activeSongbook = null;
+  // Bumped when a songbook becomes current. Song addresses include it
+  // (#/e/<epoch>/song/<id>) so Back cannot open that number in a later book.
+  // Untagged #/song/<id> still opens in the current book (tests and old links).
+  var songbookEpoch = 0;
+  // The address of the song on screen, so a cancelled leave puts the same
+  // address back. Null until a song is shown.
+  var openSongHash = null;
+  // Latest open or switch. A slower file read that finishes later is ignored.
+  var songbookRequest = 0;
   // Over 50 MB (1024-based) is refused before the file is read.
   var MAX_SONGBOOK_BYTES = 50 * 1024 * 1024;
 
@@ -191,11 +200,40 @@
     }
   }
 
+  function beginSongbookRequest() {
+    songbookRequest += 1;
+    return songbookRequest;
+  }
+
+  function songbookRequestCurrent(request) {
+    return request === songbookRequest;
+  }
+
+  // openBuffer already replaced the songs. Put the songbook that is actually
+  // current back when this request lost to a later one.
+  function reopenActiveSongbook() {
+    if (!activeSongbook || !activeSongbook.bytes) {
+      return Promise.resolve();
+    }
+    return Songbook.openBuffer(activeSongbook.bytes.slice(0));
+  }
+
+  function songHash(id) {
+    return "#/e/" + songbookEpoch + "/song/" + id;
+  }
+
+  function listAddress() {
+    return location.pathname + location.search + "#/";
+  }
+
   // The list now shows this songbook. Session edits from the previous one are
   // dropped. Call only after its bytes are already open in Songbook.
+  // The current history entry becomes the list. Older song routes keep their
+  // epoch, so Back does not open that song number in this songbook.
   function activateSongbook(entry) {
     toast.hidden = true;
     clearTimeout(toastTimer);
+    songbookEpoch += 1;
     activeSongbook = entry;
     currentSongbook.displayName = entry.displayName;
     currentSongbook.url = entry.url || "";
@@ -204,19 +242,26 @@
     loadError = null;
     allTitles = Songbook.titles();
     dropChanges();
+    if (search) {
+      search.value = "";
+    }
     updateSongbookChrome({ pageTitle: "SoftChord", showPersistNote: false });
     renderSongbookMenu();
-    if (songIdFromHash() != null) {
-      location.hash = "#/";
-    } else {
-      showFromHash();
-    }
+    history.replaceState({ epoch: songbookEpoch }, "", listAddress());
+    showFromHash();
   }
 
   function applyStoredSongbook(entry) {
+    var request = beginSongbookRequest();
     Songbook.openBuffer(entry.bytes.slice(0)).then(function () {
+      if (!songbookRequestCurrent(request)) {
+        return reopenActiveSongbook();
+      }
       activateSongbook(entry);
     }).catch(function (error) {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
       showOpenError(entry.displayName, error);
     });
   }
@@ -264,17 +309,30 @@
         "This songbook is too large to open here. Open it in softChord on your computer.");
       return;
     }
+    var request = beginSongbookRequest();
     var reader = new FileReader();
     reader.onload = function () {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
       var opened = new Uint8Array(reader.result);
       var kept = opened.slice(0);
       Songbook.openBuffer(opened).then(function () {
+        if (!songbookRequestCurrent(request)) {
+          return reopenActiveSongbook();
+        }
         activateSongbook(rememberSongbook(displayNameFromFile(file.name), kept));
       }).catch(function (error) {
+        if (!songbookRequestCurrent(request)) {
+          return;
+        }
         showOpenError(file.name, error);
       });
     };
     reader.onerror = function () {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
       showOpenError(file.name);
     };
     reader.readAsArrayBuffer(file);
@@ -1433,18 +1491,48 @@
     fitToWidth();
   });
 
+  function taggedSongHash() {
+    return /^#\/e\/(\d+)\/song\/(\d+)$/.exec(location.hash);
+  }
+
+  // A song route from an earlier songbook. Untagged #/song/<id> is the current book.
+  function staleSongHash() {
+    var tagged = taggedSongHash();
+    return !!(tagged && Number(tagged[1]) !== songbookEpoch);
+  }
+
   function songIdFromHash() {
+    var tagged = taggedSongHash();
+    if (tagged) {
+      if (Number(tagged[1]) !== songbookEpoch) {
+        return null;
+      }
+      return Number(tagged[2]);
+    }
     var match = /^#\/song\/(\d+)$/.exec(location.hash);
     return match ? Number(match[1]) : null;
   }
 
   function showFromHash() {
+    if (staleSongHash()) {
+      if (draftChanged()) {
+        var wantedList = listAddress();
+        history.replaceState(null, "", location.pathname + location.search + (openSongHash || ("#/song/" + openId)));
+        askBeforeLeaving(function () {
+          dropChanges();
+          history.replaceState({ epoch: songbookEpoch }, "", wantedList);
+          showFromHash();
+        });
+        return;
+      }
+      history.replaceState({ epoch: songbookEpoch }, "", listAddress());
+    }
     var id = songIdFromHash();
     if (draftChanged() && id !== openId) {
       // The address already changed (the browser's Back or Forward, or a typed
       // address), so put it back, and go there only if the edits are discarded.
       var wanted = location.hash;
-      history.replaceState(null, "", location.pathname + location.search + "#/song/" + openId);
+      history.replaceState(null, "", location.pathname + location.search + (openSongHash || ("#/song/" + openId)));
       askBeforeLeaving(function () {
         dropChanges();
         location.hash = wanted;
@@ -1463,6 +1551,7 @@
       paintList();
       return;
     }
+    openSongHash = location.hash;
     if (openId !== id) {
       openId = id;
       var kept = keptEdits[id];
@@ -1499,7 +1588,7 @@
     if (!button) {
       return;
     }
-    location.hash = "#/song/" + button.dataset.id;
+    location.hash = songHash(button.dataset.id);
   });
 
   // TODO: Open this menu on a long press. The open song has toolbar buttons.

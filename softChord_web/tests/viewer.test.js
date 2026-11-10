@@ -927,3 +927,27 @@ test("every chord row is read as it is, also the same chord twice on one letter"
   assert.equal(Songbook.source(2).chords.length, 2);
   assert.equal(Songbook.sheet(2)[0].chords.length, 2);
 });
+
+test("a failed SQLite load is not reused for the next songbook", async function () {
+  var previous = globalThis.initSqlJs;
+  var calls = 0;
+  globalThis.initSqlJs = function () {
+    calls += 1;
+    return Promise.reject(new Error("wasm failed"));
+  };
+  try {
+    await assert.rejects(function () { return Songbook.openBuffer(new Uint8Array([1])); }, /wasm failed/);
+    assert.equal(calls, 1);
+    globalThis.initSqlJs = function (options) {
+      calls += 1;
+      return initSqlJs(options);
+    };
+    await assert.rejects(function () { return Songbook.openBuffer(new Uint8Array([1, 2, 3])); }, function (error) {
+      assert.equal(calls, 2, "the failed load was tried again");
+      assert.equal(/wasm failed/.test(error.message), false);
+      return true;
+    });
+  } finally {
+    globalThis.initSqlJs = previous;
+  }
+});

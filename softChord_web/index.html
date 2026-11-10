@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SoftChord</title>
-  <link rel="stylesheet" href="viewer.css?v=2026-11-10b">
+  <link rel="stylesheet" href="viewer.css?v=2026-11-10c">
   <!-- The app icon (an open songbook with a clef), as in the iOS and desktop apps.
        The 16, 32 and 48 px sizes are cropped to the book with thicker lines. -->
   <link rel="icon" href="icons/favicon.ico" sizes="16x16 32x32 48x48">
@@ -21,9 +21,9 @@
 </head>
 <body>
   <main id="list-view">
-    <!-- MIRRORED UI: the iOS song list header (SoftChord/SoftChord/ContentView.swift)
-         is this same row: songbook name, ▾, the grey Not saved indicator, and
-         Sign in, with Search below. The song page has no songbook header. -->
+    <!-- MIRRORED UI, pending on iOS: songbook name, ▾, the grey Not saved
+         indicator, and Sign in, with Search below. SoftChord/SoftChord/ContentView.swift
+         does not have this row yet. The song page has no songbook header. -->
     <header id="songbook-header" class="songbook-header">
       <div class="songbook-heading">
         <button id="songbook-menu-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="songbook-menu">
@@ -202,15 +202,15 @@
        folder, so a browser that kept an old index.html does not mix it with new
        scripts, or the other way round. sql-wasm.js never changes, so it has none. -->
   <script src="sql-wasm.js"></script>
-  <script src="softchord_chords.js?v=2026-11-10b"></script>
-  <script src="softchord_text.js?v=2026-11-10b"></script>
-  <script src="softchord_text_edit.js?v=2026-11-10b"></script>
-  <script src="softchord_chord_edit.js?v=2026-11-10b"></script>
-  <script src="song_filter.js?v=2026-11-10b"></script>
-  <script src="songbook.js?v=2026-11-10b"></script>
-  <script src="softchord_zoom.js?v=2026-11-10b"></script>
-  <script src="softchord_sheet_image.js?v=2026-11-10b"></script>
-  <script src="softchord_chord_mode.js?v=2026-11-10b"></script>
-  <script src="viewer.js?v=2026-11-10b"></script>
+  <script src="softchord_chords.js?v=2026-11-10c"></script>
+  <script src="softchord_text.js?v=2026-11-10c"></script>
+  <script src="softchord_text_edit.js?v=2026-11-10c"></script>
+  <script src="softchord_chord_edit.js?v=2026-11-10c"></script>
+  <script src="song_filter.js?v=2026-11-10c"></script>
+  <script src="songbook.js?v=2026-11-10c"></script>
+  <script src="softchord_zoom.js?v=2026-11-10c"></script>
+  <script src="softchord_sheet_image.js?v=2026-11-10c"></script>
+  <script src="softchord_chord_mode.js?v=2026-11-10c"></script>
+  <script src="viewer.js?v=2026-11-10c"></script>
 </body>
 </html>

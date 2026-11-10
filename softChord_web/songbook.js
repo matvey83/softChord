@@ -114,14 +114,28 @@
   }
 
   // One SQLite module for the page. The wasm file is fetched on the first use.
+  // A failed load is not kept: the next open tries again. A cached rejection
+  // would make a later file look like it was not a songbook.
   var sqlJsPromise = null;
   function readySql() {
-    if (!sqlJsPromise) {
-      if (typeof root.initSqlJs !== "function") {
-        return Promise.reject(new Error("SQLite could not be loaded."));
-      }
-      sqlJsPromise = root.initSqlJs({ locateFile: locateWasm });
+    if (sqlJsPromise) {
+      return sqlJsPromise;
     }
+    if (typeof root.initSqlJs !== "function") {
+      return Promise.reject(new Error("SQLite could not be loaded."));
+    }
+    var pending;
+    try {
+      pending = root.initSqlJs({ locateFile: locateWasm });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    sqlJsPromise = pending.then(function (SQL) {
+      return SQL;
+    }, function (error) {
+      sqlJsPromise = null;
+      throw error;
+    });
     return sqlJsPromise;
   }
 

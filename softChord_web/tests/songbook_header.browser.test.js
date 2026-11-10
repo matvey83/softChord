@@ -225,10 +225,12 @@ test("opening a songbook file keeps it for this visit, and a bad file leaves the
     assert.deepEqual(await page.eval(titlesExpr()), ["Filed"]);
     assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "opened-from-this-session");
 
+    await page.eval("document.getElementById('search').value = 'zzz'");
     await openMenu(page);
     await page.eval("Array.from(document.querySelectorAll('#songbook-menu-list button')).find(function (b) {" +
       "return b.querySelector('.menu-item-label').textContent === 'zvuki_neba'; }).click()");
     await waitForTitle(page, "Short");
+    assert.equal(await page.eval("document.getElementById('search').value"), "", "a switch clears the search");
     assert.deepEqual(await page.eval(titlesExpr()), DEMO);
     assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "zvuki_neba");
     assert.deepEqual(await page.eval("window.__net"), [], "switching back to the demo does not fetch");
@@ -363,6 +365,97 @@ test("switching songbooks or opening a file asks while a song has unsaved edits,
   } finally {
     await page.close();
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Save on a menu switch drops the edit", { skip: skip }, async function () {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), "softchord-songbook-"));
+  var page = await helper.openViewer(SONGS);
+  try {
+    var other = await writeBytes(dir, "other.songbook",
+      await helper.songbookBytes([{ title: "Filed", text: "From the file", chords: [[0, "G"]] }]));
+    await openMenu(page);
+    await page.eval("document.querySelector('#songbook-menu button[data-action=open-file]').click()");
+    await chooseFile(page, other);
+    await waitForTitle(page, "Filed");
+    await page.eval("document.querySelector('#song-list button').click()");
+    await page.waitFor("!document.getElementById('song-view').hidden", "the filed song");
+    await click(page, "transpose-up");
+    await page.waitFor("!document.getElementById('edit-actions').hidden", "a dirty draft");
+    await openMenu(page);
+    await page.eval("Array.from(document.querySelectorAll('#songbook-menu-list button')).find(function (b) {" +
+      "return b.querySelector('.menu-item-label').textContent === 'zvuki_neba'; }).click()");
+    await page.waitFor("document.getElementById('leave-confirm').open", "Save before switching");
+    await click(page, "leave-confirm-save");
+    await waitForTitle(page, "Short");
+    assert.equal(await page.eval("document.getElementById('song-view').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "zvuki_neba");
+    assert.equal(await page.eval("location.hash"), "#/");
+
+    await openMenu(page);
+    await page.eval("Array.from(document.querySelectorAll('#songbook-menu-list button')).find(function (b) {" +
+      "return b.querySelector('.menu-item-label').textContent === 'other'; }).click()");
+    await waitForTitle(page, "Filed");
+    await page.eval("document.querySelector('#song-list button').click()");
+    await page.waitFor("!document.getElementById('song-view').hidden", "the filed song again");
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true, "Save did not keep the edit in the old songbook");
+    assert.equal(await page.eval("document.getElementById('transpose-reset').disabled"), true);
+    assert.equal(await page.eval("document.getElementById('song-title').textContent"), "Filed");
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Back after a switch does not open a song from the previous songbook", { skip: skip }, async function () {
+  var dir = fs.mkdtempSync(path.join(os.tmpdir(), "softchord-songbook-"));
+  var page = await helper.openViewer(SONGS);
+  try {
+    var other = await writeBytes(dir, "other.songbook",
+      await helper.songbookBytes([{ title: "Filed", text: "From the file", chords: [[0, "G"]] }]));
+    await page.eval("document.querySelector('#song-list button').click()");
+    await page.waitFor("location.hash === '#/e/0/song/1'", "the demo song route");
+    await click(page, "back");
+    await page.waitFor("location.hash === '#/'", "back on the list");
+    await openMenu(page);
+    await page.eval("document.querySelector('#songbook-menu button[data-action=open-file]').click()");
+    await chooseFile(page, other);
+    await waitForTitle(page, "Filed");
+    assert.equal(await page.eval("location.hash"), "#/");
+    await page.eval("window.__backs = 0; window.addEventListener('popstate', function () { window.__backs++; });");
+    await page.eval("history.back()");
+    await page.waitFor("window.__backs > 0 && location.hash === '#/' && document.getElementById('song-view').hidden",
+      "Back to stay on the new songbook's list");
+    assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "other");
+    assert.deepEqual(await page.eval(titlesExpr()), ["Filed"]);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("cancelling the file picker after Don't Save keeps the unsaved edit", { skip: skip }, async function () {
+  var page = await helper.openViewer(SONGS);
+  try {
+    await armFileClicks(page);
+    await page.eval("location.hash = '#/song/1'");
+    await page.waitFor("!document.getElementById('song-view').hidden", "the song");
+    await click(page, "transpose-up");
+    await page.waitFor("!document.getElementById('edit-actions').hidden", "a dirty draft");
+    await openMenu(page);
+    await page.eval("document.querySelector('#songbook-menu button[data-action=open-file]').click()");
+    await page.waitFor("document.getElementById('leave-confirm').open", "the prompt");
+    await click(page, "leave-confirm-discard");
+    assert.equal(await page.eval("window.__fileClicks"), 1, "Don't Save opens the picker");
+    assert.equal(await page.eval("location.hash"), "#/song/1");
+    assert.equal(await page.eval("document.getElementById('songbook-name').textContent"), "zvuki_neba");
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), false, "cancelling the picker keeps the edit");
+    assert.equal(await page.eval("document.getElementById('song-view').hidden"), false);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
   }
 });
 

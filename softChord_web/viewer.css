@@ -21,11 +21,10 @@ main {
   background: #fff;
 }
 
-/* MIRRORED UI: the iOS song list (SoftChord/SoftChord/ContentView.swift)
-   uses this same header: songbook name, ▾, grey "Not saved", Sign in on the
-   right, Search below. It is on the song list only. A change to this row is
-   made there too. The name truncates first; the arrow, the indicator and
-   Sign in stay on screen. */
+/* MIRRORED UI, pending on iOS: SoftChord/SoftChord/ContentView.swift does
+   not have this row yet. It will be the songbook name, ▾, grey "Not saved",
+   and Sign in, with Search below, on the song list only. The name truncates
+   first; the arrow, the indicator and Sign in stay on screen. */
 .songbook-header {
   display: flex;
   align-items: center;
