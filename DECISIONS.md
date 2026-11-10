@@ -8,9 +8,9 @@ The new Account menu and the four File actions are built in `wire_menus` (`src/s
 
 Existing File items are labeled `Open Songbook...` and `Save Songbook As...`. The new items use the same three dots: `Sign In...`, `Account Settings...`, `Open From Account...`, `Upload to Account...`, `Share...`, and `Open Link...`. The dialog titles and messages are the spec's strings, unchanged.
 
-## 2026-11-10 — The window title keeps the SoftChord prefix
+## 2026-11-10 — The window title keeps the SoftChord prefix and the [*] marker, on purpose
 
-A local file is `SoftChord - name (Local)[*]`. A read-only file is `SoftChord - name (Read-only)[*]`. No open file stays `SoftChord[*]`. The converted-copy title stays `SoftChord - name (converted copy, not saved)[*]`, including the `SoftChord` spelling and the `[*]` modified-marker placeholder.
+The spec writes the title as `softChord - name (Local)`. The desktop title stays `SoftChord - name (Local)[*]` and `SoftChord - name (Read-only)[*]`. Keeping the existing `SoftChord` spelling and the `[*]` modified-marker placeholder is intentional: the converted-copy title and the empty title stay as they already were, `SoftChord - name (converted copy, not saved)[*]` and `SoftChord[*]`.
 
 ## 2026-11-10 — A separator follows Open Link
 

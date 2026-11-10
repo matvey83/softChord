@@ -470,6 +470,7 @@ class SoftChordEditorTest(unittest.TestCase):
                 box.text(),
                 box.standardButtons(),
                 len(box.buttons()),
+                box.icon(),
             ))
             return QtWidgets.QMessageBox.StandardButton.Ok
 
@@ -484,18 +485,28 @@ class SoftChordEditorTest(unittest.TestCase):
             QtWidgets.QMessageBox.exec = original
 
         ok = QtWidgets.QMessageBox.StandardButton.Ok
-        self.assertEqual([(title, text) for title, text, _buttons, _count
+        info = QtWidgets.QMessageBox.Icon.Information
+        self.assertEqual([(title, text) for title, text, _buttons, _count, _icon
                           in shown], expected)
-        self.assertTrue(all(buttons == ok and count == 1
-                            for _title, _text, buttons, count in shown))
+        self.assertTrue(all(buttons == ok and count == 1 and icon == info
+                            for _title, _text, buttons, count, icon in shown))
         self.assertEqual(self.app.current_songbook_filename, songbook)
+
+    def test_new_actions_have_no_shortcuts(self):
+        """Sign In, Account Settings, and the four File items have no shortcut."""
+        actions = self._account_actions() + (self.app.ui.actionAccountSettings,)
+        for action in actions:
+            self.assertTrue(action.shortcut().isEmpty(), action.text())
 
     def test_account_actions_use_no_network_module(self):
         """The menu stubs import no network module and open no connection."""
         import ast
         import inspect
         import socket
+        import types
         import urllib.request
+
+        from PyQt6 import QtNetwork
 
         import softchord_menus
 
@@ -514,6 +525,9 @@ class SoftChordEditorTest(unittest.TestCase):
             self.assertNotIn(name, modules)
         self.assertNotIn("http://", source)
         self.assertNotIn("https://", source)
+        self.assertNotIn("QNetworkAccessManager", source)
+        self.assertNotIn("QtNetwork", source)
+        self.assertNotIn("requests", source)
 
         calls = []
 
@@ -527,9 +541,23 @@ class SoftChordEditorTest(unittest.TestCase):
         real_socket = socket.socket
         real_create = socket.create_connection
         real_urlopen = urllib.request.urlopen
+        real_qnam = QtNetwork.QNetworkAccessManager
+        qnam_methods = ("get", "post", "put", "deleteResource",
+                        "sendCustomRequest", "head")
+        real_qnam_methods = {
+            name: getattr(real_qnam, name) for name in qnam_methods}
+        real_requests = sys.modules.get("requests")
+        requests_stub = types.ModuleType("requests")
+        for name in ("get", "post", "put", "patch", "delete", "head",
+                     "request", "Session"):
+            setattr(requests_stub, name, refuse("requests." + name))
         socket.socket = refuse("socket")
         socket.create_connection = refuse("create_connection")
         urllib.request.urlopen = refuse("urlopen")
+        QtNetwork.QNetworkAccessManager = refuse("QNetworkAccessManager")
+        for name in qnam_methods:
+            setattr(real_qnam, name, refuse("QNetworkAccessManager." + name))
+        sys.modules["requests"] = requests_stub
         before = set(sys.modules)
         original = QtWidgets.QMessageBox.exec
         QtWidgets.QMessageBox.exec = (
@@ -542,6 +570,13 @@ class SoftChordEditorTest(unittest.TestCase):
             socket.socket = real_socket
             socket.create_connection = real_create
             urllib.request.urlopen = real_urlopen
+            QtNetwork.QNetworkAccessManager = real_qnam
+            for name, method in real_qnam_methods.items():
+                setattr(real_qnam, name, method)
+            if real_requests is None:
+                sys.modules.pop("requests", None)
+            else:
+                sys.modules["requests"] = real_requests
         added = [
             name for name in set(sys.modules) - before
             if name.split(".")[0] in banned
@@ -576,6 +611,8 @@ class SoftChordEditorTest(unittest.TestCase):
 
     def test_read_only_file_title_comes_from_the_open(self):
         """A songbook that cannot be written shows (Read-only)."""
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("chmod does not stop root from writing a songbook")
         app = self.app
         home = app.current_songbook_filename
         folder = tempfile.mkdtemp()
@@ -598,15 +635,47 @@ class SoftChordEditorTest(unittest.TestCase):
         self.assertEqual(
             app.win.windowTitle(), "SoftChord - locked (Read-only)[*]")
 
+    def _empty_songbook(self, filename):
+        """A new empty songbook. Cleanup reopens the book that is open now."""
+        folder = tempfile.mkdtemp()
+        path = os.path.join(folder, filename)
+        softchord.SongbookStore.create_file(path).close()
+        home = self.app.current_songbook_filename
+
+        def restore():
+            self.app._askSaveChanges = lambda: "discard"
+            self.app.setCurrentSongbook(home)
+            shutil.rmtree(folder, ignore_errors=True)
+
+        self.addCleanup(restore)
+        return path
+
+    def _prepare_open_song(self):
+        """A clean draft of a song that is already in the open songbook."""
+        app = self.app
+        app._askSaveChanges = lambda: "discard"
+        if app.current_song is None:
+            app.ui.songs_view.selectRow(0)
+        self.assertIsNotNone(app.current_song)
+        if app.editChanged():
+            app.discardEdit()
+        self.assertTrue(app.editing())
+        self.assertFalse(app.editChanged())
+        return app.current_song.id
+
     def test_open_asks_before_switching_and_cancel_aborts(self):
-        """A dirty draft is asked about before Open. Cancel leaves it."""
+        """A dirty draft is asked about before Open. Cancel leaves it.
+
+        Don't Save drops the draft and opens the chosen songbook.
+        """
         app = self.app
         songbook = app.current_songbook_filename
-        app.createNewSong()
-        song_id = app.current_song.id
-        self.addCleanup(self._delete_song, song_id)
+        song_id = self._prepare_open_song()
+        stored_before = app.curs.execute(
+            "SELECT title FROM songs WHERE id=?", (song_id,)).fetchone()[0]
         app.currentSongTitleEdited("Not yet")
         self.assertTrue(app.editChanged())
+        other = self._empty_songbook("other.songbook")
 
         asked = []
         opened = []
@@ -617,7 +686,7 @@ class SoftChordEditorTest(unittest.TestCase):
 
         def file_dialog(*args, **kwargs):
             opened.append(args)
-            return ("", "")
+            return (other, "")
 
         original_ask = app._askSaveChanges
         original_dialog = QtWidgets.QFileDialog.getOpenFileName
@@ -640,13 +709,48 @@ class SoftChordEditorTest(unittest.TestCase):
             app.openSongbook()
             self.assertEqual(asked, ["cancel", "discard"])
             self.assertEqual(len(opened), 1)
-            self.assertEqual(app.current_songbook_filename, songbook)
-            self.assertEqual(app.current_song.id, song_id)
-            self.assertEqual(app.current_song.title, "")
+            self.assertEqual(os.path.abspath(app.current_songbook_filename),
+                             os.path.abspath(other))
+            self.assertEqual(app.win.windowTitle(),
+                             "SoftChord - other (Local)[*]")
+            self.assertIsNone(app.current_song)
             self.assertFalse(app.editChanged())
+            import sqlite3
+            conn = sqlite3.connect(songbook)
+            try:
+                stored_after = conn.execute(
+                    "SELECT title FROM songs WHERE id=?",
+                    (song_id,)).fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual(stored_after, stored_before)
+            self.assertNotEqual(stored_after, "Not yet")
         finally:
             QtWidgets.QFileDialog.getOpenFileName = original_dialog
             app._askSaveChanges = original_ask
+
+    def test_clean_open_switches_without_asking(self):
+        """A clean draft does not prompt. Open then switches songbooks."""
+        app = self.app
+        self._prepare_open_song()
+        other = self._empty_songbook("clean.songbook")
+        asked = []
+        original_ask = app._askSaveChanges
+        original_dialog = QtWidgets.QFileDialog.getOpenFileName
+        app._askSaveChanges = lambda: asked.append("ask") or "cancel"
+        QtWidgets.QFileDialog.getOpenFileName = staticmethod(
+            lambda *args, **kwargs: (other, ""))
+        try:
+            app.openSongbook()
+        finally:
+            QtWidgets.QFileDialog.getOpenFileName = original_dialog
+            app._askSaveChanges = original_ask
+        self.assertEqual(asked, [])
+        self.assertEqual(os.path.abspath(app.current_songbook_filename),
+                         os.path.abspath(other))
+        self.assertEqual(app.win.windowTitle(),
+                         "SoftChord - clean (Local)[*]")
+        self.assertIsNone(app.current_song)
 
 
 if __name__ == "__main__":

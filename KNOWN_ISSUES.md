@@ -1,6 +1,7 @@
 # Known issues
 
 - Desktop: Undo cannot cross a Save. Save drops the draft's undo steps (by design).
+- Desktop tests: under pytest, `softchord_test.py` can exit 139 when Qt tears down after the tests have passed. pytest is not a repo dependency. The direct runner is `python softchord_test.py` from `src/` (it reports the test result and exits before that teardown).
 
 ## Fixed
 
