@@ -8449,6 +8449,52 @@ class TestSaveAndDiscard(unittest.TestCase):
         self.assertEqual(self.app.current_song.id, 1)
         self.assertEqual(self.db_song(), before)
 
+    def test_dismissing_a_right_click_stays_on_the_segment(self):
+        self.app.lyricEditorSelected()
+        view = self.app.ui.songs_view
+        self.app.win.resize(1000, 700)
+        QtWidgets.QApplication.processEvents()
+        index = view.model().index(self.row_of(0), 0)
+        rect = view.visualRect(index)
+        self.assertFalse(rect.isEmpty())
+        original = QtWidgets.QMenu.exec
+        QtWidgets.QMenu.exec = lambda *args, **kwargs: None
+        try:
+            self.app.showSongsContextMenu(rect.center())
+        finally:
+            QtWidgets.QMenu.exec = original
+        self.assertTrue(self.app.editing())
+        self.assertTrue(self.app.textEditing())
+        self.assertTrue(self.app.toolbar.isActive(
+            self.app.ui.actionLyricEditorMode))
+        self.assertFalse(self.app.editChanged())
+
+    def test_remove_trailing_spaces_stays_on_the_segment(self):
+        self.app.lyricEditorSelected()
+        self.app.editor.setPlainText("Hi  \nGo")
+        self.app.saveEdit()
+        self.assertTrue(self.app.chordEditing())
+        self.app.lyricEditorSelected()
+        self.app.removeTrailingSpaces()
+        self.assertTrue(self.app.editing())
+        self.assertTrue(self.app.textEditing())
+        self.assertTrue(self.app.toolbar.isActive(
+            self.app.ui.actionLyricEditorMode))
+        self.assertFalse(self.app.editChanged())
+        self.assertEqual(self.app.current_song.getAllText(), "Hi\nGo")
+
+    def test_renumber_stays_on_the_segment(self):
+        self.app.lyricEditorSelected()
+        row = self.app.songs_model.getSongsRow(self.app.current_song)
+        self.app.songs_model.getRow(row).number = 9
+        self.app.question = lambda *args, **kwargs: True
+        self.app.renumberAllSongs()
+        self.assertTrue(self.app.editing())
+        self.assertTrue(self.app.textEditing())
+        self.assertTrue(self.app.toolbar.isActive(
+            self.app.ui.actionLyricEditorMode))
+        self.assertFalse(self.app.editChanged())
+
 
 if __name__ == "__main__":
     # Qt can crash while Python shuts down after the tests (seen on macOS

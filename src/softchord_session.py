@@ -1706,16 +1706,24 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """Discard the draft. Escape does not call this."""
         self.discardEdit()
 
-    def confirmLeaveEdit(self):
+    def confirmLeaveEdit(self, keep_open=False):
         """Ask before leaving a dirty song. True to go on.
 
         Save, Don't Save or Cancel. A clean draft just ends, and the next
-        song opened starts on Chords.
+        song opened starts on Chords. keep_open is for a caller that leaves
+        this song on screen (a right-click, trim, or renumber): the same
+        segment starts again.
         """
-        if self.edit_session is None:
+        session = self.edit_session
+        mode = EditSession.CHORDS
+        if session is not None and session.mode in (EditSession.CHORDS,
+                                                     EditSession.TEXT):
+            mode = session.mode
+        if session is None:
             return True
         if not self.editChanged():
             self._endEdit()
+            self._resumeOpenEdit(keep_open, mode)
             return True
         answer = self._askSaveChanges()
         if answer == "save":
@@ -1723,6 +1731,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 return False
             self.note("Saved")
             self._endEdit()
+            self._resumeOpenEdit(keep_open, mode)
             return True
         if answer == "discard":
             song = self.edit_session.song
@@ -1730,8 +1739,25 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 self._restoreSongDraft(song, self.edit_session.start)
             self.note("Changes discarded")
             self._endEdit()
+            self._resumeOpenEdit(keep_open, mode)
             return True
         return False
+
+    def _resumeOpenEdit(self, keep_open, mode):
+        """Start `mode` again when the song stayed on screen."""
+        if not keep_open or self.current_song is None:
+            return
+        # Write the saved or restored song before the draft starts, so a
+        # following trim or renumber reads that text.
+        self._flushCurrentSong()
+        self.startEdit(mode)
+
+    def _adoptOpenSongAsSaved(self):
+        """The songbook now matches the open song. The draft stays, clean."""
+        session = self.edit_session
+        if session is None or session.song is not self.current_song:
+            return
+        self._rebaseEdit(session.mode)
 
     def _leaveEditMessageBox(self):
         """The Save / Don't Save / Cancel dialog (a sheet on macOS)."""
@@ -3886,7 +3912,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         view = self.ui.songs_view
         # The menu selects the clicked song first, and Delete acts on it.
-        if not self.confirmLeaveEdit():
+        if not self.confirmLeaveEdit(keep_open=True):
             return
         menu = self.buildSongsContextMenu(view.indexAt(pos))
         if menu is None:
@@ -3956,7 +3982,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         self.updateEditMenu()
 
     def removeTrailingSpaces(self):
-        if not self.confirmLeaveEdit():
+        if not self.confirmLeaveEdit(keep_open=True):
             return
 
         self._flushCurrentSong()
@@ -3984,6 +4010,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             self.ignore_song_text_changed = False
         self._reset_lyric_chord_history()
         self._updateAutoDetectedKeyLabel()
+        self._adoptOpenSongAsSaved()
 
     def _writeSongNumbers(self, pairs):
         """Save these song numbers. A later save of the open song must keep them."""
@@ -4006,6 +4033,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
             else:
                 self.ui.song_num_ef.setText(str(song.number))
         self.songs_model.updateFromDatabase()
+        self._adoptOpenSongAsSaved()
 
     def _selectSongId(self, song_id):
         ids = self.songs_model.getAllSongIds()
@@ -4026,7 +4054,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         """
         Re-number all songs in the database (song number, not IDs).
         """
-        if not self.confirmLeaveEdit():
+        if not self.confirmLeaveEdit(keep_open=True):
             return
 
         if not self.question(
