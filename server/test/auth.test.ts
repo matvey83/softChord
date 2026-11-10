@@ -415,17 +415,24 @@ describe("magic-link auth", () => {
     assert.match(webHtml, /Sign in as m\*\*\*@gmail\.com/);
     assert.match(webHtml, /You're signed in\. Return to SoftChord\./);
     assert.equal(webHtml.includes("location.replace"), false);
+    assert.match(webHtml, /history\.replaceState/);
     assert.equal(webHtml.includes("<a "), false);
-    const linkedApp = createTestApp({
-      env: { ...testEnv, APP_URL: "https://app.example/library" },
-    });
-    const linked = await linkedApp.app.fetch(new Request(`${PUBLIC_ORIGIN}/login?client=web`));
-    const linkedHtml = await linked.text();
+    const loginHtml = async (appUrl: string) => {
+      const { app: linkedApp } = createTestApp({ env: { ...testEnv, APP_URL: appUrl } });
+      const response = await linkedApp.fetch(new Request(`${PUBLIC_ORIGIN}/login?client=web`));
+      return response.text();
+    };
+    const linkedHtml = await loginHtml("https://app.example/library");
     assert.match(linkedHtml, /<a href="https:\/\/app\.example\/library">Return to SoftChord\.<\/a>/);
-    const unsafe = createTestApp({
-      env: { ...testEnv, APP_URL: "javascript:alert(1)" },
-    });
-    assert.equal((await (await unsafe.app.fetch(new Request(`${PUBLIC_ORIGIN}/login?client=web`))).text()).includes("<a "), false);
+    const localHtml = await loginHtml("http://127.0.0.1:8787/songs");
+    assert.match(localHtml, /<a href="http:\/\/127\.0\.0\.1:8787\/songs">Return to SoftChord\.<\/a>/);
+    assert.match(await loginHtml("http://localhost/songs"), /<a href="http:\/\/localhost\/songs">/);
+    for (const appUrl of ["javascript:alert(1)", "http://songs.example", "data:text/html,hi", "//host"]) {
+      assert.equal((await loginHtml(appUrl)).includes("<a "), false, appUrl);
+    }
+    const quotedHtml = await loginHtml('https://app.example/a"b');
+    assert.match(quotedHtml, /<a href="https:\/\/app\.example\/a%22b">Return to SoftChord\.<\/a>/);
+    assert.equal(quotedHtml.includes('a"b'), false);
     const policy = web.headers.get("content-security-policy") ?? "";
     const nonce = /script-src 'nonce-([^']+)'/.exec(policy)?.[1] ?? "";
     assert.match(policy, /default-src 'none'/);

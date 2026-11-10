@@ -20,7 +20,7 @@ The link in a test email looks like `https://<origin>/login?client=ios&hint=m***
 
 Dev cookies are `sc_verifier` and `sc_session` (HttpOnly, not Secure). Those names come from `wrangler.jsonc`, not from the request host.
 
-After a web sign-in the page stays on `/login` and says you're signed in. Set `APP_URL` to an http or https URL to make "Return to SoftChord." a link; leave it empty for text only. `POST /api/auth/logout-all` ends every session for that user. Signing in on one device leaves the others signed in.
+After a web sign-in the page stays on `/login` and says you're signed in. Set `APP_URL` to https, or http on localhost or 127.0.0.1, to make "Return to SoftChord." a link; anything else stays text. A successful sign-in removes the token from the address bar. `POST /api/auth/logout-all` ends every session for that user. Signing in on one device leaves the others signed in.
 
 ## Tests
 

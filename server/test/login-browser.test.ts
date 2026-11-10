@@ -121,7 +121,10 @@ describe("login page in a browser", () => {
       await page.waitForSelector("#signed-in:not([hidden])");
       const signedIn = await page.$eval("#signed-in", (element) => element.textContent ?? "");
       assert.equal(signedIn.trim(), "You're signed in. Return to SoftChord.");
-      assert.equal(new URL(page.url()).pathname, "/login");
+      const address = new URL(page.url());
+      assert.equal(address.pathname, "/login");
+      assert.equal(address.hash, "");
+      assert.equal(page.url().includes(token), false);
     } finally {
       await browser.close();
       await close();

@@ -27,6 +27,7 @@ function signInScript(): string {
         body: JSON.stringify({ token: token })
       }).then(function (response) {
         if (response.ok) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
           document.getElementById("sign-in").hidden = true;
           document.getElementById("signed-in").hidden = false;
           return;
@@ -53,7 +54,8 @@ function appHref(value: string | undefined): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) return null;
     return url.href;
   } catch {
     return null;
