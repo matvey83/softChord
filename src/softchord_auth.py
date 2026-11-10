@@ -14,6 +14,7 @@ Content-Type: application/json and a JSON object ({} when there is nothing
 to send).
 """
 
+import atexit
 import base64
 import hashlib
 import json
@@ -304,6 +305,65 @@ class _TaskSignals(QtCore.QObject):
     finished = QtCore.pyqtSignal(object)
 
 
+class _Flight:
+    """One worker's signal. close() happens before Qt teardown, under the lock.
+
+    The worker only emits while holding that lock, so it cannot call into a
+    QObject that quit has already dropped.
+    """
+
+    def __init__(self, signals):
+        self._lock = threading.Lock()
+        self._signals = signals
+
+    def emit(self, result):
+        with self._lock:
+            signals = self._signals
+            if signals is None:
+                return
+            signals.finished.emit(result)
+
+    def close(self):
+        with self._lock:
+            self._signals = None
+
+
+_FLIGHTS_LOCK = threading.Lock()
+_FLIGHTS = []
+_SILENCE_REGISTERED = False
+
+
+def _track_flight(flight):
+    with _FLIGHTS_LOCK:
+        _FLIGHTS.append(flight)
+
+
+def _drop_flight(flight):
+    with _FLIGHTS_LOCK:
+        try:
+            _FLIGHTS.remove(flight)
+        except ValueError:
+            pass
+
+
+def _close_flights():
+    """Stop workers from emitting. Does not touch Qt and does not wait."""
+    with _FLIGHTS_LOCK:
+        flights = list(_FLIGHTS)
+        _FLIGHTS.clear()
+    for flight in flights:
+        flight.close()
+
+
+def _register_worker_silence():
+    """Run before Qt's own atexit handlers, so workers stop emitting first."""
+    global _SILENCE_REGISTERED
+    if _SILENCE_REGISTERED:
+        return
+    atexit.register(_close_flights)
+    _SILENCE_REGISTERED = True
+
+
 def release_thread_pool():
     """Drop queued pool work without waiting for a request that is still running.
 
@@ -319,8 +379,9 @@ def release_thread_pool():
 class AccountController(QtCore.QObject):
     """Session token, the pending verifier, and the Account menu label.
 
-    HTTP runs on the global thread pool. settled is emitted on the GUI
-    thread after each call's widgets and settings have been updated.
+    HTTP runs on a daemon thread. settled is emitted on the GUI thread
+    after each call's widgets and settings have been updated. Quit closes
+    those emitters before Qt tears the objects down.
     """
 
     settled = QtCore.pyqtSignal()
@@ -342,6 +403,7 @@ class AccountController(QtCore.QObject):
         # clear a newer token or sign the menu back in.
         self._session_generation = 0
         self._dialog = None
+        _register_worker_silence()
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.abandon_pending)
@@ -350,8 +412,10 @@ class AccountController(QtCore.QObject):
     def abandon_pending(self):
         """Drop in-flight results when the process is leaving.
 
-        Late responses are ignored. The thread pool is not waited on.
+        Workers are silenced first, so they do not emit into objects Qt is
+        about to delete. The thread pool is not waited on.
         """
+        _close_flights()
         self._request_generation += 1
         self._session_generation += 1
         release_thread_pool()
@@ -666,6 +730,8 @@ class AccountController(QtCore.QObject):
         exit does not wait for it.
         """
         signals = _TaskSignals(self)
+        flight = _Flight(signals)
+        _track_flight(flight)
         dialog_generation = self._request_generation if dialog else None
         session_generation = self._session_generation
 
@@ -682,6 +748,8 @@ class AccountController(QtCore.QObject):
             except Exception as exc:
                 _log_failure(exc)
             finally:
+                flight.close()
+                _drop_flight(flight)
                 try:
                     signals.deleteLater()
                 except Exception as exc:
@@ -697,10 +765,7 @@ class AccountController(QtCore.QObject):
             except Exception as exc:
                 _log_failure(exc)
                 result = None
-            try:
-                signals.finished.emit(result)
-            except Exception as exc:
-                _log_failure(exc)
+            flight.emit(result)
 
         signals.finished.connect(
             on_finished, QtCore.Qt.ConnectionType.QueuedConnection)

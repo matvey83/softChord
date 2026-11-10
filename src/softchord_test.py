@@ -10,6 +10,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -1825,13 +1826,57 @@ class SoftChordEditorTest(unittest.TestCase):
             began = time.monotonic()
             account.abandon_pending()
             self.assertLess(time.monotonic() - began, 0.5)
-            self._settle(lambda: release.set())
+            release.set()
+            QtWidgets.QApplication.processEvents()
         finally:
             release.set()
             pool_release.set()
         self.assertEqual(account.session_token(), token)
         self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
         self.assertFalse(self.app.ui.actionSignOut.isVisible())
+
+    def test_quit_does_not_let_a_worker_emit_during_teardown(self):
+        """A request still running at quit must not segfault Qt teardown."""
+        script = """
+import os, sys, time, threading
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ.pop("SOFTCHORD_API_ORIGIN", None)
+sys.path.insert(0, %r)
+from PyQt6 import QtCore
+import softchord
+from softchord_auth import HttpResult
+
+app = softchord.App([])
+started = threading.Event()
+
+def transport(exchange):
+    started.set()
+    time.sleep(0.4)
+    return HttpResult(200, b'{"email":"late@example.com"}')
+
+account = app.account
+account.transport = transport
+account.env = {"SOFTCHORD_API_ORIGIN": "https://songs.example"}
+account.settings.setValue("auth/sessionToken", "quit-token")
+
+def kick():
+    account.refresh()
+    QtCore.QTimer.singleShot(50, app.quit)
+
+QtCore.QTimer.singleShot(0, kick)
+app.exec()
+time.sleep(0.6)
+print("teardown-ok")
+""" % _HERE
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=_HERE,
+            capture_output=True,
+            timeout=15)
+        self.assertEqual(
+            proc.returncode, 0,
+            proc.stderr.decode("utf-8", "replace")[-800:])
+        self.assertIn(b"teardown-ok", proc.stdout)
 
 
 if __name__ == "__main__":
