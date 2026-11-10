@@ -64,7 +64,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/request-link",
-            "headers": { "cf-connecting-ip": "203.0.113.20" },
+            "headers": { "content-type": "application/json", "cf-connecting-ip": "203.0.113.20" },
             "json": {
               "email": "  User@Example.com ",
               "client": "ios",
@@ -88,6 +88,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/request-link",
+            "headers": { "content-type": "application/json" },
             "json": {
               "email": "not-an-email",
               "client": "ios",
@@ -107,7 +108,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/request-link",
-            "headers": { "origin": "https://evil.example" },
+            "headers": { "content-type": "application/json", "origin": "https://evil.example" },
             "json": {
               "email": "singer@example.com",
               "client": "web",
@@ -161,6 +162,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/verify",
+            "headers": { "content-type": "application/json" },
             "json": { "token": "not-a-real-token", "verifier": "Gom_dJiEsQeMik8sm58Q4xt4rDESd-H8z2s-jNvPnAE" }
           },
           "response": {
@@ -181,7 +183,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/request-link",
-            "headers": { "cf-connecting-ip": "203.0.113.21" },
+            "headers": { "content-type": "application/json", "cf-connecting-ip": "203.0.113.21" },
             "json": {
               "email": "singer@example.com",
               "client": "desktop",
@@ -194,6 +196,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/verify",
+            "headers": { "content-type": "application/json" },
             "json": {
               "token": "$lastLoginToken",
               "verifier": "Gom_dJiEsQeMik8sm58Q4xt4rDESd-H8z2s-jNvPnAE",
@@ -218,7 +221,8 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/logout",
-            "headers": { "authorization": "Bearer $sessionToken" }
+            "headers": { "content-type": "application/json", "authorization": "Bearer $sessionToken" },
+            "json": {}
           },
           "response": { "status": 200, "json": { "ok": true } }
         },
@@ -241,7 +245,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/request-link",
-            "headers": { "cf-connecting-ip": "203.0.113.22" },
+            "headers": { "content-type": "application/json", "cf-connecting-ip": "203.0.113.22" },
             "json": {
               "email": "singer@example.com",
               "client": "ios",
@@ -254,6 +258,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/verify",
+            "headers": { "content-type": "application/json" },
             "json": { "token": "$lastLoginToken" }
           },
           "response": { "status": 400, "json": { "error": "invalid_or_expired" } }
@@ -269,7 +274,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/request-link",
-            "headers": { "cf-connecting-ip": "203.0.113.23" },
+            "headers": { "content-type": "application/json", "cf-connecting-ip": "203.0.113.23" },
             "json": {
               "email": "singer@example.com",
               "client": "ios",
@@ -282,6 +287,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/verify",
+            "headers": { "content-type": "application/json" },
             "json": {
               "token": "$lastLoginToken",
               "verifier": "Qr4MgDAm0aB-s6pLkfOAoK-64CTFRrUNtVZLA0X-GJw"
@@ -301,7 +307,11 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/request-link",
-            "headers": { "origin": "https://songs.example", "cf-connecting-ip": "203.0.113.24" },
+            "headers": {
+              "content-type": "application/json",
+              "origin": "https://songs.example",
+              "cf-connecting-ip": "203.0.113.24"
+            },
             "json": {
               "email": "singer@example.com",
               "client": "web",
@@ -324,6 +334,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/verify",
+            "headers": { "content-type": "application/json" },
             "cookies": ["sc_verifier"],
             "json": { "token": "$lastLoginToken" }
           },
@@ -333,7 +344,7 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/verify",
-            "headers": { "origin": "https://songs.example" },
+            "headers": { "content-type": "application/json", "origin": "https://songs.example" },
             "cookies": ["sc_verifier"],
             "json": { "token": "$lastLoginToken" }
           },
@@ -360,8 +371,9 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/logout",
-            "headers": { "origin": "https://evil.example" },
-            "cookies": ["sc_session"]
+            "headers": { "content-type": "application/json", "origin": "https://evil.example" },
+            "cookies": ["sc_session"],
+            "json": {}
           },
           "response": { "status": 403, "json": { "error": "forbidden" } }
         },
@@ -369,8 +381,9 @@
           "request": {
             "method": "POST",
             "path": "/api/auth/logout",
-            "headers": { "origin": "https://songs.example" },
-            "cookies": ["sc_session"]
+            "headers": { "content-type": "application/json", "origin": "https://songs.example" },
+            "cookies": ["sc_session"],
+            "json": {}
           },
           "response": { "status": 200, "json": { "ok": true } }
         }
@@ -386,7 +399,12 @@
           "response": { "status": 401, "json": { "error": "unauthorized" } }
         },
         {
-          "request": { "method": "POST", "path": "/api/auth/logout" },
+          "request": {
+            "method": "POST",
+            "path": "/api/auth/logout",
+            "headers": { "content-type": "application/json" },
+            "json": {}
+          },
           "response": { "status": 401, "json": { "error": "unauthorized" } }
         }
       ]
@@ -406,7 +424,12 @@
       "endpoint": "login",
       "steps": [
         {
-          "request": { "method": "POST", "path": "/login" },
+          "request": {
+            "method": "POST",
+            "path": "/login",
+            "headers": { "content-type": "application/json" },
+            "json": {}
+          },
           "response": { "status": 405, "json": { "error": "method_not_allowed" } }
         }
       ]
@@ -426,7 +449,12 @@
       "endpoint": "me",
       "steps": [
         {
-          "request": { "method": "POST", "path": "/api/me" },
+          "request": {
+            "method": "POST",
+            "path": "/api/me",
+            "headers": { "content-type": "application/json" },
+            "json": {}
+          },
           "response": { "status": 405, "json": { "error": "method_not_allowed" } }
         }
       ]
