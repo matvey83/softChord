@@ -506,7 +506,7 @@
   </action>
   <action name="actionChordEditorMode">
    <property name="text">
-    <string>Edit Chords…</string>
+    <string>Chords</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+K</string>
@@ -514,7 +514,7 @@
   </action>
   <action name="actionLyricEditorMode">
    <property name="text">
-    <string>Edit Text…</string>
+    <string>Lyrics</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+L</string>
@@ -531,9 +531,6 @@
   <action name="actionDiscardEdit">
    <property name="text">
     <string>Discard Changes</string>
-   </property>
-   <property name="shortcut">
-    <string>Esc</string>
    </property>
   </action>
  </widget>

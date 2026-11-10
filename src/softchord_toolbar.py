@@ -7,31 +7,31 @@ their order and groups, the icons (the SVGs in softChord_web/icons/toolbar/,
 the one copy, bundled by softchord.spec), the tooltips, and when each button
 shows or is dimmed are the same in all three apps: change them in all three.
 
-Intended desktop differences:
-- It wraps by the same rule as the web and iOS toolbars. When every button
-  of the widest mode (viewing, Edit Text or Edit Chords, each with what it
-  hides) fits on one row, all of them are on one row in every mode. When they
-  do not, Edit Text / Edit Chords and the edit groups after them (chord
-  buttons, Undo and Redo, Discard and Save) start the next row in every mode.
-  The groups before them, and the edit groups among themselves, move whole
-  to a new row when they do not fit. The width does not depend on the open
-  mode, so switching modes does not move the rows. A separator is dropped at
-  a row's start or end.
+Intended desktop differences (always-edit, desktop only; web and iOS keep
+their own edit-to-enter toolbars):
+- A song opens already editing. One segmented switch, labeled Chords and
+  Lyrics, replaces the Edit Text and Edit Chords buttons. Ctrl/Cmd+K selects
+  Chords and Ctrl/Cmd+L selects Lyrics.
+- It wraps by the same width rule. When every button of the widest segment
+  (Chords, with Transpose, chord buttons, and Discard and Save) fits on one
+  row, all of them are on one row in every segment. When they do not, the
+  Chords/Lyrics switch and the groups after it (chord buttons, Undo and
+  Redo, Discard and Save) start the next row in every segment. The groups
+  before them, and those groups among themselves, move whole to a new row
+  when they do not fit. The width does not depend on the open segment, so
+  switching does not move the rows. A separator is dropped at a row's start
+  or end.
   It sits below the Number/Title and Notes fields, above the song.
 - No Back button and no title: the song list and the Title field are always
-  there. No "Changes do not persist" banner and no brief notes: Save really
-  saves to the songbook.
-- Undo and Redo show in Edit Text too (the desktop has a text undo).
+  there. No "Changes do not persist" banner: Save writes the songbook.
+- Copy, Print, Zoom, Undo, Redo and both font buttons are always shown.
+  Transpose is shown on Chords and hidden on Lyrics. Chord Add and Delete
+  are shown only on Chords. Discard and Save are shown only when the draft
+  is dirty.
 - Tooltips name the keyboard shortcut. The toolbar uses the menu bar's
   QActions where there is one, so both are dimmed together.
 - The zoom percentage after the zoom buttons is plain text (not a button).
 - Print opens the desktop print dialog for the selected songs.
-- While editing, the Copy and Print group and the Transpose group are hidden
-  as in the other apps, but only on the toolbar: the menu items and their
-  shortcuts keep working (Transpose has none, so it waits until Save or
-  Discard as on the web and iOS).
-- Desktop-only: the Fonts group is hidden the same way in Edit Chords (it
-  stays in Edit Text and while viewing).
 - Desktop-only: a Fonts group after Zoom with "Select font for lyrics" and
   "Select font for chords" (the Settings menu's Lyrics Font and Chords Font
   dialogs). Their icons, font-lyrics.svg and font-chords.svg, sit with the
@@ -48,18 +48,15 @@ from PyQt6.QtSvg import QSvgRenderer
 
 ICON_SIZE = 22
 
-# The help that was the tooltip of the "Edit chords/lyrics of the selected
-# song" hint labels, now under the Edit Chords and Edit Text tooltips.
+# How-to text under the Chords and Lyrics segment tooltips.
 CHORDS_HELP = (
     '<b>To add a new chord:</b><br>Press on a lyrics letter to select it, '
     'then press one of the following keys: A, B, C, D, E, F, or G. To '
-    'assign a sharp or a flat, press the "Up" or "Down" key afterwards to '
-    '"transpose" the chord. To create a minor chord, press the "M" key. To '
-    'create advanced chords, double-click on the created chord (a dialog '
-    'box will open).<br><br><b>To edit a chord:</b><br>Click on the chord '
-    'to select it, then press "M" to toggle major/minor, press another '
-    'letter to assign a different note, or press "Up" or "Down" keys to '
-    'transpose it. Double-click on the chord for advanced '
+    'create a minor chord, press the "M" key. To create advanced chords, '
+    'double-click on the chord (a dialog box will open).<br><br>'
+    '<b>To edit a chord:</b><br>Click on the chord to select it, then press '
+    '"M" to toggle major/minor, or press another letter to assign a '
+    'different note. Double-click on the chord for advanced '
     'modifications.<br><br><b>To move a chord:</b><br>Click on the chord to '
     'select it, and then use the "Left" or "Right" keys to move it relative '
     'to the lyrics below it. Alternatively you can simply drag it to the '
@@ -69,10 +66,8 @@ CHORDS_HELP = (
     'to select it, and press the "Delete" key.'
 )
 LYRICS_HELP = (
-    'When in lyric editing mode, you can modify the text (lyrics) of the '
-    'song. As text is moved/added/removed, chords get moved automatically '
-    'to follow their letters. Remember to go back into the chord editor '
-    'mode when you need modify chords.'
+    'Edit the lyrics of the song. As text is moved, added, or removed, '
+    'chords follow their letters. Switch to Chords to change the chords.'
 )
 BUTTON_SIZE = 28
 
@@ -127,8 +122,8 @@ class _FlowLayout(QtWidgets.QLayout):
 
     A separator item is shown only between two groups on the same row.
     widest() is the one-row width of the widest mode. When the area is
-    narrower, the item with the "tailStart" property (the Edit Text / Edit
-    Chords group) starts a new row, and so the items after it follow it.
+    narrower, the item with the "tailStart" property (the Chords / Lyrics
+    switch) starts a new row, and so the items after it follow it.
 
     MIRRORED UI: viewer.js layoutToolbar, SongToolbar.swift SongToolbarFlow.
     """
@@ -204,8 +199,8 @@ class _FlowLayout(QtWidgets.QLayout):
                         dropped.append(pending_sep)
                     pending_sep = item
                 else:
-                    # The first groups are hidden (Copy and Print, and
-                    # Transpose, while editing).
+                    # No group before this separator on the row (a group
+                    # ahead of it is hidden, such as Transpose on Lyrics).
                     dropped.append(item)
                 continue
             sep_width = 0
@@ -256,7 +251,7 @@ class _FlowLayout(QtWidgets.QLayout):
 
 
 class SongToolbar(QtWidgets.QWidget):
-    """Copy+Print | Transpose | Zoom | Fonts | Edit [Chord] [Discard Save]."""
+    """Copy+Print | Transpose | Zoom | Fonts | Chords/Lyrics | chords | undo | save."""
 
     def __init__(self, session, parent=None):
         super().__init__(parent)
@@ -307,10 +302,16 @@ class SongToolbar(QtWidgets.QWidget):
         self.undo = proxy(ui.actionUndo, "Undo")
         self.redo = proxy(ui.actionRedo, "Redo")
         self.discard = new("actionDiscardTool", "Discard", session.discardEdit,
-                           "Put the song back as it was before this edit"
-                           + _shortcut_text(ui.actionDiscardEdit))
+                           "Put the song back to the last save")
         self.save = proxy(ui.actionSaveEdit, "Save",
-                          "Save this edit to the songbook")
+                          "Save this song to the songbook")
+        for action in (ui.actionChordEditorMode, ui.actionLyricEditorMode):
+            action.setCheckable(True)
+        # One segment stays selected. Clicking it again does not turn it off.
+        self._segment_group = QtGui.QActionGroup(self)
+        self._segment_group.setExclusive(True)
+        self._segment_group.addAction(ui.actionChordEditorMode)
+        self._segment_group.addAction(ui.actionLyricEditorMode)
         tips = (
             (ui.actionCopySongText, "Copy song text"),
             (ui.actionCopySongTextWithChords, "Copy song text (with chords)"),
@@ -319,8 +320,8 @@ class SongToolbar(QtWidgets.QWidget):
             (ui.actionZoomActual, "Reset zoom (100%)"),
             (ui.actionZoomIn, "Zoom in"),
             (ui.actionPrint, "Print / Save as PDF…"),
-            (ui.actionLyricEditorMode, "Edit Text…"),
-            (ui.actionChordEditorMode, "Edit Chords…"),
+            (ui.actionChordEditorMode, "Chords"),
+            (ui.actionLyricEditorMode, "Lyrics"),
         )
         for action, tip in tips:
             action.setToolTip(tip + _shortcut_text(action))
@@ -346,13 +347,15 @@ class SongToolbar(QtWidgets.QWidget):
              (self.zoom_percent, "label")),
             ((ui.actionLyricsFont, "font-lyrics"),
              (ui.actionChordsFont, "font-chords")),
-            ((ui.actionLyricEditorMode, "edit-text"),
-             (ui.actionChordEditorMode, "edit-chords")),
+            ((ui.actionChordEditorMode, "segment-left"),
+             (ui.actionLyricEditorMode, "segment-right")),
         )
         for num, group in enumerate(groups):
-            # The edit group (the last) starts the next row when not all fit.
+            # The Chords/Lyrics switch (the last) starts the next row when
+            # the widest segment does not fit.
             self._addGroup(group, separator=bool(num),
-                           tail_start=num == len(groups) - 1)
+                           tail_start=num == len(groups) - 1,
+                           spacing=0 if num == len(groups) - 1 else 1)
         # Shown only while editing, without a separator, as on the web.
         self.chord_group = [self.chord_edit, self.chord_delete]
         self._addGroup(((self.chord_edit, "chord-edit"),
@@ -368,7 +371,7 @@ class SongToolbar(QtWidgets.QWidget):
         self._restyle()
         self.applyMode(None, False)
 
-    def _addGroup(self, group, separator=False, tail_start=False):
+    def _addGroup(self, group, separator=False, tail_start=False, spacing=1):
         if separator:
             line = QtWidgets.QFrame(self)
             line.setObjectName("song_toolbar_separator")
@@ -380,7 +383,7 @@ class SongToolbar(QtWidgets.QWidget):
         box.setProperty("tailStart", tail_start)
         row = QtWidgets.QHBoxLayout(box)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(1)
+        row.setSpacing(spacing)
         for action, icon in group:
             if icon == "label":
                 # A plain label that follows the action's text.
@@ -398,10 +401,16 @@ class SongToolbar(QtWidgets.QWidget):
             button.setDefaultAction(action)
             button.setAutoRaise(True)
             button.setIconSize(QtCore.QSize(ICON_SIZE, ICON_SIZE))
+            segment = icon.startswith("segment-") if icon else False
             button.setToolButtonStyle(
-                QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
+                QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly if segment
+                else QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
             button.setObjectName("song_toolbar_" + action.objectName())
-            if icon:
+            if segment:
+                side = "left" if icon.endswith("left") else "right"
+                button.setProperty("segment", side)
+                button.setProperty("textButton", True)
+            elif icon:
                 self._icons[action] = icon
                 action.setIconVisibleInMenu(False)
             self._buttons[action] = button
@@ -444,6 +453,7 @@ class SongToolbar(QtWidgets.QWidget):
             hover = window.lighter(130) if dark else window.darker(106)
             border = window.lighter(170) if dark else window.darker(118)
             accent = palette.color(QtGui.QPalette.ColorRole.Highlight)
+            on_accent = palette.color(QtGui.QPalette.ColorRole.HighlightedText)
             self.setStyleSheet("""
 QFrame#song_toolbar_separator { background: %(border)s; border: 0; }
 #song_toolbar QToolButton { border: 1px solid transparent;
@@ -451,16 +461,28 @@ QFrame#song_toolbar_separator { background: %(border)s; border: 0; }
     padding: 0; }
 #song_toolbar QToolButton[textButton="true"] { padding: 0 6px; }
 #song_toolbar QToolButton[finishButton="true"] { font-size: 15px; }
+#song_toolbar QToolButton[segment="left"],
+#song_toolbar QToolButton[segment="right"] { padding: 0 12px;
+    font-size: 13px; border: 1px solid %(border)s; border-radius: 0; }
+#song_toolbar QToolButton[segment="left"] { border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px; }
+#song_toolbar QToolButton[segment="right"] { border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px; border-left-width: 0; }
 #song_toolbar QToolButton:hover { background: %(hover)s;
     border-color: %(border)s; }
 #song_toolbar QToolButton:pressed,
 #song_toolbar QToolButton[active="true"] { background: %(border)s; }
+#song_toolbar QToolButton[segment="left"]:checked,
+#song_toolbar QToolButton[segment="right"]:checked,
+#song_toolbar QToolButton[segment="left"][active="true"],
+#song_toolbar QToolButton[segment="right"][active="true"] {
+    background: %(accent)s; color: %(on_accent)s; border-color: %(accent)s; }
 #song_toolbar QToolButton:disabled { background: transparent;
     border-color: transparent; }
 #song_toolbar QToolButton#song_toolbar_actionSaveEditTool { color: %(accent)s;
     font-weight: 600; }
 """ % {"size": BUTTON_SIZE, "hover": hover.name(), "border": border.name(),
-       "accent": accent.name()})
+       "accent": accent.name(), "on_accent": on_accent.name()})
         finally:
             self._restyling = False
 
@@ -470,24 +492,22 @@ QFrame#song_toolbar_separator { background: %(border)s; border: 0; }
             self._restyle()
 
     def applyMode(self, mode, finish_shown):
-        """Viewing (None), Edit Text ("text") or Edit Chords ("chords")."""
+        """No song (None), Lyrics ("text") or Chords ("chords")."""
         ui = self.session.ui
-        # Edit Text and Edit Chords are actions, not modes, in the menus, so
-        # the button of the open edit is marked here and not checked.
-        for action, name in ((ui.actionLyricEditorMode, "text"),
-                             (ui.actionChordEditorMode, "chords")):
+        for action, name in ((ui.actionChordEditorMode, "chords"),
+                             (ui.actionLyricEditorMode, "text")):
             button = self.widgetForAction(action)
-            if button.property("active") != (mode == name):
-                button.setProperty("active", mode == name)
+            active = mode == name
+            if button.property("active") != active:
+                button.setProperty("active", active)
                 button.style().unpolish(button)
                 button.style().polish(button)
-        # As on the web and iOS, the Copy and Print group and the Transpose
-        # group are hidden until Save or Discard. Only the toolbar boxes are
-        # hidden: the menu items and their shortcuts (Ctrl+P, the copy
-        # shortcuts) still work as before (Transpose has no menu items). The
-        # flow layout skips a hidden box and drops the separator that would
-        # then start the row or follow another one.
-        # Desktop-only: the Fonts group is hidden the same way in Edit Chords.
+            if action.isChecked() != active:
+                action.setChecked(active)
+        # Copy, Print, Zoom, fonts, Undo and Redo stay. Transpose is a whole
+        # group, hidden on Lyrics (and when no song is open). The flow layout
+        # skips a hidden box and drops the separator that would then start
+        # the row or follow another one.
         for action, shown in self._modeBoxes(mode):
             box = self.widgetForAction(action).parentWidget()
             if shown:
@@ -497,19 +517,31 @@ QFrame#song_toolbar_separator { background: %(border)s; border: 0; }
             box.setVisible(shown)
         for action, shown in self._modeActions(mode, finish_shown):
             action.setVisible(shown)
+        # A group's layout item keeps the width it had before a button was
+        # hidden. Activate the row so the next layout uses the buttons that
+        # are showing.
+        self._refreshFlowHints()
+
+    def _refreshFlowHints(self):
+        for index in range(self._flow.count()):
+            widget = self._flow.itemAt(index).widget()
+            layout = widget.layout() if widget is not None else None
+            if layout is not None:
+                layout.activate()
+        self._flow.invalidate()
 
     def _modeBoxes(self, mode):
-        """(an action of the group, whether its group shows) in this mode."""
-        ui = self.session.ui
-        return ((ui.actionCopySongText, mode is None),
-                (self.transpose_down, mode is None),
-                (ui.actionLyricsFont, mode != "chords"))
+        """(an action of the group, whether its group shows) in this segment."""
+        return ((self.transpose_down, mode == "chords"),)
 
     def _modeActions(self, mode, finish_shown):
-        """(action, whether it shows) for the buttons shown by mode."""
-        return ([(action, mode == "chords") for action in self.chord_group]
-                + [(action, mode in ("text", "chords"))
-                   for action in (self.undo, self.redo)]
+        """(action, whether it shows) for the buttons shown by segment."""
+        chords = mode == "chords"
+        transpose = (self.transpose_down, self.transpose_up,
+                     self.transpose_reset)
+        return ([(action, chords) for action in transpose]
+                + [(action, chords) for action in self.chord_group]
+                + [(action, True) for action in (self.undo, self.redo)]
                 + [(self.discard, finish_shown), (self.save, finish_shown)])
 
     def rowWidth(self, mode, finish_shown=True):
@@ -552,11 +584,13 @@ QFrame#song_toolbar_separator { background: %(border)s; border: 0; }
         return max(0, x - spacing)
 
     def widestRowWidth(self):
-        """The one-row width of the widest mode (with Discard and Save, which
-        also show while viewing after a change)."""
+        """The one-row width of Chords with Discard and Save showing.
+
+        That segment has every button the toolbar can show at once.
+        """
         if not self._built:
             return 0
-        return max(self.rowWidth(mode) for mode in (None, "text", "chords"))
+        return self.rowWidth("chords", True)
 
     def isActive(self, action):
         return bool(self.widgetForAction(action).property("active"))

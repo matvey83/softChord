@@ -804,7 +804,7 @@ class Song:
         return note_text(note_id, prefer)
 
     def addChord(self, chord):
-        self.session.undo_stack.push(AddChordCommand(self, chord))
+        self.session.pushSongCommand(AddChordCommand(self, chord))
 
     def _addChord(self, chord):
         self._chords.append(chord)
@@ -814,11 +814,11 @@ class Song:
         self.session.selected_char_num = chord.character_num
 
     def setTextAndChords(self, text, chords, selected):
-        self.session.undo_stack.push(
+        self.session.pushSongCommand(
             SetTextAndChordsCommand(self, text, chords, selected))
 
     def deleteChord(self, chord):
-        self.session.undo_stack.push(DeleteChordCommand(self, chord))
+        self.session.pushSongCommand(DeleteChordCommand(self, chord))
 
     def _deleteChord(self, chord):
         self._chords.remove(chord)
@@ -829,7 +829,7 @@ class Song:
 
     def replaceChord(self, prev_chord, new_chord):
         command = ReplaceChordCommand(self, prev_chord, new_chord)
-        self.session.undo_stack.push(command)
+        self.session.pushSongCommand(command)
 
     def _replaceChord(self, prev_chord, new_chord):
         try:
