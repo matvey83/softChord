@@ -94,10 +94,10 @@ test("Sign in sends the email, then Check your email, and Resend posts again", {
     var verifiers = [];
     calls.forEach(function (call) {
       assert.equal(call.method, link.method);
-      assert.equal(new URL(call.url).origin, auth.contract.publicOrigin);
+      assert.equal(new URL(call.url).origin, page.origin);
       assert.equal(new URL(call.url).pathname, link.path);
       assert.equal(call.credentials, "include");
-      assert.match(String(call.headers["content-type"] || ""), /application\/json/);
+      assert.equal(call.headers["content-type"], "application/json");
       assert.equal(call.headers.authorization, undefined);
       var body = JSON.parse(call.body);
       assert.deepEqual(Object.keys(body).sort(), Object.keys(example).sort());
@@ -141,6 +141,10 @@ test("a signed-in /api/me shows the email and Sign out, and the other items stay
     await assertStubs(page);
     assert.equal(await page.eval("document.getElementById('sign-in').textContent"), email, "the stubs leave the account signed in");
 
+    var mePath = auth.endpoint("me").path;
+    var meBefore = await page.eval(callsExpr(mePath) + ".length");
+    await page.eval("document.dispatchEvent(new Event('visibilitychange'))");
+    await page.waitFor(callsExpr(mePath) + ".length > " + meBefore, "a visible page checks the session again");
     await click(page, "sign-in");
     await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu");
     assert.equal(await page.eval("document.getElementById('sign-out').textContent"), "Sign out (this device)");
@@ -151,8 +155,10 @@ test("a signed-in /api/me shows the email and Sign out, and the other items stay
     assert.equal(calls.length, 1);
     assert.equal(calls[0].method, logout.method);
     assert.equal(calls[0].credentials, "include");
-    assert.equal(new URL(calls[0].url).origin, auth.contract.publicOrigin);
+    assert.equal(new URL(calls[0].url).origin, page.origin);
     assert.equal(new URL(calls[0].url).pathname, logout.path);
+    assert.equal(calls[0].headers["content-type"], "application/json");
+    assert.equal(calls[0].body, "{}");
     assert.equal(calls[0].headers.authorization, undefined);
     assert.deepEqual(await page.eval(titlesExpr()), titles, "sign-out keeps the open songbook");
     assert.deepEqual(page.errors, []);
@@ -199,6 +205,106 @@ test("with no API origin, Sign in says the server is not configured and does not
     await assertStubs(page);
     assert.deepEqual(await page.eval("window.__auth"), [], "no origin means no auth request");
     assert.deepEqual(await page.eval(titlesExpr()), ["Short", "Other"]);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("an origin on another address shows the same-address notice and does not fetch", { skip: skip }, async function () {
+  var page = await helper.openViewer(SONGS, { html: auth.pageHtml({ origin: auth.contract.publicOrigin }) });
+  try {
+    await page.waitFor("document.getElementById('sign-in').textContent === 'Sign in'", "the signed-out header");
+    assert.notEqual(auth.contract.publicOrigin, page.origin);
+    assert.deepEqual(await page.eval("window.__auth"), []);
+    await click(page, "sign-in");
+    await page.waitFor("document.getElementById('notice').open", "the same-address notice");
+    assert.equal(await page.eval("document.getElementById('notice-title').textContent"), "Sign-in isn't available yet");
+    assert.equal(await page.eval("document.getElementById('notice-message').textContent"), "The server must be on the same address as this page.");
+    assert.equal(await page.eval("document.getElementById('sign-in-panel').open"), false);
+    assert.deepEqual(await page.eval("window.__auth"), []);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("a 400 sign-out says it was not accepted, and a 401 clears the signed-in header", { skip: skip }, async function () {
+  var email = auth.responseJson("GET", "/api/me", 200).email;
+  var page = await helper.openViewer(SONGS, { html: auth.pageHtml({ signedIn: true }) });
+  try {
+    await page.waitFor(
+      "document.getElementById('sign-in').textContent === " + JSON.stringify(email),
+      "the signed-in email");
+    await page.eval("(function () {" +
+      "var orig = window.fetch;" +
+      "window.fetch = function (url, options) {" +
+      "  var path = new URL(String(url), location.href).pathname;" +
+      "  if (path === '/api/auth/logout' && window.__logoutStatus) {" +
+      "    return Promise.resolve(new Response(JSON.stringify({ error: 'invalid_request' })," +
+      "      { status: window.__logoutStatus, headers: { 'content-type': 'application/json' } }));" +
+      "  }" +
+      "  return orig.apply(this, arguments);" +
+      "};" +
+      "})()");
+    await page.eval("window.__logoutStatus = 400");
+    await click(page, "sign-in");
+    await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu");
+    await click(page, "sign-out");
+    await page.waitFor("document.getElementById('notice').open", "the sign-out error");
+    assert.equal(await page.eval("document.getElementById('notice-title').textContent"), "Could not sign out");
+    assert.equal(await page.eval("document.getElementById('notice-message').textContent"), "The sign-out request was not accepted.");
+    assert.equal(await page.eval("document.getElementById('sign-in').textContent"), email, "a 400 leaves the account signed in");
+    await page.eval("document.querySelector('#notice button').click()");
+    await page.waitFor("!document.getElementById('notice').open", "the error to close");
+
+    await page.eval("window.__logoutStatus = 401");
+    await click(page, "sign-in");
+    await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu again");
+    await click(page, "sign-out");
+    await page.waitFor("document.getElementById('sign-in').textContent === 'Sign in'", "401 clears the header");
+    assert.equal(await page.eval("document.getElementById('notice').open"), false);
+    assert.deepEqual(page.errors, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("the mock rejects a POST without exactly application/json, a wrong method, and a foreign Origin", { skip: skip }, async function () {
+  var logout = auth.endpoint("logout");
+  var link = auth.endpoint("request-link");
+  var page = await helper.openViewer(SONGS, { html: auth.pageHtml({ signedIn: true }) });
+  try {
+    await page.waitFor(
+      "document.getElementById('sign-in').textContent === " + JSON.stringify(auth.responseJson("GET", "/api/me", 200).email),
+      "the signed-in email");
+    var result = await page.eval("(async function () {" +
+      "var origin = location.origin;" +
+      "async function call(path, options) {" +
+      "  var response = await fetch(origin + path, options);" +
+      "  return { status: response.status, body: await response.json() };" +
+      "}" +
+      "var missing = await call('/api/auth/logout', { method: 'POST', credentials: 'include', body: '{}' });" +
+      "var charset = await call('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json; charset=utf-8' }, body: '{}' });" +
+      "var wrong = await call('/api/auth/logout', { method: 'GET', credentials: 'include' });" +
+      "var foreign = await call('/api/auth/logout', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' });" +
+      "var link = await call('/api/auth/request-link', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' });" +
+      "var posted = await call('/api/me', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{}' });" +
+      "return { missing: missing, charset: charset, wrong: wrong, foreign: foreign, link: link, posted: posted };" +
+      "})()");
+    assert.equal(result.missing.status, 400);
+    assert.deepEqual(result.missing.body, auth.responseJson("POST", link.path, 400));
+    assert.equal(result.charset.status, 400);
+    assert.deepEqual(result.charset.body, { error: "invalid_request" });
+    assert.equal(result.wrong.status, 405);
+    assert.deepEqual(result.wrong.body, auth.responseJson("GET", logout.path, 405));
+    assert.equal(result.foreign.status, 403);
+    assert.deepEqual(result.foreign.body, auth.responseJson("POST", logout.path, 403));
+    assert.equal(result.link.status, 403);
+    assert.deepEqual(result.link.body, { error: "forbidden" });
+    assert.equal(result.posted.status, 405);
+    assert.deepEqual(result.posted.body, auth.responseJson("POST", "/api/me", 405));
+    assert.equal(await page.eval("document.getElementById('sign-in').textContent"), auth.responseJson("GET", "/api/me", 200).email, "a rejected logout leaves the session");
     assert.deepEqual(page.errors, []);
   } finally {
     await page.close();

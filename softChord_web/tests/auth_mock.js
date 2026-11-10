@@ -1,7 +1,8 @@
-// Source: server/api-contract.json on branch cursor/magic-link-auth-server-c270
-// (Login PR 9, not merged). This file is a copy of that contract. Web auth
-// mocks load it. JSON has no comments, so the source note lives here.
-// Replace the file from that branch when the contract changes.
+// Source: server/api-contract.json at 42ca7c921a6d811dd80eb7fc533ede4e5964bb9d
+// on branch cursor/magic-link-auth-server-c270 (Login PR 9, not merged).
+// This file is a copy of that contract. Web auth mocks load it.
+// JSON has no comments, so the source note lives here.
+// Replace the file from that commit when the contract changes.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -37,21 +38,23 @@ function endpoint(id) {
 
 // The page mock has to be installed before viewer.js. openViewer applies this
 // to index.html. Non-API fetches (the songbook, wasm) keep the real fetch.
+// Omitting origin points the page at its own address. A string origin is
+// installed as SOFTCHORD_API_ORIGIN. An empty origin leaves it unset.
 function pageHtml(options) {
   options = options || {};
-  var origin = Object.prototype.hasOwnProperty.call(options, "origin")
-    ? options.origin
-    : contract.publicOrigin;
   var signedIn = !!options.signedIn;
   var offline = !!options.offline;
-  var contractJson = JSON.stringify(contract).replace(/</g, "\\u003c");
-  var meta = "";
-  if (origin) {
-    meta = '<meta name="softchord-api-origin" content="' + String(origin).replace(/"/g, "") + '">';
+  var originSetup = "";
+  if (!Object.prototype.hasOwnProperty.call(options, "origin")) {
+    originSetup = "window.SOFTCHORD_API_ORIGIN = location.origin;";
+  } else if (options.origin) {
+    originSetup = "window.SOFTCHORD_API_ORIGIN = " + JSON.stringify(String(options.origin)) + ";";
   }
+  var contractJson = JSON.stringify(contract).replace(/</g, "\\u003c");
   var script = [
     "<script>",
     "(function () {",
+    originSetup,
     "window.__online = " + (offline ? "false" : "true") + ";",
     "try {",
     "  Object.defineProperty(navigator, 'onLine', { configurable: true, get: function () { return window.__online !== false; } });",
@@ -73,13 +76,21 @@ function pageHtml(options) {
     "  }",
     "  return null;",
     "}",
+    "function endpointMethod(path) {",
+    "  var endpoints = contract.endpoints || [];",
+    "  for (var i = 0; i < endpoints.length; i++) {",
+    "    if (endpoints[i].path === path) return endpoints[i].method;",
+    "  }",
+    "  return '';",
+    "}",
     "var orig = window.fetch.bind(window);",
     "window.fetch = function (url, options) {",
     "  var href = typeof url === 'string' ? url : (url && url.url) || '';",
     "  var parsed = null;",
     "  try { parsed = new URL(href, location.href); } catch (error) { parsed = null; }",
     "  var path = parsed ? parsed.pathname : '';",
-    "  if (path.indexOf('/api/') !== 0) return orig(url, options);",
+    "  if (path.indexOf('/api/') !== 0 && path !== '/login') return orig(url, options);",
+    "  if (path === '/login' && ((options && options.method) || 'GET').toUpperCase() === 'GET') return orig(url, options);",
     "  var method = ((options && options.method) || 'GET').toUpperCase();",
     "  var headers = {};",
     "  var rawHeaders = options && options.headers;",
@@ -88,28 +99,44 @@ function pageHtml(options) {
     "  } else if (rawHeaders) {",
     "    Object.keys(rawHeaders).forEach(function (key) { headers[String(key).toLowerCase()] = rawHeaders[key]; });",
     "  }",
-    "  window.__auth.push({ url: href, method: method, credentials: (options && options.credentials) || '', body: (options && options.body) || null, headers: headers });",
+    "  var entry = { url: href, method: method, credentials: (options && options.credentials) || '', body: (options && options.body) || null, headers: headers };",
+    "  window.__auth.push(entry);",
+    "  var contentType = typeof headers['content-type'] === 'string' ? headers['content-type'].trim().toLowerCase() : '';",
+    "  var sentOrigin = typeof headers.origin === 'string' && headers.origin ? headers.origin : location.origin;",
+    "  var urlOrigin = parsed ? parsed.origin : '';",
+    "  var expected = endpointMethod(path);",
     "  var status = 500;",
     "  var responseBody = null;",
-    "  if (method === 'GET' && path === '/api/me') {",
-    "    status = session.signedIn ? 200 : 401;",
-    "    responseBody = example('GET', '/api/me', status);",
+    "  function reply(code, body) { status = code; responseBody = body; }",
+    "  if (method === 'POST' && contentType !== 'application/json') {",
+    "    reply(400, example('POST', '/api/auth/request-link', 400) || { error: 'invalid_request' });",
+    "  } else if (expected && method !== expected) {",
+    "    reply(405, example(method, path, 405) || { error: 'method_not_allowed' });",
+    "  } else if (method === 'POST' && (path === '/api/auth/request-link' || path === '/api/auth/verify') && sentOrigin !== urlOrigin) {",
+    "    reply(403, example('POST', path, 403) || { error: 'forbidden' });",
+    "  } else if (method === 'GET' && path === '/api/me') {",
+    "    reply(session.signedIn ? 200 : 401, example('GET', '/api/me', session.signedIn ? 200 : 401));",
     "  } else if (method === 'POST' && path === '/api/auth/request-link') {",
-    "    status = 200;",
-    "    responseBody = example('POST', '/api/auth/request-link', 200);",
+    "    reply(200, example('POST', '/api/auth/request-link', 200));",
     "  } else if (method === 'POST' && path === '/api/auth/logout') {",
-    "    status = session.signedIn ? 200 : 401;",
-    "    responseBody = example('POST', '/api/auth/logout', status);",
-    "    if (status === 200) session.signedIn = false;",
+    "    if (!session.signedIn) {",
+    "      reply(401, example('POST', '/api/auth/logout', 401));",
+    "    } else if (sentOrigin !== urlOrigin) {",
+    "      reply(403, example('POST', '/api/auth/logout', 403));",
+    "    } else {",
+    "      reply(200, example('POST', '/api/auth/logout', 200));",
+    "      session.signedIn = false;",
+    "    }",
     "  }",
     "  if (!responseBody) return Promise.reject(new Error('contract has no ' + method + ' ' + path + ' ' + status));",
+    "  entry.status = status;",
     "  return Promise.resolve(new Response(JSON.stringify(responseBody), { status: status, headers: { 'content-type': 'application/json' } }));",
     "};",
     "})();",
     "</script>",
   ].join("\n");
   return function (html) {
-    return html.replace("<head>", "<head>\n" + meta + "\n" + script);
+    return html.replace("<head>", "<head>\n" + script);
   };
 }
 

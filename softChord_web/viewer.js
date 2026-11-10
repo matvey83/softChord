@@ -115,6 +115,9 @@
   // No API origin (config.js, window.SOFTCHORD_API_ORIGIN, or the meta tag).
   // Same notice dialog. This path does not fetch.
   var NOT_CONFIGURED = ["Sign-in isn't available yet", "The server is not configured."];
+  // An origin that is not this page's address. The API has no CORS and its
+  // cookies are host-only, so a different host cannot sign in. No request.
+  var NOT_SAME_ORIGIN = ["Sign-in isn't available yet", "The server must be on the same address as this page."];
   // The address from GET /api/me. Null until that call says we are signed in.
   var accountEmail = null;
   // Bumped so a late /api/me or logout cannot overwrite a newer result.
@@ -1722,9 +1725,9 @@
 
   // API origin: window.SOFTCHORD_API_ORIGIN when it is non-empty, otherwise
   // <meta name="softchord-api-origin">. config.js leaves the window value
-  // empty so a meta tag can still set it. Unset, file://, or not an http(s)
-  // origin: no auth request is made.
-  function configuredApiOrigin() {
+  // empty so a meta tag can still set it. The value is used only when it
+  // equals location.origin. Anything else makes no auth request.
+  function readConfiguredOrigin() {
     if (location.protocol === "file:") {
       return "";
     }
@@ -1749,6 +1752,27 @@
     } catch (error) {
       return "";
     }
+  }
+
+  function configuredApiOrigin() {
+    var origin = readConfiguredOrigin();
+    if (!origin || origin !== location.origin) {
+      return "";
+    }
+    return origin;
+  }
+
+  // Null when sign-in may call the API. Otherwise the notice to show, and
+  // the caller must not fetch.
+  function signInBlockedNotice() {
+    var origin = readConfiguredOrigin();
+    if (!origin) {
+      return NOT_CONFIGURED;
+    }
+    if (origin !== location.origin) {
+      return NOT_SAME_ORIGIN;
+    }
+    return null;
   }
 
   function normalizeEmail(value) {
@@ -1908,11 +1932,19 @@
   }
 
   function postLink(email, errorEl, button) {
-    var origin = configuredApiOrigin();
-    if (!origin || navigator.onLine === false) {
+    var blocked = signInBlockedNotice();
+    if (blocked) {
+      if (signInPanel && signInPanel.open) {
+        signInPanel.close();
+      }
+      notify(blocked[0], blocked[1]);
+      return;
+    }
+    if (navigator.onLine === false) {
       showAuthError(errorEl, "Offline");
       return;
     }
+    var origin = configuredApiOrigin();
     var ticket = ++linkRequest;
     if (button) {
       button.disabled = true;
@@ -2011,6 +2043,19 @@
     });
   }
 
+  function signOutMessage(status) {
+    if (status === 400) {
+      return "The sign-out request was not accepted.";
+    }
+    if (status === 403) {
+      return "Sign-out was refused.";
+    }
+    if (status >= 400 && status < 500) {
+      return "The server rejected sign-out.";
+    }
+    return "The server could not be reached.";
+  }
+
   function signOut() {
     var origin = configuredApiOrigin();
     closeAccountMenu();
@@ -2022,12 +2067,14 @@
       method: "POST",
       credentials: "include",
       cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: "{}",
     }).then(function (response) {
       if (response.status === 200 || response.status === 401) {
         applySignedOut();
         return;
       }
-      notify("Could not sign out", "The server could not be reached.");
+      notify("Could not sign out", signOutMessage(response.status));
     }).catch(function () {
       notify("Could not sign out", "The server could not be reached.");
     });
@@ -2044,8 +2091,9 @@
         }
         return;
       }
-      if (!configuredApiOrigin()) {
-        notify(NOT_CONFIGURED[0], NOT_CONFIGURED[1]);
+      var blocked = signInBlockedNotice();
+      if (blocked) {
+        notify(blocked[0], blocked[1]);
         return;
       }
       if (navigator.onLine === false || signInButton.disabled) {
@@ -2063,7 +2111,12 @@
   }
 
   if (signInPanel) {
+    // A real close() removes open before the event. Ignore a close event that
+    // arrives while the dialog is still open; it would wipe Check your email.
     signInPanel.addEventListener("close", function () {
+      if (signInPanel.open) {
+        return;
+      }
       linkRequest += 1;
       resetSignInPanel();
     });
@@ -2104,6 +2157,12 @@
     renderAccount();
     refreshMe();
   });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") {
+      refreshMe();
+    }
+  });
+  window.addEventListener("focus", refreshMe);
   renderAccount();
   refreshMe();
 
