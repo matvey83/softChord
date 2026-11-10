@@ -20,8 +20,8 @@ import json
 import os
 import re
 import secrets
+import sys
 import time
-import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -282,6 +282,23 @@ def _setting_text(settings, key):
     return str(value)
 
 
+def _valid_session_token(value):
+    """True when value is a token this client may store or send as Bearer."""
+    return isinstance(value, str) and _TOKEN.fullmatch(value) is not None
+
+
+def _log_failure(exc):
+    """Record the failure type only.
+
+    The message and the traceback are not written: either one can carry
+    the Authorization header.
+    """
+    try:
+        sys.stderr.write("softChord auth: %s\n" % type(exc).__name__)
+    except Exception:
+        pass
+
+
 class _TaskSignals(QtCore.QObject):
     finished = QtCore.pyqtSignal(object)
 
@@ -297,13 +314,13 @@ class _AuthTask(QtCore.QRunnable):
     def run(self):
         try:
             result = self.work()
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
             result = None
         try:
             self.signals.finished.emit(result)
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
 
 
 class AccountController(QtCore.QObject):
@@ -326,7 +343,28 @@ class AccountController(QtCore.QObject):
         self.verifier_factory = verifier_factory or new_verifier
         # Tests replace this so the verifier TTL does not depend on the clock.
         self.now = time.time
+        # Bumped when Esc/Cancel should drop a dialog request, and on quit.
+        self._request_generation = 0
+        # Bumped when the saved session changes, so a late response cannot
+        # clear a newer token or sign the menu back in.
+        self._session_generation = 0
+        self._dialog = None
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.abandon_pending)
         self.refresh()
+
+    def abandon_pending(self):
+        """Drop in-flight results when the process is leaving.
+
+        This does not wait for the thread pool. A late response is ignored.
+        """
+        self._request_generation += 1
+        self._session_generation += 1
+
+    def cancel_inflight(self):
+        """Ignore dialog requests that have not been applied yet."""
+        self._request_generation += 1
 
     def origin(self):
         """SOFTCHORD_API_ORIGIN, else QSettings auth/apiOrigin, else None."""
@@ -357,22 +395,35 @@ class AccountController(QtCore.QObject):
         return verifier
 
     def sign_in(self, checked=False):
-        """Sign In.... Unset origin shows a message and does not connect."""
+        """Sign In.... Unset origin shows a message and does not connect.
+
+        A second call while the dialog is open raises that dialog instead
+        of opening another one.
+        """
         try:
+            if self._dialog is not None:
+                self._dialog.raise_()
+                self._dialog.activateWindow()
+                return
             if self.origin() is None:
                 self._tell("Sign in", NOT_CONFIGURED)
                 return
             dialog = SignInDialog(self, self.session.win)
-            dialog.exec()
-        except Exception:
-            traceback.print_exc()
+            self._dialog = dialog
+            try:
+                dialog.exec()
+            finally:
+                if self._dialog is dialog:
+                    self._dialog = None
+        except Exception as exc:
+            _log_failure(exc)
 
     def sign_out(self, checked=False):
         """POST /api/auth/logout, then drop the local session."""
         try:
             self._end_session(LOGOUT_PATH, "Sign out", SIGN_OUT_FAILED)
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
 
     def sign_out_everywhere(self, checked=False):
         """POST /api/auth/logout-all, then drop the local session."""
@@ -380,8 +431,8 @@ class AccountController(QtCore.QObject):
             self._end_session(
                 LOGOUT_ALL_PATH, "Sign out everywhere",
                 SIGN_OUT_EVERYWHERE_FAILED)
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
 
     def _end_session(self, path, title, failure):
         """POST {} with the bearer token. 200 or 401 clears the local session.
@@ -400,8 +451,8 @@ class AccountController(QtCore.QObject):
         def work():
             try:
                 return self._send(origin, "POST", path, {}, bearer=token)
-            except Exception:
-                traceback.print_exc()
+            except Exception as exc:
+                _log_failure(exc)
                 return None
 
         def done(result):
@@ -435,8 +486,8 @@ class AccountController(QtCore.QObject):
             def work():
                 try:
                     result = self._send(origin, "POST", REQUEST_LINK_PATH, body)
-                except Exception:
-                    traceback.print_exc()
+                except Exception as exc:
+                    _log_failure(exc)
                     return "error"
                 payload = _read_json(result)
                 if (result.status == 200 and isinstance(payload, dict)
@@ -451,9 +502,9 @@ class AccountController(QtCore.QObject):
                     self.settings.sync()
                 done(status if status else "error")
 
-            self._start(work, after)
-        except Exception:
-            traceback.print_exc()
+            self._start(work, after, dialog=True)
+        except Exception as exc:
+            _log_failure(exc)
             self._finish_now(done, "error")
 
     def complete_sign_in(self, pasted, done):
@@ -481,20 +532,18 @@ class AccountController(QtCore.QObject):
             def work():
                 try:
                     verified = self._send(origin, "POST", VERIFY_PATH, body)
-                except Exception:
-                    traceback.print_exc()
+                except Exception as exc:
+                    _log_failure(exc)
                     return ("error", None)
                 payload = _read_json(verified)
-                if (verified.status != 200 or not isinstance(payload, dict)
-                        or not isinstance(payload.get("token"), str)
-                        or not payload["token"].strip()):
+                session_token = payload.get("token") if isinstance(payload, dict) else None
+                if verified.status != 200 or not _valid_session_token(session_token):
                     return ("invalid", None)
-                session_token = payload["token"].strip()
                 try:
                     me = self._send(
                         origin, "GET", ME_PATH, bearer=session_token)
-                except Exception:
-                    traceback.print_exc()
+                except Exception as exc:
+                    _log_failure(exc)
                     return ("me-error", session_token)
                 return ("me", session_token, me)
 
@@ -507,9 +556,10 @@ class AccountController(QtCore.QObject):
                     done(kind)
                     return
                 session_token = result[1]
-                self.settings.setValue(_SESSION_KEY, session_token)
-                self._clear_verifier()
-                self.settings.sync()
+                if not _valid_session_token(session_token):
+                    done("invalid")
+                    return
+                self._store_session(session_token)
                 if kind == "me-error":
                     done("error")
                     return
@@ -522,9 +572,9 @@ class AccountController(QtCore.QObject):
                 else:
                     done("error")
 
-            self._start(work, after)
-        except Exception:
-            traceback.print_exc()
+            self._start(work, after, dialog=True)
+        except Exception as exc:
+            _log_failure(exc)
             self._finish_now(done, "error")
 
     def refresh(self):
@@ -536,8 +586,8 @@ class AccountController(QtCore.QObject):
         """
         try:
             self._refresh()
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
             self.settled.emit()
 
     def _refresh(self):
@@ -551,8 +601,8 @@ class AccountController(QtCore.QObject):
         def work():
             try:
                 return self._send(origin, "GET", ME_PATH, bearer=token)
-            except Exception:
-                traceback.print_exc()
+            except Exception as exc:
+                _log_failure(exc)
                 return None
 
         def done(result):
@@ -597,29 +647,51 @@ class AccountController(QtCore.QObject):
         self.settings.remove(_VERIFIER_KEY)
         self.settings.remove(_VERIFIER_AT_KEY)
 
+    def _store_session(self, token):
+        """Save a verified session token and drop any older in-flight result."""
+        self._session_generation += 1
+        self.settings.setValue(_SESSION_KEY, token)
+        self._clear_verifier()
+        self.settings.sync()
+
     def _clear_local(self):
+        """Drop the saved session and any older in-flight result."""
+        self._session_generation += 1
         self.settings.remove(_SESSION_KEY)
         self._clear_verifier()
         self.settings.sync()
 
-    def _start(self, work, done):
-        """Run work on a pool thread. done runs on the GUI thread, then settled."""
+    def _start(self, work, done, dialog=False):
+        """Run work on a pool thread. done runs on the GUI thread, then settled.
+
+        dialog requests are ignored after Esc, Cancel, or quit. Every
+        request is ignored when the session generation has moved on.
+        Neither path waits for the worker.
+        """
         signals = _TaskSignals(self)
         task = _AuthTask(work, signals)
+        task.dialog_generation = self._request_generation if dialog else None
+        task.session_generation = self._session_generation
 
         def on_finished(result):
             try:
+                if (task.dialog_generation is not None
+                        and task.dialog_generation != self._request_generation):
+                    return
+                if task.session_generation != self._session_generation:
+                    return
                 done(result)
-            except Exception:
-                traceback.print_exc()
-            try:
-                signals.deleteLater()
-            except Exception:
-                traceback.print_exc()
-            try:
-                self.settled.emit()
-            except Exception:
-                traceback.print_exc()
+            except Exception as exc:
+                _log_failure(exc)
+            finally:
+                try:
+                    signals.deleteLater()
+                except Exception as exc:
+                    _log_failure(exc)
+                try:
+                    self.settled.emit()
+                except Exception as exc:
+                    _log_failure(exc)
 
         signals.finished.connect(
             on_finished, QtCore.Qt.ConnectionType.QueuedConnection)
@@ -629,12 +701,12 @@ class AccountController(QtCore.QObject):
         """A result that did not need the network, still on the GUI thread."""
         try:
             done(result)
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
         try:
             self.settled.emit()
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
 
     def _send(self, origin, method, path, payload=None, bearer=None):
         headers = {}
@@ -696,20 +768,29 @@ class SignInDialog(QtWidgets.QDialog):
         self._alive = False
         super().closeEvent(event)
 
+    def reject(self):
+        """Esc and Cancel. An in-flight verify must not save a session."""
+        self._alive = False
+        try:
+            self.account.cancel_inflight()
+        except Exception as exc:
+            _log_failure(exc)
+        super().reject()
+
     def send_link(self, checked=False):
         try:
             self.send_button.setEnabled(False)
             self.account.request_link(self.email_edit.text(), self._on_link)
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
             self.send_button.setEnabled(True)
 
     def complete(self, checked=False):
         try:
             self.complete_button.setEnabled(False)
             self.account.complete_sign_in(self.link_edit.text(), self._on_complete)
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
             self.complete_button.setEnabled(True)
 
     def _on_link(self, result):
@@ -726,8 +807,8 @@ class SignInDialog(QtWidgets.QDialog):
                 self.status_label.setText(NOT_CONFIGURED)
             else:
                 self.status_label.setText(SEND_FAILED)
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
 
     def _on_complete(self, result):
         try:
@@ -741,8 +822,8 @@ class SignInDialog(QtWidgets.QDialog):
                 self.status_label.setText(LINK_FAILED)
                 return
             self.status_label.setText(SIGN_IN_FAILED)
-        except Exception:
-            traceback.print_exc()
+        except Exception as exc:
+            _log_failure(exc)
 
     def _show_paste(self):
         self.link_edit.show()

@@ -50,7 +50,7 @@ The sample songbook in `softchord_test.py` was already resolved from `__file__`.
 
 There is no password field. The dialog asks for an email, then `POST /api/auth/request-link` with a JSON object `email` (trimmed and lowercased), `client` `desktop`, and `verifier_hash` (hex SHA-256 of a 32-byte base64url verifier). The raw verifier is not in that body. A locally invalid address is not sent. On `{ "ok": true }` the verifier is saved and the dialog says `Check your email`, with a field to paste the link. The person can close the dialog and paste later; the verifier stays until verify or sign-out.
 
-The paste accepts the email link (`#t=<token>`), `softchord://login?token=<token>`, or the raw token. `POST /api/auth/verify` sends `token`, `verifier`, and `device_label` `SoftChord desktop`. The session token is the string `token` in that response. It is stored under QSettings `auth/sessionToken`. The Account menu label is the `email` from `GET /api/me` with `Authorization: Bearer <session>`, not the email in the verify body. 401 from `/api/me` clears the local session. Any other failure leaves the token and leaves the menu signed out.
+The paste accepts the email link (`#t=<token>`), `softchord://login?token=<token>`, or the raw token. `POST /api/auth/verify` sends `token`, `verifier`, and `device_label` `SoftChord desktop`. The session token is the string `token` in that response, and it must match the same 43–128 character base64url pattern as a login token. Anything else is not stored and is not sent as `Authorization`. The Account menu label is the `email` from `GET /api/me` with `Authorization: Bearer <session>`, not the email in the verify body. 401 from `/api/me` clears the local session. Any other failure leaves the token and leaves the menu signed out.
 
 ### 2026-11-10 — Every POST is application/json, including logout
 
@@ -66,7 +66,11 @@ The Account menu item `Sign Out Everywhere` is shown with `Sign Out` while an em
 
 ### 2026-11-10 — Redirects are errors, and HTTP is off the UI thread
 
-`urllib_transport` builds an opener whose redirect handler never makes a follow-up request, so `Authorization` is not copied onto another URL. A 3xx is a transport error. The timeout is 15 seconds. request-link, verify, `/api/me`, logout, logout-all, and the startup refresh run on `QThreadPool`. Widgets and QSettings change only from the GUI thread. An exception in those calls is logged and does not leave the slot.
+`urllib_transport` builds an opener whose redirect handler never makes a follow-up request, so `Authorization` is not copied onto another URL. A 3xx is a transport error. The timeout is 15 seconds. request-link, verify, `/api/me`, logout, logout-all, and the startup refresh run on `QThreadPool`. Widgets and QSettings change only from the GUI thread. An exception in those calls is logged as its type name only, with no traceback and no `Authorization` value, and does not leave the slot.
+
+### 2026-11-10 — Esc, Cancel, and a newer session drop an in-flight result
+
+Each dialog request (request-link and verify) is tagged with a request generation. Esc and Cancel call `reject()`, which advances that generation, so a verify that finishes afterward does not save a session. A second Sign In while the dialog is open raises the same dialog. Each request is also tagged with a session generation, advanced when the saved token is stored or cleared. A late `/api/me` 401 therefore cannot wipe a newer token, and a late 200 after sign-out cannot show the email again. Quit advances both generations and returns without waiting for the thread pool.
 
 ### 2026-11-10 — The pending verifier expires with the server login token
 
