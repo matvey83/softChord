@@ -118,6 +118,10 @@ describe("login page in a browser", () => {
       ]);
       assert.equal(verify.status(), 200);
       assert.equal(JSON.parse(verify.request().postData() ?? "{}").token, token);
+      await page.waitForSelector("#signed-in:not([hidden])");
+      const signedIn = await page.$eval("#signed-in", (element) => element.textContent ?? "");
+      assert.equal(signedIn.trim(), "You're signed in. Return to SoftChord.");
+      assert.equal(new URL(page.url()).pathname, "/login");
     } finally {
       await browser.close();
       await close();

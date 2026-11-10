@@ -15,6 +15,7 @@ import {
 import {
   consumeLoginToken,
   deleteSession,
+  deleteUserSessions,
   findLiveLoginToken,
   findSession,
   insertSession,
@@ -138,6 +139,7 @@ export function createApp(deps: AppDeps): Hono {
   app.use("/api/auth/verify", privateHeaders);
   app.use("/api/me", privateHeaders);
   app.use("/api/auth/logout", privateHeaders);
+  app.use("/api/auth/logout-all", privateHeaders);
   app.use("/api/*", async (c, next) => {
     if (c.req.method === "POST" && !isJsonContentType(c.req.header("content-type"))) {
       return c.json({ error: "invalid_request" }, 400);
@@ -210,7 +212,7 @@ export function createApp(deps: AppDeps): Hono {
       "content-security-policy",
       `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'`,
     );
-    return c.html(renderLoginPage(isClient(client) ? client : null, hint, nonce));
+    return c.html(renderLoginPage(isClient(client) ? client : null, hint, nonce, deps.env.APP_URL));
   });
 
   app.post("/api/auth/verify", async (c) => {
@@ -276,7 +278,18 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ ok: true });
   });
 
-  for (const path of ["/login", "/api/auth/request-link", "/api/auth/verify", "/api/me", "/api/auth/logout"]) {
+  app.post("/api/auth/logout-all", async (c) => {
+    const found = await authenticate(c, deps);
+    if (!found) return c.json({ error: "unauthorized" }, 401);
+    if (found.via === "cookie" && !originAllowed(c.req.raw, deps.env.PUBLIC_ORIGIN)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    await deleteUserSessions(deps.db, found.session.user_id);
+    if (found.via === "cookie") clearCookie(c, deps.env, deps.env.SESSION_COOKIE_NAME);
+    return c.json({ ok: true });
+  });
+
+  for (const path of ["/login", "/api/auth/request-link", "/api/auth/verify", "/api/me", "/api/auth/logout", "/api/auth/logout-all"]) {
     app.all(path, (c) => methodNotAllowed(c));
   }
 

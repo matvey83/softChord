@@ -304,4 +304,78 @@ describe("login request guards", () => {
     assert.match(sessionLine, /HttpOnly/);
     assert.equal(sessionLine.includes("Domain"), false);
   });
+
+  it("ends every session on logout-all and rejects a bad content type or Origin", async () => {
+    const { app, mailer, tasks } = createTestApp();
+    const signIn = async () => {
+      assert.equal((await postJson(app, "/api/auth/request-link", {
+        email: "singer@example.com",
+        client: "ios",
+        verifier_hash: VERIFIER_HASH,
+      })).status, 200);
+      await settle(tasks);
+      const token = tokenFromLoginUrl(recorded(mailer).at(-1)?.loginUrl ?? "");
+      const verified = await postJson(app, "/api/auth/verify", { token, verifier: VERIFIER });
+      assert.equal(verified.status, 200);
+      return (await verified.json() as { token: string }).token;
+    };
+    const me = (token: string) => app.fetch(new Request(`${PUBLIC_ORIGIN}/api/me`, {
+      headers: { authorization: `Bearer ${token}` },
+    }));
+    const first = await signIn();
+    const second = await signIn();
+    assert.equal((await me(first)).status, 200);
+    assert.equal((await me(second)).status, 200);
+
+    const plain = await app.fetch(new Request(`${PUBLIC_ORIGIN}/api/auth/logout-all`, {
+      method: "POST",
+      headers: { "content-type": "text/plain", authorization: `Bearer ${second}` },
+      body: "{}",
+    }));
+    assert.equal(plain.status, 400);
+    assert.deepEqual(await plain.json(), { error: "invalid_request" });
+    assert.equal((await me(first)).status, 200);
+
+    const ended = await postJson(app, "/api/auth/logout-all", {}, {
+      authorization: `Bearer ${second}`,
+    });
+    assert.equal(ended.status, 200);
+    assert.deepEqual(await ended.json(), { ok: true });
+    assert.equal((await me(first)).status, 401);
+    assert.equal((await me(second)).status, 401);
+
+    const issued = await postJson(app, "/api/auth/request-link", {
+      email: "singer@example.com",
+      client: "web",
+      verifier: VERIFIER,
+      verifier_hash: VERIFIER_HASH,
+    }, { origin: PUBLIC_ORIGIN });
+    await settle(tasks);
+    const webToken = tokenFromLoginUrl(recorded(mailer).at(-1)?.loginUrl ?? "");
+    const verified = await postJson(app, "/api/auth/verify", { token: webToken }, {
+      origin: PUBLIC_ORIGIN,
+      cookie: `sc_verifier=${cookieValue(issued, "sc_verifier")}`,
+    });
+    const session = cookieValue(verified, "sc_session");
+    const foreign = await postJson(app, "/api/auth/logout-all", {}, {
+      origin: "https://evil.example",
+      cookie: `sc_session=${session}`,
+    });
+    assert.equal(foreign.status, 403);
+    assert.deepEqual(await foreign.json(), { error: "forbidden" });
+    const still = await app.fetch(new Request(`${PUBLIC_ORIGIN}/api/me`, {
+      headers: { cookie: `sc_session=${session}` },
+    }));
+    assert.equal(still.status, 200);
+    const cleared = await postJson(app, "/api/auth/logout-all", {}, {
+      origin: PUBLIC_ORIGIN,
+      cookie: `sc_session=${session}`,
+    });
+    assert.equal(cleared.status, 200);
+    assert.match(cleared.headers.getSetCookie().join("\n"), /sc_session=;/);
+    const gone = await app.fetch(new Request(`${PUBLIC_ORIGIN}/api/me`, {
+      headers: { cookie: `sc_session=${session}` },
+    }));
+    assert.equal(gone.status, 401);
+  });
 });

@@ -13,6 +13,8 @@ export interface AppConfig {
   SESSION_COOKIE_NAME: string;
   VERIFIER_COOKIE_NAME: string;
   COOKIE_SECURE: string;
+  /** Absolute http(s) URL for the "Return to SoftChord" link. Empty means no link. */
+  APP_URL?: string;
 }
 
 export function cookieSecure(env: AppConfig): boolean {

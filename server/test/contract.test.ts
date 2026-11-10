@@ -71,10 +71,11 @@ function matches(actual: unknown, expected: unknown): boolean {
   return Object.is(actual, expected);
 }
 
-function substitute(value: unknown, state: { loginToken: string; sessionToken: string }): unknown {
+function substitute(value: unknown, state: { loginToken: string; sessionToken: string; previousSessionToken: string }): unknown {
   if (typeof value === "string") {
     return value
       .replaceAll("$lastLoginToken", state.loginToken)
+      .replaceAll("$previousSessionToken", state.previousSessionToken)
       .replaceAll("$sessionToken", state.sessionToken);
   }
   if (Array.isArray(value)) return value.map((item) => substitute(item, state));
@@ -109,7 +110,7 @@ describe("api contract", () => {
   for (const example of contract.cases) {
     it(example.name, async () => {
       const { app, mailer, tasks } = createTestApp();
-      const state = { loginToken: "", sessionToken: "" };
+      const state = { loginToken: "", sessionToken: "", previousSessionToken: "" };
       const jar = new Map<string, string>();
       for (const step of example.steps) {
         const before = recorded(mailer).length;
@@ -138,6 +139,7 @@ describe("api contract", () => {
           const body = await response.json();
           assert.equal(matches(body, step.response.json), true, JSON.stringify(body));
           if (body && typeof body === "object" && "token" in body && typeof body.token === "string") {
+            if (state.sessionToken) state.previousSessionToken = state.sessionToken;
             state.sessionToken = body.token;
           }
         } else {

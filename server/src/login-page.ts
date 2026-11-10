@@ -27,7 +27,8 @@ function signInScript(): string {
         body: JSON.stringify({ token: token })
       }).then(function (response) {
         if (response.ok) {
-          window.location.replace("/");
+          document.getElementById("sign-in").hidden = true;
+          document.getElementById("signed-in").hidden = false;
           return;
         }
         errorEl.hidden = false;
@@ -48,14 +49,32 @@ function openAppScript(): string {
   `;
 }
 
-export function renderLoginPage(client: ClientKind | null, hint: string, nonce: string): string {
+function appHref(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function signedInMessage(appUrl: string | undefined): string {
+  const href = appHref(appUrl);
+  const back = href ? `<a href="${escapeHtml(href)}">Return to SoftChord.</a>` : "Return to SoftChord.";
+  return `<p id="signed-in" hidden>You're signed in. ${back}</p>`;
+}
+
+export function renderLoginPage(client: ClientKind | null, hint: string, nonce: string, appUrl?: string): string {
   const native = client === "ios" || client === "desktop";
   const label = hint ? `Sign in as ${escapeHtml(hint)}` : "Sign in";
   const controls = native
     ? `<button type="button" id="open-app">Open in SoftChord</button>
     <p>${PASTE_HINT}</p>`
     : `<button type="button" id="sign-in">${label}</button>
-    <p id="form-error" hidden>${FAILURE}</p>`;
+    <p id="form-error" hidden>${FAILURE}</p>
+    ${signedInMessage(appUrl)}`;
   const script = native ? openAppScript() : signInScript();
   return `<!DOCTYPE html>
 <html lang="en">

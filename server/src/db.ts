@@ -205,3 +205,7 @@ export async function touchSession(db: SqlDatabase, tokenHash: string, now: numb
 export async function deleteSession(db: SqlDatabase, tokenHash: string): Promise<void> {
   await db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash).run();
 }
+
+export async function deleteUserSessions(db: SqlDatabase, userId: string): Promise<void> {
+  await db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run();
+}

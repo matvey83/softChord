@@ -395,6 +395,7 @@ describe("magic-link auth", () => {
     assert.equal(html.includes("super-secret-token"), false);
     assert.equal(html.includes("ignored"), false);
     assert.equal(html.includes("id=\"sign-in\""), false);
+    assert.equal(html.includes("You're signed in"), false);
     assert.equal(html.includes('"/api/auth/verify"'), false);
     assert.match(html, /Open in SoftChord/);
     assert.match(html, /Paste this link into SoftChord if the button does not open the app\./);
@@ -412,6 +413,19 @@ describe("magic-link auth", () => {
     const webHtml = await web.text();
     assert.equal(webHtml.includes("Open in SoftChord"), false);
     assert.match(webHtml, /Sign in as m\*\*\*@gmail\.com/);
+    assert.match(webHtml, /You're signed in\. Return to SoftChord\./);
+    assert.equal(webHtml.includes("location.replace"), false);
+    assert.equal(webHtml.includes("<a "), false);
+    const linkedApp = createTestApp({
+      env: { ...testEnv, APP_URL: "https://app.example/library" },
+    });
+    const linked = await linkedApp.app.fetch(new Request(`${PUBLIC_ORIGIN}/login?client=web`));
+    const linkedHtml = await linked.text();
+    assert.match(linkedHtml, /<a href="https:\/\/app\.example\/library">Return to SoftChord\.<\/a>/);
+    const unsafe = createTestApp({
+      env: { ...testEnv, APP_URL: "javascript:alert(1)" },
+    });
+    assert.equal((await (await unsafe.app.fetch(new Request(`${PUBLIC_ORIGIN}/login?client=web`))).text()).includes("<a "), false);
     const policy = web.headers.get("content-security-policy") ?? "";
     const nonce = /script-src 'nonce-([^']+)'/.exec(policy)?.[1] ?? "";
     assert.match(policy, /default-src 'none'/);

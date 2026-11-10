@@ -14,6 +14,7 @@
     "PUBLIC_ORIGIN": "https://example.invalid",
     "SESSION_COOKIE_NAME": "__Host-sc_session",
     "VERIFIER_COOKIE_NAME": "__Host-sc_verifier",
-    "COOKIE_SECURE": "true"
+    "COOKIE_SECURE": "true",
+    "APP_URL": ""
   }
 }

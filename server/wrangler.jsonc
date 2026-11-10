@@ -25,7 +25,8 @@
     "PUBLIC_ORIGIN": "http://localhost:8787",
     "SESSION_COOKIE_NAME": "sc_session",
     "VERIFIER_COOKIE_NAME": "sc_verifier",
-    "COOKIE_SECURE": "false"
+    "COOKIE_SECURE": "false",
+    "APP_URL": ""
   },
   "d1_databases": [
     {

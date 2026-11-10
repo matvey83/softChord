@@ -12,7 +12,7 @@ The server builds `https://<public origin>/login?client=<web|ios|desktop>&hint=<
 
 ### 2026-11-10 — /login does not verify on load
 
-Mail scanners open links. `GET /login` only returns a page. For the web client, verify runs when the person presses **Sign in as m\*\*\*@gmail.com**. For `ios` and `desktop`, that button is not on the page. Those clients only get **Open in SoftChord**, plus a hint to paste the link into the app. The button, on click, navigates to `softchord://login?token=<token>` and does not call verify. It reads the token from the fragment. After a successful web verify the page does `location.replace("/")`, which drops the fragment. This server does not serve the songbook assets; `/` is the song list once the web app is mounted. The page sends `Content-Security-Policy` with `default-src 'none'`, `connect-src 'self'` so the Sign in button can call verify, `form-action 'none'`, `frame-ancestors 'none'`, and a per-request nonce on its script.
+Mail scanners open links. `GET /login` only returns a page. For the web client, verify runs when the person presses **Sign in as m\*\*\*@gmail.com**. For `ios` and `desktop`, that button is not on the page. Those clients only get **Open in SoftChord**, plus a hint to paste the link into the app. The button, on click, navigates to `softchord://login?token=<token>` and does not call verify. It reads the token from the fragment. After a successful web verify the page stays on `/login` and shows "You're signed in. Return to SoftChord." This worker does not serve the songbook app, so it does not redirect to `/`. When `APP_URL` is an http or https URL, "Return to SoftChord." links there. Otherwise that sentence is plain text. The page sends `Content-Security-Policy` with `default-src 'none'`, `connect-src 'self'` so the Sign in button can call verify, `form-action 'none'`, `frame-ancestors 'none'`, and a per-request nonce on its script.
 
 A failed verify shows one sentence: "Open this link on the device where you requested it." The API does not say whether the token was unknown, expired, used, or presented from the wrong device.
 
@@ -30,7 +30,7 @@ Production name is `__Host-sc_session` (and `__Host-sc_verifier` for the PKCE co
 
 ### 2026-11-10 — Cookie-authenticated POSTs check Origin
 
-On `request-link`, a missing `Origin` is allowed for every client. A present `Origin` that is not exactly `PUBLIC_ORIGIN` is 403 for `web`, `ios`, and `desktop`, and nothing is sent. Web `verify`, and logout when the session cookie authenticated the call, still require `Origin` to equal `PUBLIC_ORIGIN`. Bearer requests skip that check. A mismatch is 403 and does not consume the login token or revoke the session. Every POST requires a content type whose media type is exactly `application/json`. Parameters such as `charset` are fine. Anything else is 400 and is not treated as a login attempt. Known routes answer any other method with 405 `{ "error": "method_not_allowed" }`. `request-link`, like the other auth responses, sends `Cache-Control: no-store`.
+On `request-link`, a missing `Origin` is allowed for every client. A present `Origin` that is not exactly `PUBLIC_ORIGIN` is 403 for `web`, `ios`, and `desktop`, and nothing is sent. Web `verify`, and logout or logout-all when the session cookie authenticated the call, still require `Origin` to equal `PUBLIC_ORIGIN`. Bearer requests skip that check. A mismatch is 403 and does not consume the login token or revoke the session. Every POST requires a content type whose media type is exactly `application/json`. Parameters such as `charset` are fine. Anything else is 400 and is not treated as a login attempt. Known routes answer any other method with 405 `{ "error": "method_not_allowed" }`. `request-link`, like the other auth responses, sends `Cache-Control: no-store`.
 
 ### 2026-11-10 — Sessions record client, device, and hourly last use
 
@@ -50,7 +50,11 @@ The Node test runner applies `migrations/0001_init.sql` to `node:sqlite`. An inj
 
 ### 2026-11-10 — Web verify replaces the browser's previous session
 
-A successful web verify deletes the session row for the browser's existing session cookie, if it has one, before setting the new cookie. A failed verify leaves that session in place. The verifier cookie is cleared on success.
+A successful web verify deletes the session row for the browser's existing session cookie, if it has one, before setting the new cookie. A failed verify leaves that session in place. The verifier cookie is cleared on success. That replacement is only the same browser. A new sign-in does not revoke other devices' sessions. Multi-device use is normal.
+
+### 2026-11-10 — Sign out everywhere is explicit
+
+`POST /api/auth/logout-all` deletes every session for the signed-in user, including the caller's. It requires a session, `Content-Type: application/json`, and a `{}` body. Cookie-authenticated calls follow logout's `Origin` rule. Bearer calls skip it. A mismatch is 403 and deletes nothing. Success is `{ "ok": true }`. A web caller's session cookie is cleared.
 
 ### 2026-11-10 — Local wrangler config has no account and is not deployed
 

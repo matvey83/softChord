@@ -20,6 +20,8 @@ The link in a test email looks like `https://<origin>/login?client=ios&hint=m***
 
 Dev cookies are `sc_verifier` and `sc_session` (HttpOnly, not Secure). Those names come from `wrangler.jsonc`, not from the request host.
 
+After a web sign-in the page stays on `/login` and says you're signed in. Set `APP_URL` to an http or https URL to make "Return to SoftChord." a link; leave it empty for text only. `POST /api/auth/logout-all` ends every session for that user. Signing in on one device leaves the others signed in.
+
 ## Tests
 
 `npm test` uses Node's built-in test runner and an in-memory SQLite database that applies `migrations/0001_init.sql`. `npm run typecheck` runs `wrangler types` first, which writes `worker-configuration.d.ts`, and then runs `tsc`. That file is generated and gitignored, so plain `npx tsc` fails without it. `server/api-contract.json` is the request and response examples client mocks should load.
