@@ -116,6 +116,10 @@ async function readJson(c: { req: { header: (name: string) => string | undefined
   }
 }
 
+function isEmptyObject(value: unknown): boolean {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
 function methodNotAllowed(c: { json: (body: unknown, status?: number) => Response }): Response {
   return c.json({ error: "method_not_allowed" }, 405);
 }
@@ -268,6 +272,7 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.post("/api/auth/logout", async (c) => {
+    if (!isEmptyObject(await readJson(c))) return c.json({ error: "invalid_request" }, 400);
     const found = await authenticate(c, deps);
     if (!found) return c.json({ error: "unauthorized" }, 401);
     if (found.via === "cookie" && !originAllowed(c.req.raw, deps.env.PUBLIC_ORIGIN)) {
@@ -279,6 +284,7 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.post("/api/auth/logout-all", async (c) => {
+    if (!isEmptyObject(await readJson(c))) return c.json({ error: "invalid_request" }, 400);
     const found = await authenticate(c, deps);
     if (!found) return c.json({ error: "unauthorized" }, 401);
     if (found.via === "cookie" && !originAllowed(c.req.raw, deps.env.PUBLIC_ORIGIN)) {

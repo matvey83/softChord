@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { EMAIL_LIMIT, LOGIN_TTL_SECONDS } from "../src/config.ts";
+import { renderLoginPage } from "../src/login-page.ts";
 import type { SqlDatabase } from "../src/db.ts";
 import type { LoginEmail, LoginMailer } from "../src/mailer.ts";
 import type { IpRateLimiter } from "../src/rate-limit.ts";
@@ -288,6 +289,10 @@ describe("magic-link auth", () => {
     assert.equal(me.status, 200);
     assert.deepEqual(await me.json(), { email: "singer@example.com" });
 
+    const extra = await postJson(app, "/api/auth/logout", { extra: true }, headers);
+    assert.equal(extra.status, 400);
+    assert.deepEqual(await extra.json(), { error: "invalid_request" });
+    assert.equal((await app.fetch(new Request(`${PUBLIC_ORIGIN}/api/me`, { headers }))).status, 200);
     const loggedOut = await postJson(app, "/api/auth/logout", {}, headers);
     assert.equal(loggedOut.status, 200);
     assert.deepEqual(await loggedOut.json(), { ok: true });
@@ -427,9 +432,12 @@ describe("magic-link auth", () => {
     const localHtml = await loginHtml("http://127.0.0.1:8787/songs");
     assert.match(localHtml, /<a href="http:\/\/127\.0\.0\.1:8787\/songs">Return to SoftChord\.<\/a>/);
     assert.match(await loginHtml("http://localhost/songs"), /<a href="http:\/\/localhost\/songs">/);
-    for (const appUrl of ["javascript:alert(1)", "http://songs.example", "data:text/html,hi", "//host"]) {
+    for (const appUrl of ["javascript:alert(1)", "http://songs.example", "data:text/html,hi", "//host", "http://localhost.evil.com"]) {
       assert.equal((await loginHtml(appUrl)).includes("<a "), false, appUrl);
     }
+    const broken = renderLoginPage("web", "singer", `" onclick="alert(1)`);
+    assert.equal(broken.includes(`nonce="" onclick="alert(1)"`), false);
+    assert.match(broken, /nonce="&quot; onclick=&quot;alert\(1\)"/);
     const quotedHtml = await loginHtml('https://app.example/a"b');
     assert.match(quotedHtml, /<a href="https:\/\/app\.example\/a%22b">Return to SoftChord\.<\/a>/);
     assert.equal(quotedHtml.includes('a"b'), false);

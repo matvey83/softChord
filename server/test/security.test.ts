@@ -336,6 +336,13 @@ describe("login request guards", () => {
     assert.deepEqual(await plain.json(), { error: "invalid_request" });
     assert.equal((await me(first)).status, 200);
 
+    const extra = await postJson(app, "/api/auth/logout-all", { extra: true }, {
+      authorization: `Bearer ${second}`,
+    });
+    assert.equal(extra.status, 400);
+    assert.deepEqual(await extra.json(), { error: "invalid_request" });
+    assert.equal((await me(first)).status, 200);
+    assert.equal((await me(second)).status, 200);
     const ended = await postJson(app, "/api/auth/logout-all", {}, {
       authorization: `Bearer ${second}`,
     });

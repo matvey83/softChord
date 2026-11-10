@@ -54,7 +54,7 @@ A successful web verify deletes the session row for the browser's existing sessi
 
 ### 2026-11-10 — Sign out everywhere is explicit
 
-`POST /api/auth/logout-all` deletes every session for the signed-in user, including the caller's. It requires a session, `Content-Type: application/json`, and a `{}` body. Cookie-authenticated calls follow logout's `Origin` rule. Bearer calls skip it. A mismatch is 403 and deletes nothing. Success is `{ "ok": true }`. A web caller's session cookie is cleared.
+`POST /api/auth/logout` and `POST /api/auth/logout-all` require a JSON body that is exactly `{}`. Any other JSON value is 400 `{ "error": "invalid_request" }` and deletes nothing. `logout-all` deletes every session for the signed-in user, including the caller's. Both require a session and `Content-Type: application/json`. Cookie-authenticated calls follow logout's `Origin` rule. Bearer calls skip it. A mismatch is 403 and deletes nothing. Success is `{ "ok": true }`. A web caller's session cookie is cleared.
 
 ### 2026-11-10 — Local wrangler config has no account and is not deployed
 
