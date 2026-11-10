@@ -37,3 +37,19 @@
 - After `reopenActiveSongbook` finishes a read, it keeps those songs only when the current songbook is still the one whose bytes were read. Otherwise that result is dropped and the current songbook is opened.
 - The README line about opening a local songbook file into memory, for this session only, was kept. QA asked for it. The Phase 1 spec lists README wording as out of scope.
 - The cache buster is `?v=2026-11-10e`.
+
+## Login web
+
+### 2026-11-10 — Web sign-in is an email field, then Check your email
+
+This change is only `softChord_web`, stacked on the songbook header (PR 6). The API is Login PR 9 (`cursor/magic-link-auth-server-c270`), which is not merged. Download, Rename, Delete, and Share keep their not-available notices and do not fetch. The open songbook stays the one already on screen.
+
+Sign in, when an API origin is set and the browser is online, opens an email field. Cancel closes it and leaves the header signed out. Send and Resend `POST /api/auth/request-link` with `credentials: "include"`, `cache: "no-store"`, `client: "web"`, the trimmed lowercased email, a new 32-byte URL-safe verifier, and its SHA-256 hex as `verifier_hash`. The server checks that pair and sets the HttpOnly verifier cookie. The button label is "Send link". A 200, including the rate-limited same body, shows "Check your email", the address, Resend, and Cancel. This page does not verify the link and does not read `/login`. That page is the server's. A bad address is rejected here with the same syntax rule as the server and is not posted.
+
+On load, when an origin is set, the page `GET /api/me` with `credentials: "include"`. A 200 replaces the Sign in label with that email. The control opens a menu with "Sign out (this device)", which `POST`s `/api/auth/logout` with credentials and no bearer token. A 200 or 401 returns the header to Sign in. A network error on the first `/api/me` leaves the header signed out and does not alert. Coming back online tries `/api/me` again.
+
+The origin is `window.SOFTCHORD_API_ORIGIN` when that string is non-empty, otherwise `<meta name="softchord-api-origin">`. `config.js` sets the window value only when it is not already a string, and the committed value is empty, so the meta tag still works. Unset, `file://`, or a value that is not an http(s) origin with no username: Sign in shows the existing notice, title "Sign-in isn't available yet" and message "The server is not configured.", and the page makes no auth request. Offline, Sign in is disabled and the header shows "Offline". Send is not attempted. The published page stays in that unset state until an origin is chosen.
+
+`softChord_web/tests/api-contract.json` is a byte copy of `server/api-contract.json` from `cursor/magic-link-auth-server-c270`. The source comment is in `softChord_web/tests/auth_mock.js`, which loads that copy into the page mock, because JSON has no comments.
+
+The cache buster is `?v=2026-11-10f`.

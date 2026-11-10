@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SoftChord</title>
-  <link rel="stylesheet" href="viewer.css?v=2026-11-10e">
+  <link rel="stylesheet" href="viewer.css?v=2026-11-10f">
   <!-- The app icon (an open songbook with a clef), as in the iOS and desktop apps.
        The 16, 32 and 48 px sizes are cropped to the book with thicker lines. -->
   <link rel="icon" href="icons/favicon.ico" sizes="16x16 32x32 48x48">
@@ -32,7 +32,14 @@
         </button>
         <span id="songbook-indicator">Not saved</span>
       </div>
-      <button id="sign-in" type="button">Sign in</button>
+      <!-- Sign in opens an email field when an API origin is set (config.js,
+           window.SOFTCHORD_API_ORIGIN, or the softchord-api-origin meta tag).
+           With no origin it explains that the server is not configured.
+           iOS does not have this flow yet. -->
+      <div class="sign-in-slot">
+        <span id="sign-in-offline" hidden>Offline</span>
+        <button id="sign-in" type="button">Sign in</button>
+      </div>
     </header>
     <div class="search-bar">
       <label for="search">Search:</label>
@@ -177,6 +184,34 @@
     </div>
   </div>
 
+  <dialog id="sign-in-panel" aria-labelledby="sign-in-title">
+    <div id="sign-in-request">
+      <h2 id="sign-in-title">Sign in</h2>
+      <form id="sign-in-form">
+        <label for="sign-in-email">Email</label>
+        <input id="sign-in-email" type="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+        <p id="sign-in-error" class="error" hidden></p>
+        <div class="sign-in-actions">
+          <button type="button" id="sign-in-cancel" class="tool-text">Cancel</button>
+          <button type="submit" id="sign-in-send" class="tool-text">Send link</button>
+        </div>
+      </form>
+    </div>
+    <div id="sign-in-check" hidden>
+      <h2 id="sign-in-check-title">Check your email</h2>
+      <p id="sign-in-address"></p>
+      <p id="sign-in-check-error" class="error" hidden></p>
+      <div class="sign-in-actions">
+        <button type="button" id="sign-in-check-cancel" class="tool-text">Cancel</button>
+        <button type="button" id="sign-in-resend" class="tool-text">Resend</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="account-menu" class="menu" role="menu" aria-label="Account" hidden>
+    <button type="button" id="sign-out" role="menuitem">Sign out (this device)</button>
+  </div>
+
   <dialog id="notice">
     <h2 id="notice-title"></h2>
     <p id="notice-message"></p>
@@ -201,16 +236,17 @@
        Change the date (in all of them) whenever you release a change to this
        folder, so a browser that kept an old index.html does not mix it with new
        scripts, or the other way round. sql-wasm.js is included when its wrapper changes. -->
-  <script src="sql-wasm.js?v=2026-11-10e"></script>
-  <script src="softchord_chords.js?v=2026-11-10e"></script>
-  <script src="softchord_text.js?v=2026-11-10e"></script>
-  <script src="softchord_text_edit.js?v=2026-11-10e"></script>
-  <script src="softchord_chord_edit.js?v=2026-11-10e"></script>
-  <script src="song_filter.js?v=2026-11-10e"></script>
-  <script src="songbook.js?v=2026-11-10e"></script>
-  <script src="softchord_zoom.js?v=2026-11-10e"></script>
-  <script src="softchord_sheet_image.js?v=2026-11-10e"></script>
-  <script src="softchord_chord_mode.js?v=2026-11-10e"></script>
-  <script src="viewer.js?v=2026-11-10e"></script>
+  <script src="sql-wasm.js?v=2026-11-10f"></script>
+  <script src="softchord_chords.js?v=2026-11-10f"></script>
+  <script src="softchord_text.js?v=2026-11-10f"></script>
+  <script src="softchord_text_edit.js?v=2026-11-10f"></script>
+  <script src="softchord_chord_edit.js?v=2026-11-10f"></script>
+  <script src="song_filter.js?v=2026-11-10f"></script>
+  <script src="songbook.js?v=2026-11-10f"></script>
+  <script src="softchord_zoom.js?v=2026-11-10f"></script>
+  <script src="softchord_sheet_image.js?v=2026-11-10f"></script>
+  <script src="softchord_chord_mode.js?v=2026-11-10f"></script>
+  <script src="config.js?v=2026-11-10f"></script>
+  <script src="viewer.js?v=2026-11-10f"></script>
 </body>
 </html>

@@ -59,9 +59,9 @@
   var noticeMessage = document.getElementById("notice-message");
 
   // The songbook this page is reading. Defaults to the bundled demo next to
-  // this folder. Open Songbook File replaces this for the session only. A
-  // future server replaces Songbook.load. Nothing here is written to disk or
-  // sent over the network.
+  // this folder. Open Songbook File replaces this for the session only.
+  // Songbook bytes stay in memory. Sign-in, when an API origin is configured,
+  // is the only traffic, and it goes to that origin.
   var currentSongbook = {
     displayName: "zvuki_neba",
     url: "../zvuki_neba.songbook",
@@ -91,16 +91,37 @@
   var songbookMenuList = document.getElementById("songbook-menu-list");
   var songbookFile = document.getElementById("songbook-file");
   var signInButton = document.getElementById("sign-in");
+  var signInOffline = document.getElementById("sign-in-offline");
+  var signInPanel = document.getElementById("sign-in-panel");
+  var signInForm = document.getElementById("sign-in-form");
+  var signInEmail = document.getElementById("sign-in-email");
+  var signInError = document.getElementById("sign-in-error");
+  var signInRequest = document.getElementById("sign-in-request");
+  var signInCheck = document.getElementById("sign-in-check");
+  var signInAddress = document.getElementById("sign-in-address");
+  var signInCheckError = document.getElementById("sign-in-check-error");
+  var signInSend = document.getElementById("sign-in-send");
+  var signInResend = document.getElementById("sign-in-resend");
+  var accountMenu = document.getElementById("account-menu");
 
-  // Titles and messages for items that need an account or a server. One OK
+  // Download, Rename, Delete and Share still need a later update. One OK
   // button, from the notice dialog. Choosing one does not fetch anything.
   var NOT_AVAILABLE = {
-    "sign-in": ["Sign-in isn't available yet", "softChord accounts are coming in a later update."],
     download: ["Not available yet", "Saving songbooks from this app is coming in a later update."],
     rename: ["Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
     "delete": ["Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
     share: ["Sharing isn't available yet", "Sharing needs a softChord account, which is coming in a later update."],
   };
+  // No API origin (config.js, window.SOFTCHORD_API_ORIGIN, or the meta tag).
+  // Same notice dialog. This path does not fetch.
+  var NOT_CONFIGURED = ["Sign-in isn't available yet", "The server is not configured."];
+  // The address from GET /api/me. Null until that call says we are signed in.
+  var accountEmail = null;
+  // Bumped so a late /api/me or logout cannot overwrite a newer result.
+  var meRequest = 0;
+  // Bumped so a late request-link cannot reopen Check your email after Cancel.
+  var linkRequest = 0;
+  var pendingEmail = "";
 
   // One place for the songbook name chrome and the persist / "Not saved" note.
   // pageTitle: document.title (song title while a song is open, else SoftChord).
@@ -1663,11 +1684,15 @@
     if (songbookMenu && !songbookMenu.hidden && !songbookMenu.contains(event.target)) {
       closeSongbookMenu();
     }
+    if (accountMenu && !accountMenu.hidden && !accountMenu.contains(event.target)) {
+      closeAccountMenu();
+    }
   });
 
   if (songbookMenuButton) {
     songbookMenuButton.addEventListener("click", function (event) {
       event.stopPropagation();
+      closeAccountMenu();
       if (songbookMenu.hidden) {
         openSongbookMenu();
       } else {
@@ -1695,12 +1720,392 @@
     });
   }
 
-  if (signInButton) {
-    signInButton.addEventListener("click", function () {
-      var note = NOT_AVAILABLE["sign-in"];
-      notify(note[0], note[1]);
+  // API origin: window.SOFTCHORD_API_ORIGIN when it is non-empty, otherwise
+  // <meta name="softchord-api-origin">. config.js leaves the window value
+  // empty so a meta tag can still set it. Unset, file://, or not an http(s)
+  // origin: no auth request is made.
+  function configuredApiOrigin() {
+    if (location.protocol === "file:") {
+      return "";
+    }
+    var raw = "";
+    if (typeof window.SOFTCHORD_API_ORIGIN === "string" && window.SOFTCHORD_API_ORIGIN.trim()) {
+      raw = window.SOFTCHORD_API_ORIGIN.trim();
+    } else {
+      var meta = document.querySelector('meta[name="softchord-api-origin"]');
+      if (meta && meta.content && meta.content.trim()) {
+        raw = meta.content.trim();
+      }
+    }
+    if (!raw) {
+      return "";
+    }
+    try {
+      var url = new URL(raw);
+      if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
+        return "";
+      }
+      return url.origin;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function normalizeEmail(value) {
+    var email = String(value || "").trim().toLowerCase();
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) {
+      return "";
+    }
+    return email;
+  }
+
+  function showAuthError(el, text) {
+    if (!el) {
+      return;
+    }
+    el.textContent = text || "";
+    el.hidden = !text;
+  }
+
+  function verifierPair() {
+    var bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    var binary = "";
+    for (var i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    var verifier = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)).then(function (digest) {
+      var hashBytes = new Uint8Array(digest);
+      var hash = "";
+      for (var j = 0; j < hashBytes.length; j++) {
+        hash += hashBytes[j].toString(16).padStart(2, "0");
+      }
+      return { verifier: verifier, hash: hash };
     });
   }
+
+  function closeAccountMenu() {
+    if (accountMenu) {
+      accountMenu.hidden = true;
+    }
+    if (signInButton && accountEmail) {
+      signInButton.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function openAccountMenu() {
+    if (!accountMenu || !signInButton) {
+      return;
+    }
+    closeSongbookMenu();
+    if (menu) {
+      menu.hidden = true;
+    }
+    accountMenu.hidden = false;
+    signInButton.setAttribute("aria-expanded", "true");
+    var rect = signInButton.getBoundingClientRect();
+    accountMenu.style.top = (rect.bottom + 4) + "px";
+    accountMenu.style.left = "0px";
+    var box = accountMenu.getBoundingClientRect();
+    var left = rect.right - box.width;
+    accountMenu.style.left = Math.max(8, Math.min(left, window.innerWidth - box.width - 8)) + "px";
+    box = accountMenu.getBoundingClientRect();
+    if (box.bottom > window.innerHeight - 8) {
+      accountMenu.style.top = Math.max(8, rect.top - box.height - 4) + "px";
+    }
+  }
+
+  function renderAccount() {
+    var offline = navigator.onLine === false;
+    var signedIn = !!accountEmail;
+    if (signInOffline) {
+      signInOffline.hidden = signedIn || !offline;
+    }
+    if (!signInButton) {
+      return;
+    }
+    if (signedIn) {
+      signInButton.disabled = false;
+      signInButton.textContent = accountEmail;
+      signInButton.title = accountEmail;
+      signInButton.setAttribute("aria-haspopup", "menu");
+      signInButton.setAttribute("aria-controls", "account-menu");
+      if (!signInButton.hasAttribute("aria-expanded")) {
+        signInButton.setAttribute("aria-expanded", "false");
+      }
+      signInButton.removeAttribute("aria-describedby");
+      return;
+    }
+    closeAccountMenu();
+    signInButton.textContent = "Sign in";
+    signInButton.removeAttribute("title");
+    signInButton.removeAttribute("aria-haspopup");
+    signInButton.removeAttribute("aria-controls");
+    signInButton.removeAttribute("aria-expanded");
+    signInButton.disabled = offline;
+    if (offline && signInOffline) {
+      signInButton.setAttribute("aria-describedby", "sign-in-offline");
+    } else {
+      signInButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  function resetSignInPanel() {
+    if (signInRequest) {
+      signInRequest.hidden = false;
+    }
+    if (signInCheck) {
+      signInCheck.hidden = true;
+    }
+    showAuthError(signInError, "");
+    showAuthError(signInCheckError, "");
+    if (signInPanel) {
+      signInPanel.setAttribute("aria-labelledby", "sign-in-title");
+    }
+    if (signInSend) {
+      signInSend.disabled = navigator.onLine === false;
+    }
+    if (signInResend) {
+      signInResend.disabled = navigator.onLine === false;
+    }
+  }
+
+  function showCheckEmail(email) {
+    pendingEmail = email;
+    if (signInAddress) {
+      signInAddress.textContent = email;
+    }
+    if (signInRequest) {
+      signInRequest.hidden = true;
+    }
+    if (signInCheck) {
+      signInCheck.hidden = false;
+    }
+    showAuthError(signInCheckError, "");
+    if (signInPanel) {
+      signInPanel.setAttribute("aria-labelledby", "sign-in-check-title");
+    }
+    if (signInResend) {
+      signInResend.disabled = navigator.onLine === false;
+    }
+  }
+
+  function openSignInPanel() {
+    if (!signInPanel || typeof signInPanel.showModal !== "function") {
+      notify(NOT_CONFIGURED[0], NOT_CONFIGURED[1]);
+      return;
+    }
+    closeSongbookMenu();
+    closeAccountMenu();
+    resetSignInPanel();
+    if (!signInPanel.open) {
+      signInPanel.showModal();
+    }
+    if (signInEmail) {
+      signInEmail.focus();
+    }
+  }
+
+  function postLink(email, errorEl, button) {
+    var origin = configuredApiOrigin();
+    if (!origin || navigator.onLine === false) {
+      showAuthError(errorEl, "Offline");
+      return;
+    }
+    var ticket = ++linkRequest;
+    if (button) {
+      button.disabled = true;
+    }
+    showAuthError(errorEl, "");
+    verifierPair().then(function (pair) {
+      return fetch(origin + "/api/auth/request-link", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: email,
+          client: "web",
+          verifier: pair.verifier,
+          verifier_hash: pair.hash,
+        }),
+      });
+    }).then(function (response) {
+      if (ticket !== linkRequest) {
+        return;
+      }
+      if (response.status === 200) {
+        showCheckEmail(email);
+        return;
+      }
+      showAuthError(errorEl, response.status === 400
+        ? "That email address is not valid."
+        : "Could not sign in.");
+    }).catch(function () {
+      if (ticket !== linkRequest) {
+        return;
+      }
+      showAuthError(errorEl, "Could not reach the server.");
+    }).then(function () {
+      if (button && ticket === linkRequest) {
+        button.disabled = navigator.onLine === false;
+      }
+    });
+  }
+
+  function submitSignInEmail() {
+    var email = normalizeEmail(signInEmail && signInEmail.value);
+    if (!email) {
+      showAuthError(signInError, "That email address is not valid.");
+      return;
+    }
+    postLink(email, signInError, signInSend);
+  }
+
+  function applySignedOut() {
+    meRequest += 1;
+    accountEmail = null;
+    closeAccountMenu();
+    renderAccount();
+  }
+
+  function refreshMe() {
+    var origin = configuredApiOrigin();
+    if (!origin) {
+      return;
+    }
+    var ticket = ++meRequest;
+    fetch(origin + "/api/me", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    }).then(function (response) {
+      if (ticket !== meRequest) {
+        return null;
+      }
+      if (response.status !== 200) {
+        accountEmail = null;
+        renderAccount();
+        return null;
+      }
+      return response.json();
+    }).then(function (body) {
+      if (!body || ticket !== meRequest) {
+        return;
+      }
+      if (typeof body.email === "string" && body.email) {
+        accountEmail = body.email;
+        if (signInPanel && signInPanel.open) {
+          signInPanel.close();
+        }
+      } else {
+        accountEmail = null;
+      }
+      renderAccount();
+    }).catch(function () {
+      if (ticket !== meRequest) {
+        return;
+      }
+      renderAccount();
+    });
+  }
+
+  function signOut() {
+    var origin = configuredApiOrigin();
+    closeAccountMenu();
+    if (!origin) {
+      applySignedOut();
+      return;
+    }
+    fetch(origin + "/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+    }).then(function (response) {
+      if (response.status === 200 || response.status === 401) {
+        applySignedOut();
+        return;
+      }
+      notify("Could not sign out", "The server could not be reached.");
+    }).catch(function () {
+      notify("Could not sign out", "The server could not be reached.");
+    });
+  }
+
+  if (signInButton) {
+    signInButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      if (accountEmail) {
+        if (accountMenu && !accountMenu.hidden) {
+          closeAccountMenu();
+        } else {
+          openAccountMenu();
+        }
+        return;
+      }
+      if (!configuredApiOrigin()) {
+        notify(NOT_CONFIGURED[0], NOT_CONFIGURED[1]);
+        return;
+      }
+      if (navigator.onLine === false || signInButton.disabled) {
+        return;
+      }
+      openSignInPanel();
+    });
+  }
+
+  if (signInForm) {
+    signInForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      submitSignInEmail();
+    });
+  }
+
+  if (signInPanel) {
+    signInPanel.addEventListener("close", function () {
+      linkRequest += 1;
+      resetSignInPanel();
+    });
+    var signInCancel = document.getElementById("sign-in-cancel");
+    var signInCheckCancel = document.getElementById("sign-in-check-cancel");
+    if (signInCancel) {
+      signInCancel.addEventListener("click", function () {
+        signInPanel.close();
+      });
+    }
+    if (signInCheckCancel) {
+      signInCheckCancel.addEventListener("click", function () {
+        signInPanel.close();
+      });
+    }
+  }
+
+  if (signInResend) {
+    signInResend.addEventListener("click", function () {
+      if (!pendingEmail) {
+        return;
+      }
+      postLink(pendingEmail, signInCheckError, signInResend);
+    });
+  }
+
+  if (accountMenu) {
+    accountMenu.addEventListener("click", function (event) {
+      var button = event.target.closest("button");
+      if (button && button.id === "sign-out") {
+        signOut();
+      }
+    });
+  }
+
+  window.addEventListener("offline", renderAccount);
+  window.addEventListener("online", function () {
+    renderAccount();
+    refreshMe();
+  });
+  renderAccount();
+  refreshMe();
 
   if (songbookFile) {
     songbookFile.addEventListener("change", function () {
@@ -1800,7 +2205,11 @@
     }
     // Escape closes the notice dialog itself. It must not also change the song.
     // The same for the dialog that asks before leaving: Escape is Cancel.
-    if (event.defaultPrevented || notice.open || leaveDialog.open) {
+    if (event.defaultPrevented || notice.open || leaveDialog.open || (signInPanel && signInPanel.open)) {
+      return;
+    }
+    if (accountMenu && !accountMenu.hidden) {
+      closeAccountMenu();
       return;
     }
     if (songbookMenu && !songbookMenu.hidden) {
