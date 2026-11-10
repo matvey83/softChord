@@ -130,24 +130,25 @@ Discard Changes (Esc).
 Tested offscreen (`TestSaveAndDiscard` in `src/test_song.py`, the dialog mocked).
 Not tried by hand: a real ⌘Q, logout and shutdown, and the dialog as a sheet.
 
-## iPhone: Edit Text… and Edit Chords…
+## iPhone: Chords and Lyrics
 
-The song page's ⋯ menu has Edit Text… and Edit Chords…. While editing, Discard and
-Save show under the transpose buttons (Discard first). Save keeps the edit for this
-run of the app (the songbook file is never written); Discard throws it away. Back
-does not ask.
+The song opens already editing, with a Chords or Lyrics switch in the toolbar.
+There is no separate Edit Text… or Edit Chords… mode. Save and Discard show when
+the draft is dirty (Discard first). Save keeps the edit for this run of the app
+(the songbook file is never written) and stays in edit; Discard throws the
+changes away and stays on the same segment. Back, with a dirty draft, asks Save,
+Don't Save, or Cancel.
 
-- A transpose while viewing is a change too: Discard and Save show next to the
-  transpose buttons. Save keeps the key for this run, so the song opens in it again;
+- A transpose is a change too: Discard and Save show next to the transpose
+  buttons. Save keeps the key for this run, so the song opens in it again;
   Discard goes back to the kept key. Back at that key, or a whole octave away, is no
   change. Reset transpose goes to the songbook's key, so after Save it is a change.
-- An edit opened after a transpose takes it in: Save keeps both, Discard puts both
-  back.
 - The note at the bottom says "Changes do not persist" while something is not
   saved, and "Not written to the songbook" for a saved edit or transpose (with
   "Transpose does not persist." when a saved edit is shown in a key not saved).
-- Copy, Copy as image and Add to Photos copy the song as it is shown.
-- In Edit Chords…, Undo and Redo (under Edit chord and Delete chord) step through
-  the chord changes of the edit: a move (one drag is one step), a typed chord, a
-  delete. They are dropped on Save and Discard. Undone back to the start is no
-  change.
+- Copy, Copy as image, Print and Add to Photos use the song as it is shown,
+  including an unsaved draft.
+- Undo and Redo work in both Chords and Lyrics, and step through the text and
+  chord changes of the draft: a move (one drag is one step), a typed chord, a
+  delete, and lyric edits. They are dropped on Save and Discard. Undone back to
+  the start is no change.

@@ -50,7 +50,7 @@ cd softChord_web
 node --test
 ```
 
-The tests of the Edit text and Edit chords modes and the layout drive the real page in headless Chrome. Chrome is found in the usual places, or set `CHROME_BIN` to its path. Without Chrome those tests are **skipped, not passed**: the run prints a `WARNING ... did NOT run` message and reports them as skipped. To make a missing Chrome a failure (for a CI that must test the browser), run with `SOFTCHORD_REQUIRE_BROWSER=1 node --test`.
+The tests of the Chords and Lyrics editor and the layout drive the real page in headless Chrome. Chrome is found in the usual places, or set `CHROME_BIN` to its path. Without Chrome those tests are **skipped, not passed**: the run prints a `WARNING ... did NOT run` message and reports them as skipped. To make a missing Chrome a failure (for a CI that must test the browser), run with `SOFTCHORD_REQUIRE_BROWSER=1 node --test`.
 
 ### iOS
 
@@ -120,11 +120,12 @@ apps; change all of them together. The main places:
 
 The toolbar wraps the same way in all three, measured rather than at a fixed
 width: the width of the buttons on one row is worked out for every mode
-(viewing, Edit Text, Edit Chords, each with what it hides) and the widest
-decides (it is viewing with Save and Discard showing). When it fits, every
-mode is one row; when it does not, the edit groups (Edit, the chord buttons,
-Undo and Redo, Discard and Save) start the next row in every mode, so the
-rows do not move when the mode changes. On the web and iOS only the buttons
+(Chords with Discard and Save, Lyrics with Discard and Save, and clean
+Chords, each with what it hides) and the widest decides (Chords with Save
+and Discard showing). When it fits, every segment is one row; when it does
+not, the edit groups (the chord buttons, Undo and Redo, Discard and Save)
+start the next row in every segment, so the rows do not move when the
+segment changes. On the web and iOS only the buttons
 are measured: one row holds Back, the title (at least 60 px) and the 38 px
 buttons; else Back and the title sit above the 34 px buttons, which follow
 the rule above. See `layoutToolbar` (viewer.js), `SongToolbarMetrics`

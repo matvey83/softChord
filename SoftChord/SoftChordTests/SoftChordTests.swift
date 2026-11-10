@@ -15,7 +15,7 @@ import UIKit
 struct SoftChordTests {
 
     @Test func songMenuListsTheShareCommands() {
-        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: nil)
+        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in })
         let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
         #expect(titles == [
             "Copy song text",
@@ -67,17 +67,11 @@ struct SoftChordTests {
         }
     }
 
-    @Test func songPageMenuAddsLyrics() {
-        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: {})
-        let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
-        #expect(titles.last == "Lyrics")
-    }
-
     @Test func songPageMenuAddsChordsAndLyrics() {
         let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onSelectSegment: { _ in })
         let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
         #expect(Array(titles.suffix(2)) == ["Chords", "Lyrics"])
-        let listMenu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: nil)
+        let listMenu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in })
         let listTitles = listMenu.children.compactMap { ($0 as? UIAction)?.title }
         #expect(!listTitles.contains("Chords") && !listTitles.contains("Lyrics"))
     }
@@ -234,7 +228,8 @@ struct SoftChordTests {
     }
 
     /// Undo and Redo stay with the draft when the segment flips. Undoing back
-    /// to the last save hides Discard and Save.
+    /// to the last save hides Discard and Save; Redo across segments brings
+    /// the change back.
     @Test @MainActor func undoFollowsTheDraftAcrossSegmentsAndClearsDirty() async throws {
         SongSessionEdits.reset()
         defer { SongSessionEdits.reset() }
@@ -257,13 +252,52 @@ struct SoftChordTests {
         pressButton("Undo", in: window)
         await settle()
         #expect(!onScreen("Save"))
+        #expect(isEnabled("Redo", in: window))
         pressButton("Lyrics", in: window)
         await waitUntil(in: window) { view in
             view.descendants(of: UITextView.self).isEmpty == false
         }
-        let again = try #require(window.descendants(of: UITextView.self).first)
-        #expect(again.text == original)
+        let undone = try #require(window.descendants(of: UITextView.self).first)
+        #expect(undone.text == original)
         #expect(!onScreen("Save"))
+        #expect(isEnabled("Redo", in: window))
+        pressButton("Redo", in: window)
+        await settle()
+        let redone = try #require(window.descendants(of: UITextView.self).first)
+        #expect(redone.text.hasPrefix("Q"))
+        #expect(onScreen("Save"))
+        window.isHidden = true
+    }
+
+    /// Discard on Chords after a lyric edit restores the text and stays on Chords.
+    @Test @MainActor func discardOnChordsRestoresALyricEdit() async throws {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let title = try #require(try Songbook.titles().first)
+        let window = show(UIHostingController(rootView: SongListHarness(song: title)))
+        await settle()
+        try await openEditor(in: window)
+        let field = try #require(window.descendants(of: UITextView.self).first)
+        let original = field.text ?? ""
+        field.selectedRange = NSRange(location: 0, length: 0)
+        field.insertText("Q")
+        await settle()
+        pressButton("Chords", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty && self.onScreen("Add chord")
+        }
+        #expect(onScreen("Save") && onScreen("Add chord"))
+        pressButton("Discard", in: window)
+        await settle()
+        #expect(onScreen("Add chord"))
+        #expect(!onScreen("Save"))
+        #expect(SongSessionEdits.copy(for: title.id) == nil)
+        pressButton("Lyrics", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty == false
+        }
+        let restored = try #require(window.descendants(of: UITextView.self).first)
+        #expect(restored.text == original)
         window.isHidden = true
     }
 
@@ -600,6 +634,95 @@ struct SoftChordTests {
             characterNum: 0, noteId: 7, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false)
         let deleted = SongLyricChords.moved([onTheFirstLetter, chord], from: "Hello", to: "ello")
         #expect(deleted.map(\.characterNum) == [3])
+    }
+
+    /// Back with a dirty draft asks Save, Don't Save, or Cancel, from Chords
+    /// and from Lyrics. Cancel stays; Don't Save restores the start; Save keeps
+    /// the edit.
+    @Test func dirtyLeavePromptActionsFromChordsAndLyrics() {
+        #expect(SongLeavePrompt.actions == ["Save", "Don\u{2019}t Save", "Cancel"])
+        #expect(SongLeavePrompt.shouldAsk(dirty: true) && !SongLeavePrompt.shouldAsk(dirty: false))
+        #expect(SongLeavePrompt.outcome(for: .cancel) == .stay)
+        #expect(SongLeavePrompt.outcome(for: .save) == .leave(save: true))
+        #expect(SongLeavePrompt.outcome(for: .dontSave) == .leave(save: false))
+        #expect(SongLeavePrompt.title(for: "Song").contains("Song"))
+        #expect(!SongLeavePrompt.message.isEmpty)
+
+        let startChords = [SongChord.from(text: "C", characterNum: 0)]
+        for segment in [SongEditSegment.chords, SongEditSegment.lyrics] {
+            var draft = SongDraftHistory(text: "Hello", chords: startChords)
+            let start = draft.current
+            if segment == .lyrics {
+                draft.push(SongChordEditState(text: "QHello", chords: draft.chords))
+            } else {
+                draft.push(SongChordEditState(
+                    text: draft.text,
+                    chords: SongLyricChords.replaced(draft.chords, at: 0, withText: "G", steps: 0)))
+            }
+            #expect(SongLeavePrompt.shouldAsk(dirty: draft.current != start), "\(segment)")
+
+            var cancelled = draft
+            var cancelledStart = start
+            #expect(SongLeavePrompt.applying(.cancel, to: &cancelled, start: &cancelledStart) == .stay)
+            #expect(cancelled == draft && cancelledStart == start)
+
+            var discarded = draft
+            var discardedStart = start
+            #expect(SongLeavePrompt.applying(.dontSave, to: &discarded, start: &discardedStart) == .leave(save: false))
+            #expect(discarded.current == start)
+            #expect(discardedStart == start)
+            #expect(!SongLeavePrompt.shouldAsk(dirty: discarded.current != discardedStart))
+
+            var kept = draft
+            var keptStart = start
+            #expect(SongLeavePrompt.applying(.save, to: &kept, start: &keptStart) == .leave(save: true))
+            #expect(kept.current == draft.current)
+            #expect(keptStart == draft.current)
+            #expect(!SongLeavePrompt.shouldAsk(dirty: kept.current != keptStart))
+        }
+    }
+
+    /// One drag is one undo step. Later finger moves update that step, so
+    /// Redo, and Undo after a later edit, restore the drop, not the first landing.
+    @Test func draggingThenUndoAndRedoRestoresTheDrop() {
+        var draft = SongDraftHistory(
+            text: "Hi you\nab",
+            chords: [
+                SongChord.from(text: "G", characterNum: 5),
+                SongChord.from(text: "D", characterNum: 7),
+            ])
+        draft.beginDrag()
+        var at = 5
+        let first = draft.moveChord(from: at, to: at + 1, roomAt: at)
+        at = first.moved(at + 1)
+        let firstState = draft.states[draft.index]
+        for _ in 0..<4 {
+            let moved = draft.moveChord(from: at, to: at + 1, roomAt: at)
+            at = moved.moved(at + 1)
+        }
+        let dropText = draft.text
+        let dropChords = draft.chords
+        #expect(draft.text != "Hi you\nab")
+        #expect(dropChords.map(\.characterNum) != [5, 7])
+        #expect(draft.states[draft.index] != firstState)
+        #expect(draft.states[draft.index] == SongChordEditState(text: dropText, chords: dropChords))
+
+        draft.undo()
+        #expect(draft.text == "Hi you\nab")
+        #expect(draft.chords.map(\.characterNum) == [5, 7])
+
+        draft.redo()
+        #expect(draft.text == dropText)
+        #expect(draft.chords == dropChords)
+
+        // A later edit, then Undo, still returns to the drop, not the first step.
+        draft.push(SongChordEditState(
+            text: dropText,
+            chords: SongLyricChords.replaced(dropChords, at: at, withText: "C", steps: 0)))
+        #expect(draft.chords != dropChords)
+        draft.undo()
+        #expect(draft.text == dropText)
+        #expect(draft.chords == dropChords)
     }
 
     @Test func draggingAChordAttachesItToAnotherLetter() {

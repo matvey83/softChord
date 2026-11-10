@@ -104,8 +104,10 @@ a desktop browser with a phone-sized window, not on a real phone.
   typed. When the editor closes it goes again, unless something is kept (see Save)
   or the song is transposed. So Discard, and Save with nothing changed, show no note.
 - The buttons are **Discard** then **Save**, the same names and order as in the
-  desktop and iPhone apps ("Edit Text…" and "Edit Chords…" are the edit buttons'
-  titles).
+  desktop and iPhone apps. Those apps use a Chords or Lyrics switch rather than
+  separate Edit Text… and Edit Chords… buttons. Save and Discard show when the
+  draft is dirty. On iPhone, Back asks Save, Don't Save, or Cancel, and Undo
+  works in both modes.
 - **Save** keeps the edited text and chords as the song's text for this page
   visit. Viewer, Copy and Print use them afterwards, and "Changes do not
   persist" stays shown. The songbook is never written. **Discard** throws the edit

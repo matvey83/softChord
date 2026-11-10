@@ -178,7 +178,7 @@ private struct SongRowMenuInstaller: UIViewRepresentable {
             let songId = self.songId
             let report = self.report
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-                SongShareMenu.menu(songId: { songId }, report: report, onEdit: nil)
+                SongShareMenu.menu(songId: { songId }, report: report)
             }
         }
 
@@ -230,8 +230,6 @@ enum SongShareMenu {
     static func menu(
         songId: @escaping () -> Int,
         report: @escaping (String, String) -> Void,
-        onEdit: (() -> Void)? = nil,
-        onEditChords: (() -> Void)? = nil,
         onSelectSegment: ((SongEditSegment) -> Void)? = nil,
         shown: (() -> SongSource?)? = nil
     ) -> UIMenu {
@@ -263,17 +261,6 @@ enum SongShareMenu {
             children.append(UIAction(title: "Lyrics") { _ in
                 onSelectSegment(.lyrics)
             })
-        } else {
-            if let onEditChords {
-                children.append(UIAction(title: "Chords") { _ in
-                    onEditChords()
-                })
-            }
-            if let onEdit {
-                children.append(UIAction(title: "Lyrics") { _ in
-                    onEdit()
-                })
-            }
         }
         return UIMenu(children: children)
     }

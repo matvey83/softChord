@@ -303,13 +303,13 @@ struct SongPage: View {
                         onBack: backTapped, onButton: toolbarTapped)
                 // MIRRORED UI: the desktop's Save / Don't Save / Cancel sheet
                 // (softchord_session.py _leaveEditMessageBox) and viewer.js leave-confirm.
-                .alert("Do you want to save the changes you made to \u{201C}\(title)\u{201D}?",
+                .alert(SongLeavePrompt.title(for: title),
                        isPresented: $askingToLeave) {
-                    Button("Save") { finishAndLeave(save: true) }
-                    Button("Don\u{2019}t Save", role: .destructive) { finishAndLeave(save: false) }
-                    Button("Cancel", role: .cancel) {}
+                    Button(SongLeavePrompt.Action.save.rawValue) { finishAndLeave(save: true) }
+                    Button(SongLeavePrompt.Action.dontSave.rawValue, role: .destructive) { finishAndLeave(save: false) }
+                    Button(SongLeavePrompt.Action.cancel.rawValue, role: .cancel) {}
                 } message: {
-                    Text("Your changes will be lost if you don\u{2019}t save them.")
+                    Text(SongLeavePrompt.message)
                 }
         }
         .onChange(of: popWhenReady) { _, pop in
@@ -336,9 +336,6 @@ struct SongPage: View {
         // it: a fixed spot above the bottom edge (the keyboard's top while it is
         // up), with room left for the banner whether it is shown or not.
         // MIRRORED UI: viewer.css #toast (fixed, 24px from the bottom).
-        .onAppear {
-            startOpenDraftIfNeeded()
-        }
         .overlay(alignment: .bottom) {
             if let toast {
                 // A long note wraps to 2 lines, and shrinks a little before it is cut.
@@ -425,22 +422,6 @@ struct SongPage: View {
                 showToast("Saved")
             }
         }
-    }
-
-    /// Start the always-open draft if this page has a song and is not yet editing.
-    private func startOpenDraftIfNeeded() {
-        guard source != nil, !editing, !editingChords else {
-            return
-        }
-        let start = SongChordEditState(text: shownText ?? source?.text ?? "", chords: shownChords ?? source?.chords ?? [])
-        draft = start.text
-        editChords = start.chords
-        draftStart = start
-        draftHistory = [start]
-        draftIndex = 0
-        let segment = SongEditSegment.forOpen(text: start.text)
-        editing = segment == .lyrics
-        editingChords = segment == .chords
     }
 
     /// MIRRORED UI: viewer.js selectSegment and the desktop's startEdit.
@@ -545,14 +526,14 @@ struct SongPage: View {
     /// MIRRORED: softchord_chord_mode.js dragTo, softchord_session.py placeChord.
     private func moveChord(from: Int, to: Int, roomAt: Int?) {
         let moved = SongLyricChords.movedWithRoom(editChords, in: draft, from: from, to: to, roomAt: roomAt)
-        // Every step of one drag is the same change.
-        if dragRecorded {
-            draft = moved.text
-            editChords = moved.chords
-        } else {
-            dragRecorded = true
-            setChords(moved.chords, text: moved.text)
-        }
+        // Every step of one drag is the same undo change. Later steps update
+        // the current history entry so Undo and Redo restore the drop.
+        let next = SongChordEditState(text: moved.text, chords: moved.chords)
+        SongDraftHistory.applyingDragStep(
+            next, to: &draftHistory, index: &draftIndex, dragRecorded: &dragRecorded,
+            current: chordEditState)
+        draft = next.text
+        editChords = next.chords
     }
 
     private func undoDraftChange() {
@@ -670,7 +651,7 @@ struct SongPage: View {
     }
 
     private func backTapped() {
-        if hasUnsavedChanges {
+        if SongLeavePrompt.shouldAsk(dirty: hasUnsavedChanges) {
             askingToLeave = true
         } else {
             leaveSong()
@@ -1724,6 +1705,158 @@ private final class SongSheetUIView: UIView {
 struct SongChordEditState: Equatable {
     var text: String
     var chords: [SongChord]
+}
+
+/// Undo list for one song draft. One drag is one step: the first finger
+/// move is pushed, and later moves update that entry so Redo (and Undo
+/// after a later edit) restore the drop position, not the first landing.
+struct SongDraftHistory: Equatable {
+    var states: [SongChordEditState]
+    var index: Int
+    var text: String
+    var chords: [SongChord]
+    var dragRecorded = false
+
+    init(text: String, chords: [SongChord]) {
+        let start = SongChordEditState(text: text, chords: chords)
+        states = [start]
+        index = 0
+        self.text = text
+        self.chords = chords
+    }
+
+    var current: SongChordEditState {
+        SongChordEditState(text: text, chords: chords)
+    }
+
+    mutating func beginDrag() {
+        dragRecorded = false
+    }
+
+    /// One step of a drag. `to` is a letter of the text with room right of the
+    /// line that holds `roomAt` (SongLyricChords.withRoom).
+    @discardableResult
+    mutating func moveChord(from: Int, to: Int, roomAt: Int?) -> SongLyricChords.ChordTidy {
+        let moved = SongLyricChords.movedWithRoom(chords, in: text, from: from, to: to, roomAt: roomAt)
+        applyDragStep(SongChordEditState(text: moved.text, chords: moved.chords))
+        return moved
+    }
+
+    mutating func applyDragStep(_ moved: SongChordEditState) {
+        SongDraftHistory.applyingDragStep(
+            moved, to: &states, index: &index, dragRecorded: &dragRecorded, current: current)
+        text = moved.text
+        chords = moved.chords
+    }
+
+    /// Puts a new state on the list, after the current index, and drops redo steps.
+    mutating func push(_ next: SongChordEditState) {
+        guard next != current else {
+            return
+        }
+        if index + 1 < states.count {
+            states.removeSubrange((index + 1)...)
+        }
+        states.append(next)
+        index = states.count - 1
+        text = next.text
+        chords = next.chords
+    }
+
+    mutating func undo() {
+        apply(index - 1)
+    }
+
+    mutating func redo() {
+        apply(index + 1)
+    }
+
+    mutating func apply(_ newIndex: Int) {
+        guard states.indices.contains(newIndex) else {
+            return
+        }
+        index = newIndex
+        text = states[newIndex].text
+        chords = states[newIndex].chords
+    }
+
+    /// First drag step is a new undo entry; later steps replace that entry.
+    /// `current` is the live draft, used so a no-op first step does not push.
+    static func applyingDragStep(
+        _ moved: SongChordEditState,
+        to history: inout [SongChordEditState],
+        index: inout Int,
+        dragRecorded: inout Bool,
+        current: SongChordEditState
+    ) {
+        if dragRecorded {
+            history[index] = moved
+            return
+        }
+        dragRecorded = true
+        guard moved != current else {
+            return
+        }
+        if index + 1 < history.count {
+            history.removeSubrange((index + 1)...)
+        }
+        history.append(moved)
+        index = history.count - 1
+    }
+}
+
+/// Back, with a dirty draft, asks Save, Don't Save, or Cancel. Cancel stays;
+/// Save keeps the draft for this run and leaves; Don't Save restores the last
+/// save and leaves. The same prompt is used from Chords and from Lyrics.
+enum SongLeavePrompt {
+    enum Action: String, CaseIterable {
+        case save = "Save"
+        case dontSave = "Don\u{2019}t Save"
+        case cancel = "Cancel"
+    }
+
+    enum Outcome: Equatable {
+        case stay
+        case leave(save: Bool)
+    }
+
+    static let message = "Your changes will be lost if you don\u{2019}t save them."
+    static let actions = Action.allCases.map(\.rawValue)
+
+    static func title(for songTitle: String) -> String {
+        "Do you want to save the changes you made to \u{201C}\(songTitle)\u{201D}?"
+    }
+
+    static func shouldAsk(dirty: Bool) -> Bool {
+        dirty
+    }
+
+    static func outcome(for action: Action) -> Outcome {
+        switch action {
+        case .save: return .leave(save: true)
+        case .dontSave: return .leave(save: false)
+        case .cancel: return .stay
+        }
+    }
+
+    /// Cancel leaves the draft as it is. Save rebases the start to the current
+    /// text. Don't Save restores the start.
+    @discardableResult
+    static func applying(
+        _ action: Action, to draft: inout SongDraftHistory, start: inout SongChordEditState
+    ) -> Outcome {
+        let result = outcome(for: action)
+        switch result {
+        case .stay:
+            break
+        case .leave(save: true):
+            start = draft.current
+            draft = SongDraftHistory(text: start.text, chords: start.chords)
+        case .leave(save: false):
+            draft = SongDraftHistory(text: start.text, chords: start.chords)
+        }
+        return result
+    }
 }
 
 private struct SongChordEditor: UIViewRepresentable {
