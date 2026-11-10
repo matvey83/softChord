@@ -185,8 +185,21 @@ test("Sign out everywhere posts logout-all and clears the signed-in header", { s
     var titles = await page.eval(titlesExpr());
     await click(page, "sign-in");
     await page.waitFor("!document.getElementById('account-menu').hidden", "the account menu");
+    await page.eval(
+      "window.__confirm = false; window.__confirms = [];" +
+      "window.confirm = function (message) { window.__confirms.push(message); return window.__confirm; };");
+    await click(page, "sign-out-all");
+    assert.deepEqual(await page.eval("window.__confirms"), ["Sign out of SoftChord on all your devices?"]);
+    assert.equal((await page.eval(callsExpr(logoutAll.path))).length, 0, "cancel sends no request");
+    assert.equal(await page.eval("document.getElementById('sign-in').textContent"), email);
+    assert.equal(await page.eval("document.getElementById('account-menu').hidden"), false, "cancel leaves the menu open");
+    await page.eval("window.__confirm = true");
     await click(page, "sign-out-all");
     await page.waitFor("document.getElementById('sign-in').textContent === 'Sign in'", "signed out everywhere");
+    assert.deepEqual(await page.eval("window.__confirms"), [
+      "Sign out of SoftChord on all your devices?",
+      "Sign out of SoftChord on all your devices?",
+    ]);
     assert.equal(await page.eval("document.getElementById('account-menu').hidden"), true);
     var calls = await page.eval(callsExpr(logoutAll.path));
     assert.equal(calls.length, 1);

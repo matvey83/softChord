@@ -2164,6 +2164,9 @@
       if (button && button.id === "sign-out") {
         signOut("/api/auth/logout");
       } else if (button && button.id === "sign-out-all") {
+        if (!window.confirm("Sign out of SoftChord on all your devices?")) {
+          return;
+        }
         signOut("/api/auth/logout-all");
       }
     });
