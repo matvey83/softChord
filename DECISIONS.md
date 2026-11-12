@@ -74,6 +74,20 @@ The sample songbook in `softchord_test.py` was already resolved from `__file__`.
 
 `test_read_only_new_format_file_opens_read_only_with_a_message` looked for lowercase `read-only` in the window title. It now expects `(Read-only)`. The message shown when a read-only songbook opens is unchanged and still says `read-only`.
 
+## 2026-11-10 — iOS Phase 1 songbook header
+
+- The pull request is based on current `master` (51df31e), which already has the iOS always-edit flow and PR #16 (chord room, hardware Left/Right in Chords). Web and desktop are not part of this change. Editing stays on that always-edit flow (a song opens already editing; Save and Discard stay in the edit).
+- The header is only on the song list. The song page is unchanged, including the "Changes do not persist" note. Back still asks before leaving a dirty song, which is how you reach the list.
+- Switching songbooks from the menu, or choosing Open from Files…, while the open song's draft is dirty, uses the existing Save / Don't Save / Cancel prompt. Cancel leaves the current songbook and the draft as they are. The file picker opens only after Save or Don't Save. This decision lives in `SongbookSession.request`. Because the header is on the list only, Back has usually already asked; the dirty path is covered by unit tests so it stays aligned with web PR 6.
+- Edits already saved for this launch are not "unsaved", so switching from the song list does not ask a second time. They are dropped once another songbook actually opens.
+- A file that is not a songbook, is the wrong format, is over 50 MB, cannot be read, or is an iCloud file that is not downloaded does not switch, and it does not drop a dirty draft or session edits. Cancelling the system file picker after Don't Save also leaves the draft, because no songbook was opened.
+- Save on that dialog still commits the draft the same way as leaving a song. If the switch then happens, those session edits are dropped with the old songbook.
+- Opened files are copied under a temporary directory for this launch only, then opened read-only. The original is not written. Each successful Open adds a row under My songbooks, including a repeat of the same name, and its temp copy is kept so switching back works (matching the web session list). Temps are removed on the next launch, not when another file is opened. The name shown is the file name with a trailing `.songbook` removed.
+- "Over 50 MB" means `file size > 50 * 1024 * 1024`. The size is checked before the file is copied or read.
+- The notice title for a file that cannot be opened is "Can't open songbook". A wrong format version shows the existing `SongbookError` message ("Update this app" for a newer file). An invalid file uses the file's name, including `.songbook`. Sign in and the account items use the wording from the spec, one OK button, and do not fetch.
+- File access refused uses "softChord can't read this file." An iCloud item whose downloading status is not current uses "This file isn't downloaded yet. Try again when you're online." Those two cases were classified in unit tests, not checked on a device with a real iCloud placeholder.
+- The Code Reviewer Lows from PR 5 are fixed here: `SongPage` uses `SongDraftHistory` (push, undo, redo, moveChord) and `SongLeavePrompt.applying` for the leave prompt, so those tests guard the real path; `dragRecorded` is set only after a real push; a drag that ends where it started is not an undo step; the doc nits in `docs/chord_editing.md` and `docs/development.md` are corrected.
+
 ## Login
 
 ### 2026-11-10 — Magic link replaces the 6-digit code

@@ -146,12 +146,13 @@ by the desktop, bundled by `softchord.spec`) and the iOS imagesets.
 desktop-only `font-lyrics.svg` and `font-chords.svg` live in the same folder
 but are not drawn in `index.html`, so the script neither writes nor checks them.
 
-The song list header is the same kind of shared row, and it is pending on iOS.
-On the web (`softChord_web/index.html` `#songbook-header`, and
-`softChord_web/viewer.css`) the list shows the songbook name and ▾, the grey
-"Not saved" indicator, and Sign in, with Search below. The song page has no
-songbook header. iOS (`SoftChord/SoftChord/ContentView.swift`) does not have
-this row yet. Desktop keeps its own window title.
+The song list header is the same kind of shared row on the web and iOS.
+The list shows the songbook name and ▾, the grey "Not saved" indicator, and
+Sign in, with Search below. The song page has no songbook header. See
+`#songbook-header` in `softChord_web/index.html` and `softChord_web/viewer.css`,
+and `songbookHeader` in `SoftChord/SoftChord/ContentView.swift` (the menu and
+Open from Files are in `SongbookSession.swift`). Desktop keeps its own window
+title.
 
 ## Packaging and releases
 

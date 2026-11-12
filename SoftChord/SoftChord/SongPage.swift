@@ -9,20 +9,21 @@ import UIKit
 /// Letters, chords and the transpose kept after Save, for this run of the app.
 /// The songbook file is not changed. Quit the app and the copy is gone.
 enum SongSessionEdits {
-    struct Copy: Equatable {
+    nonisolated struct Copy: Equatable {
         var text: String?
         var chords: [SongChord]?
         /// The transpose kept with Save. The chords above are stored untransposed.
         var steps = 0
     }
 
-    private static var copies: [Int: Copy] = [:]
+    /// nonisolated(unsafe): read from nonisolated songbook-session helpers.
+    nonisolated(unsafe) private static var copies: [Int: Copy] = [:]
 
-    static func copy(for id: Int) -> Copy? {
+    nonisolated static func copy(for id: Int) -> Copy? {
         copies[id]
     }
 
-    static func save(id: Int, text: String?, chords: [SongChord]?, steps: Int = 0) {
+    nonisolated static func save(id: Int, text: String?, chords: [SongChord]?, steps: Int = 0) {
         if text == nil, chords == nil, steps == 0 {
             copies[id] = nil
         } else {
@@ -30,7 +31,7 @@ enum SongSessionEdits {
         }
     }
 
-    static func reset() {
+    nonisolated static func reset() {
         copies = [:]
     }
 
@@ -84,18 +85,12 @@ struct SongPage: View {
     @State private var askingToLeave = false
     @State private var toast: String?
     @State private var toastTask: Task<Void, Never>?
-    @State private var draft: String
-    /// Chord positions for the edit in progress. Note ids stay as stored.
-    @State private var editChords: [SongChord]
+    /// One undo history for text and chords, kept when the segment flips.
+    @State private var history: SongDraftHistory
     /// The last save: Discard and a clean draft compare to this. Mirror: viewer.js draft.start.
     @State private var draftStart: SongChordEditState
-    /// One undo history for text and chords, kept when the segment flips.
-    @State private var draftHistory: [SongChordEditState]
-    @State private var draftIndex: Int
     /// Raised when Lyrics must take the draft text while the field is first responder.
     @State private var lyricTextRevision = 0
-    /// Set when the first move of a drag has been put on the undo list.
-    @State private var dragRecorded = false
     /// Lyrics drawn after Save. Nil means the songbook text.
     /// Also kept for this run of the app, so opening the song again shows them.
     @State private var shownText: String?
@@ -128,11 +123,8 @@ struct SongPage: View {
         let initialText = kept?.text ?? source?.text ?? ""
         let initialChords = kept?.chords ?? source?.chords ?? []
         let start = SongChordEditState(text: initialText, chords: initialChords)
-        _draft = State(initialValue: initialText)
-        _editChords = State(initialValue: initialChords)
+        _history = State(initialValue: SongDraftHistory(text: initialText, chords: initialChords))
         _draftStart = State(initialValue: start)
-        _draftHistory = State(initialValue: [start])
-        _draftIndex = State(initialValue: 0)
         let segment = source == nil ? SongEditSegment.chords : SongEditSegment.forOpen(text: initialText)
         _editing = State(initialValue: source != nil && segment == .lyrics)
         _editingChords = State(initialValue: source != nil && segment == .chords)
@@ -151,7 +143,7 @@ struct SongPage: View {
         guard source != nil else {
             return nil
         }
-        return SongSource(text: draft, chords: SongTranspose.shifted(editChords, by: steps))
+        return SongSource(text: history.text, chords: SongTranspose.shifted(history.chords, by: steps))
     }
 
     /// True when the song is shown in another key than the one kept with Save.
@@ -159,7 +151,7 @@ struct SongPage: View {
         guard source != nil else {
             return false
         }
-        return SongTranspose.changesChords(steps - savedSteps, in: editChords)
+        return SongTranspose.changesChords(steps - savedSteps, in: history.chords)
     }
 
     /// An edit or a transpose that Back would lose. MIRRORED UI: viewer.js draftChanged.
@@ -168,7 +160,7 @@ struct SongPage: View {
         guard source != nil else {
             return false
         }
-        return stepsChanged || draft != draftStart.text || editChords != draftStart.chords
+        return stepsChanged || history.current != draftStart
     }
 
     /// MIRRORED UI: viewer.js persistNote. Shown while editing, and while the
@@ -178,14 +170,14 @@ struct SongPage: View {
             return nil
         }
         let kept = shownText != nil || shownChords != nil
-        let transposed = SongTranspose.changesChords(steps, in: editChords)
+        let transposed = SongTranspose.changesChords(steps, in: history.chords)
         return hasUnsavedChanges || kept || transposed ? "Changes do not persist" : nil
     }
 
     /// The note for a transpose, with the key the chords are shown in when one is
     /// found ("Transposed up to Am"), the auto-detected key moved by the steps.
     private func transposedNote(_ text: String, to joiner: String) -> String {
-        let chords = editChords
+        let chords = history.chords
         guard let key = SoftchordChords.bestDetectedKey(chords), key.score > 0 else {
             return text
         }
@@ -253,8 +245,8 @@ struct SongPage: View {
                 // while lyric_editor_mode is on. The field paints the letters,
                 // then the chords on top. A tap still places the caret.
                 SongLyricEditor(
-                    text: $draft,
-                    chords: SongTranspose.shifted(editChords, by: steps),
+                    text: draftText,
+                    chords: SongTranspose.shifted(history.chords, by: steps),
                     zoom: CGFloat(shownZoom) / 100,
                     textRevision: lyricTextRevision,
                     closeWhenKeyboardEnds: $closeWhenKeyboardEnds,
@@ -268,15 +260,15 @@ struct SongPage: View {
                 // The letters are read-only. A press selects a letter and its
                 // chord, and a drag moves the chord onto another letter.
                 SongChordEditor(
-                    text: draft,
-                    chords: SongTranspose.shifted(editChords, by: steps),
+                    text: history.text,
+                    chords: SongTranspose.shifted(history.chords, by: steps),
                     selection: $chordSelection,
                     zoom: CGFloat(shownZoom) / 100,
                     onPinched: pinched,
                     onFit: fitChanged,
                     onChordMoved: moveChord,
                     onChordNudged: nudgeSelectedChord,
-                    onDragBegan: { dragRecorded = false },
+                    onDragBegan: { history.beginDrag() },
                     onEditRequested: requestChordEdit
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -306,9 +298,9 @@ struct SongPage: View {
                 // (softchord_session.py _leaveEditMessageBox) and viewer.js leave-confirm.
                 .alert(SongLeavePrompt.title(for: title),
                        isPresented: $askingToLeave) {
-                    Button(SongLeavePrompt.Action.save.rawValue) { finishAndLeave(save: true) }
-                    Button(SongLeavePrompt.Action.dontSave.rawValue, role: .destructive) { finishAndLeave(save: false) }
-                    Button(SongLeavePrompt.Action.cancel.rawValue, role: .cancel) {}
+                    Button(SongLeavePrompt.Action.save.rawValue) { finishAndLeave(action: .save) }
+                    Button(SongLeavePrompt.Action.dontSave.rawValue, role: .destructive) { finishAndLeave(action: .dontSave) }
+                    Button(SongLeavePrompt.Action.cancel.rawValue, role: .cancel) { finishAndLeave(action: .cancel) }
                 } message: {
                     Text(SongLeavePrompt.message)
                 }
@@ -364,12 +356,12 @@ struct SongPage: View {
         SongToolbarState(
             chordMode: editingChords,
             pending: hasUnsavedChanges,
-            transposed: SongTranspose.changesChords(steps, in: editChords),
+            transposed: SongTranspose.changesChords(steps, in: history.chords),
             zoom: shownZoom,
             canZoom: true,
             selection: chordSelectionState,
-            canUndo: draftIndex > 0,
-            canRedo: draftIndex + 1 < draftHistory.count)
+            canUndo: history.canUndo,
+            canRedo: history.canRedo)
     }
 
     private func toolbarTapped(_ button: SongToolbarButton) {
@@ -469,56 +461,34 @@ struct SongPage: View {
         }
     }
 
-    private func lyricDraftChanged(_ newText: String) {
-        if newText == draft {
-            return
-        }
-        if draftIndex > 0, draftHistory[draftIndex - 1].text == newText {
-            applyHistory(draftIndex - 1, reviseLyrics: false)
-            return
-        }
-        if draftIndex + 1 < draftHistory.count, draftHistory[draftIndex + 1].text == newText {
-            applyHistory(draftIndex + 1, reviseLyrics: false)
-            return
-        }
-        let chords = SongLyricChords.moved(editChords, from: draft, to: newText)
-        pushHistory(SongChordEditState(text: newText, chords: chords))
+    /// The lyric field reads and writes the live draft text. Typing goes
+    /// through lyricDraftChanged, which pushes a history step.
+    private var draftText: Binding<String> {
+        Binding(
+            get: { history.text },
+            set: { _ in }
+        )
     }
 
-    private var chordEditState: SongChordEditState {
-        SongChordEditState(text: draft, chords: editChords)
+    private func lyricDraftChanged(_ newText: String) {
+        if newText == history.text {
+            return
+        }
+        if history.index > 0, history.states[history.index - 1].text == newText {
+            history.apply(history.index - 1)
+            return
+        }
+        if history.index + 1 < history.states.count, history.states[history.index + 1].text == newText {
+            history.apply(history.index + 1)
+            return
+        }
+        let chords = SongLyricChords.moved(history.chords, from: history.text, to: newText)
+        history.push(SongChordEditState(text: newText, chords: chords))
     }
 
     /// Puts the text and chords as they are now on the undo list, before a change.
     private func setChords(_ chords: [SongChord], text: String? = nil) {
-        pushHistory(SongChordEditState(text: text ?? draft, chords: chords))
-    }
-
-    private func pushHistory(_ next: SongChordEditState) {
-        guard next != chordEditState else {
-            return
-        }
-        if draftIndex + 1 < draftHistory.count {
-            draftHistory.removeSubrange((draftIndex + 1)...)
-        }
-        draftHistory.append(next)
-        draftIndex = draftHistory.count - 1
-        draft = next.text
-        editChords = next.chords
-    }
-
-    private func applyHistory(_ index: Int, reviseLyrics: Bool) {
-        guard draftHistory.indices.contains(index) else {
-            return
-        }
-        draftIndex = index
-        let state = draftHistory[index]
-        draft = state.text
-        editChords = state.chords
-        chordSelection = nil
-        if reviseLyrics, editing {
-            lyricTextRevision += 1
-        }
+        history.push(SongChordEditState(text: text ?? history.text, chords: chords))
     }
 
     /// One step of a drag. `to` is a letter of the text with room right of the
@@ -526,15 +496,9 @@ struct SongPage: View {
     /// chord left and went to lose the spaces no chord needs.
     /// MIRRORED: softchord_chord_mode.js dragTo, softchord_session.py placeChord.
     private func moveChord(from: Int, to: Int, roomAt: Int?) {
-        let moved = SongLyricChords.movedWithRoom(editChords, in: draft, from: from, to: to, roomAt: roomAt)
         // Every step of one drag is the same undo change. Later steps update
         // the current history entry so Undo and Redo restore the drop.
-        let next = SongChordEditState(text: moved.text, chords: moved.chords)
-        SongDraftHistory.applyingDragStep(
-            next, to: &draftHistory, index: &draftIndex, dragRecorded: &dragRecorded,
-            current: chordEditState)
-        draft = next.text
-        editChords = next.chords
+        _ = history.moveChord(from: from, to: to, roomAt: roomAt)
     }
 
     /// A hardware keyboard's Left (-1) or Right (1) arrow on the selected chord:
@@ -545,7 +509,7 @@ struct SongPage: View {
     private func nudgeSelectedChord(_ direction: Int) {
         guard editingChords, let selected = chordSelection,
               let nudge = SongLyricChords.nudgedWithRoom(
-                editChords, in: draft, from: selected, direction: direction) else {
+                history.chords, in: history.text, from: selected, direction: direction) else {
             return
         }
         setChords(nudge.tidy.chords, text: nudge.tidy.text)
@@ -553,17 +517,19 @@ struct SongPage: View {
     }
 
     private func undoDraftChange() {
-        guard draftIndex > 0 else {
-            return
+        history.undo()
+        chordSelection = nil
+        if editing {
+            lyricTextRevision += 1
         }
-        applyHistory(draftIndex - 1, reviseLyrics: true)
     }
 
     private func redoDraftChange() {
-        guard draftIndex + 1 < draftHistory.count else {
-            return
+        history.redo()
+        chordSelection = nil
+        if editing {
+            lyricTextRevision += 1
         }
-        applyHistory(draftIndex + 1, reviseLyrics: true)
     }
 
     /// What the buttons need to know: nothing picked, a letter, or a chord.
@@ -571,7 +537,7 @@ struct SongPage: View {
         guard let selected = chordSelection else {
             return .none
         }
-        return editChords.contains { $0.characterNum == selected } ? .chord : .letter
+        return history.chords.contains { $0.characterNum == selected } ? .chord : .letter
     }
 
     /// The text field starts with the chord as it is drawn, so a transposed
@@ -580,8 +546,8 @@ struct SongPage: View {
         guard editingChords, let characterNum else {
             return
         }
-        let shown = SongTranspose.shifted(editChords, by: steps)
-        let current = SongText.displayedChordText(text: draft, chords: shown, characterNum: characterNum)
+        let shown = SongTranspose.shifted(history.chords, by: steps)
+        let current = SongText.displayedChordText(text: history.text, chords: shown, characterNum: characterNum)
         chordRequest = SongChordEditRequest(
             characterNum: characterNum, initialText: current ?? "C", isNew: current == nil)
     }
@@ -594,7 +560,7 @@ struct SongPage: View {
             return
         }
         setChords(SongLyricChords.replaced(
-            editChords, at: request.characterNum, withText: text, steps: steps))
+            history.chords, at: request.characterNum, withText: text, steps: steps))
     }
 
     private func deleteSelectedChord() {
@@ -603,7 +569,7 @@ struct SongPage: View {
         }
         // The spaces only this chord needed at the end of its line go too.
         let tidy = SongLyricChords.tidied(
-            SongLyricChords.deleted(editChords, at: selected), in: draft, touched: [selected])
+            SongLyricChords.deleted(history.chords, at: selected), in: history.text, touched: [selected])
         setChords(tidy.chords, text: tidy.text)
         chordSelection = tidy.moved(selected)
     }
@@ -620,9 +586,8 @@ struct SongPage: View {
     }
 
     private func rebaseDraft() {
-        draftStart = SongChordEditState(text: draft, chords: editChords)
-        draftHistory = [draftStart]
-        draftIndex = 0
+        draftStart = history.current
+        history = SongDraftHistory(text: history.text, chords: history.chords)
     }
 
     private func saveDraft(switchToChords: Bool) {
@@ -637,31 +602,25 @@ struct SongPage: View {
     /// Discard restores the last save, including the key, and keeps the segment.
     private func discardDraft() {
         steps = savedSteps
-        applyHistorySnapshot(draftStart)
-        rebaseDraft()
+        history = SongDraftHistory(text: draftStart.text, chords: draftStart.chords)
+        chordSelection = nil
+        chordRequest = nil
         if editing {
             lyricTextRevision += 1
         }
     }
 
-    private func applyHistorySnapshot(_ state: SongChordEditState) {
-        draft = state.text
-        editChords = state.chords
-        chordSelection = nil
-        chordRequest = nil
-    }
-
     private func commitEdit() {
-        let sameText = draft == source?.text
-        let sameChords = editChords == source?.chords
-        let moved = SongTranspose.changesChords(steps, in: editChords)
+        let sameText = history.text == source?.text
+        let sameChords = history.chords == source?.chords
+        let moved = SongTranspose.changesChords(steps, in: history.chords)
         if sameText && sameChords && !moved {
             shownText = nil
             shownChords = nil
             SongSessionEdits.save(id: songId, text: nil, chords: nil, steps: 0)
         } else {
-            shownText = sameText ? nil : draft
-            shownChords = sameChords ? nil : editChords
+            shownText = sameText ? nil : history.text
+            shownChords = sameChords ? nil : history.chords
             SongSessionEdits.save(id: songId, text: shownText, chords: shownChords, steps: savedSteps)
         }
     }
@@ -674,13 +633,18 @@ struct SongPage: View {
         }
     }
 
-    private func finishAndLeave(save: Bool) {
-        if save {
+    private func finishAndLeave(action: SongLeavePrompt.Action) {
+        switch SongLeavePrompt.applying(action, to: &history, start: &draftStart) {
+        case .stay:
+            return
+        case .leave(save: true):
             // Commit without switching segments; the page is leaving.
-            saveDraft(switchToChords: false)
-        } else {
+            savedSteps = steps
+            commitEdit()
+        case .leave(save: false):
             steps = savedSteps
-            applyHistorySnapshot(draftStart)
+            chordSelection = nil
+            chordRequest = nil
         }
         if editing {
             lyricCloseAction = .leaveSong
@@ -1745,6 +1709,10 @@ struct SongDraftHistory: Equatable {
         SongChordEditState(text: text, chords: chords)
     }
 
+    var canUndo: Bool { index > 0 }
+
+    var canRedo: Bool { index + 1 < states.count }
+
     mutating func beginDrag() {
         dragRecorded = false
     }
@@ -1806,10 +1774,16 @@ struct SongDraftHistory: Equatable {
         current: SongChordEditState
     ) {
         if dragRecorded {
+            // A drag that comes back to where it started is not an undo step.
+            if index > 0, moved == history[index - 1] {
+                history.remove(at: index)
+                index -= 1
+                dragRecorded = false
+                return
+            }
             history[index] = moved
             return
         }
-        dragRecorded = true
         guard moved != current else {
             return
         }
@@ -1818,6 +1792,7 @@ struct SongDraftHistory: Equatable {
         }
         history.append(moved)
         index = history.count - 1
+        dragRecorded = true
     }
 }
 

@@ -10,51 +10,49 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    private let songs: [SongTitle]
-    private let errorMessage: String?
+    @State private var session: SongbookSession
     @State private var filter = ""
     @State private var noticeTitle: String?
     @State private var noticeMessage: String?
+    @State private var isImporting = false
 
     init(songs: [SongTitle]? = nil) {
+        var session = SongbookSession()
         if let songs {
-            self.songs = songs
-            self.errorMessage = nil
-            return
+            session.songs = songs
+            session.loadError = nil
         }
-        do {
-            self.songs = try Songbook.titles()
-            self.errorMessage = nil
-        } catch {
-            self.songs = []
-            self.errorMessage = String(describing: error)
-        }
+        _session = State(initialValue: session)
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if let errorMessage {
+                if let errorMessage = session.loadError {
                     Text(errorMessage)
                         .foregroundStyle(.red)
                         .padding()
                 } else {
-                    List(SongFilter.matching(filter, in: songs)) { song in
+                    List(SongFilter.matching(filter, in: session.songs)) { song in
                         SongRow(song: song) { title, message in
                             present(title: title, message: message)
                         }
                         .equatable()
                     }
                     .contentMargins(.top, 0, for: .scrollContent)
-                    // Kept outside the scrolling rows, so the field stays put while the list moves.
+                    // Header and Search stay put while the list moves. MIRRORED UI:
+                    // the web list header (songbook name, Not saved, Sign in, Search).
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        HStack(spacing: 8) {
-                            Text("Search:")
-                            SongFilterField(text: $filter)
+                        VStack(alignment: .leading, spacing: 0) {
+                            songbookHeader
+                            HStack(spacing: 8) {
+                                Text("Search:")
+                                SongFilterField(text: $filter)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            .padding(.bottom, 2)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 2)
                         .background(Color(.systemBackground))
                     }
                 }
@@ -74,7 +72,114 @@ struct ContentView: View {
             } message: {
                 Text(noticeMessage ?? "")
             }
+            .fileImporter(
+                isPresented: $isImporting,
+                allowedContentTypes: [SongbookSession.songbookContentType],
+                allowsMultipleSelection: false
+            ) { result in
+                handleImportedFile(result)
+            }
         }
+    }
+
+    /// The songbook name, a down-arrow menu, the grey Not saved label, and
+    /// Sign in. The name truncates first; the arrow, label and Sign in stay.
+    private var songbookHeader: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Section(SongbookSession.mySongbooksTitle) {
+                    ForEach(session.entries) { entry in
+                        Button {
+                            requestChange(.switchTo(entry.id))
+                        } label: {
+                            if entry.id == session.currentId {
+                                Label(entry.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(entry.displayName)
+                            }
+                        }
+                    }
+                }
+                Button(SongbookSession.openFromFilesTitle) {
+                    requestChange(.openFile)
+                }
+                Divider()
+                Button(SongbookSession.saveCopyTitle) { presentUnavailable(.saveCopy) }
+                Button(SongbookSession.renameTitle) { presentUnavailable(.rename) }
+                Button(SongbookSession.deleteTitle) { presentUnavailable(.delete) }
+                Button(SongbookSession.shareTitle) { presentUnavailable(.share) }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(session.displayName)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Image(systemName: "chevron.down")
+                        .font(.subheadline.weight(.semibold))
+                        .imageScale(.small)
+                }
+                .foregroundStyle(.primary)
+            }
+            .menuOrder(.fixed)
+            Text(SongbookSession.indicator)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+            Spacer(minLength: 8)
+            Button(SongbookSession.signInTitle) {
+                presentUnavailable(.signIn)
+            }
+            .fixedSize()
+            .layoutPriority(1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    /// The header is on the song list, so Back has already asked about a dirty
+    /// draft. The request helper is still used (with dirty: false here). Tests
+    /// cover the dirty case: Cancel keeps this songbook; Save and Don't Save
+    /// continue with the switch or the file picker.
+    private func requestChange(_ change: SongbookChangeRequest) {
+        switch session.request(change, dirty: false) {
+        case .ignore:
+            break
+        case .askToLeave(let change), .proceed(let change):
+            perform(change)
+        }
+    }
+
+    private func perform(_ change: SongbookChangeRequest) {
+        switch change {
+        case .switchTo(let id):
+            _ = session.activate(id: id)
+            filter = ""
+        case .openFile:
+            isImporting = true
+        }
+    }
+
+    private func handleImportedFile(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else {
+                return
+            }
+            if let failure = session.openPickedFile(url) {
+                present(title: failure.title, message: failure.message)
+            } else {
+                filter = ""
+            }
+        case .failure:
+            present(
+                title: SongbookOpenFailure.cantRead.title,
+                message: SongbookOpenFailure.cantRead.message)
+        }
+    }
+
+    private func presentUnavailable(_ item: SongbookUnavailableItem) {
+        present(title: item.title, message: item.message)
     }
 
     private var noticeIsPresented: Binding<Bool> {
