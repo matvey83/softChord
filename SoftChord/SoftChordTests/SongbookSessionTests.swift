@@ -203,8 +203,10 @@ struct SongbookSessionTests {
 
     /// The song list's path (ContentView.requestChange and resolveLeave): a
     /// draft SongPage published as unsaved makes the request ask. Cancel stays
-    /// and keeps the draft; Don't Save drops it; Save keeps it for this run as
-    /// Back's Save does. Either way the list does not ask again.
+    /// and keeps the draft. Don't Save goes ahead but leaves the draft
+    /// published until a songbook actually opens, so the list asks again if
+    /// none did. Save keeps it for this run as Back's Save does, and the list
+    /// does not ask again.
     @Test @MainActor func theListAsksAboutAnUnsavedDraftBeforeChanging() {
         SongSessionEdits.reset()
         defer { SongSessionEdits.reset() }
@@ -237,10 +239,19 @@ struct SongbookSessionTests {
         #expect(SongSessionEdits.unsavedDraft == draft)
         #expect(SongSessionEdits.copy(for: 7) == nil)
 
-        // Don't Save: go ahead, nothing saved, no second prompt.
+        // Don't Save: go ahead, nothing saved. The draft stays published, so
+        // with no songbook opened (picker cancelled) the list asks again.
         #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .openFile) == .openFile)
-        #expect(SongSessionEdits.unsavedDraft == nil)
+        #expect(SongSessionEdits.unsavedDraft == draft)
         #expect(SongSessionEdits.copy(for: 7) == nil)
+        #expect(listRequest(.openFile) == .askToLeave(.openFile))
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .switchTo(other)) == .switchTo(other))
+        #expect(SongSessionEdits.unsavedDraft == draft)
+        #expect(listRequest(.switchTo(other)) == .askToLeave(.switchTo(other)))
+
+        // A songbook opening drops it (activate and openPickedFile reset).
+        SongSessionEdits.reset()
+        #expect(SongSessionEdits.unsavedDraft == nil)
         #expect(listRequest(.openFile) == .proceed(.openFile))
 
         // Save: the draft is kept for this run, then the change goes ahead.
@@ -259,6 +270,113 @@ struct SongbookSessionTests {
         SongSessionEdits.publish(draft, for: 7)
         SongSessionEdits.reset()
         #expect(SongSessionEdits.unsavedDraft == nil)
+    }
+
+    /// Don't Save on the list, then a file that is not a songbook (or a
+    /// cancelled picker, which opens nothing): the draft stays published and
+    /// the list asks again. A file that opens drops it, as does a switch.
+    /// Save, then a failed open: the session copy Save kept stays.
+    @Test @MainActor func dontSaveKeepsTheDraftUntilASongbookOpens() throws {
+        let demo = try scratchSongbook(named: "zvuki_neba.songbook")
+        let other = try scratchSongbook(named: "other.songbook")
+        let invalid = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notes-\(UUID().uuidString).songbook")
+        try Data("not a database".utf8).write(to: invalid)
+        defer { cleanup(demo); cleanup(other); cleanup(invalid) }
+        SongSessionEdits.reset()
+        var session = SongbookSession(demoName: "zvuki_neba", demoURL: demo, songs: nil)
+        defer {
+            Songbook.useBundledDemo()
+            SongSessionEdits.reset()
+        }
+        let demoId = session.currentId
+        let songId = try #require(session.songs.first?.id)
+        let source = SongSource(text: "Hello", chords: [])
+        let draft = SongSessionEdits.UnsavedDraft(
+            songId: songId, title: "Alpha",
+            text: "Hello you", chords: [], steps: 0,
+            startText: source.text, startChords: source.chords,
+            source: source)
+        func listRequest(_ change: SongbookChangeRequest) -> SongbookChangeDecision {
+            session.request(change, dirty: SongSessionEdits.unsavedDraft != nil)
+        }
+
+        // Don't Save, then the picker is cancelled: nothing opened.
+        SongSessionEdits.publish(draft, for: songId)
+        #expect(listRequest(.openFile) == .askToLeave(.openFile))
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .openFile) == .openFile)
+        #expect(SongbookSession.pickerFailure(CocoaError(.userCancelled)) == nil)
+        #expect(SongSessionEdits.unsavedDraft == draft)
+        #expect(listRequest(.openFile) == .askToLeave(.openFile))
+
+        // Don't Save, then a bad file: still this songbook, draft still there.
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .openFile) == .openFile)
+        #expect(session.openPickedFile(invalid) != nil)
+        #expect(session.displayName == "zvuki_neba")
+        #expect(SongSessionEdits.unsavedDraft == draft)
+        #expect(listRequest(.openFile) == .askToLeave(.openFile))
+
+        // Don't Save, then a file that opens: the draft is dropped.
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .openFile) == .openFile)
+        #expect(session.openPickedFile(other) == nil)
+        #expect(session.displayName == "other")
+        #expect(SongSessionEdits.unsavedDraft == nil)
+        #expect(SongSessionEdits.copy(for: songId) == nil)
+
+        // Don't Save, then a switch: activate drops it.
+        SongSessionEdits.publish(draft, for: songId)
+        #expect(listRequest(.switchTo(demoId)) == .askToLeave(.switchTo(demoId)))
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .switchTo(demoId))
+            == .switchTo(demoId))
+        #expect(SongSessionEdits.unsavedDraft == draft)
+        #expect(session.activate(id: demoId))
+        #expect(session.displayName == "zvuki_neba")
+        #expect(SongSessionEdits.unsavedDraft == nil)
+
+        // Save, then a bad file: no longer unsaved, and the copy Save kept stays.
+        SongSessionEdits.publish(draft, for: songId)
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.save, before: .openFile) == .openFile)
+        #expect(SongSessionEdits.unsavedDraft == nil)
+        #expect(session.openPickedFile(invalid) != nil)
+        #expect(SongSessionEdits.copy(for: songId)?.text == "Hello you")
+        #expect(listRequest(.openFile) == .proceed(.openFile))
+        // The switch then drops those session edits with the old songbook.
+        #expect(session.openPickedFile(other) == nil)
+        #expect(SongSessionEdits.copy(for: songId) == nil)
+    }
+
+    /// Open from Files… chosen on the leave alert waits for the alert to
+    /// dismiss before the picker is presented; a switch goes ahead at once.
+    /// Cancel, or the system dismissing the alert, never opens the picker.
+    /// resolved(_:) is always applied before the alert is treated as gone, so
+    /// an early onChange (isPresented binding before the button action) still
+    /// presents the picker once.
+    @Test func openFromTheLeaveAlertWaitsForItToDismiss() {
+        let other = UUID()
+        var gate = SongbookImporterGate()
+
+        // Cancel or a system dismissal: nothing was resolved, nothing opens.
+        #expect(!gate.alertDismissed())
+
+        #expect(gate.next(after: .switchTo(other), alertAlreadyGone: false)
+            == .perform(.switchTo(other)))
+        #expect(!gate.waitingForAlert)
+        #expect(!gate.alertDismissed())
+
+        // Usual order: resolved first, then onChange after pendingLeave is cleared.
+        #expect(gate.next(after: .openFile, alertAlreadyGone: false) == nil)
+        #expect(gate.waitingForAlert)
+        #expect(gate.alertDismissed())
+        // Only once: a later dismissal (a Cancel) does not open it again.
+        #expect(!gate.waitingForAlert)
+        #expect(!gate.alertDismissed())
+
+        // Early dismiss: onChange ran before resolved. next still presents once.
+        var early = SongbookImporterGate()
+        #expect(!early.alertDismissed())
+        #expect(early.next(after: .openFile, alertAlreadyGone: true) == .presentImporter)
+        #expect(!early.waitingForAlert)
+        #expect(!early.alertDismissed())
     }
 
     /// Save keeps only what differs from the songbook; a draft equal to it in

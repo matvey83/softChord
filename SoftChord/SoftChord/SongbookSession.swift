@@ -92,6 +92,59 @@ nonisolated enum SongbookChangeDecision: Equatable {
     case askToLeave(SongbookChangeRequest)
 }
 
+/// Holds Open from Files… chosen on the song list's leave alert until that
+/// alert is no longer presented, so the file picker is not presented in the
+/// same turn the alert dismisses. A switch needs no picker and goes ahead at
+/// once. Cancel, or the system dismissing the alert, never opens the picker.
+nonisolated struct SongbookImporterGate: Equatable {
+    /// Open from Files… is waiting for the leave alert to go.
+    private(set) var waitingForAlert = false
+
+    /// Save or Don't Save was chosen on the leave alert. Returns the change to
+    /// perform now, or nil when it waits for `alertDismissed()`.
+    mutating func resolved(_ change: SongbookChangeRequest) -> SongbookChangeRequest? {
+        switch change {
+        case .switchTo:
+            return change
+        case .openFile:
+            waitingForAlert = true
+            return nil
+        }
+    }
+
+    /// The leave alert is no longer presented. True, once, when the file
+    /// picker should be presented now.
+    mutating func alertDismissed() -> Bool {
+        defer { waitingForAlert = false }
+        return waitingForAlert
+    }
+
+    /// What Save / Don't Save should do next. Always calls `resolved` before
+    /// treating the alert as gone, so an `onChange` that ran early (the
+    /// isPresented binding can clear the alert before the button action)
+    /// does not drop a waiting Open from Files….
+    mutating func next(
+        after change: SongbookChangeRequest, alertAlreadyGone: Bool
+    ) -> SongbookImporterNext? {
+        if let now = resolved(change) {
+            return .perform(now)
+        }
+        if alertAlreadyGone {
+            _ = alertDismissed()
+            return .presentImporter
+        }
+        return nil
+    }
+}
+
+/// The next step after Save or Don't Save on the song list's leave alert.
+nonisolated enum SongbookImporterNext: Equatable {
+    /// A songbook switch, which can run at once.
+    case perform(SongbookChangeRequest)
+    /// Present the file picker after the leave alert is gone.
+    case presentImporter
+}
+
 /// The songbooks available this launch and the one that is open.
 nonisolated struct SongbookSession: Equatable {
     /// Over 50 MB (1024-based) is refused before the file is copied or read.

@@ -17,6 +17,8 @@ struct ContentView: View {
     @State private var isImporting = false
     /// Set while the list asks Save / Don't Save / Cancel before a change.
     @State private var pendingLeave: PendingLeave?
+    /// Open from Files… chosen on that prompt, waiting for it to dismiss.
+    @State private var importerGate = SongbookImporterGate()
 
     private struct PendingLeave {
         var change: SongbookChangeRequest
@@ -158,6 +160,16 @@ struct ContentView: View {
         } message: { _ in
             Text(SongLeavePrompt.message)
         }
+        // Fires after resolveLeave returns, once pendingLeave has been
+        // cleared. resolveLeave calls importerGate.next (which calls
+        // resolved) before that, so waitingForAlert is already set for
+        // Open from Files…. If the isPresented binding cleared the alert
+        // first, resolveLeave presents without waiting for this.
+        .onChange(of: pendingLeave == nil) { _, dismissed in
+            if dismissed, importerGate.alertDismissed() {
+                presentImporterAfterAlert()
+            }
+        }
     }
 
     /// Back usually asks about a dirty draft before the list is reached, and
@@ -171,15 +183,47 @@ struct ContentView: View {
         case .proceed(let change):
             perform(change)
         case .askToLeave(let change):
+            importerGate = SongbookImporterGate()
             pendingLeave = PendingLeave(change: change, songTitle: unsaved?.title ?? "")
         }
     }
 
-    /// Cancel stays. Save and Don't Save settle the draft, then go ahead.
+    /// Cancel stays. Save and Don't Save settle the draft, then go ahead: a
+    /// switch at once, Open from Files… once the alert has dismissed
+    /// (SongbookImporterGate.next, onChange above).
     private func resolveLeave(_ action: SongLeavePrompt.Action, _ pending: PendingLeave) {
-        pendingLeave = nil
-        if let change = SongLeavePrompt.resolvingUnsavedDraft(action, before: pending.change) {
-            perform(change)
+        guard let change = SongLeavePrompt.resolvingUnsavedDraft(
+            action, before: pending.change
+        ) else {
+            pendingLeave = nil
+            return
+        }
+        // The isPresented binding may already have cleared pendingLeave
+        // before this button action. Record that first, then set the gate
+        // (resolved), then clear the alert.
+        let alertAlreadyGone = pendingLeave == nil
+        switch importerGate.next(after: change, alertAlreadyGone: alertAlreadyGone) {
+        case .perform(let now):
+            pendingLeave = nil
+            perform(now)
+        case .presentImporter:
+            pendingLeave = nil
+            presentImporterAfterAlert()
+        case nil:
+            pendingLeave = nil
+        }
+    }
+
+    /// The leave alert is gone. Clear isImporting first so a value left true
+    /// (a picker that never appeared) changes again, then present on the next
+    /// turn of the main queue, unless another prompt has been shown since.
+    private func presentImporterAfterAlert() {
+        isImporting = false
+        DispatchQueue.main.async {
+            guard pendingLeave == nil else {
+                return
+            }
+            isImporting = true
         }
     }
 

@@ -1930,8 +1930,12 @@ enum SongLeavePrompt {
     /// The same prompt on the song list, before it changes songbooks while
     /// SongSessionEdits.unsavedDraft is set (a page left without Back asking).
     /// Cancel returns nil: stay, and the draft stays published. Save keeps the
-    /// draft for this run as Back's Save does; Don't Save drops it. Both clear
-    /// the published draft and return `change` to go ahead with.
+    /// draft for this run as Back's Save does, so it is no longer unsaved and
+    /// its published draft is cleared. Don't Save leaves the published draft
+    /// as it is: the draft is dropped only when a songbook actually opens
+    /// (SongbookSession.activate, or a successful openPickedFile, resets the
+    /// session edits). A failed open or a cancelled file picker keeps it, and
+    /// the list asks again next time. Save and Don't Save return `change`.
     static func resolvingUnsavedDraft(
         _ action: Action, before change: SongbookChangeRequest
     ) -> SongbookChangeRequest? {
@@ -1947,10 +1951,10 @@ enum SongLeavePrompt {
             SongSessionEdits.commit(
                 id: unsaved.songId, text: start.text, chords: start.chords,
                 steps: unsaved.steps, source: unsaved.source)
+            SongSessionEdits.publish(nil, for: unsaved.songId)
         case .leave(save: false):
             break
         }
-        SongSessionEdits.publish(nil, for: unsaved.songId)
         return change
     }
 }
