@@ -275,6 +275,7 @@ struct SongPage: View {
                     onPinched: pinched,
                     onFit: fitChanged,
                     onChordMoved: moveChord,
+                    onChordNudged: nudgeSelectedChord,
                     onDragBegan: { dragRecorded = false },
                     onEditRequested: requestChordEdit
                 )
@@ -534,6 +535,21 @@ struct SongPage: View {
             current: chordEditState)
         draft = next.text
         editChords = next.chords
+    }
+
+    /// A hardware keyboard's Left (-1) or Right (1) arrow on the selected chord:
+    /// one letter along its line, with room right of the last letter, as one undo
+    /// step. No chord on the selected letter, or no free letter that way, does
+    /// nothing. MIRRORED: softchord_chord_mode.js nudge, softchord_session.py
+    /// processKeyPressed.
+    private func nudgeSelectedChord(_ direction: Int) {
+        guard editingChords, let selected = chordSelection,
+              let nudge = SongLyricChords.nudgedWithRoom(
+                editChords, in: draft, from: selected, direction: direction) else {
+            return
+        }
+        setChords(nudge.tidy.chords, text: nudge.tidy.text)
+        chordSelection = nudge.chordAt
     }
 
     private func undoDraftChange() {
@@ -1867,6 +1883,7 @@ private struct SongChordEditor: UIViewRepresentable {
     var onPinched: (CGFloat) -> Void
     var onFit: (Int) -> Void
     var onChordMoved: (Int, Int, Int?) -> Void
+    var onChordNudged: (Int) -> Void
     var onDragBegan: () -> Void
     var onEditRequested: (Int) -> Void
 
@@ -1892,6 +1909,7 @@ private struct SongChordEditor: UIViewRepresentable {
         let binding = $selection
         view.onSelectionChanged = { binding.wrappedValue = $0 }
         view.onChordMoved = onChordMoved
+        view.onChordNudged = onChordNudged
         view.onDragBegan = onDragBegan
         view.onEditRequested = onEditRequested
         view.onPinched = onPinched
@@ -2025,6 +2043,8 @@ private final class SongChordPress: UIGestureRecognizer {
 private final class SongChordZoomView: SongZoomScrollView {
     var onSelectionChanged: (Int?) -> Void = { _ in }
     var onChordMoved: (Int, Int, Int?) -> Void = { _, _, _ in }
+    /// Left (-1) or Right (1) on a hardware keyboard, with a chord selected.
+    var onChordNudged: (Int) -> Void = { _ in }
     /// A press on the selected chord, before it moves. The moves of one drag are one undo step.
     var onDragBegan: () -> Void = {}
     var onEditRequested: (Int) -> Void = { _ in }
@@ -2087,6 +2107,41 @@ private final class SongChordZoomView: SongZoomScrollView {
         selectedCharacterNum = index
         showSelection()
         onSelectionChanged(index)
+        // The arrow keys of a hardware keyboard come here (keyCommands).
+        becomeFirstResponder()
+    }
+
+    // MARK: Hardware keyboard
+    // Left and Right move the selected chord one letter (onChordNudged), like the
+    // arrow keys of the web and desktop editors. With no chord on the selected
+    // letter they are left to the system. Up and Down do nothing here.
+
+    override var canBecomeFirstResponder: Bool {
+        true
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            becomeFirstResponder()
+        }
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        guard let selected = selectedCharacterNum,
+              chords.contains(where: { $0.characterNum == selected }) else {
+            return super.keyCommands
+        }
+        return [UIKeyCommand.inputLeftArrow, UIKeyCommand.inputRightArrow].map { input in
+            let command = UIKeyCommand(input: input, modifierFlags: [], action: #selector(nudgeChord(_:)))
+            // Before the scroll view's own arrow-key scrolling.
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+    }
+
+    @objc private func nudgeChord(_ command: UIKeyCommand) {
+        onChordNudged(command.input == UIKeyCommand.inputLeftArrow ? -1 : 1)
     }
 
     private func clearChordSelection() {

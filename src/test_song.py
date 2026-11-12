@@ -1603,25 +1603,27 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.assertIsNone(self.app.selected_char_num)
 
     def test_selected_chords_stop_at_a_line_break_or_the_end(self):
-        song = self._select_chords_at("01\n456789", [1, 4],
+        # Ten spaces right of the last letter is all the room a line has.
+        song = self._select_chords_at("01" + " " * 10 + "\n456789", [11, 13],
                                       [Qt.Key.Key_C, Qt.Key.Key_D])
 
         self.app.processKeyPressed(Qt.Key.Key_Right)
 
-        self.assertEqual(song.getChordAtPosition(1).note_id, 0)
-        self.assertIsNone(song.getChordAtPosition(4))
-        self.assertEqual(song.getChordAtPosition(5).note_id, 2)
-        self.assertEqual(self.app.selected_chord_nums, {1, 5})
+        self.assertEqual(song.getChordAtPosition(11).note_id, 0)
+        self.assertIsNone(song.getChordAtPosition(13))
+        self.assertEqual(song.getChordAtPosition(14).note_id, 2)
+        self.assertEqual(self.app.selected_chord_nums, {11, 14})
 
-        end_song = self._select_chords_at("0123", [1, 3],
+        end_song = self._select_chords_at("0123" + " " * 10, [1, 13],
                                           [Qt.Key.Key_C, Qt.Key.Key_D],
                                           song_id=10021)
         self.app.processKeyPressed(Qt.Key.Key_Right)
         self.assertEqual(end_song.getChordAtPosition(2).note_id, 0)
-        self.assertEqual(end_song.getChordAtPosition(3).note_id, 2)
+        self.assertEqual(end_song.getChordAtPosition(13).note_id, 2)
 
     def test_blocked_selected_chords_do_not_add_an_undo_step(self):
-        song = self._select_chords_at("0\n2\n456789", [0, 2],
+        text = "0" + " " * 10 + "\n2" + " " * 10 + "\n456789"
+        song = self._select_chords_at(text, [10, 22],
                                       [Qt.Key.Key_C, Qt.Key.Key_D])
         index = self.app.undo_stack.index()
 
@@ -1629,8 +1631,9 @@ class TestAppCoreFunctionality(unittest.TestCase):
 
         self.assertTrue(moved)
         self.assertEqual(index, self.app.undo_stack.index())
-        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
-        self.assertEqual(song.getChordAtPosition(2).note_id, 2)
+        self.assertEqual(song.getAllText(), text)
+        self.assertEqual(song.getChordAtPosition(10).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(22).note_id, 2)
 
     def test_neighboring_selected_chords_move_without_landing_on_each_other(self):
         song = self._select_chords_at("0123456789", [2, 3],
@@ -1675,13 +1678,13 @@ class TestAppCoreFunctionality(unittest.TestCase):
         self.assertEqual(self.app.selected_chord_nums, {3, 5})
 
     def test_selected_chords_never_share_a_letter_at_a_line_end(self):
-        song = self._select_chords_at("01\n3456", [0, 1],
+        song = self._select_chords_at("01" + " " * 10 + "\n3456", [10, 11],
                                       [Qt.Key.Key_C, Qt.Key.Key_D])
 
         self.app.processKeyPressed(Qt.Key.Key_Right)
 
-        self.assertEqual(song.getChordAtPosition(0).note_id, 0)
-        self.assertEqual(song.getChordAtPosition(1).note_id, 2)
+        self.assertEqual(song.getChordAtPosition(10).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(11).note_id, 2)
         self.assertEqual(len(list(song.iterateAllChords())), 2)
 
     def _song_with_chords(self, text, notes_at, song_id=10030):
@@ -5118,18 +5121,26 @@ class TestChordRoom(unittest.TestCase):
 
     def setUp(self):
         self.app = test_app()
+        self.td = None
+        self.open_song("Hi you\nab", 5, 7)
+
+    def open_song(self, text, g_at, d_at):
+        """A temp songbook with one song: text, C on 0, G on g_at, D on d_at."""
+        self.tearDown()
         self.td = open_empty_temp_songbook(self.app)
-        insert_and_select_song(self.app, text="Hi you\nab", with_chord=True)
+        insert_and_select_song(self.app, text=text, with_chord=True)
         self.app.chordEditorSelected()
         self.song = self.app.current_song
-        self.song.addChord(SongChord(self.song, 5, 7, 0, -1, "", 0))
-        self.song.addChord(SongChord(self.song, 7, 2, 0, -1, "", 0))
+        self.song.addChord(SongChord(self.song, g_at, 7, 0, -1, "", 0))
+        self.song.addChord(SongChord(self.song, d_at, 2, 0, -1, "", 0))
 
     def tearDown(self):
         if self.app.edit_session is not None:
             self.app._endEdit()
-        self.app.setCurrentSongbook(None)
-        shutil.rmtree(self.td, ignore_errors=True)
+        if self.td is not None:
+            self.app.setCurrentSongbook(None)
+            shutil.rmtree(self.td, ignore_errors=True)
+            self.td = None
 
     def positions(self):
         return sorted(c.character_num for c in self.song.iterateAllChords())
@@ -5191,6 +5202,168 @@ class TestChordRoom(unittest.TestCase):
         self.app.undo_stack.undo()
         self.assertEqual(self.song.getAllText(), "Hi you\nab")
         self.assertEqual(self.positions(), [0, 5, 7])
+
+    def test_arrows_count_code_points_on_cyrillic_and_emoji(self):
+        # "Да 🎵" is four code points: the emoji is one, as in the other apps.
+        self.open_song("Да 🎵\nab", 3, 5)
+        self.app.selected_char_num = 3
+        self.right()
+        self.assertEqual(self.song.getAllText(), "Да 🎵 \nab")
+        self.assertEqual(self.positions(), [0, 4, 6])
+        self.right(9)
+        self.assertEqual(self.song.getAllText(), "Да 🎵" + " " * 10 + "\nab")
+        self.assertEqual(self.positions(), [0, 13, 15])
+        self.assertFalse(self.app.processKeyPressed(Qt.Key.Key_Right))
+        self.right(10, Qt.Key.Key_Left)
+        self.assertEqual(self.song.getAllText(), "Да 🎵\nab")
+        self.assertEqual(self.positions(), [0, 3, 5])
+        self.assertEqual(self.song.getChordAtPosition(3).note_id, 7)
+
+    def chordpro_round_trip(self):
+        """The song saved, exported to ChordPro and imported again:
+        (chordpro, imported text, imported chord positions)."""
+        self.app.saveEdit()
+        chordpro = self.song.getAsChordProText()
+        self.app._endEdit()
+        song_id = self.app.importSongFromChordProText(chordpro)
+        record = self.app.store.load_song(song_id)
+        return (chordpro, record.text,
+                sorted(link.character_num for link in record.chords))
+
+    def test_chordpro_round_trip_keeps_a_chord_on_the_last_trailing_space(self):
+        self.app.selected_char_num = 5
+        self.right(3)
+        self.assertEqual(self.song.getAllText(), "Hi you   \nab")
+        self.assertEqual(self.positions(), [0, 8, 10])
+        chordpro, text, positions = self.chordpro_round_trip()
+        # The export has the chord before the last space, and the import
+        # takes the spaces off the end of the line: they come back.
+        self.assertIn("Hi you  [G] \n", chordpro)
+        self.assertEqual(text.split("\n")[:2], ["Hi you   ", "ab"])
+        self.assertEqual(positions, [0, 8, 10])
+
+    def test_chordpro_round_trip_on_cyrillic_and_emoji(self):
+        self.open_song("Да 🎵\nab", 3, 5)
+        self.app.selected_char_num = 3
+        self.right(10)
+        chordpro, text, positions = self.chordpro_round_trip()
+        self.assertIn("Да 🎵" + " " * 9 + "[G] \n", chordpro)
+        self.assertEqual(text.split("\n")[:2], ["Да 🎵" + " " * 10, "ab"])
+        self.assertEqual(positions, [0, 13, 15])
+
+    def test_chordpro_import_pads_a_line_up_to_a_chord_past_its_end(self):
+        # Only as far as the chord, and a chord that is not one adds nothing.
+        song_id = self.app.importSongFromChordProText(
+            "{title:Pad}\nДа 🎵   [G]\n[D]ab[Xyz]  \n[C]\n")
+        record = self.app.store.load_song(song_id)
+        self.assertEqual(record.text.split("\n")[:3],
+                         ["Да 🎵    ", "ab", " "])
+        chords = {link.character_num: link.chord for link in record.chords}
+        self.assertEqual(chords, {7: "G", 9: "D", 12: "C"})
+        for position in chords:
+            self.assertLess(position, len(record.text))
+            self.assertNotEqual(record.text[position], "\n")
+
+    def select(self, *positions):
+        self.app.selected_char_num = None
+        self.app.selected_chord_nums = set(positions)
+
+    def test_selected_chords_get_room_and_lose_it_as_one_undo_step(self):
+        self.select(5, 7)
+        steps = self.app.undo_stack.index()
+        self.right()
+        self.assertEqual(self.app.undo_stack.index(), steps + 1)
+        self.assertEqual(self.song.getAllText(), "Hi you \nab")
+        self.assertEqual(self.positions(), [0, 6, 9])
+        self.assertEqual(self.app.selected_chord_nums, {6, 9})
+        self.app.undo_stack.undo()
+        self.assertEqual(self.song.getAllText(), "Hi you\nab")
+        self.assertEqual(self.positions(), [0, 5, 7])
+        self.assertEqual(self.app.selected_chord_nums, {5, 7})
+        self.assertIsNone(self.app.selected_char_num)
+        self.app.undo_stack.redo()
+        self.assertEqual(self.app.selected_chord_nums, {6, 9})
+
+        self.right(9)
+        self.assertEqual(self.song.getAllText(),
+                         "Hi you" + " " * 10 + "\nab" + " " * 9)
+        self.assertEqual(self.positions(), [0, 15, 27])
+        # The first line has no more room; the second chord still moves.
+        self.right()
+        self.assertEqual(self.song.getAllText(),
+                         "Hi you" + " " * 10 + "\nab" + " " * 10)
+        self.assertEqual(self.positions(), [0, 15, 28])
+        steps = self.app.undo_stack.index()
+        self.right(10, Qt.Key.Key_Left)
+        self.assertEqual(self.app.undo_stack.index(), steps + 10)
+        self.assertEqual(self.song.getAllText(), "Hi you\nab")
+        self.assertEqual(self.positions(), [0, 5, 8])
+        self.assertEqual(self.app.selected_chord_nums, {5, 8})
+
+    def test_selected_chords_on_cyrillic_and_emoji(self):
+        self.open_song("Да 🎵\nаб", 3, 5)
+        self.select(3, 5)
+        self.right(2)
+        self.assertEqual(self.song.getAllText(), "Да 🎵  \nаб ")
+        self.assertEqual(self.positions(), [0, 5, 9])
+        self.right(2, Qt.Key.Key_Left)
+        self.assertEqual(self.song.getAllText(), "Да 🎵\nаб")
+        self.assertEqual(self.positions(), [0, 3, 5])
+
+    def test_deleting_selected_chords_takes_their_spaces_as_one_undo_step(self):
+        self.app.selected_char_num = 5
+        self.right(3)
+        # Spaces on a line with no selected chord stay.
+        self.select(8, 10)
+        steps = self.app.undo_stack.index()
+        self.app.deleteSelectedChord()
+        self.assertEqual(self.app.undo_stack.index(), steps + 1)
+        self.assertEqual(self.app.undo_stack.undoText(), "delete chords")
+        self.assertEqual(self.song.getAllText(), "Hi you\nab")
+        self.assertEqual(self.positions(), [0])
+        self.assertEqual(self.app.selected_chord_nums, set())
+        self.app.undo_stack.undo()
+        self.assertEqual(self.song.getAllText(), "Hi you   \nab")
+        self.assertEqual(self.positions(), [0, 8, 10])
+        self.assertEqual(self.app.selected_chord_nums, {8, 10})
+        self.app.undo_stack.redo()
+        self.assertEqual(self.app.undo_stack.index(), steps + 1)
+        self.assertEqual(self.song.getAllText(), "Hi you\nab")
+        self.assertEqual(self.positions(), [0])
+        self.assertEqual(self.app.selected_chord_nums, set())
+
+    def test_deleting_selected_chords_keeps_other_lines_spaces(self):
+        self.open_song("Hi you\nab\ncd  ", 5, 7)
+        self.app.selected_char_num = 5
+        self.right()
+        self.select(8)
+        self.app.deleteSelectedChord()
+        # The first line's space is the G's; the last line was not touched.
+        self.assertEqual(self.song.getAllText(), "Hi you \nab\ncd  ")
+        self.assertEqual(self.positions(), [0, 6])
+        self.select(6)
+        self.app.deleteSelectedChord()
+        self.assertEqual(self.song.getAllText(), "Hi you\nab\ncd  ")
+        self.assertEqual(self.positions(), [0])
+
+    def test_nudging_selected_chords_keeps_other_lines_spaces(self):
+        # The middle line has trailing spaces and no chord.
+        self.open_song("Hi you\ncd  \nab", 5, 12)
+        self.select(5, 12)
+        self.right()
+        # The G needs a space; the D moves onto the "b".
+        self.assertEqual(self.song.getAllText(), "Hi you \ncd  \nab")
+        self.assertEqual(self.positions(), [0, 6, 14])
+        self.assertEqual(self.app.selected_chord_nums, {6, 14})
+        self.right()
+        self.assertEqual(self.song.getAllText(), "Hi you  \ncd  \nab ")
+        self.assertEqual(self.positions(), [0, 7, 16])
+        self.assertEqual(self.app.selected_chord_nums, {7, 16})
+        self.right(2, Qt.Key.Key_Left)
+        # The nudged lines lose their spaces; the middle line keeps its own.
+        self.assertEqual(self.song.getAllText(), "Hi you\ncd  \nab")
+        self.assertEqual(self.positions(), [0, 5, 12])
+        self.assertEqual(self.app.selected_chord_nums, {5, 12})
 
 
 class TestEditorModeMenu(unittest.TestCase):

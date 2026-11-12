@@ -2242,20 +2242,32 @@ class SongbookSession(SongbookIO, QtCore.QObject):
                 tidy_moved(gaps, chord.character_num))
 
     def _deleteSelectedChords(self):
-        """Delete every marquee-selected chord as one undo step."""
-        if not self.selected_chord_nums or self.current_song is None:
+        """Delete every marquee-selected chord as one undo step.
+
+        Like one chord's delete, the spaces only those chords needed at the
+        end of their lines go too (tidy_chord_room).
+        """
+        song = self.current_song
+        if not self.selected_chord_nums or song is None:
             return False
         chords = [
-            chord for chord in self.current_song.iterateAllChords()
+            chord for chord in song.iterateAllChords()
             if chord.character_num in self.selected_chord_nums
         ]
         if not chords:
             return False
         if not self._ensureEditStack():
             return False
+        others = [chord for chord in song.iterateAllChords()
+                  if chord.character_num not in self.selected_chord_nums]
+        text, gaps = tidy_chord_room(
+            song.getAllText(), [other.character_num for other in others],
+            [chord.character_num for chord in chords])
         self.undo_stack.beginMacro("delete chords")
-        for chord in chords:
-            self.current_song.deleteChord(chord)
+        song.setTextAndChords(
+            text, self._chordsAt(
+                [(other, tidy_moved(gaps, other.character_num))
+                 for other in others])[0], None, set())
         self.undo_stack.endMacro()
         self.selected_chord_nums = set()
         self.selected_char_num = None
@@ -2371,7 +2383,9 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         The chord furthest along the move goes first, so two neighbors do
         not land on each other. A chord that would leave its line stays put.
         A letter that has a chord (selected or not) is jumped over, to the
-        next free letter on the line in the same direction.
+        next free letter on the line in the same direction. Right of the
+        last letter there is room, and the lines lose the spaces no chord
+        needs, as for one chord (placeChord).
         """
         song = self.current_song
         if song is None:
@@ -2383,27 +2397,57 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         if not chords:
             return
         text = song.getAllText()
-        occupied = {chord.character_num for chord in song.iterateAllChords()}
+        # Room right of each line with a selected chord, last line first so
+        # the places spaces go in stay places of text.
+        room_text = text
+        rooms = []
+        if delta > 0:
+            for chord in sorted(chords, key=lambda chord: chord.character_num,
+                                reverse=True):
+                room_text, at, count = chord_room(room_text,
+                                                  chord.character_num)
+                if count:
+                    rooms.append((at, count))
+
+        def shifted(position):
+            return position + sum(count for at, count in rooms
+                                  if position >= at)
+
+        start = {id(chord): shifted(chord.character_num)
+                 for chord in song.iterateAllChords()}
+        occupied = set(start.values())
         chords.sort(key=lambda chord: chord.character_num, reverse=delta > 0)
-        moves = []
+        landings = {}
         for chord in chords:
-            occupied.discard(chord.character_num)
-            new_num = next_free_character(text, chord.character_num + delta,
+            position = start[id(chord)]
+            occupied.discard(position)
+            new_num = next_free_character(room_text, position + delta,
                                           delta, occupied)
             if new_num is None:
-                occupied.add(chord.character_num)
+                occupied.add(position)
                 continue
             occupied.add(new_num)
-            moves.append((chord, new_num))
-        if not moves:
+            landings[id(chord)] = new_num
+        if not landings:
             return
         if not self._ensureEditStack():
             return
+        moves = [(chord, landings.get(id(chord), start[id(chord)]))
+                 for chord in song.iterateAllChords()]
+        # The lines chords left and went to, and every line that got room.
+        touched = [start[id(chord)] for chord in chords
+                   if id(chord) in landings]
+        touched += list(landings.values())
+        touched += [shifted(at) for at, _ in rooms]
+        new_text, gaps = tidy_chord_room(
+            room_text, [position for _, position in moves], touched)
+        selected = {tidy_moved(gaps, landings.get(id(chord), start[id(chord)]))
+                    for chord in chords}
         self.undo_stack.beginMacro("move chords")
-        for chord, new_num in moves:
-            new_chord = copy.copy(chord)
-            new_chord.character_num = new_num
-            song.replaceChord(chord, new_chord)
+        song.setTextAndChords(
+            new_text, self._chordsAt(
+                [(chord, tidy_moved(gaps, position))
+                 for chord, position in moves])[0], None, selected)
         self.undo_stack.endMacro()
         self.selected_char_num = None
 

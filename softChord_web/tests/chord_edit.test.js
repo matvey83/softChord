@@ -295,6 +295,43 @@ test("a chord moves up to 10 letters right of its line, and the spaces go again"
   assert.deepEqual(positions(chords), [5, 7]);
 });
 
+// MIRRORED: test_song.py TestChordRoom test_arrows_count_code_points_on_cyrillic_and_emoji
+// and SoftChordTests chordRoomOnCyrillicAndEmoji. Positions are code points: the
+// emoji is one, though it is two UTF-16 units in a JS string.
+test("room right of the line counts code points on Cyrillic and emoji", function () {
+  let text = "Да 🎵\nab";
+  let chords = [chord(3, 7), chord(5, 2)];
+  let at = 3;
+  function nudge(direction) {
+    const room = SongChordEdit.withRoom(text, chords, at);
+    const step = SongChordEdit.nudged(room.chords, room.text, at, direction);
+    if (!step) {
+      return false;
+    }
+    const tidy = SongChordEdit.tidied(room.text, step.chords, step.chordAt);
+    text = tidy.text;
+    chords = tidy.chords;
+    at = tidy.index;
+    return true;
+  }
+  assert.ok(nudge(1));
+  assert.equal(text, "Да 🎵 \nab");
+  assert.deepEqual(positions(chords), [4, 6]);
+  for (let i = 0; i < 9; i++) {
+    assert.ok(nudge(1));
+  }
+  assert.equal(text, "Да 🎵" + " ".repeat(10) + "\nab");
+  assert.deepEqual(positions(chords), [13, 15]);
+  assert.equal(Array.from(text).indexOf("\n"), 14);
+  assert.equal(nudge(1), false, "no more than 10");
+  for (let i = 0; i < 10; i++) {
+    assert.ok(nudge(-1));
+  }
+  assert.equal(text, "Да 🎵\nab");
+  assert.deepEqual(positions(chords), [3, 5]);
+  assert.equal(at, 3);
+});
+
 test("tidied keeps the spaces a chord needs, other lines, lines of only spaces and tabs", function () {
   const text = "ab   \n   \nc \t\nd    x\ne  \nf  ";
   const tidy = SongChordEdit.tidied(text, [chord(3), chord(14), chord(25)], 3, [3, 7, 11, 15, 22]);
