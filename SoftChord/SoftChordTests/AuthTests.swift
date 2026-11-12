@@ -380,7 +380,8 @@ final class AuthTests: XCTestCase {
         } catch is URLError {
         }
         XCTAssertEqual(try parts.store.loadSession(), sessionToken)
-        XCTAssertEqual(parts.mock.requests.count, 1)
+        // Both calls reach the transport; the mock records a request before throwing.
+        XCTAssertEqual(parts.mock.requests.map(\.url.path), ["/api/auth/logout", "/api/auth/logout-all"])
     }
 
     func testAppInfoPlistDisablesSignInUntilAnOriginIsSet() {
