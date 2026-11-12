@@ -725,6 +725,21 @@ struct SoftChordTests {
         #expect(draft.chords == dropChords)
     }
 
+    /// A drag that ends on the letter it started on is not an undo step.
+    @Test func draggingBackToTheStartDoesNotLeaveAnUndoStep() {
+        let startChords = [SongChord.from(text: "G", characterNum: 0)]
+        var draft = SongDraftHistory(text: "Hello", chords: startChords)
+        draft.beginDrag()
+        let away = draft.moveChord(from: 0, to: 4, roomAt: 0)
+        #expect(draft.canUndo)
+        #expect(draft.chords.map(\.characterNum) != [0])
+        _ = draft.moveChord(from: away.moved(4), to: 0, roomAt: away.moved(4))
+        #expect(draft.current == SongChordEditState(text: "Hello", chords: startChords))
+        #expect(!draft.canUndo)
+        #expect(!draft.dragRecorded)
+        #expect(draft.states.count == 1)
+    }
+
     @Test func draggingAChordAttachesItToAnotherLetter() {
         let chord = SongChord(
             characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false)
@@ -1695,7 +1710,7 @@ private func pixels(of image: UIImage) -> [SIMD3<UInt8>] {
     return colors
 }
 
-private func songbookSchema() throws -> String {
+func songbookSchema() throws -> String {
     let url = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -1704,7 +1719,7 @@ private func songbookSchema() throws -> String {
     return try String(contentsOf: url, encoding: .utf8)
 }
 
-private func withTestDatabase(_ url: URL, _ body: (OpaquePointer) throws -> Void) throws {
+func withTestDatabase(_ url: URL, _ body: (OpaquePointer) throws -> Void) throws {
     var db: OpaquePointer?
     if sqlite3_open(url.path, &db) != SQLITE_OK {
         throw SongbookError.openFailed("Could not open the test songbook.")
@@ -1717,7 +1732,7 @@ private func withTestDatabase(_ url: URL, _ body: (OpaquePointer) throws -> Void
 }
 
 /// `version` is the PRAGMA user_version, 2 unless a test needs another.
-private func writeSongbook(at url: URL, version: Int = 2) throws {
+func writeSongbook(at url: URL, version: Int = 2) throws {
     try? FileManager.default.removeItem(at: url)
     var db: OpaquePointer?
     if sqlite3_open(url.path, &db) != SQLITE_OK {
@@ -1739,7 +1754,7 @@ private func writeSongbook(at url: URL, version: Int = 2) throws {
         """)
 }
 
-private func exec(_ db: OpaquePointer, _ sql: String) throws {
+func exec(_ db: OpaquePointer, _ sql: String) throws {
     var error: UnsafeMutablePointer<CChar>?
     if sqlite3_exec(db, sql, nil, nil, &error) != SQLITE_OK {
         let message = error.map { String(cString: $0) } ?? "Could not write the test songbook."

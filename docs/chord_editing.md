@@ -185,13 +185,15 @@ the draft is dirty (Discard first). Save keeps the edit for this run of the app
 changes away and stays on the same segment. Back, with a dirty draft, asks Save,
 Don't Save, or Cancel.
 
-- A transpose is a change too: Discard and Save show next to the transpose
-  buttons. Save keeps the key for this run, so the song opens in it again;
-  Discard goes back to the kept key. Back at that key, or a whole octave away, is no
-  change. Reset transpose goes to the songbook's key, so after Save it is a change.
-- The note at the bottom says "Changes do not persist" while something is not
-  saved, and "Not written to the songbook" for a saved edit or transpose (with
-  "Transpose does not persist." when a saved edit is shown in a key not saved).
+- A transpose is a change too. Discard and Save show when the draft is dirty
+  (on Chords they sit with the transpose buttons; Lyrics hides transpose, so
+  they are not next to it). Save keeps the key for this run, so the song opens
+  in it again; Discard goes back to the kept key. Back at that key, or a whole
+  octave away, is no change. Reset transpose goes to the songbook's key, so
+  after Save it is a change.
+- The note at the bottom says "Changes do not persist" while the draft is
+  unsaved, after a saved edit, or when the song is shown in another key than
+  the songbook's. The songbook file is never written.
 - Copy, Copy as image, Print and Add to Photos use the song as it is shown,
   including an unsaved draft.
 - Undo and Redo work in both Chords and Lyrics, and step through the text and
