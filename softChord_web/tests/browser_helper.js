@@ -376,6 +376,7 @@ function skipUnlessBrowser() {
 module.exports = {
   findChrome: findChrome,
   openViewer: openViewer,
+  songbookBytes: songbookBytes,
   skipReason: skipReason,
   skipUnlessBrowser: skipUnlessBrowser,
 };

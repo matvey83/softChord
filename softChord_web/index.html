@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SoftChord</title>
-  <link rel="stylesheet" href="viewer.css?v=2026-11-10">
+  <link rel="stylesheet" href="viewer.css?v=2026-11-10e">
   <!-- The app icon (an open songbook with a clef), as in the iOS and desktop apps.
        The 16, 32 and 48 px sizes are cropped to the book with thicker lines. -->
   <link rel="icon" href="icons/favicon.ico" sizes="16x16 32x32 48x48">
@@ -21,6 +21,19 @@
 </head>
 <body>
   <main id="list-view">
+    <!-- MIRRORED UI, pending on iOS: songbook name, ▾, the grey Not saved
+         indicator, and Sign in, with Search below. SoftChord/SoftChord/ContentView.swift
+         does not have this row yet. The song page has no songbook header. -->
+    <header id="songbook-header" class="songbook-header">
+      <div class="songbook-heading">
+        <button id="songbook-menu-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="songbook-menu">
+          <span id="songbook-name">zvuki_neba</span>
+          <span class="songbook-caret" aria-hidden="true">▾</span>
+        </button>
+        <span id="songbook-indicator">Not saved</span>
+      </div>
+      <button id="sign-in" type="button">Sign in</button>
+    </header>
     <div class="search-bar">
       <label for="search">Search:</label>
       <input id="search" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
@@ -131,6 +144,21 @@
     <div id="chord-live" class="visually-hidden" role="status" aria-live="polite"></div>
   </main>
 
+  <!-- Open Songbook File reads the chosen file into memory for this page visit.
+       Nothing is uploaded and nothing is stored in the browser. -->
+  <input id="songbook-file" type="file" accept=".songbook" hidden>
+
+  <div id="songbook-menu" class="menu" role="menu" aria-label="Songbook" hidden>
+    <div id="songbook-menu-label" class="menu-label">My songbooks</div>
+    <div id="songbook-menu-list" role="group" aria-labelledby="songbook-menu-label"></div>
+    <button type="button" data-action="open-file" role="menuitem">Open Songbook File…</button>
+    <div class="menu-sep" role="separator"></div>
+    <button type="button" data-action="download" role="menuitem">Download</button>
+    <button type="button" data-action="rename" role="menuitem">Rename…</button>
+    <button type="button" data-action="delete" role="menuitem">Delete…</button>
+    <button type="button" data-action="share" role="menuitem">Share…</button>
+  </div>
+
   <div id="menu" class="menu" hidden>
     <button type="button" data-action="text">Copy song text</button>
     <button type="button" data-action="chords">Copy song text with chords</button>
@@ -172,17 +200,17 @@
   <!-- Release version: every script and the style sheet below ends in ?v=.
        Change the date (in all of them) whenever you release a change to this
        folder, so a browser that kept an old index.html does not mix it with new
-       scripts, or the other way round. sql-wasm.js never changes, so it has none. -->
-  <script src="sql-wasm.js"></script>
-  <script src="softchord_chords.js?v=2026-11-10"></script>
-  <script src="softchord_text.js?v=2026-11-10"></script>
-  <script src="softchord_text_edit.js?v=2026-11-10"></script>
-  <script src="softchord_chord_edit.js?v=2026-11-10"></script>
-  <script src="song_filter.js?v=2026-11-10"></script>
-  <script src="songbook.js?v=2026-11-10"></script>
-  <script src="softchord_zoom.js?v=2026-11-10"></script>
-  <script src="softchord_sheet_image.js?v=2026-11-10"></script>
-  <script src="softchord_chord_mode.js?v=2026-11-10"></script>
-  <script src="viewer.js?v=2026-11-10"></script>
+       scripts, or the other way round. sql-wasm.js is included when its wrapper changes. -->
+  <script src="sql-wasm.js?v=2026-11-10e"></script>
+  <script src="softchord_chords.js?v=2026-11-10e"></script>
+  <script src="softchord_text.js?v=2026-11-10e"></script>
+  <script src="softchord_text_edit.js?v=2026-11-10e"></script>
+  <script src="softchord_chord_edit.js?v=2026-11-10e"></script>
+  <script src="song_filter.js?v=2026-11-10e"></script>
+  <script src="songbook.js?v=2026-11-10e"></script>
+  <script src="softchord_zoom.js?v=2026-11-10e"></script>
+  <script src="softchord_sheet_image.js?v=2026-11-10e"></script>
+  <script src="softchord_chord_mode.js?v=2026-11-10e"></script>
+  <script src="viewer.js?v=2026-11-10e"></script>
 </body>
 </html>

@@ -113,20 +113,58 @@
     return file;
   }
 
-  // Download the .songbook and query it here. A server can take this over
-  // by returning the same song list and calling useSongs().
-  function load(url) {
+  // One SQLite module for the page. The wasm file is fetched on the first use.
+  // A failed load is not kept, here or inside sql-wasm.js. The next open tries
+  // again. A cached rejection would make a later file look like it was not a songbook.
+  var sqlJsPromise = null;
+  function readySql() {
+    if (sqlJsPromise) {
+      return sqlJsPromise;
+    }
     if (typeof root.initSqlJs !== "function") {
       return Promise.reject(new Error("SQLite could not be loaded."));
     }
-    return root.initSqlJs({ locateFile: locateWasm }).then(function (SQL) {
+    var pending;
+    try {
+      pending = root.initSqlJs({ locateFile: locateWasm });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    sqlJsPromise = pending.then(function (SQL) {
+      return SQL;
+    }, function (error) {
+      sqlJsPromise = null;
+      throw error;
+    });
+    return sqlJsPromise;
+  }
+
+  // Read bytes already in memory. Does not fetch. A format error is the same
+  // error checkFormat throws (error.formatProblem). Anything else is not a
+  // songbook this viewer can read.
+  function openBuffer(bytes) {
+    var copy = new Uint8Array(bytes);
+    return readySql().then(function (SQL) {
+      openBytes(SQL, copy);
+    });
+  }
+
+  // Download the .songbook and query it here. A server can take this over
+  // by returning the same song list and calling useSongs(). Resolves with a
+  // copy of the file bytes so the page can open that songbook again without
+  // fetching it a second time.
+  function load(url) {
+    return readySql().then(function (SQL) {
       return fetch(url, { cache: "no-store" }).then(function (response) {
         if (!response.ok) {
           throw new Error("The songbook could not be opened.");
         }
         return response.arrayBuffer();
       }).then(function (buffer) {
-        openBytes(SQL, new Uint8Array(buffer));
+        var bytes = new Uint8Array(buffer);
+        var kept = bytes.slice(0);
+        openBytes(SQL, bytes);
+        return kept;
       });
     }).catch(function (error) {
       var message = error && error.message ? error.message : String(error);
@@ -185,6 +223,7 @@
 
   return {
     load: load,
+    openBuffer: openBuffer,
     useSongs: useSongs,
     openBytes: openBytes,
     titles: titles,
