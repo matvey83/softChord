@@ -29,9 +29,22 @@
 		81A7BBA430890AC6000497B9 /* SoftChordUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "SoftChordUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		81A7BBD130890AC6000497B9 /* Exceptions for "SoftChord" folder in "SoftChord" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 81A7BB8A30890AC4000497B9 /* SoftChord */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		81A7BB8D30890AC4000497B9 /* SoftChord */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				81A7BBD130890AC6000497B9 /* Exceptions for "SoftChord" folder in "SoftChord" target */,
+			);
 			path = "SoftChord";
 			sourceTree = "<group>";
 		};
@@ -421,6 +434,7 @@
 				DEVELOPMENT_TEAM = BP4KJ52H3T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SoftChord/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SoftChord;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Saves the song sheet to your photo library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -455,6 +469,7 @@
 				DEVELOPMENT_TEAM = BP4KJ52H3T;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SoftChord/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SoftChord;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Saves the song sheet to your photo library.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
