@@ -487,7 +487,7 @@ class SoftChordEditorTest(unittest.TestCase):
     def test_not_available_dialogs(self):
         """Each account action shows its title and message, with one OK."""
         expected = [
-            ("Sign in", "Sign-in not configured"),
+            ("Not available yet", "Sign-in is coming in a later update."),
             ("Accounts aren't available yet",
              "This needs a softChord account, which is coming in a later update."),
             ("Accounts aren't available yet",
@@ -879,7 +879,7 @@ class SoftChordEditorTest(unittest.TestCase):
         finally:
             QtWidgets.QMessageBox.exec = original
         self.assertEqual(calls, [])
-        self.assertEqual(shown, [("Sign in", NOT_CONFIGURED)])
+        self.assertEqual(shown, [("Not available yet", NOT_CONFIGURED)])
 
     def test_json_post_mock_rejects_a_post_that_is_not_json(self):
         """The mock returns 400 unless the POST is exactly application/json."""
@@ -1216,7 +1216,7 @@ class SoftChordEditorTest(unittest.TestCase):
         finally:
             QtWidgets.QMessageBox.exec = original
         self.assertEqual(calls, [])
-        self.assertEqual(shown, ["Sign-in not configured"])
+        self.assertEqual(shown, ["Sign-in is coming in a later update."])
 
     def test_transport_refuses_redirects_and_uses_a_15_second_timeout(self):
         import http.server

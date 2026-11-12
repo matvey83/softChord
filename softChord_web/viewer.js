@@ -114,7 +114,7 @@
   };
   // No API origin (config.js, window.SOFTCHORD_API_ORIGIN, or the meta tag).
   // Same notice dialog. This path does not fetch.
-  var NOT_CONFIGURED = ["Sign-in isn't available yet", "The server is not configured."];
+  var NOT_CONFIGURED = ["Not available yet", "Sign-in is coming in a later update."];
   // An origin that is not this page's address. The API has no CORS and its
   // cookies are host-only, so a different host cannot sign in. No request.
   var NOT_SAME_ORIGIN = ["Sign-in isn't available yet", "The server must be on the same address as this page."];
