@@ -43,3 +43,7 @@ wheels/
 # Test artifacts
 out.pdf
 out_song.txt
+
+# Local auth server
+server/node_modules/
+server/.wrangler/

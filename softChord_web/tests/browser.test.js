@@ -50,15 +50,18 @@ test("Escape closes the notice dialog and keeps the song open", { skip: skip }, 
     assert.equal(await page.eval("location.hash"), "#/song/1");
     assert.equal(await page.eval("document.getElementById('song-view').hidden"), false);
     assert.equal(await state(page, "transpose-reset"), false);
-    // A second Escape, with no dialog, would leave the song: the transpose was
-    // not saved, so it asks first. Escape there keeps the song.
+    // Escape never discards and never leaves, even when the transpose is dirty.
     await page.pressKey("Escape");
+    assert.equal(await page.eval("document.getElementById('leave-confirm').open"), false);
+    assert.equal(await page.eval("location.hash"), "#/song/1");
+    assert.equal(await state(page, "transpose-reset"), false);
+    // Back asks. Escape there is Cancel. Don't Save leaves.
+    await click(page, "back");
     assert.equal(await page.eval("document.getElementById('leave-confirm').open"), true);
     await page.pressKey("Escape");
     assert.equal(await page.eval("document.getElementById('leave-confirm').open"), false);
     assert.equal(await page.eval("location.hash"), "#/song/1");
-    // Discard there leaves.
-    await page.pressKey("Escape");
+    await click(page, "back");
     await click(page, "leave-confirm-discard");
     await page.waitFor("document.getElementById('song-view').hidden", "leaving the song");
     assert.equal(await page.eval("location.hash"), "#/");
@@ -148,11 +151,12 @@ test("an edit started after a transpose saves or discards the transpose with it"
     var opened = await page.eval(sheet);
     await click(page, "transpose-up");
     var up = await page.eval(sheet);
-    await click(page, "edit-text");
+    await click(page, "segment-lyrics");
     await click(page, "edit-discard");
     assert.equal(await page.eval(sheet), opened);
+    assert.equal(await page.eval("document.getElementById('segment-lyrics').getAttribute('aria-pressed')"), "true");
+    await click(page, "segment-chords");
     await click(page, "transpose-up");
-    await click(page, "edit-chords");
     await click(page, "edit-save");
     assert.equal(await page.eval(sheet), up);
     assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
@@ -344,7 +348,7 @@ test("the page still works when the toolbar buttons are missing from index.html"
     await openSong(page, 1);
     assert.equal(await page.eval("document.getElementById('song-title').textContent"), "Short");
     assert.ok((await page.eval("document.querySelectorAll('#sheet .char').length")) > 5);
-    await page.pressKey("Escape");
+    await click(page, "back");
     await page.waitFor("document.getElementById('song-view').hidden", "leaving the song");
     assert.deepEqual(page.errors, []);
   } finally {

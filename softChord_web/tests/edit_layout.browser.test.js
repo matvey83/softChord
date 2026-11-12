@@ -61,7 +61,9 @@ test("a tab is as wide in the sheet as in the textarea, so the letters after it 
     await setZoom(page, 150);
     await assertAligned(page, "tabs at 150%");
     await setZoom(page, 60);
-    await assertAligned(page, "tabs at 60%");
+    // Below 80% the textarea is laid out at 16px and scaled, so a letter can
+    // sit about 1.2px off the sheet (see the zoom cases below).
+    await assertAligned(page, "tabs at 60%", 1.2);
   });
 });
 
@@ -73,7 +75,7 @@ test("tabs stay in the song text and are not turned into spaces by editing", { s
     await page.insertText("X");
     await assertAligned(page, "typed before a tab");
     await click(page, "edit-save");
-    await click(page, "edit-text");
+    await click(page, "segment-lyrics");
     await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor");
     assert.equal(await page.eval("document.getElementById('sheet-editor').value"), "X" + TABS.text);
   });
@@ -99,9 +101,10 @@ for (var phone of [320, 375, 640, 700, 760, 800, 940, 941, 1000]) {
       try {
         await page.eval("location.hash = '#/song/1'");
         await page.waitFor("!document.getElementById('song-view').hidden", "the song page");
-        assert.deepEqual(await buttonsOutside(page, width), [], "not editing");
-        await click(page, "edit-text");
-        await page.waitFor("!document.getElementById('sheet-editor').hidden", "the editor");
+        assert.deepEqual(await buttonsOutside(page, width), [], "opened on Chords");
+        await click(page, "segment-lyrics");
+        await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor");
+        await page.insertText("Z");
         assert.deepEqual(await buttonsOutside(page, width), [], "editing");
         // Save and Discard can be reached, and are not hidden behind another button.
         for (var id of ["edit-save", "edit-discard"]) {
@@ -112,7 +115,7 @@ for (var phone of [320, 375, 640, 700, 760, 800, 940, 941, 1000]) {
         }
         // Edit Chords adds four buttons: still inside the window.
         await click(page, "edit-discard");
-        await click(page, "edit-chords");
+        await click(page, "segment-chords");
         await page.waitFor("!document.getElementById('chord-actions').hidden", "the chord buttons");
         assert.deepEqual(await buttonsOutside(page, width), [], "editing chords");
         assert.deepEqual(page.errors, []);
@@ -123,35 +126,33 @@ for (var phone of [320, 375, 640, 700, 760, 800, 940, 941, 1000]) {
   })(phone);
 }
 
-// The rows of the toolbar (layoutToolbar): the widest mode (viewing with Save
-// and Discard) decides, so the rows are the same in every mode. Wide: Back, the
-// title and the buttons on one row. Narrower: the buttons below Back and the
-// title, on one row while they fit, else the Edit group starts the next row.
+// The rows of the toolbar (layoutToolbar): the widest segment (Chords with
+// Transpose, chord buttons, and Discard and Save) decides, so the rows are the
+// same in every segment. Wide: Back, the title and the buttons on one row.
+// Narrower: the buttons below Back and the title, on one row while they fit,
+// else the Chords/Lyrics switch starts the next row.
 async function toolbarRows(page) {
   return page.eval("(function () {" +
     "var t = document.querySelector('#song-view .toolbar');" +
     "var top = function (id) { return Math.round(document.getElementById(id).getBoundingClientRect().top); };" +
     "var zoom = document.getElementById('zoom-in').closest('.tool-group');" +
-    "var edit = document.getElementById('edit-group');" +
+    "var edit = document.getElementById('segment-switch');" +
     "return { narrow: t.classList.contains('narrow'), back: top('back'), zoom: Math.round(zoom.getBoundingClientRect().top)," +
-    " edit: top('edit-group'), editLeft: Math.round(edit.getBoundingClientRect().left)," +
+    " edit: top('segment-switch'), editLeft: Math.round(edit.getBoundingClientRect().left)," +
     " chords: document.getElementById('chord-actions').hidden ? null : top('chord-actions') }; })()");
 }
 
-for (var rowCase of [[1200, "one"], [700, "buttons"], [500, "edit"], [375, "edit"]]) {
+for (var rowCase of [[1200, "one"], [1000, "buttons"], [700, "edit"], [375, "edit"]]) {
   (function (width, expected) {
     test("at " + width + "px the toolbar rows are the same in every mode (" + expected + ")", { skip: skip }, async function () {
       var page = await helper.openViewer([TABS], { viewport: { width: width, height: 700 } });
       try {
         await page.eval("location.hash = '#/song/1'");
         await page.waitFor("!document.getElementById('song-view').hidden", "the song page");
-        var modes = [["viewing", null], ["text", "edit-text"], ["chords", "edit-chords"]];
+        var modes = [["chords", "segment-chords"], ["text", "segment-lyrics"]];
         for (var mode of modes) {
-          if (mode[1]) {
-            if (mode[0] === "chords") { await click(page, "edit-discard"); }
-            await click(page, mode[1]);
-            await page.waitFor("!document.getElementById('edit-actions').hidden", "editing");
-          }
+          await click(page, mode[1]);
+          await page.waitFor("document.getElementById('" + mode[1] + "').getAttribute('aria-pressed') === 'true'", mode[0]);
           var rows = await toolbarRows(page);
           if (expected === "one") {
             assert.equal(rows.narrow, false, mode[0]);
@@ -210,10 +211,13 @@ test("opening and leaving the editor keeps the same song line at the top of the 
     await page.eval("location.hash = '#/song/1'");
     await page.waitFor("!document.getElementById('song-view').hidden", "the song page");
     for (var spot of [1500, 2000]) {
+      // Already on Chords, so switching to Lyrics places the caret. Discard stays
+      // on Lyrics, so the next spot goes back to Chords first.
+      await click(page, "segment-chords");
       await page.eval("document.getElementById('sheet-scroll').scrollTop = " + spot);
       var before = await topLine(page);
       assert.ok(before.index > 20, "scrolled into the middle (line " + before.index + ")");
-      await click(page, "edit-text");
+      await click(page, "segment-lyrics");
       await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor");
       var inEdit = await topLine(page);
       assert.equal(inEdit.index, before.index, "same line at the top while editing");
@@ -238,13 +242,20 @@ test("opening and leaving the editor keeps the same song line at the top of the 
   }
 });
 
-test("focus goes to the Edit button after Save and after Discard", { skip: skip }, function () {
+test("Save stays in edit on Chords, and Discard stays on the open segment", { skip: skip }, function () {
   return inEditor([TABS], async function (page) {
-    for (var finish of ["edit-save", "edit-discard"]) {
-      await startEditing(page);
-      await click(page, finish);
-      assert.equal(await page.eval("document.activeElement.id"), "edit-text", "after " + finish);
-    }
+    await startEditing(page);
+    await page.insertText("Z");
+    await click(page, "edit-save");
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), true, "Save");
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true, "Save clears dirty");
+    assert.equal(await page.eval("document.activeElement.id"), "sheet", "Save");
+    await startEditing(page);
+    await page.insertText("Z");
+    await click(page, "edit-discard");
+    assert.equal(await page.eval("document.getElementById('segment-lyrics').getAttribute('aria-pressed')"), "true", "Discard");
+    assert.equal(await page.eval("document.activeElement.id"), "sheet-editor", "Discard");
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true, "Discard clears dirty");
   });
 });
 test("opening the same song again by its address while editing does not break the editor", { skip: skip }, function () {
@@ -306,24 +317,18 @@ function noteShown(page) {
   return page.eval("!document.getElementById('persist-note').hidden");
 }
 
-test("Changes do not persist is shown as soon as the editor opens and goes with it", { skip: skip }, function () {
+test("Changes do not persist stays after Save and is hidden on a clean song", { skip: skip }, function () {
   return inEditor([TABS], async function (page) {
-    assert.equal(await noteShown(page), false, "not shown before editing");
+    assert.equal(await noteShown(page), false, "a clean open is not a change");
     await startEditing(page);
-    assert.equal(await noteShown(page), true, "shown while editing, before any change");
-    // Discard: nothing was kept, so the note goes again.
-    await click(page, "edit-discard");
-    assert.equal(await noteShown(page), false, "gone after Discard");
-    // Save with nothing changed: still nothing that would not persist.
-    await startEditing(page);
-    await click(page, "edit-save");
-    assert.equal(await noteShown(page), false, "gone after a Save with no change");
-    // Save with a change keeps it, and Discard of a later edit leaves it.
-    await startEditing(page);
+    assert.equal(await noteShown(page), false, "flipping to Lyrics is not a change");
     await page.insertText("X");
-    assert.equal(await noteShown(page), true);
+    assert.equal(await noteShown(page), true, "a change is not saved to the file");
+    await click(page, "edit-discard");
+    assert.equal(await noteShown(page), false, "gone after Discard back to the file");
+    await page.insertText("X");
     await click(page, "edit-save");
-    assert.equal(await noteShown(page), true, "kept after Save with a change");
+    assert.equal(await noteShown(page), true, "kept after Save, because the file is not written");
     await startEditing(page);
     await click(page, "edit-discard");
     assert.equal(await noteShown(page), true, "the earlier saved edit still does not persist");
@@ -366,17 +371,15 @@ test("only the textarea is left for a screen reader while editing, not the sheet
         "label: document.getElementById('sheet-editor').getAttribute('aria-label')," +
         "editorHidden: document.getElementById('sheet-editor').hidden })");
     };
-    assert.equal((await state()).sheet, null, "the sheet is read while viewing");
+    assert.equal((await state()).sheet, null, "on Chords the sheet is what is read");
     await startEditing(page);
     var editing = await state();
     assert.equal(editing.sheet, "true");
     assert.equal(editing.label, "Song text");
     assert.equal(editing.editorHidden, false);
     await click(page, "edit-discard");
-    assert.equal((await state()).sheet, null, "after Discard");
-    await startEditing(page);
-    assert.equal((await state()).sheet, "true", "editing again");
+    assert.equal((await state()).sheet, "true", "Discard stays on Lyrics");
     await click(page, "edit-save");
-    assert.equal((await state()).sheet, null, "after Save");
+    assert.equal((await state()).sheet, null, "Save switches to Chords");
   });
 });

@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SoftChord</title>
-  <link rel="stylesheet" href="viewer.css?v=2026-10-30b">
+  <link rel="stylesheet" href="viewer.css?v=2026-11-10j">
   <!-- The app icon (an open songbook with a clef), as in the iOS and desktop apps.
        The 16, 32 and 48 px sizes are cropped to the book with thicker lines. -->
   <link rel="icon" href="icons/favicon.ico" sizes="16x16 32x32 48x48">
@@ -21,6 +21,26 @@
 </head>
 <body>
   <main id="list-view">
+    <!-- MIRRORED UI, pending on iOS: songbook name, ▾, the grey Not saved
+         indicator, and Sign in, with Search below. SoftChord/SoftChord/ContentView.swift
+         does not have this row yet. The song page has no songbook header. -->
+    <header id="songbook-header" class="songbook-header">
+      <div class="songbook-heading">
+        <button id="songbook-menu-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="songbook-menu">
+          <span id="songbook-name">zvuki_neba</span>
+          <span class="songbook-caret" aria-hidden="true">▾</span>
+        </button>
+        <span id="songbook-indicator">Not saved</span>
+      </div>
+      <!-- Sign in opens an email field only when the API origin is this
+           page's own address (config.js, window.SOFTCHORD_API_ORIGIN, or the
+           softchord-api-origin meta tag). Otherwise it explains that sign-in
+           is not available. iOS does not have this flow yet. -->
+      <div class="sign-in-slot">
+        <span id="sign-in-offline" hidden>Offline</span>
+        <button id="sign-in" type="button">Sign in</button>
+      </div>
+    </header>
     <div class="search-bar">
       <label for="search">Search:</label>
       <input id="search" type="search" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
@@ -37,16 +57,17 @@
            currentColor; Up and Down are plain arrows like the SF Symbols arrow.up
            and arrow.down in the iOS app; Zoom out and Zoom in are a magnifying
            glass with a minus, an equals sign (back to 100%) or a plus; Reset transpose is a counterclockwise arrow; Print is a printer; Edit text is a pencil; Edit chords is a note with a pencil; Edit chord is a text field; Delete chord is a bin; Undo and Redo are curved arrows), so they need no licence note or network fetch. -->
-      <!-- MIRRORED UI: the iOS app mirrors this toolbar (planned in
-           softChord Viewer/softChord Viewer/SongToolbar.swift, icons in its
-           Assets.xcassets/Toolbar), and so does the desktop editor
-           (src/softchord_toolbar.py, the SVGs in icons/toolbar/). The buttons,
-           their order and groups, the icons, the labels and tooltips, and when
-           each shows or is dimmed are the same in all three apps: change them in
-           all three. All three wrap the same way (layoutToolbar in the viewer
-           script): when the buttons of the widest mode fit on one row they are on one row in
-           every mode, and when they do not the edit groups start the next row
-           in every mode. The desktop has no Back or title. -->
+      <!-- MIRRORED UI: the desktop editor (src/softchord_toolbar.py) opens a
+           song already editing, with this Chords / Lyrics switch instead of
+           Edit Text and Edit Chords. The iOS app still has those two buttons.
+           Icons are the SVGs in icons/toolbar/. Copy, Print, Zoom, Undo and
+           Redo stay shown. Transpose is shown on Chords and hidden on Lyrics.
+           Chord Add and Delete are shown only on Chords. Discard and Save are
+           shown only when the draft is dirty. layoutToolbar: when the buttons
+           of the widest segment (Chords, with Transpose, the chord buttons,
+           and Discard and Save) fit on one row, every segment is one row;
+           otherwise the switch and the groups after it start the next row.
+           The desktop has no Back or title, and it alone has the font buttons. -->
       <div class="toolbar-actions">
         <div id="copy-actions" class="tool-group" role="group" aria-label="Copy and print">
           <button id="copy-text" class="tool" type="button" title="Copy song text" aria-label="Copy song text">
@@ -87,17 +108,13 @@
           </button>
         </div>
         <span class="tool-sep" aria-hidden="true"></span>
-        <!-- Shown when the buttons of the widest mode do not fit on one row:
-             the edit groups then start the next row in every mode (layoutToolbar
-             in the viewer script). -->
+        <!-- Shown when the widest segment does not fit on one row: the
+             Chords/Lyrics switch and the groups after it then start the next
+             row in every segment (layoutToolbar in the viewer script). -->
         <span id="edit-row-break" class="tool-break" aria-hidden="true"></span>
-        <div id="edit-group" class="tool-group" role="group" aria-label="Edit">
-          <button id="edit-text" class="tool" type="button" title="Edit Text…" aria-label="Edit Text…">
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M4 20l1-4.2L16.6 4.2a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.3l3.2 3.2"/></svg>
-          </button>
-          <button id="edit-chords" class="tool" type="button" title="Edit Chords…" aria-label="Edit Chords…">
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="7" cy="17.5" r="2.7"/><path d="M9.7 17.5V4.5l6.3 1.7"/><path d="M13 20.5l.7-3 5.6-5.6a1.5 1.5 0 0 1 2.1 2.1L15.8 19.6z"/></svg>
-          </button>
+        <div id="segment-switch" class="tool-group" role="group" aria-label="Chords and Lyrics">
+          <button id="segment-chords" class="segment-btn" type="button" aria-pressed="true" aria-keyshortcuts="Control+K Meta+K" title="Chords (Ctrl+K). Select a letter, then press A–G to add a chord. M toggles minor. Double-click a chord for more. Drag or use Left and Right to move it. Delete removes it." aria-label="Chords">Chords</button>
+          <button id="segment-lyrics" class="segment-btn" type="button" aria-pressed="false" aria-keyshortcuts="Control+L Meta+L" title="Lyrics (Ctrl+L). Edit the lyrics of the song. As text is moved, added, or removed, chords follow their letters. Switch to Chords to change the chords." aria-label="Lyrics">Lyrics</button>
         </div>
         <div id="chord-actions" class="tool-group" role="group" aria-label="Chord" hidden>
           <button id="chord-edit" class="tool" type="button" title="Add chord" aria-label="Add chord" disabled>
@@ -106,6 +123,8 @@
           <button id="chord-delete" class="tool" type="button" title="Delete chord" aria-label="Delete chord" disabled>
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13M10.5 11v6M13.5 11v6"/></svg>
           </button>
+        </div>
+        <div id="undo-actions" class="tool-group" role="group" aria-label="Undo">
           <button id="chord-undo" class="tool" type="button" title="Undo" aria-label="Undo" disabled>
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M9 8h6a4.5 4.5 0 0 1 0 9H8"/><path d="M12 4.5 8.5 8l3.5 3.5"/></svg>
           </button>
@@ -132,6 +151,21 @@
     <div id="chord-live" class="visually-hidden" role="status" aria-live="polite"></div>
   </main>
 
+  <!-- Open Songbook File reads the chosen file into memory for this page visit.
+       Nothing is uploaded and nothing is stored in the browser. -->
+  <input id="songbook-file" type="file" accept=".songbook" hidden>
+
+  <div id="songbook-menu" class="menu" role="menu" aria-label="Songbook" hidden>
+    <div id="songbook-menu-label" class="menu-label">My songbooks</div>
+    <div id="songbook-menu-list" role="group" aria-labelledby="songbook-menu-label"></div>
+    <button type="button" data-action="open-file" role="menuitem">Open Songbook File…</button>
+    <div class="menu-sep" role="separator"></div>
+    <button type="button" data-action="download" role="menuitem">Download</button>
+    <button type="button" data-action="rename" role="menuitem">Rename…</button>
+    <button type="button" data-action="delete" role="menuitem">Delete…</button>
+    <button type="button" data-action="share" role="menuitem">Share…</button>
+  </div>
+
   <div id="menu" class="menu" hidden>
     <button type="button" data-action="text">Copy song text</button>
     <button type="button" data-action="chords">Copy song text with chords</button>
@@ -150,15 +184,43 @@
     </div>
   </div>
 
+  <dialog id="sign-in-panel" aria-labelledby="sign-in-title">
+    <div id="sign-in-request">
+      <h2 id="sign-in-title">Sign in</h2>
+      <form id="sign-in-form">
+        <label for="sign-in-email">Email</label>
+        <input id="sign-in-email" type="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+        <p id="sign-in-error" class="error" hidden></p>
+        <div class="sign-in-actions">
+          <button type="button" id="sign-in-cancel" class="tool-text">Cancel</button>
+          <button type="submit" id="sign-in-send" class="tool-text">Send link</button>
+        </div>
+      </form>
+    </div>
+    <div id="sign-in-check" hidden>
+      <h2 id="sign-in-check-title">Check your email</h2>
+      <p id="sign-in-address"></p>
+      <p id="sign-in-check-error" class="error" hidden></p>
+      <div class="sign-in-actions">
+        <button type="button" id="sign-in-check-cancel" class="tool-text">Cancel</button>
+        <button type="button" id="sign-in-resend" class="tool-text">Resend</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="account-menu" class="menu" role="menu" aria-label="Account" hidden>
+    <button type="button" id="sign-out" role="menuitem">Sign out (this device)</button>
+    <button type="button" id="sign-out-all" role="menuitem">Sign out everywhere</button>
+  </div>
+
   <dialog id="notice">
     <h2 id="notice-title"></h2>
     <p id="notice-message"></p>
     <form method="dialog"><button type="submit">OK</button></form>
   </dialog>
 
-  <!-- Leaving Edit text or Edit chords (Back, another song), or a transpose that
-       was not saved, with changes that nothing keeps asks first. Keep editing is
-       the default. -->
+  <!-- Leaving or switching songs with a dirty draft asks first: Save, Don't
+       Save, or Cancel. Cancel stays in the edit. Save is the default. -->
   <!-- MIRRORED UI: the desktop editor's Save / Don't Save / Cancel sheet
        (softchord_session.py _leaveEditMessageBox) and the iOS song page's Back. -->
   <dialog id="leave-confirm" aria-labelledby="leave-confirm-title">
@@ -174,17 +236,18 @@
   <!-- Release version: every script and the style sheet below ends in ?v=.
        Change the date (in all of them) whenever you release a change to this
        folder, so a browser that kept an old index.html does not mix it with new
-       scripts, or the other way round. sql-wasm.js never changes, so it has none. -->
-  <script src="sql-wasm.js"></script>
-  <script src="softchord_chords.js?v=2026-10-30b"></script>
-  <script src="softchord_text.js?v=2026-10-30b"></script>
-  <script src="softchord_text_edit.js?v=2026-10-30b"></script>
-  <script src="softchord_chord_edit.js?v=2026-10-30b"></script>
-  <script src="song_filter.js?v=2026-10-30b"></script>
-  <script src="songbook.js?v=2026-10-30b"></script>
-  <script src="softchord_zoom.js?v=2026-10-30b"></script>
-  <script src="softchord_sheet_image.js?v=2026-10-30b"></script>
-  <script src="softchord_chord_mode.js?v=2026-10-30b"></script>
-  <script src="viewer.js?v=2026-10-30b"></script>
+       scripts, or the other way round. sql-wasm.js is included when its wrapper changes. -->
+  <script src="sql-wasm.js?v=2026-11-10j"></script>
+  <script src="softchord_chords.js?v=2026-11-10j"></script>
+  <script src="softchord_text.js?v=2026-11-10j"></script>
+  <script src="softchord_text_edit.js?v=2026-11-10j"></script>
+  <script src="softchord_chord_edit.js?v=2026-11-10j"></script>
+  <script src="song_filter.js?v=2026-11-10j"></script>
+  <script src="songbook.js?v=2026-11-10j"></script>
+  <script src="softchord_zoom.js?v=2026-11-10j"></script>
+  <script src="softchord_sheet_image.js?v=2026-11-10j"></script>
+  <script src="softchord_chord_mode.js?v=2026-11-10j"></script>
+  <script src="config.js?v=2026-11-10j"></script>
+  <script src="viewer.js?v=2026-11-10j"></script>
 </body>
 </html>

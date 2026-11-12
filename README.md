@@ -20,6 +20,7 @@ The songbook can be shared as a file, or exported to a printable PDF.
   from source on any system with Python (see below).
 - **Web app**: [open it in any browser](https://matvey83.github.io/softChord/softChord_web/).
   Shows the songbook in this repository. Changes are not saved yet.
+  A local songbook file can be opened into memory for this session only.
 - **iOS app, SoftChord** (iPhone and iPad). Shows the songbook in this
   repository. Changes are not saved yet. It is not on the App Store: build it
   from source in Xcode (`SoftChord/SoftChord.xcodeproj`).
@@ -34,9 +35,10 @@ The songbook can be shared as a file, or exported to a printable PDF.
 
 **Editing**
 
-- *Edit Text* and *Edit Chords* modes, each ending with Save or Discard.
-  Switching between the two modes keeps the changes.
-- Undo and Redo.
+- Songs open already editing, with a Chords or Lyrics switch. Switching
+  keeps the same draft. Save and Discard show when the draft is dirty.
+  Leaving with a dirty draft asks Save, Don't Save, or Cancel.
+- Undo and Redo work in both modes.
 - Chords follow the lyrics when the text is edited
   ([docs/lyric_editing.md](docs/lyric_editing.md)).
 

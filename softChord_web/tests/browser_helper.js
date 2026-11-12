@@ -86,6 +86,18 @@ function startServer(songbook, transformHtml) {
   });
 }
 
+// Headless Chrome keeps helper processes. Killing only the parent leaves them
+// holding the profile, and removing it then fails with ENOTEMPTY.
+function killTree(pid) {
+  var children = [];
+  try {
+    children = fs.readFileSync("/proc/" + pid + "/task/" + pid + "/children", "utf8")
+      .trim().split(/\s+/).filter(Boolean);
+  } catch (error) { /* already gone */ }
+  children.forEach(function (child) { killTree(Number(child)); });
+  try { process.kill(pid, "SIGKILL"); } catch (error) { /* already gone */ }
+}
+
 function launchChrome(chrome, profile) {
   var child = spawn(chrome, [
     "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
@@ -311,12 +323,21 @@ async function openViewer(songs, options) {
       return Buffer.from(result.data, "base64");
     },
     close: async function () {
+      try { await client.send("Browser.close"); } catch (error) { /* already closed */ }
       try { client.close(); } catch (error) { /* already closed */ }
-      launched.child.kill("SIGKILL");
+      killTree(launched.child.pid);
       server.close();
-      server.closeAllConnections();
-      // Chrome may still be writing into its profile for a moment after it is killed.
-      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      try { server.closeAllConnections(); } catch (error) { /* older Node */ }
+      // Chrome sometimes keeps the profile open for a moment after it is killed.
+      // Leaving that directory in place is better than failing a test that passed.
+      for (var attempt = 0; attempt < 15; attempt++) {
+        try {
+          fs.rmSync(profile, { recursive: true, force: true });
+          return;
+        } catch (error) {
+          await new Promise(function (r) { setTimeout(r, 50); });
+        }
+      }
     },
   };
   try {
@@ -355,6 +376,7 @@ function skipUnlessBrowser() {
 module.exports = {
   findChrome: findChrome,
   openViewer: openViewer,
+  songbookBytes: songbookBytes,
   skipReason: skipReason,
   skipUnlessBrowser: skipUnlessBrowser,
 };

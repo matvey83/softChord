@@ -11,10 +11,11 @@ import Testing
 import UIKit
 @testable import SoftChord
 
+@Suite(.serialized)
 struct SoftChordTests {
 
     @Test func songMenuListsTheShareCommands() {
-        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: nil)
+        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in })
         let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
         #expect(titles == [
             "Copy song text",
@@ -28,19 +29,25 @@ struct SoftChordTests {
         var state = SongToolbarState()
         #expect(state.groups.flatMap(\.buttons).map(\.rawValue) == [
             "copy-text", "copy-chords", "copy-image", "print", "transpose-down", "transpose-up",
-            "transpose-reset", "zoom-out", "zoom-reset", "zoom-in", "edit-text", "edit-chords",
+            "transpose-reset", "zoom-out", "zoom-reset", "zoom-in", "segment-chords", "segment-lyrics",
+            "chord-edit", "chord-delete", "chord-undo", "chord-redo",
         ])
-        #expect(state.groups.first?.name == "Copy and print")
+        #expect(state.groups.map(\.name) == [
+            "Copy and print", "Transpose", "Zoom", "Chords and Lyrics", "Chord", "Undo",
+        ])
         #expect(!state.isEnabled(.transposeReset) && !state.isEnabled(.zoomReset) && state.isEnabled(.print))
-        state.editing = true
-        state.chordMode = true
-        #expect(state.groups.map(\.name) == ["Zoom", "Edit", "Chord", "Finish editing"])
-        #expect(!state.isEnabled(.transposeUp) && state.isEnabled(.zoomIn) && state.label(.chordEdit) == "Add chord")
+        #expect(state.isEnabled(.transposeUp) && state.isEnabled(.zoomIn) && state.label(.chordEdit) == "Add chord")
+        state.chordMode = false
+        state.pending = true
+        #expect(state.groups.map(\.name) == [
+            "Copy and print", "Zoom", "Chords and Lyrics", "Undo", "Finish editing",
+        ])
+        #expect(!state.groups.contains { $0.name == "Transpose" })
         #expect(SongZoom.stepped(105, 1) == 110 && SongZoom.stepped(105, -1) == 100 && SongZoom.stepped(50, -1) == 50)
     }
 
-    /// MIRRORED UI: viewer.js layoutToolbar. The widest mode (viewing with Discard
-    /// and Save) decides the rows, so they are the same in every mode.
+    /// MIRRORED UI: viewer.js layoutToolbar. The widest segment (Chords with Discard
+    /// and Save) decides the rows, so they are the same on every segment.
     @Test func songToolbarRowsFollowTheWidestMode() {
         let metrics = SongToolbarMetrics()
         for oneRow in [true, false] {
@@ -60,19 +67,22 @@ struct SoftChordTests {
         }
     }
 
-    @Test func songPageMenuAddsEdit() {
-        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: {})
+    @Test func songPageMenuAddsChordsAndLyrics() {
+        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onSelectSegment: { _ in })
         let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
-        #expect(titles.last == "Edit Text…")
+        #expect(Array(titles.suffix(2)) == ["Chords", "Lyrics"])
+        let listMenu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in })
+        let listTitles = listMenu.children.compactMap { ($0 as? UIAction)?.title }
+        #expect(!listTitles.contains("Chords") && !listTitles.contains("Lyrics"))
     }
 
-    @Test func songPageMenuAddsEditChordsNextToEditText() {
-        let menu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: {}, onEditChords: {})
-        let titles = menu.children.compactMap { ($0 as? UIAction)?.title }
-        #expect(Array(titles.suffix(2)) == ["Edit Text…", "Edit Chords…"])
-        let listMenu = SongShareMenu.menu(songId: { 1 }, report: { _, _ in }, onEdit: nil)
-        let listTitles = listMenu.children.compactMap { ($0 as? UIAction)?.title }
-        #expect(!listTitles.contains("Edit Chords…"))
+    @Test func aNewEmptySongOpensOnLyricsAndExistingSongsOpenOnChords() {
+        #expect(SongEditSegment.forOpen(text: "", origin: "new") == .lyrics)
+        #expect(SongEditSegment.forOpen(text: "Hello", origin: "new") == .chords)
+        #expect(SongEditSegment.forOpen(text: "", origin: "paste") == .chords)
+        #expect(SongEditSegment.forOpen(text: "", origin: "import") == .chords)
+        #expect(SongEditSegment.forOpen(text: "") == .chords)
+        #expect(SongEditSegment.forOpen(text: "A song") == .chords)
     }
 
     /// The list must not refresh a menu while it is closed. The cell gets one
@@ -103,19 +113,19 @@ struct SoftChordTests {
         let title = try #require(try Songbook.titles().first)
         let window = show(UIHostingController(rootView: SongListHarness(song: title)))
         await settle()
-        pressButton("Edit Chords…", in: window)
         await settle()
         for width: CGFloat in [402, 320, 900, 1000] {
             window.frame = CGRect(x: 0, y: 0, width: width, height: 874)
             window.layoutIfNeeded()
             await settle()
-            for name in ["Zoom in", "Add chord", "Redo", "Save"] {
+            for name in [
+                "Copy song text", "Print / Save as PDF", "Transpose up",
+                "Zoom in", "Chords", "Lyrics", "Add chord", "Redo",
+            ] {
                 #expect(onScreen(name), "\(name) \(width)")
             }
-            // Copy and Print, and Transpose, wait until Save or Discard.
-            for name in ["Copy song text", "Print / Save as PDF", "Transpose up"] {
-                #expect(!onScreen(name), "\(name) \(width)")
-            }
+            // Save and Discard wait until the draft is dirty.
+            #expect(!onScreen("Save"), "\(width)")
             // Back and the title, then at least one row of buttons (34 pt) on a phone.
             let bottom = window.safeAreaInsets.top + (SongToolbarMetrics().rows(width: width) == .oneRow ? 38 : 34 * 2)
             let chords = try #require(window.descendants(of: UIScrollView.self).first {
@@ -177,9 +187,50 @@ struct SoftChordTests {
         asking.isHidden = true
     }
 
-    /// MIRRORED UI: viewer.js switchEditing. Edit Chords while the text is edited,
-    /// and Edit Text again, keep the draft and do not ask.
+    /// MIRRORED UI: viewer.js selectSegment. Flipping Chords and Lyrics keeps
+    /// the draft and does not ask. Discard stays on Lyrics and restores the text.
     @Test @MainActor func switchingEditModesKeepsTheDraft() async throws {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let title = try #require(try Songbook.titles().first)
+        let window = show(UIHostingController(rootView: SongListHarness(song: title)))
+        await settle()
+        #expect(onScreen("Add chord"))
+        #expect(window.descendants(of: UITextView.self).isEmpty)
+        try await openEditor(in: window)
+        let field = try #require(window.descendants(of: UITextView.self).first)
+        field.selectedRange = NSRange(location: 0, length: 0)
+        field.insertText("Q")
+        await settle()
+        #expect(onScreen("Save"))
+        pressButton("Chords", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty && self.onScreen("Add chord")
+        }
+        #expect(onScreen("Add chord") && onScreen("Save"))
+        #expect(onScreen("Transpose up"))
+        #expect(window.rootViewController?.presentedViewController == nil, "no question")
+        pressButton("Lyrics", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty == false
+        }
+        let again = try #require(window.descendants(of: UITextView.self).first)
+        #expect(again.text.hasPrefix("Q"))
+        #expect(!onScreen("Add chord"))
+        #expect(!onScreen("Transpose up"))
+        pressButton("Discard", in: window)
+        await settle()
+        let restored = try #require(window.descendants(of: UITextView.self).first)
+        #expect(!restored.text.hasPrefix("Q"))
+        #expect(!onScreen("Save"))
+        #expect(SongSessionEdits.copy(for: title.id) == nil)
+        window.isHidden = true
+    }
+
+    /// Undo and Redo stay with the draft when the segment flips. Undoing back
+    /// to the last save hides Discard and Save; Redo across segments brings
+    /// the change back.
+    @Test @MainActor func undoFollowsTheDraftAcrossSegmentsAndClearsDirty() async throws {
         SongSessionEdits.reset()
         defer { SongSessionEdits.reset() }
         let title = try #require(try Songbook.titles().first)
@@ -187,35 +238,71 @@ struct SoftChordTests {
         await settle()
         try await openEditor(in: window)
         let field = try #require(window.descendants(of: UITextView.self).first)
+        let original = field.text ?? ""
         field.selectedRange = NSRange(location: 0, length: 0)
         field.insertText("Q")
         await settle()
-        #expect(isEnabled("Edit Chords…", in: window))
-        #expect(!isEnabled("Edit Text…", in: window))
-        pressButton("Edit Chords…", in: window)
+        #expect(onScreen("Save"))
+        #expect(isEnabled("Undo", in: window))
+        pressButton("Chords", in: window)
         await waitUntil(in: window) { view in
             view.descendants(of: UITextView.self).isEmpty && self.onScreen("Add chord")
         }
-        #expect(onScreen("Add chord") && onScreen("Save"))
-        #expect(isEnabled("Edit Text…", in: window))
-        #expect(window.rootViewController?.presentedViewController == nil, "no question")
-        pressButton("Edit Text…", in: window)
+        #expect(isEnabled("Undo", in: window))
+        pressButton("Undo", in: window)
+        await settle()
+        #expect(!onScreen("Save"))
+        #expect(isEnabled("Redo", in: window))
+        pressButton("Lyrics", in: window)
         await waitUntil(in: window) { view in
             view.descendants(of: UITextView.self).isEmpty == false
         }
-        let again = try #require(window.descendants(of: UITextView.self).first)
-        #expect(again.text.hasPrefix("Q"))
-        #expect(!onScreen("Add chord"))
-        pressButton("Discard", in: window)
-        await waitUntil(in: window) { view in
-            view.descendants(of: UITextView.self).isEmpty
-        }
-        #expect(SongSessionEdits.copy(for: title.id) == nil)
+        let undone = try #require(window.descendants(of: UITextView.self).first)
+        #expect(undone.text == original)
+        #expect(!onScreen("Save"))
+        #expect(isEnabled("Redo", in: window))
+        pressButton("Redo", in: window)
+        await settle()
+        let redone = try #require(window.descendants(of: UITextView.self).first)
+        #expect(redone.text.hasPrefix("Q"))
+        #expect(onScreen("Save"))
         window.isHidden = true
     }
 
-    /// A transpose while viewing is a change: Discard and Save show, unless the
-    /// song is back at the key it had. Save keeps the key for this run.
+    /// Discard on Chords after a lyric edit restores the text and stays on Chords.
+    @Test @MainActor func discardOnChordsRestoresALyricEdit() async throws {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let title = try #require(try Songbook.titles().first)
+        let window = show(UIHostingController(rootView: SongListHarness(song: title)))
+        await settle()
+        try await openEditor(in: window)
+        let field = try #require(window.descendants(of: UITextView.self).first)
+        let original = field.text ?? ""
+        field.selectedRange = NSRange(location: 0, length: 0)
+        field.insertText("Q")
+        await settle()
+        pressButton("Chords", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty && self.onScreen("Add chord")
+        }
+        #expect(onScreen("Save") && onScreen("Add chord"))
+        pressButton("Discard", in: window)
+        await settle()
+        #expect(onScreen("Add chord"))
+        #expect(!onScreen("Save"))
+        #expect(SongSessionEdits.copy(for: title.id) == nil)
+        pressButton("Lyrics", in: window)
+        await waitUntil(in: window) { view in
+            view.descendants(of: UITextView.self).isEmpty == false
+        }
+        let restored = try #require(window.descendants(of: UITextView.self).first)
+        #expect(restored.text == original)
+        window.isHidden = true
+    }
+
+    /// A transpose is a change to the same draft: Discard and Save show, unless the
+    /// song is back at the key it had. Save keeps the key for this run and stays in edit.
     @Test @MainActor func aTransposeIsAChangeToSaveOrDiscard() async throws {
         SongSessionEdits.reset()
         defer { SongSessionEdits.reset() }
@@ -248,6 +335,7 @@ struct SoftChordTests {
         pressButton("Save", in: window)
         await settle()
         #expect(!onScreen("Save"))
+        #expect(onScreen("Add chord"))
         #expect(SongSessionEdits.copy(for: title.id)?.steps == 1)
         // From the kept key, Reset is a change again.
         pressButton("Reset transpose", in: window)
@@ -258,19 +346,20 @@ struct SoftChordTests {
 
 
 
-    /// Save has to leave edit mode, and the field has to still be on screen
-    /// when the keyboard starts hiding. Back from the editor returns to the list.
+    /// Switching from Lyrics to Chords waits for the keyboard. The field has
+    /// to still be on screen when the keyboard starts hiding. Back from a clean
+    /// draft returns to the list.
     @Test @MainActor func closingTheEditorWaitsForTheKeyboard() async throws {
         let song = try #require(Songbook.titles().first)
         let window = show(UIHostingController(rootView: SongListHarness(song: song)))
         await settle()
         try await openEditor(in: window)
-        pressButton("Save", in: window)
+        pressButton("Chords", in: window)
         await waitUntil(in: window) { view in
             view.descendants(of: UITextView.self).isEmpty
         }
         #expect(window.descendants(of: UITextView.self).isEmpty)
-        #expect(onScreen("Zoom in"))
+        #expect(onScreen("Add chord") && onScreen("Zoom in"))
 
         try await openEditor(in: window)
         let editor = try #require(window.descendants(of: UITextView.self).first)
@@ -285,7 +374,7 @@ struct SoftChordTests {
         }
         #expect(editor.becomeFirstResponder())
         await settle()
-        pressButton("Save", in: window)
+        pressButton("Chords", in: window)
         await waitUntil(in: window) { view in
             view.descendants(of: UITextView.self).isEmpty
         }
@@ -380,34 +469,43 @@ struct SoftChordTests {
         let marked = original + "§keep"
         editor.text = marked
         editor.delegate?.textViewDidChange?(editor)
+        await settle()
         pressButton("Save", in: first)
         await waitUntil(in: first) { view in
-            view.descendants(of: UITextView.self).isEmpty
+            view.descendants(of: UITextView.self).isEmpty && self.onScreen("Add chord")
         }
+        #expect(onScreen("Add chord"))
         #expect(SongSessionEdits.copy(for: song.id)?.text == marked)
+        first.rootViewController = nil
         first.isHidden = true
+        await settle()
 
         let second = show(UIHostingController(rootView: NavigationStack {
             SongPage(song: song)
         }))
         await settle()
+        #expect(onScreen("Add chord"))
         try await openEditor(in: second)
         let again = try #require(second.descendants(of: UITextView.self).first)
         #expect(again.text == marked)
 
         again.text = original
         again.delegate?.textViewDidChange?(again)
+        await settle()
         pressButton("Save", in: second)
         await waitUntil(in: second) { view in
-            view.descendants(of: UITextView.self).isEmpty
+            view.descendants(of: UITextView.self).isEmpty && self.onScreen("Add chord")
         }
         #expect(SongSessionEdits.copy(for: song.id) == nil)
+        second.rootViewController = nil
         second.isHidden = true
+        await settle()
 
         let third = show(UIHostingController(rootView: NavigationStack {
             SongPage(song: song)
         }))
         await settle()
+        await waitUntil(in: third) { _ in self.onScreen("Add chord") }
         try await openEditor(in: third)
         let restored = try #require(third.descendants(of: UITextView.self).first)
         #expect(restored.text == original)
@@ -415,7 +513,7 @@ struct SoftChordTests {
     }
 
     @MainActor private func openEditor(in window: UIWindow) async throws {
-        try performMenuAction("Edit Text…", in: window)
+        pressButton("Lyrics", in: window)
         await waitUntil(in: window) { view in
             view.descendants(of: UITextView.self).isEmpty == false
         }
@@ -536,6 +634,95 @@ struct SoftChordTests {
             characterNum: 0, noteId: 7, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false)
         let deleted = SongLyricChords.moved([onTheFirstLetter, chord], from: "Hello", to: "ello")
         #expect(deleted.map(\.characterNum) == [3])
+    }
+
+    /// Back with a dirty draft asks Save, Don't Save, or Cancel, from Chords
+    /// and from Lyrics. Cancel stays; Don't Save restores the start; Save keeps
+    /// the edit.
+    @Test func dirtyLeavePromptActionsFromChordsAndLyrics() {
+        #expect(SongLeavePrompt.actions == ["Save", "Don\u{2019}t Save", "Cancel"])
+        #expect(SongLeavePrompt.shouldAsk(dirty: true) && !SongLeavePrompt.shouldAsk(dirty: false))
+        #expect(SongLeavePrompt.outcome(for: .cancel) == .stay)
+        #expect(SongLeavePrompt.outcome(for: .save) == .leave(save: true))
+        #expect(SongLeavePrompt.outcome(for: .dontSave) == .leave(save: false))
+        #expect(SongLeavePrompt.title(for: "Song").contains("Song"))
+        #expect(!SongLeavePrompt.message.isEmpty)
+
+        let startChords = [SongChord.from(text: "C", characterNum: 0)]
+        for segment in [SongEditSegment.chords, SongEditSegment.lyrics] {
+            var draft = SongDraftHistory(text: "Hello", chords: startChords)
+            let start = draft.current
+            if segment == .lyrics {
+                draft.push(SongChordEditState(text: "QHello", chords: draft.chords))
+            } else {
+                draft.push(SongChordEditState(
+                    text: draft.text,
+                    chords: SongLyricChords.replaced(draft.chords, at: 0, withText: "G", steps: 0)))
+            }
+            #expect(SongLeavePrompt.shouldAsk(dirty: draft.current != start), "\(segment)")
+
+            var cancelled = draft
+            var cancelledStart = start
+            #expect(SongLeavePrompt.applying(.cancel, to: &cancelled, start: &cancelledStart) == .stay)
+            #expect(cancelled == draft && cancelledStart == start)
+
+            var discarded = draft
+            var discardedStart = start
+            #expect(SongLeavePrompt.applying(.dontSave, to: &discarded, start: &discardedStart) == .leave(save: false))
+            #expect(discarded.current == start)
+            #expect(discardedStart == start)
+            #expect(!SongLeavePrompt.shouldAsk(dirty: discarded.current != discardedStart))
+
+            var kept = draft
+            var keptStart = start
+            #expect(SongLeavePrompt.applying(.save, to: &kept, start: &keptStart) == .leave(save: true))
+            #expect(kept.current == draft.current)
+            #expect(keptStart == draft.current)
+            #expect(!SongLeavePrompt.shouldAsk(dirty: kept.current != keptStart))
+        }
+    }
+
+    /// One drag is one undo step. Later finger moves update that step, so
+    /// Redo, and Undo after a later edit, restore the drop, not the first landing.
+    @Test func draggingThenUndoAndRedoRestoresTheDrop() {
+        var draft = SongDraftHistory(
+            text: "Hi you\nab",
+            chords: [
+                SongChord.from(text: "G", characterNum: 5),
+                SongChord.from(text: "D", characterNum: 7),
+            ])
+        draft.beginDrag()
+        var at = 5
+        let first = draft.moveChord(from: at, to: at + 1, roomAt: at)
+        at = first.moved(at + 1)
+        let firstState = draft.states[draft.index]
+        for _ in 0..<4 {
+            let moved = draft.moveChord(from: at, to: at + 1, roomAt: at)
+            at = moved.moved(at + 1)
+        }
+        let dropText = draft.text
+        let dropChords = draft.chords
+        #expect(draft.text != "Hi you\nab")
+        #expect(dropChords.map(\.characterNum) != [5, 7])
+        #expect(draft.states[draft.index] != firstState)
+        #expect(draft.states[draft.index] == SongChordEditState(text: dropText, chords: dropChords))
+
+        draft.undo()
+        #expect(draft.text == "Hi you\nab")
+        #expect(draft.chords.map(\.characterNum) == [5, 7])
+
+        draft.redo()
+        #expect(draft.text == dropText)
+        #expect(draft.chords == dropChords)
+
+        // A later edit, then Undo, still returns to the drop, not the first step.
+        draft.push(SongChordEditState(
+            text: dropText,
+            chords: SongLyricChords.replaced(dropChords, at: at, withText: "C", steps: 0)))
+        #expect(draft.chords != dropChords)
+        draft.undo()
+        #expect(draft.text == dropText)
+        #expect(draft.chords == dropChords)
     }
 
     @Test func draggingAChordAttachesItToAnotherLetter() {

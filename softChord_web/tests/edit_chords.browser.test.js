@@ -17,45 +17,43 @@ const HELLO = {
 const { inEditor, click, disabled, chordsShown, point, selectedLetter, setZoom } = require("./edit_helpers");
 
 async function startChords(page) {
-  await click(page, "edit-chords");
+  await click(page, "segment-chords");
   await page.waitFor("document.getElementById('sheet-wrap').classList.contains('chord-mode')", "chord mode");
 }
 
-test("the Edit chords button opens the mode next to the pencil and locks what must wait", { skip: skip }, function () {
+test("a song opens on Chords, with Copy, Transpose and Undo shown and a clean draft", { skip: skip }, function () {
   return inEditor([HELLO], async function (page) {
-    assert.equal(await page.eval("document.getElementById('edit-chords').title"), "Edit Chords…");
-    assert.equal(await page.eval("document.getElementById('edit-chords').getAttribute('aria-label')"), "Edit Chords…");
-    assert.equal(await page.eval("document.getElementById('edit-chords').previousElementSibling.id"), "edit-text");
-    assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), true);
+    var chords = await page.eval("(function () { var b = document.getElementById('segment-chords');" +
+      "return { label: b.getAttribute('aria-label'), title: b.title, pressed: b.getAttribute('aria-pressed')," +
+      "next: b.nextElementSibling.id }; })()");
+    assert.equal(chords.label, "Chords");
+    assert.ok(chords.title.indexOf("Chords") === 0, chords.title);
+    assert.ok(chords.title.indexOf("Edit Chords") < 0, chords.title);
+    assert.ok(chords.title.indexOf("To add a chord") >= 0 || chords.title.indexOf("add a chord") >= 0, chords.title);
+    assert.equal(chords.next, "segment-lyrics");
+    assert.equal(chords.pressed, "true");
+    assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), false);
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
     await startChords(page);
-    // The banner is there from the first moment, and Save and Discard with it.
-    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false);
-    assert.equal(await page.eval("document.getElementById('persist-note').textContent"), "Changes do not persist");
-    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), false);
+    // Still a clean Chords draft: no note, no Save or Discard.
+    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
     assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), false);
     // No textarea: the sheet itself is edited, and the keyboard can reach it.
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
     assert.equal(await page.eval("document.getElementById('sheet').tabIndex"), 0);
     assert.equal(await page.eval("document.getElementById('sheet').getAttribute('aria-hidden')"), null);
     assert.equal(await page.eval("document.activeElement.id"), "sheet");
-    // The song transpose and what reads the song wait. Zoom stays, and Edit text
-    // switches this edit to the text.
-    // Copy and Print, and Transpose, are hidden (each whole group, and the
-    // separator after it). Transpose is disabled too.
-    for (var group of ["copy-actions", "copy-sep", "transpose-actions", "transpose-sep"]) {
-      assert.equal(await page.eval("document.getElementById('" + group + "').hidden"), true, group);
+    // Copy, Print and Transpose stay on Chords. Lyrics switches the same draft.
+    for (var group of ["copy-actions", "transpose-actions"]) {
+      assert.equal(await page.eval("document.getElementById('" + group + "').hidden"), false, group);
     }
-    for (var id of ["print", "transpose-up"]) {
-      assert.equal(await page.eval("document.getElementById('" + id + "').offsetParent"), null, id);
+    for (var id of ["print", "transpose-up", "zoom-in", "zoom-out", "chord-undo", "chord-redo"]) {
+      assert.equal(await page.eval("document.getElementById('" + id + "').offsetParent !== null"), true, id);
     }
-    for (id of ["transpose-down", "transpose-up", "transpose-reset", "edit-chords"]) {
-      assert.equal(await disabled(page, id), true, id + " waits until Save or Discard");
-    }
-    assert.equal(await disabled(page, "edit-text"), false, "edit-text switches modes");
-    for (id of ["zoom-in", "zoom-out"]) {
-      assert.equal(await disabled(page, id), false, id + " stays on");
-    }
+    assert.equal(await disabled(page, "transpose-down"), false);
+    assert.equal(await disabled(page, "segment-lyrics"), false, "Lyrics switches segments");
     // Nothing is selected yet, so there is no chord to edit or delete, and nothing to undo.
     for (id of ["chord-edit", "chord-delete", "chord-undo", "chord-redo"]) {
       assert.equal(await disabled(page, id), true, id + " has nothing to do yet");
@@ -66,36 +64,33 @@ test("the Edit chords button opens the mode next to the pencil and locks what mu
   });
 });
 
-test("while editing, the other one of Edit text and Edit chords stays on (it switches modes)", { skip: skip }, function () {
+test("Lyrics hides Transpose and the chord buttons, and Discard stays in edit", { skip: skip }, function () {
   return inEditor([HELLO], async function (page) {
-    await click(page, "edit-text");
+    await click(page, "segment-lyrics");
     await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor");
-    assert.equal(await disabled(page, "edit-chords"), false);
-    assert.equal(await disabled(page, "edit-text"), true);
+    assert.equal(await page.eval("document.getElementById('segment-chords').disabled"), false);
+    assert.equal(await page.eval("document.getElementById('segment-lyrics').getAttribute('aria-pressed')"), "true");
     assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('undo-actions').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('copy-actions').hidden"), false);
     assert.equal(await page.eval("document.getElementById('sheet').getAttribute('aria-hidden')"), "true");
     assert.equal(await page.eval("document.getElementById('sheet').hasAttribute('tabindex')"), false);
     await click(page, "edit-discard");
-    assert.equal(await disabled(page, "edit-chords"), false);
+    assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), false, "Discard stays on Lyrics");
     await startChords(page);
-    assert.equal(await disabled(page, "edit-text"), false);
-    assert.equal(await disabled(page, "edit-chords"), true);
-    await click(page, "edit-discard");
-    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), false);
-    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('editing')"), false);
-    assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), true);
-    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
-    assert.equal(await page.eval("document.getElementById('sheet').hasAttribute('tabindex')"), false);
-    assert.equal(await page.eval("document.getElementById('sheet').hasAttribute('role')"), false);
-    assert.equal(await page.eval("document.getElementById('copy-actions').hidden"), false);
-    assert.equal(await page.eval("document.getElementById('copy-sep').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('segment-chords').getAttribute('aria-pressed')"), "true");
+    assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), false);
     assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), false);
-    assert.equal(await page.eval("document.getElementById('transpose-sep').hidden"), false);
-    for (var id of ["print", "copy-text", "transpose-down", "edit-text", "edit-chords"]) {
-      assert.equal(await disabled(page, id), false, id + " is back");
+    await click(page, "edit-discard");
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), true);
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('editing')"), true);
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('sheet').tabIndex"), 0);
+    for (var id of ["print", "copy-text", "transpose-down"]) {
+      assert.equal(await disabled(page, id), false, id + " stays on");
     }
-    // The button that began the edit has the keyboard again.
-    assert.equal(await page.eval("document.activeElement.id"), "edit-chords");
+    assert.equal(await page.eval("document.activeElement.id"), "sheet");
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
   });
 });
@@ -106,7 +101,8 @@ test("Save with no chord changed keeps nothing, like Edit text", { skip: skip },
     await click(page, "edit-save");
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
     assert.deepEqual(await chordsShown(page), [[0, "H", "C"], [6, "w", "Am"], [12, "S", "G"], [24, "T", "F"]]);
-    assert.equal(await page.eval("document.activeElement.id"), "edit-chords");
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), true);
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
   });
 });
 
@@ -197,10 +193,10 @@ test("under a mouse a chord is a light-blue pill and its letter a faint box, and
       "return { bg: s.backgroundColor, shadow: s.boxShadow, cursor: s.cursor }; })";
     var chordSel = "#sheet .char[data-song-char=\"6\"] .chord";
     var letterSel = "#sheet .char[data-song-char=\"6\"]";
-    // Outside the mode there is no hover effect at all.
+    // The song is already on Chords, so the chord under the pointer has its pill.
     var p = await point(page, 6, "chord");
     await page.mouse.move(p.x, p.y);
-    assert.equal((await page.eval(style + "('" + chordSel + "')")).shadow, "none");
+    assert.notEqual((await page.eval(style + "('" + chordSel + "')")).shadow, "none");
     await startChords(page);
     await page.mouse.move(5, 700);
     var rest = await page.eval(style + "('" + chordSel + "')");
@@ -440,7 +436,7 @@ test("the chord is typed as it is shown when the song is shown transposed, and k
     await click(page, "transpose-up");
     assert.deepEqual((await chordsShown(page))[0], [0, "H", "D"]);
     await startChords(page);
-    assert.equal(await disabled(page, "transpose-up"), true);
+    assert.equal(await disabled(page, "transpose-up"), false, "Transpose stays on while editing chords");
     await selectLetter(page, 1);
     await page.type("g");
     assert.deepEqual((await chordsShown(page))[1], [1, "e", "G"], "G is what was typed and what is shown");
@@ -805,6 +801,7 @@ test("a drag in a song of 600 chords follows the pointer", { skip: skip }, funct
 test("at 375px and 320px every toolbar button, Save and Discard are inside the window in Edit chords", { skip: skip }, function () {
   var check = async function (page) {
     await startChords(page);
+    await dragChord(page, 6, 9);
     var out = await page.eval("(function () {" +
       "var bad = []; document.querySelectorAll('.toolbar button, .toolbar-actions button').forEach(function (b) {" +
       "if (b.offsetParent === null) { return; } var r = b.getBoundingClientRect();" +
@@ -856,8 +853,9 @@ test("leaving Edit chords with chords changed asks first, and with nothing chang
     assert.equal(await page.eval("location.hash"), "#/song/1");
     await click(page, "leave-confirm-discard");
     await page.waitFor("document.getElementById('song-title').textContent === 'Other'", "song 2");
-    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), false);
-    assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), true,
+      "the next song opens on Chords");
+    assert.equal(await page.eval("document.getElementById('chord-actions').hidden"), false);
     await page.eval("location.hash = '#/song/1'");
     await page.waitFor("document.getElementById('song-title').textContent === 'Hello'", "song 1");
     assert.deepEqual(await chordsShown(page), SHOWN, "the discarded move is gone");
