@@ -47,7 +47,7 @@ octave away, is no change.
 | --- | --- |
 | A–G | Put that major chord on the selected letter (replaces a chord there) |
 | m | Toggle minor of the selected chord |
-| Left / Right | Move the chord along its line (jump rule); with no chord on the letter they do nothing |
+| Left / Right | Move the chord along its line (jump rule), up to 10 letters past its end (see [Room right of a line](#room-right-of-a-line)); with no chord on the letter they do nothing |
 | Delete / Backspace | Delete the chord |
 | Enter / F2 | Type a chord (see below) |
 | Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z (also Ctrl+Y) | Undo, Redo |
@@ -97,6 +97,41 @@ touch, desktop width, 375px and 320px), and the pure rules in
 `tests/chord_edit.test.js`. A 600-chord song moves a chord in under 1 ms a step
 (median). Not tried: Safari, Firefox, a real iPhone or Android phone, IME input in
 the chord field.
+
+## Room right of a line
+
+The same in all three apps (desktop `chord_room` and `tidy_chord_room` in
+`softchord_text.py`, web `withRoom` and `tidied` in `softchord_chord_edit.js`,
+iPhone `SongLyricChords.withRoom`, `tidied` and `movedWithRoom`):
+
+- A chord can sit up to **10 letters right of the last letter of its line**
+  (the last letter that is not a space). It sits there on real spaces: dragging
+  a chord past the end, or moving it right with the arrow key, gives the line
+  the spaces it needs, so a chord is always on a letter of its own line (never on
+  the line break, never past the end of the text). The 11th Right does nothing.
+- **Tidying.** After a move or a delete, each line the chord left or went to
+  loses the spaces at its end past its last chord. A line keeps spaces only up
+  to its last chord, so moving a chord back onto the words, or deleting it, takes
+  its spaces away again. Lines the change did not touch keep their trailing
+  spaces, and so do a line of only spaces and a tab. The text and the chords
+  change together, so one Undo puts both back.
+- Positions count Unicode code points, so Cyrillic and emoji lyrics pad and
+  move the same way (an emoji like 🎵 is one letter).
+- Hardware keyboard on iPhone/iPad: in Chords, Left and Right move the selected
+  chord the same way, one undo step a press. With no chord on the selected letter
+  they do nothing.
+- Desktop, several chords selected (rectangle): Left and Right move them all,
+  each with room right of its line, and Delete deletes them all. Both tidy the
+  lines they touched and are one undo step. (The web and iPhone editors cannot
+  select several chords.)
+- **ChordPro.** Export writes a chord on a trailing space as `[G] ` before that
+  space. Desktop import (the only app that imports ChordPro) takes the spaces off
+  the end of each line, then gives a line back the spaces up to its last chord,
+  so the chord comes back on the same space.
+- **Remove Trailing Spaces** (desktop, Edit menu) is separate: it takes every
+  trailing space off every line of the selected songs, and a chord that sat on
+  one of those spaces is **deleted**, not moved (one songbook undo step brings it
+  back).
 
 ## Desktop: Edit Chords…
 
