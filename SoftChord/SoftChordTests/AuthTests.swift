@@ -347,12 +347,15 @@ final class AuthTests: XCTestCase {
             headerFields: ["Location": "https://evil.example/steal"]
         ))
         let next = URLRequest(url: try XCTUnwrap(URL(string: "https://evil.example/steal")))
-        let followed = await delegate.urlSession(
-            session,
-            task: task,
-            willPerformHTTPRedirection: response,
-            newRequest: next
-        )
+        let followed: URLRequest? = await withCheckedContinuation { continuation in
+            delegate.urlSession(
+                session,
+                task: task,
+                willPerformHTTPRedirection: response,
+                newRequest: next,
+                completionHandler: { continuation.resume(returning: $0) }
+            )
+        }
         XCTAssertNil(followed)
     }
 

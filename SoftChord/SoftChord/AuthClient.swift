@@ -33,12 +33,16 @@ nonisolated final class RedirectRefusal: NSObject, URLSessionTaskDelegate, @unch
         _ session: URLSession,
         task: URLSessionTask,
         willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest
-    ) async -> URLRequest? {
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        // Completion-handler form: the async overload crashes Swift 6.3.1 SILGen
+        // (emitNativeToForeignThunk). Every redirect is refused, bearer or not.
         if Self.carriesBearer(task.originalRequest) || Self.carriesBearer(request) {
-            return nil
+            completionHandler(nil)
+            return
         }
-        return nil
+        completionHandler(nil)
     }
 
     static func carriesBearer(_ request: URLRequest?) -> Bool {
