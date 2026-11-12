@@ -15,6 +15,13 @@ struct ContentView: View {
     @State private var noticeTitle: String?
     @State private var noticeMessage: String?
     @State private var isImporting = false
+    /// Set while the list asks Save / Don't Save / Cancel before a change.
+    @State private var pendingLeave: PendingLeave?
+
+    private struct PendingLeave {
+        var change: SongbookChangeRequest
+        var songTitle: String
+    }
 
     init(songs: [SongTitle]? = nil) {
         var session = SongbookSession()
@@ -135,19 +142,55 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
+        // MIRRORED UI: the song page's Save / Don't Save / Cancel (SongLeavePrompt).
+        .alert(SongLeavePrompt.title(for: pendingLeave?.songTitle ?? ""),
+               isPresented: leaveIsPresented,
+               presenting: pendingLeave) { pending in
+            Button(SongLeavePrompt.Action.save.rawValue) {
+                resolveLeave(.save, pending)
+            }
+            Button(SongLeavePrompt.Action.dontSave.rawValue, role: .destructive) {
+                resolveLeave(.dontSave, pending)
+            }
+            Button(SongLeavePrompt.Action.cancel.rawValue, role: .cancel) {
+                resolveLeave(.cancel, pending)
+            }
+        } message: { _ in
+            Text(SongLeavePrompt.message)
+        }
     }
 
-    /// The header is on the song list, so Back has already asked about a dirty
-    /// draft. The request helper is still used (with dirty: false here). Tests
-    /// cover the dirty case: Cancel keeps this songbook; Save and Don't Save
-    /// continue with the switch or the file picker.
+    /// Back usually asks about a dirty draft before the list is reached, and
+    /// then the draft is no longer published. A draft still published here
+    /// (SongSessionEdits.unsavedDraft) is asked about before the change.
     private func requestChange(_ change: SongbookChangeRequest) {
-        switch session.request(change, dirty: false) {
+        let unsaved = SongSessionEdits.unsavedDraft
+        switch session.request(change, dirty: unsaved != nil) {
         case .ignore:
             break
-        case .askToLeave(let change), .proceed(let change):
+        case .proceed(let change):
+            perform(change)
+        case .askToLeave(let change):
+            pendingLeave = PendingLeave(change: change, songTitle: unsaved?.title ?? "")
+        }
+    }
+
+    /// Cancel stays. Save and Don't Save settle the draft, then go ahead.
+    private func resolveLeave(_ action: SongLeavePrompt.Action, _ pending: PendingLeave) {
+        pendingLeave = nil
+        if let change = SongLeavePrompt.resolvingUnsavedDraft(action, before: pending.change) {
             perform(change)
         }
+    }
+
+    private var leaveIsPresented: Binding<Bool> {
+        Binding(
+            get: { pendingLeave != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingLeave = nil
+                }
+            })
     }
 
     private func perform(_ change: SongbookChangeRequest) {
@@ -171,10 +214,11 @@ struct ContentView: View {
             } else {
                 filter = ""
             }
-        case .failure:
-            present(
-                title: SongbookOpenFailure.cantRead.title,
-                message: SongbookOpenFailure.cantRead.message)
+        case .failure(let error):
+            // Cancelling the picker is not a failure.
+            if let failure = SongbookSession.pickerFailure(error) {
+                present(title: failure.title, message: failure.message)
+            }
         }
     }
 

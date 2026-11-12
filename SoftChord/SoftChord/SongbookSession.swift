@@ -293,7 +293,6 @@ nonisolated struct SongbookSession: Equatable {
             .fileSizeKey,
             .isUbiquitousItemKey,
             .ubiquitousItemDownloadingStatusKey,
-            .isReadableKey,
         ])
         let ubiquitous = isUbiquitous ?? values?.isUbiquitousItem ?? false
         let status = downloadingStatus ?? values?.ubiquitousItemDownloadingStatus
@@ -305,6 +304,16 @@ nonisolated struct SongbookSession: Equatable {
             return .tooLarge
         }
         return nil
+    }
+
+    /// What to show when the file picker reports an error. Cancelling the
+    /// picker (NSUserCancelledError) shows nothing; anything else is cantRead.
+    static func pickerFailure(_ error: Error) -> SongbookOpenFailure? {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError {
+            return nil
+        }
+        return .cantRead
     }
 
     static func openFailure(from error: Error, fileName: String, url: URL) -> SongbookOpenFailure {

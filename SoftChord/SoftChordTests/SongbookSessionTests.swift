@@ -187,6 +187,95 @@ struct SongbookSessionTests {
         #expect(session.displayName == "zvuki_neba")
         #expect(SongSessionEdits.copy(for: songId) == nil)
     }
+
+    /// Cancelling the file picker shows nothing. Any other picker error is
+    /// "softChord can't read this file."
+    @Test func cancellingThePickerIsNotAFailure() {
+        #expect(SongbookSession.pickerFailure(CocoaError(.userCancelled)) == nil)
+        #expect(SongbookSession.pickerFailure(
+            NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError)) == nil)
+        #expect(SongbookSession.pickerFailure(
+            NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError)) == .cantRead)
+        #expect(SongbookSession.pickerFailure(
+            NSError(domain: "other", code: NSUserCancelledError)) == .cantRead)
+        #expect(SongbookSession.pickerFailure(URLError(.cancelled)) == .cantRead)
+    }
+
+    /// The song list's path (ContentView.requestChange and resolveLeave): a
+    /// draft SongPage published as unsaved makes the request ask. Cancel stays
+    /// and keeps the draft; Don't Save drops it; Save keeps it for this run as
+    /// Back's Save does. Either way the list does not ask again.
+    @Test @MainActor func theListAsksAboutAnUnsavedDraftBeforeChanging() {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let session = SongbookSession(
+            demoName: "demo", demoURL: URL(fileURLWithPath: "/nonexistent.songbook"),
+            songs: [SongTitle(id: 7, title: "Song")])
+        let other = UUID()
+        let source = SongSource(text: "Hello", chords: [SongChord.from(text: "C", characterNum: 0)])
+        let draft = SongSessionEdits.UnsavedDraft(
+            songId: 7, title: "Song",
+            text: "Hello you", chords: [SongChord.from(text: "G", characterNum: 6)],
+            steps: 2,
+            startText: source.text, startChords: source.chords,
+            source: source)
+        func listRequest(_ change: SongbookChangeRequest) -> SongbookChangeDecision {
+            session.request(change, dirty: SongSessionEdits.unsavedDraft != nil)
+        }
+
+        #expect(listRequest(.openFile) == .proceed(.openFile))
+
+        // A clean page for another song does not drop the draft.
+        SongSessionEdits.publish(draft, for: 7)
+        SongSessionEdits.publish(nil, for: 8)
+        #expect(SongSessionEdits.unsavedDraft == draft)
+        #expect(listRequest(.switchTo(other)) == .askToLeave(.switchTo(other)))
+        #expect(listRequest(.openFile) == .askToLeave(.openFile))
+
+        // Cancel: stay, nothing saved, still asks next time.
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.cancel, before: .openFile) == nil)
+        #expect(SongSessionEdits.unsavedDraft == draft)
+        #expect(SongSessionEdits.copy(for: 7) == nil)
+
+        // Don't Save: go ahead, nothing saved, no second prompt.
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .openFile) == .openFile)
+        #expect(SongSessionEdits.unsavedDraft == nil)
+        #expect(SongSessionEdits.copy(for: 7) == nil)
+        #expect(listRequest(.openFile) == .proceed(.openFile))
+
+        // Save: the draft is kept for this run, then the change goes ahead.
+        SongSessionEdits.publish(draft, for: 7)
+        #expect(SongLeavePrompt.resolvingUnsavedDraft(.save, before: .switchTo(other)) == .switchTo(other))
+        #expect(SongSessionEdits.unsavedDraft == nil)
+        #expect(SongSessionEdits.copy(for: 7) == SongSessionEdits.Copy(
+            text: "Hello you", chords: draft.chords, steps: 2))
+        #expect(listRequest(.switchTo(other)) == .proceed(.switchTo(other)))
+
+        // The page clears its own draft once it is clean, and dropping the
+        // session's edits clears it too.
+        SongSessionEdits.publish(draft, for: 7)
+        SongSessionEdits.publish(nil, for: 7)
+        #expect(SongSessionEdits.unsavedDraft == nil)
+        SongSessionEdits.publish(draft, for: 7)
+        SongSessionEdits.reset()
+        #expect(SongSessionEdits.unsavedDraft == nil)
+    }
+
+    /// Save keeps only what differs from the songbook; a draft equal to it in
+    /// its own key drops the copy (SongPage commitEdit uses the same helper).
+    @Test func commitKeepsOnlyWhatDiffersFromTheSongbook() {
+        SongSessionEdits.reset()
+        defer { SongSessionEdits.reset() }
+        let chords = [SongChord.from(text: "C", characterNum: 0)]
+        let source = SongSource(text: "Hello", chords: chords)
+        let textOnly = SongSessionEdits.commit(id: 1, text: "Hi", chords: chords, steps: 0, source: source)
+        #expect(textOnly == SongSessionEdits.Copy(text: "Hi", chords: nil, steps: 0))
+        let keyOnly = SongSessionEdits.commit(id: 1, text: "Hello", chords: chords, steps: 2, source: source)
+        #expect(keyOnly == SongSessionEdits.Copy(text: nil, chords: nil, steps: 2))
+        let same = SongSessionEdits.commit(id: 1, text: "Hello", chords: chords, steps: 0, source: source)
+        #expect(same == nil)
+        #expect(SongSessionEdits.copy(for: 1) == nil)
+    }
 }
 
 private func scratchSongbook(named name: String, version: Int = 2) throws -> URL {
