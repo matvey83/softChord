@@ -5326,6 +5326,11 @@ class TestChordRoom(unittest.TestCase):
         self.assertEqual(self.song.getAllText(), "Hi you   \nab")
         self.assertEqual(self.positions(), [0, 8, 10])
         self.assertEqual(self.app.selected_chord_nums, {8, 10})
+        self.app.undo_stack.redo()
+        self.assertEqual(self.app.undo_stack.index(), steps + 1)
+        self.assertEqual(self.song.getAllText(), "Hi you\nab")
+        self.assertEqual(self.positions(), [0])
+        self.assertEqual(self.app.selected_chord_nums, set())
 
     def test_deleting_selected_chords_keeps_other_lines_spaces(self):
         self.open_song("Hi you\nab\ncd  ", 5, 7)
@@ -5340,6 +5345,25 @@ class TestChordRoom(unittest.TestCase):
         self.app.deleteSelectedChord()
         self.assertEqual(self.song.getAllText(), "Hi you\nab\ncd  ")
         self.assertEqual(self.positions(), [0])
+
+    def test_nudging_selected_chords_keeps_other_lines_spaces(self):
+        # The middle line has trailing spaces and no chord.
+        self.open_song("Hi you\ncd  \nab", 5, 12)
+        self.select(5, 12)
+        self.right()
+        # The G needs a space; the D moves onto the "b".
+        self.assertEqual(self.song.getAllText(), "Hi you \ncd  \nab")
+        self.assertEqual(self.positions(), [0, 6, 14])
+        self.assertEqual(self.app.selected_chord_nums, {6, 14})
+        self.right()
+        self.assertEqual(self.song.getAllText(), "Hi you  \ncd  \nab ")
+        self.assertEqual(self.positions(), [0, 7, 16])
+        self.assertEqual(self.app.selected_chord_nums, {7, 16})
+        self.right(2, Qt.Key.Key_Left)
+        # The nudged lines lose their spaces; the middle line keeps its own.
+        self.assertEqual(self.song.getAllText(), "Hi you\ncd  \nab")
+        self.assertEqual(self.positions(), [0, 5, 12])
+        self.assertEqual(self.app.selected_chord_nums, {5, 12})
 
 
 class TestEditorModeMenu(unittest.TestCase):
