@@ -4,10 +4,17 @@ Execute as:
 python3 softchord_test.py
 """
 import unittest
+import contextlib
+import hashlib
+import io
+import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
+import threading
+import time
 
 import softchord
 
@@ -25,6 +32,13 @@ class SoftChordEditorTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # Sign-in must not read a developer origin or a home-directory token.
+        cls._saved_api_origin = os.environ.pop("SOFTCHORD_API_ORIGIN", None)
+        cls._settings_dir = tempfile.mkdtemp(prefix="softchord-qsettings-")
+        QtCore.QSettings.setPath(
+            QtCore.QSettings.Format.IniFormat,
+            QtCore.QSettings.Scope.UserScope,
+            cls._settings_dir)
         cls.qapp = QtWidgets.QApplication(sys.argv)
 
         # Create the real App (this sets up the main window + UI)
@@ -56,10 +70,23 @@ class SoftChordEditorTest(unittest.TestCase):
             cls.qapp.quit()
         if hasattr(cls, '_td'):
             cls._td.cleanup()
+        saved = getattr(cls, "_saved_api_origin", None)
+        if saved is not None:
+            os.environ["SOFTCHORD_API_ORIGIN"] = saved
+        settings_dir = getattr(cls, "_settings_dir", None)
+        if settings_dir:
+            shutil.rmtree(settings_dir, ignore_errors=True)
 
     def setUp(self):
         self.app = self.__class__.app
         self.prev_rows = self.app.songs_model.rowCount()
+        # Ignore the process env unless a test passes its own mapping.
+        self._saved_account_env = self.app.account.env
+        self.app.account.env = {}
+
+    def tearDown(self):
+        self.app.account.env = self._saved_account_env
+        self.app.account.show_signed_in(None)
 
     def test_create_and_delete_song(self):
         """Basic create/delete through the App (main window buttons/panels)."""
@@ -425,9 +452,18 @@ class SoftChordEditorTest(unittest.TestCase):
         bar = [action.text() for action in ui.menubar.actions()]
         self.assertEqual(bar, ["File", "Edit", "Song", "Settings", "Account"])
         self.assertEqual(
-            [action.text() for action in ui.menuAccount.actions()],
+            [action.objectName() for action in ui.menuAccount.actions()],
+            ["actionSignedInEmail", "actionSignIn", "actionSignOut",
+             "actionSignOutEverywhere", "actionAccountSettings"])
+        self.assertFalse(ui.actionSignOutEverywhere.isVisible())
+        self.assertEqual(
+            [action.text() for action in ui.menuAccount.actions()
+             if action.isVisible()],
             ["Sign In...", "Account Settings..."])
         self.assertTrue(ui.actionSignIn.isEnabled())
+        self.assertTrue(ui.actionSignIn.isVisible())
+        self.assertFalse(ui.actionSignOut.isVisible())
+        self.assertFalse(ui.actionSignedInEmail.isVisible())
         self.assertFalse(ui.actionAccountSettings.isEnabled())
 
         labels = ["---" if action.isSeparator() else action.text()
@@ -451,8 +487,7 @@ class SoftChordEditorTest(unittest.TestCase):
     def test_not_available_dialogs(self):
         """Each account action shows its title and message, with one OK."""
         expected = [
-            ("Sign-in isn't available yet",
-             "softChord accounts are coming in a later update."),
+            ("Sign in", "Sign-in not configured"),
             ("Accounts aren't available yet",
              "This needs a softChord account, which is coming in a later update."),
             ("Accounts aren't available yet",
@@ -493,8 +528,10 @@ class SoftChordEditorTest(unittest.TestCase):
         self.assertEqual(self.app.current_songbook_filename, songbook)
 
     def test_new_actions_have_no_shortcuts(self):
-        """Sign In, Account Settings, and the four File items have no shortcut."""
-        actions = self._account_actions() + (self.app.ui.actionAccountSettings,)
+        """Sign In, Sign Out, Sign Out Everywhere, Account Settings, and the four File items have no shortcut."""
+        actions = self._account_actions() + (
+            self.app.ui.actionAccountSettings, self.app.ui.actionSignOut,
+            self.app.ui.actionSignOutEverywhere)
         for action in actions:
             self.assertTrue(action.shortcut().isEmpty(), action.text())
 
@@ -751,6 +788,1095 @@ class SoftChordEditorTest(unittest.TestCase):
         self.assertEqual(app.win.windowTitle(),
                          "SoftChord - clean (Local)[*]")
         self.assertIsNone(app.current_song)
+
+    def _contract(self):
+        path = os.path.join(_HERE, "fixtures", "api-contract.json")
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def _swap_account(self, transport, origin=None, verifier=None,
+                      setting_origin=None):
+        """Point the live Account menu at a temp Ini file and a mock transport."""
+        account = self.app.account
+        previous = (
+            account.settings, account.transport, account.env,
+            account.verifier_factory, account.now)
+        folder = tempfile.mkdtemp(prefix="softchord-auth-")
+        settings = QtCore.QSettings(
+            os.path.join(folder, "auth.ini"),
+            QtCore.QSettings.Format.IniFormat)
+        if setting_origin:
+            settings.setValue("auth/apiOrigin", setting_origin)
+            settings.sync()
+        account.settings = settings
+        account.transport = transport
+        if origin is None:
+            account.env = {}
+        else:
+            account.env = {"SOFTCHORD_API_ORIGIN": origin}
+        if verifier is not None:
+            account.verifier_factory = lambda: verifier
+
+        def restore():
+            (account.settings, account.transport, account.env,
+             account.verifier_factory, account.now) = previous
+            account.show_signed_in(None)
+            shutil.rmtree(folder, ignore_errors=True)
+
+        self.addCleanup(restore)
+        return account
+
+    def _settle(self, action):
+        """Run action and wait until the account call finishes on the GUI thread."""
+        account = self.app.account
+        loop = QtCore.QEventLoop()
+        fired = []
+
+        def on_settled():
+            fired.append(threading.get_ident())
+            if loop.isRunning():
+                loop.quit()
+
+        account.settled.connect(on_settled)
+        timer = QtCore.QTimer()
+        timer.setSingleShot(True)
+        timer.timeout.connect(loop.quit)
+        try:
+            action()
+            if not fired:
+                timer.start(3000)
+                loop.exec()
+        finally:
+            timer.stop()
+            try:
+                account.settled.disconnect(on_settled)
+            except TypeError:
+                pass
+        self.assertTrue(fired, "auth call did not finish")
+        self.assertEqual(fired[-1], threading.get_ident())
+
+    def test_sign_in_unconfigured_makes_no_request(self):
+        """No origin: the menu says so, and the transport is not called."""
+        from softchord_auth import NOT_CONFIGURED
+
+        calls = []
+
+        def boom(exchange):
+            calls.append(exchange)
+            raise AssertionError("network")
+
+        self._swap_account(boom, origin=None, setting_origin=None)
+        shown = []
+
+        def exec_(box):
+            shown.append((box.windowTitle(), box.text()))
+            return QtWidgets.QMessageBox.StandardButton.Ok
+
+        original = QtWidgets.QMessageBox.exec
+        QtWidgets.QMessageBox.exec = exec_
+        try:
+            self.app.ui.actionSignIn.trigger()
+        finally:
+            QtWidgets.QMessageBox.exec = original
+        self.assertEqual(calls, [])
+        self.assertEqual(shown, [("Sign in", NOT_CONFIGURED)])
+
+    def test_json_post_mock_rejects_a_post_that_is_not_json(self):
+        """The mock returns 400 unless the POST is exactly application/json."""
+        from softchord_auth import HttpExchange, HttpResult, JsonEnforcingTransport
+
+        ok = HttpResult(200, b'{"ok":true}')
+        transport = JsonEnforcingTransport([ok])
+        logout = "https://songs.example/api/auth/logout"
+        rejected = [
+            HttpExchange("POST", logout, {}, b"{}"),
+            HttpExchange(
+                "POST", logout,
+                {"Content-Type": "application/json; charset=utf-8"}, b"{}"),
+            HttpExchange(
+                "POST", logout, {"Content-Type": "application/json"}, None),
+            HttpExchange(
+                "POST", logout, {"Content-Type": "application/json"}, b""),
+            HttpExchange(
+                "POST", logout, {"Content-Type": "application/json"}, b"null"),
+            HttpExchange(
+                "POST", logout, {"Content-Type": "text/plain"}, b"{}"),
+        ]
+        for exchange in rejected:
+            result = transport(exchange)
+            self.assertEqual(result.status, 400)
+            self.assertEqual(
+                json.loads(result.body.decode("utf-8"))["error"],
+                "invalid_request")
+        self.assertEqual(len(transport.responses), 1)
+        accepted = HttpExchange(
+            "POST", logout, {"Content-Type": "application/json"}, b"{}")
+        self.assertEqual(transport(accepted).status, 200)
+        self.assertEqual(transport.responses, [])
+        self.assertEqual(len(transport.calls), len(rejected) + 1)
+
+    def test_login_token_from_pasted_link(self):
+        from softchord_auth import login_token_from_text, verifier_hash
+
+        contract = self._contract()
+        token = contract["wrongVerifier"]
+        origin = contract["publicOrigin"]
+        self.assertEqual(
+            verifier_hash(contract["verifier"]["value"]),
+            contract["verifier"]["sha256"])
+        link = "%s/login?client=desktop&hint=s***%%40example.com#t=%s" % (
+            origin, token)
+        # The %% above is for the format string; the link must contain %40.
+        self.assertIn("%40", link)
+        self.assertEqual(login_token_from_text(link), token)
+        self.assertEqual(
+            login_token_from_text("softchord://login?token=%s" % token),
+            token)
+        self.assertEqual(login_token_from_text("  %s\n" % token), token)
+        self.assertIsNone(login_token_from_text(
+            "%s/login?client=desktop" % origin))
+        self.assertIsNone(login_token_from_text(""))
+
+    def test_contract_sha_is_the_pr9_head(self):
+        path = os.path.join(_HERE, "fixtures", "api-contract.json")
+        with open(path, "rb") as handle:
+            raw = handle.read()
+        self.assertEqual(
+            hashlib.sha256(raw).hexdigest(),
+            "9f213067d7a0e262a998175848dd58c1021443dd04f3abc56881b19df1c990d5")
+        self.assertIn(b"/api/auth/logout-all", raw)
+        sha_path = os.path.join(_HERE, "fixtures", "api-contract.sha")
+        with open(sha_path, encoding="utf-8") as handle:
+            self.assertEqual(
+                handle.read().strip(),
+                "0775e8211158c57ff0869d1dbcf961c72ef167bd")
+
+    def test_desktop_sign_in_verify_me_and_sign_out(self):
+        """Request-link, verify, /api/me, and logout match the desktop case."""
+        from softchord_auth import (
+            DEVICE_LABEL, HttpResult, JsonEnforcingTransport, SignInDialog,
+            verifier_hash)
+
+        contract = self._contract()
+        case = next(
+            item for item in contract["cases"]
+            if item["name"] == "native verify, me, and logout")
+        steps = case["steps"]
+        origin = contract["publicOrigin"]
+        verifier = contract["verifier"]["value"]
+        login_token = contract["wrongVerifier"]
+        session_token = "desktopSessionToken0123456789abcdefABCD_xyz"
+        email = steps[2]["response"]["json"]["email"]
+        self.assertEqual(email, "singer@example.com")
+        inner = JsonEnforcingTransport([
+            HttpResult(200, b'{"ok":true}'),
+            HttpResult(200, json.dumps({
+                "email": "not-used@example.com",
+                "token": session_token,
+            }).encode("utf-8")),
+            HttpResult(200, json.dumps({"email": email}).encode("utf-8")),
+            HttpResult(200, b'{"ok":true}'),
+        ])
+        gui = threading.get_ident()
+        idents = []
+
+        def transport(exchange):
+            idents.append(threading.get_ident())
+            return inner(exchange)
+
+        account = self._swap_account(transport, origin=origin, verifier=verifier)
+        dialog = SignInDialog(account, self.app.win)
+        edits = dialog.findChildren(QtWidgets.QLineEdit)
+        self.assertEqual(
+            [edit.objectName() for edit in edits],
+            ["signInEmail", "signInLink"])
+        for edit in edits:
+            self.assertNotEqual(
+                edit.echoMode(), QtWidgets.QLineEdit.EchoMode.Password)
+        self.assertNotIn("password", dialog.windowTitle().lower())
+        self.assertTrue(dialog.link_edit.isHidden())
+
+        dialog.email_edit.setText("  Singer@Example.com ")
+        self._settle(lambda: dialog.send_button.click())
+        self.assertEqual(dialog.status_label.text(), "Check your email")
+        self.assertFalse(dialog.link_edit.isHidden())
+
+        sent = inner.calls[0]
+        step = steps[0]["request"]
+        self.assertEqual(sent.method, step["method"])
+        self.assertEqual(sent.url, origin + step["path"])
+        self.assertEqual(sent.headers, {"Content-Type": "application/json"})
+        body = json.loads(sent.body.decode("utf-8"))
+        self.assertEqual(body["email"], step["json"]["email"])
+        self.assertEqual(body["client"], "desktop")
+        self.assertEqual(body["verifier_hash"], contract["verifier"]["sha256"])
+        self.assertEqual(body["verifier_hash"], verifier_hash(verifier))
+        self.assertNotIn("verifier", body)
+
+        # The verifier is kept, so a new dialog can finish after this one closes.
+        again = SignInDialog(account, self.app.win)
+        self.assertEqual(again.status_label.text(), "Check your email")
+        self.assertFalse(again.link_edit.isHidden())
+        again.link_edit.setText(
+            "%s/login?client=desktop&hint=s***@example.com#t=%s" % (
+                origin, login_token))
+        self._settle(lambda: again.complete_button.click())
+        self.assertEqual(
+            again.result(), QtWidgets.QDialog.DialogCode.Accepted)
+
+        verified = inner.calls[1]
+        verify_step = steps[1]["request"]
+        self.assertEqual(verified.method, verify_step["method"])
+        self.assertEqual(verified.url, origin + verify_step["path"])
+        self.assertEqual(
+            verified.headers, {"Content-Type": "application/json"})
+        verified_body = json.loads(verified.body.decode("utf-8"))
+        self.assertEqual(set(verified_body), set(verify_step["json"]))
+        self.assertEqual(verified_body["token"], login_token)
+        self.assertEqual(verified_body["verifier"], verifier)
+        self.assertEqual(verified_body["device_label"], DEVICE_LABEL)
+        self.assertIn("device_label", verify_step["json"])
+
+        me = inner.calls[2]
+        me_step = steps[2]["request"]
+        self.assertEqual(me.method, me_step["method"])
+        self.assertEqual(me.url, origin + me_step["path"])
+        self.assertEqual(
+            me.headers, {"Authorization": "Bearer %s" % session_token})
+        self.assertIsNone(me.body)
+        self.assertEqual(self.app.ui.signedInEmailLabel.text(), email)
+        self.assertTrue(self.app.ui.actionSignedInEmail.isVisible())
+        self.assertTrue(self.app.ui.actionSignOut.isVisible())
+        self.assertFalse(self.app.ui.actionSignIn.isVisible())
+        self.assertEqual(account.session_token(), session_token)
+        self.assertEqual(account.pending_verifier(), "")
+
+        self.assertTrue(self.app.ui.actionSignOutEverywhere.isVisible())
+        self._settle(lambda: self.app.ui.actionSignOut.trigger())
+        logout = inner.calls[3]
+        logout_step = steps[3]["request"]
+        self.assertEqual(logout.method, logout_step["method"])
+        self.assertEqual(logout.url, origin + logout_step["path"])
+        self.assertEqual(logout.headers, {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer %s" % session_token,
+        })
+        self.assertEqual(logout.body, b"{}")
+        self.assertEqual(json.loads(logout.body.decode("utf-8")),
+                         logout_step["json"])
+        self.assertEqual(len(inner.calls), 4)
+        self.assertTrue(all(ident != gui for ident in idents))
+        self.assertEqual(account.session_token(), "")
+        self.assertFalse(self.app.ui.actionSignOut.isVisible())
+        self.assertFalse(self.app.ui.actionSignOutEverywhere.isVisible())
+        self.assertTrue(self.app.ui.actionSignIn.isVisible())
+        self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
+
+    def test_api_origin_setting_is_used_when_the_env_is_unset(self):
+        from softchord_auth import HttpResult, JsonEnforcingTransport, SignInDialog
+
+        contract = self._contract()
+        origin = contract["publicOrigin"]
+        transport = JsonEnforcingTransport([
+            HttpResult(200, b'{"ok":true}'),
+        ])
+        account = self._swap_account(
+            transport, origin=None, verifier=contract["verifier"]["value"],
+            setting_origin=origin + "/")
+        dialog = SignInDialog(account, self.app.win)
+        dialog.email_edit.setText("singer@example.com")
+        self._settle(lambda: dialog.send_button.click())
+        self.assertEqual(dialog.status_label.text(), "Check your email")
+        self.assertEqual(
+            transport.calls[0].url, origin + "/api/auth/request-link")
+
+    def test_env_origin_wins_over_the_setting(self):
+        from softchord_auth import HttpResult, JsonEnforcingTransport, SignInDialog
+
+        contract = self._contract()
+        origin = contract["publicOrigin"]
+        transport = JsonEnforcingTransport([
+            HttpResult(200, b'{"ok":true}'),
+        ])
+        account = self._swap_account(
+            transport, origin=origin,
+            verifier=contract["verifier"]["value"],
+            setting_origin="https://wrong.example")
+        dialog = SignInDialog(account, self.app.win)
+        dialog.email_edit.setText("not-an-email")
+        dialog.send_button.click()
+        self.assertEqual(transport.calls, [])
+        self.assertEqual(
+            dialog.status_label.text(), "Enter a valid email address.")
+        dialog.email_edit.setText("singer@example.com")
+        self._settle(lambda: dialog.send_button.click())
+        self.assertEqual(
+            transport.calls[0].url, origin + "/api/auth/request-link")
+        self.assertNotIn("wrong.example", transport.calls[0].url)
+
+    def test_sign_out_without_an_origin_clears_the_token_and_does_not_connect(self):
+        calls = []
+
+        def boom(exchange):
+            calls.append(exchange)
+            raise AssertionError("network")
+
+        account = self._swap_account(boom, origin=None)
+        account.settings.setValue("auth/sessionToken", "kept-locally")
+        account.settings.sync()
+        account.show_signed_in("singer@example.com")
+        self.app.ui.actionSignOut.trigger()
+        self.assertEqual(calls, [])
+        self.assertEqual(account.session_token(), "")
+        self.assertTrue(self.app.ui.actionSignIn.isVisible())
+
+    def test_me_unauthorized_clears_the_saved_session(self):
+        from softchord_auth import HttpResult, JsonEnforcingTransport
+
+        contract = self._contract()
+        inner = JsonEnforcingTransport([
+            HttpResult(401, b'{"error":"unauthorized"}'),
+        ])
+        gui = threading.get_ident()
+        idents = []
+
+        def transport(exchange):
+            idents.append(threading.get_ident())
+            return inner(exchange)
+
+        account = self._swap_account(
+            transport, origin=contract["publicOrigin"])
+        account.settings.setValue("auth/sessionToken", "stale-token")
+        account.settings.setValue("auth/pendingVerifier", "pending")
+        self._settle(lambda: account.refresh())
+        self.assertEqual(len(inner.calls), 1)
+        self.assertNotEqual(idents[0], gui)
+        me = inner.calls[0]
+        self.assertEqual(me.method, "GET")
+        self.assertEqual(me.url, contract["publicOrigin"] + "/api/me")
+        self.assertEqual(me.headers, {"Authorization": "Bearer stale-token"})
+        self.assertIsNone(me.body)
+        self.assertEqual(account.session_token(), "")
+        self.assertEqual(account.pending_verifier(), "")
+        self.assertFalse(self.app.ui.actionSignOut.isVisible())
+
+    def test_configured_sign_in_menu_opens_the_dialog_without_a_request(self):
+        from softchord_auth import JsonEnforcingTransport, SignInDialog
+
+        transport = JsonEnforcingTransport([])
+        self._swap_account(
+            transport, origin=self._contract()["publicOrigin"])
+        opened = []
+
+        def fake_exec(dialog):
+            opened.append(dialog)
+            return QtWidgets.QDialog.DialogCode.Rejected
+
+        original = SignInDialog.exec
+        SignInDialog.exec = fake_exec
+        try:
+            self.app.ui.actionSignIn.trigger()
+        finally:
+            SignInDialog.exec = original
+        self.assertEqual(len(opened), 1)
+        self.assertIsInstance(opened[0], SignInDialog)
+        self.assertEqual(transport.calls, [])
+
+    def test_http_origin_is_rejected_except_loopback(self):
+        from softchord_auth import normalize_origin
+
+        self.assertIsNone(normalize_origin("http://songs.example"))
+        self.assertIsNone(normalize_origin("http://localhost.example"))
+        self.assertIsNone(normalize_origin("http://127.0.0.1.example"))
+        self.assertIsNone(normalize_origin("http://user:pass@localhost"))
+        self.assertEqual(
+            normalize_origin("https://songs.example"), "https://songs.example")
+        self.assertEqual(
+            normalize_origin("http://localhost:8787"), "http://localhost:8787")
+        self.assertEqual(
+            normalize_origin("http://127.0.0.1:8787"), "http://127.0.0.1:8787")
+        self.assertEqual(
+            normalize_origin("https://127.0.0.1"), "https://127.0.0.1")
+
+        calls = []
+
+        def boom(exchange):
+            calls.append(exchange)
+            raise AssertionError("network")
+
+        account = self._swap_account(boom, setting_origin="http://songs.example")
+        self.assertIsNone(account.origin())
+        shown = []
+        original = QtWidgets.QMessageBox.exec
+        QtWidgets.QMessageBox.exec = (
+            lambda box: shown.append(box.text())
+            or QtWidgets.QMessageBox.StandardButton.Ok)
+        try:
+            self.app.ui.actionSignIn.trigger()
+        finally:
+            QtWidgets.QMessageBox.exec = original
+        self.assertEqual(calls, [])
+        self.assertEqual(shown, ["Sign-in not configured"])
+
+    def test_transport_refuses_redirects_and_uses_a_15_second_timeout(self):
+        import http.server
+        import io
+        from email.message import Message
+
+        from softchord_auth import (
+            HTTP_TIMEOUT_SECONDS, HttpExchange, TransportError, urllib_transport)
+
+        self.assertEqual(HTTP_TIMEOUT_SECONDS, 15)
+        seen = {}
+
+        class Opener:
+            def __init__(self, code):
+                self.code = code
+
+            def open(self, request, timeout=None):
+                seen["timeout"] = timeout
+                seen["authorization"] = request.get_header("Authorization")
+                seen["codes"].append(self.code)
+                raise urllib.error.HTTPError(
+                    request.full_url, self.code, "Redirect", Message(),
+                    io.BytesIO(b""))
+
+        import urllib.error
+        seen["codes"] = []
+        exchange = HttpExchange(
+            "GET", "https://songs.example/api/me",
+            {"Authorization": "Bearer secret"}, None)
+        for code in (302, 307, 308):
+            with self.assertRaises(TransportError):
+                urllib_transport(exchange, opener=Opener(code))
+        self.assertEqual(seen["timeout"], 15)
+        self.assertEqual(seen["authorization"], "Bearer secret")
+        self.assertEqual(seen["codes"], [302, 307, 308])
+
+        hits = []
+        wanted = {"code": 302}
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                self._hit()
+
+            def do_POST(self):
+                self._hit()
+
+            def _hit(self):
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                if length:
+                    self.rfile.read(length)
+                hits.append((self.path, self.headers.get("Authorization")))
+                if self.path == "/api/auth/verify":
+                    body = b'{"error":"unauthorized"}'
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                self.send_response(wanted["code"])
+                self.send_header("Location", "/stolen")
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "close")
+                self.end_headers()
+
+            def log_message(self, fmt, *args):
+                return
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = server.server_address[1]
+            base = "http://127.0.0.1:%d" % port
+            for code in (302, 307, 308):
+                wanted["code"] = code
+                for method, path, body in (
+                        ("GET", "/api/me", None),
+                        ("POST", "/api/auth/logout", b"{}"),
+                        ("POST", "/api/auth/logout-all", b"{}")):
+                    hits.clear()
+                    redirect = HttpExchange(
+                        method, base + path,
+                        {"Authorization": "Bearer secret-token",
+                         "Content-Type": "application/json"},
+                        body)
+                    with self.assertRaises(TransportError):
+                        urllib_transport(redirect)
+                    self.assertEqual([item[0] for item in hits], [path])
+                    self.assertEqual(hits[0][1], "Bearer secret-token")
+            plain = HttpExchange(
+                "POST", base + "/api/auth/verify",
+                {"Content-Type": "application/json"}, b"{}")
+            result = urllib_transport(plain)
+            self.assertEqual(result.status, 401)
+            self.assertNotIn("/stolen", [item[0] for item in hits])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_pending_verifier_expires_with_the_server_ttl(self):
+        from softchord_auth import (
+            VERIFIER_TTL_SECONDS, HttpResult, JsonEnforcingTransport,
+            SignInDialog)
+
+        self.assertEqual(VERIFIER_TTL_SECONDS, 15 * 60)
+        contract = self._contract()
+        verifier = contract["verifier"]["value"]
+        issued = 1700000000
+        transport = JsonEnforcingTransport([
+            HttpResult(200, b'{"ok":true}'),
+        ])
+        account = self._swap_account(
+            transport, origin=contract["publicOrigin"], verifier=verifier)
+        account.now = lambda: issued
+        dialog = SignInDialog(account, self.app.win)
+        dialog.email_edit.setText("singer@example.com")
+        self._settle(lambda: dialog.send_button.click())
+        self.assertEqual(account.pending_verifier(), verifier)
+        account.now = lambda: issued + VERIFIER_TTL_SECONDS - 1
+        self.assertEqual(account.pending_verifier(), verifier)
+        account.now = lambda: issued + VERIFIER_TTL_SECONDS
+        self.assertEqual(account.pending_verifier(), "")
+        before = len(transport.calls)
+        again = SignInDialog(account, self.app.win)
+        again.link_edit.setText(contract["wrongVerifier"])
+        self._settle(lambda: again.complete())
+        self.assertEqual(len(transport.calls), before)
+        self.assertEqual(
+            again.status_label.text(),
+            "Open this link on the device where you requested it.")
+
+    def test_auth_call_exception_does_not_escape_the_slot(self):
+        from softchord_auth import SEND_FAILED, SignInDialog
+
+        def boom(exchange):
+            raise RuntimeError("boom")
+
+        account = self._swap_account(
+            boom, origin=self._contract()["publicOrigin"])
+        dialog = SignInDialog(account, self.app.win)
+        dialog.email_edit.setText("singer@example.com")
+        self._settle(lambda: dialog.send_button.click())
+        self.assertEqual(dialog.status_label.text(), SEND_FAILED)
+
+    def test_sign_out_everywhere_posts_logout_all(self):
+        """Logout-all matches the contract: bearer, JSON, and an empty object."""
+        from softchord_auth import HttpResult, JsonEnforcingTransport
+
+        contract = self._contract()
+        case = next(
+            item for item in contract["cases"]
+            if item["name"] == "logout-all ends every session for the user")
+        step = next(
+            item["request"] for item in case["steps"]
+            if item["request"]["path"] == "/api/auth/logout-all")
+        origin = contract["publicOrigin"]
+        session_token = "desktop-session-token"
+        inner = JsonEnforcingTransport([
+            HttpResult(200, b'{"ok":true}'),
+        ])
+        gui = threading.get_ident()
+        idents = []
+
+        def transport(exchange):
+            idents.append(threading.get_ident())
+            return inner(exchange)
+
+        account = self._swap_account(transport, origin=origin)
+        account.settings.setValue("auth/sessionToken", session_token)
+        account.settings.setValue("auth/pendingVerifier", "still-pending")
+        account.show_signed_in("singer@example.com")
+        self.assertTrue(self.app.ui.actionSignOutEverywhere.isVisible())
+        self._settle(
+            lambda: self.app.ui.actionSignOutEverywhere.trigger())
+        self.assertEqual(len(inner.calls), 1)
+        self.assertNotEqual(idents[0], gui)
+        sent = inner.calls[0]
+        self.assertEqual(sent.method, step["method"])
+        self.assertEqual(sent.url, origin + step["path"])
+        self.assertEqual(sent.headers["Content-Type"], "application/json")
+        self.assertEqual(
+            sent.headers["Authorization"], "Bearer %s" % session_token)
+        self.assertEqual(sent.body, b"{}")
+        self.assertEqual(json.loads(sent.body.decode("utf-8")), step["json"])
+        self.assertNotIn("origin", {name.lower() for name in sent.headers})
+        self.assertEqual(account.session_token(), "")
+        self.assertEqual(account.pending_verifier(), "")
+        self.assertFalse(self.app.ui.actionSignOutEverywhere.isVisible())
+        self.assertTrue(self.app.ui.actionSignIn.isVisible())
+
+    def _session_token(self, prefix):
+        token = (prefix + ("x" * 43))[:43]
+        self.assertEqual(len(token), 43)
+        return token
+
+    def test_verify_token_must_match_the_token_pattern(self):
+        """A verify token is stored and sent only when it matches _TOKEN."""
+        from softchord_auth import (
+            HttpResult, JsonEnforcingTransport, SignInDialog, _TOKEN)
+
+        contract = self._contract()
+        verifier = contract["verifier"]["value"]
+        good = self._session_token("goodSession")
+        self.assertIsNotNone(_TOKEN.fullmatch(good))
+        rejected = [
+            "short",
+            "a" * 42,
+            "a" * 129,
+            " " + good,
+            good + " ",
+            good[:-1] + ".",
+        ]
+        script = []
+        for bad in rejected:
+            script.append(HttpResult(
+                200, json.dumps({"token": bad, "email": "nope@example.com"}).encode()))
+        script.append(HttpResult(
+            200, json.dumps({"token": good, "email": "nope@example.com"}).encode()))
+        script.append(HttpResult(
+            200, json.dumps({"email": "singer@example.com"}).encode()))
+        transport = JsonEnforcingTransport(script)
+        account = self._swap_account(
+            transport, origin=contract["publicOrigin"], verifier=verifier)
+        account.settings.setValue("auth/pendingVerifier", verifier)
+        account.settings.setValue("auth/pendingVerifierAt", int(time.time()))
+        for bad in rejected:
+            dialog = SignInDialog(account, self.app.win)
+            dialog.link_edit.setText(contract["wrongVerifier"])
+            self._settle(lambda: dialog.complete())
+            self.assertEqual(account.session_token(), "")
+            self.assertEqual(
+                dialog.status_label.text(),
+                "Open this link on the device where you requested it.")
+            self.assertTrue(
+                all(not call.url.endswith("/api/me") for call in transport.calls))
+        dialog = SignInDialog(account, self.app.win)
+        dialog.link_edit.setText(contract["wrongVerifier"])
+        self._settle(lambda: dialog.complete())
+        self.assertEqual(account.session_token(), good)
+        me = transport.calls[-1]
+        self.assertTrue(me.url.endswith("/api/me"))
+        self.assertEqual(me.headers["Authorization"], "Bearer %s" % good)
+
+    def test_logout_all_error_keeps_the_token(self):
+        from softchord_auth import (
+            HttpResult, JsonEnforcingTransport, SIGN_OUT_EVERYWHERE_FAILED)
+
+        token = "desktop-session-token"
+        transport = JsonEnforcingTransport([
+            HttpResult(500, b'{"error":"unavailable"}'),
+        ])
+        account = self._swap_account(
+            transport, origin=self._contract()["publicOrigin"])
+        account.settings.setValue("auth/sessionToken", token)
+        account.show_signed_in("singer@example.com")
+        shown = []
+        original = QtWidgets.QMessageBox.exec
+
+        def exec_(box):
+            shown.append((box.windowTitle(), box.text()))
+            return QtWidgets.QMessageBox.StandardButton.Ok
+
+        QtWidgets.QMessageBox.exec = exec_
+        try:
+            self._settle(
+                lambda: self.app.ui.actionSignOutEverywhere.trigger())
+        finally:
+            QtWidgets.QMessageBox.exec = original
+        self.assertEqual(shown, [
+            ("Sign out everywhere", SIGN_OUT_EVERYWHERE_FAILED)])
+        self.assertEqual(account.session_token(), token)
+        self.assertEqual(
+            self.app.ui.signedInEmailLabel.text(), "singer@example.com")
+        self.assertTrue(self.app.ui.actionSignOutEverywhere.isVisible())
+        self.assertEqual(len(transport.calls), 1)
+        self.assertTrue(transport.calls[0].url.endswith("/api/auth/logout-all"))
+
+    def test_logout_all_401_403_network_and_timeout(self):
+        """401 clears the local session. 403, network, and timeout keep it."""
+        from softchord_auth import HttpResult, SIGN_OUT_EVERYWHERE_FAILED
+
+        origin = self._contract()["publicOrigin"]
+        token = "desktop-session-token"
+
+        def run(transport, clears):
+            account = self._swap_account(transport, origin=origin)
+            account.settings.setValue("auth/sessionToken", token)
+            account.show_signed_in("singer@example.com")
+            shown = []
+            original = QtWidgets.QMessageBox.exec
+            QtWidgets.QMessageBox.exec = (
+                lambda box: shown.append(box.text())
+                or QtWidgets.QMessageBox.StandardButton.Ok)
+            try:
+                self._settle(
+                    lambda: self.app.ui.actionSignOutEverywhere.trigger())
+            finally:
+                QtWidgets.QMessageBox.exec = original
+            if clears:
+                self.assertEqual(account.session_token(), "")
+                self.assertEqual(shown, [])
+                self.assertTrue(self.app.ui.actionSignIn.isVisible())
+            else:
+                self.assertEqual(account.session_token(), token)
+                self.assertEqual(shown, [SIGN_OUT_EVERYWHERE_FAILED])
+                self.assertTrue(self.app.ui.actionSignOutEverywhere.isVisible())
+
+        run(lambda exchange: HttpResult(401, b'{"error":"unauthorized"}'), True)
+        run(lambda exchange: HttpResult(403, b'{"error":"forbidden"}'), False)
+
+        def network(exchange):
+            raise OSError("network down")
+
+        def timed_out(exchange):
+            raise TimeoutError("timed out")
+
+        run(network, False)
+        run(timed_out, False)
+
+    def test_refresh_401_tells_the_open_dialog(self):
+        """A startup 401 must not leave the in-flight dialog button disabled."""
+        from softchord_auth import HttpResult, SIGN_IN_FAILED, SignInDialog
+
+        contract = self._contract()
+        verifier = contract["verifier"]["value"]
+        old = "stale-session-token"
+        new = self._session_token("newerSession")
+        refresh_started = threading.Event()
+        refresh_release = threading.Event()
+        dialog_started = threading.Event()
+        dialog_release = threading.Event()
+
+        def transport(exchange):
+            header = exchange.headers.get("Authorization", "")
+            if exchange.method == "GET" and header == "Bearer %s" % old:
+                refresh_started.set()
+                if not refresh_release.wait(5):
+                    raise TimeoutError("refresh was not released")
+                return HttpResult(401, b'{"error":"unauthorized"}')
+            dialog_started.set()
+            if not dialog_release.wait(5):
+                raise TimeoutError("dialog request was not released")
+            if exchange.url.endswith("/api/auth/verify"):
+                return HttpResult(200, json.dumps({
+                    "token": new,
+                    "email": "nope@example.com",
+                }).encode())
+            if exchange.method == "GET":
+                return HttpResult(200, b'{"email":"singer@example.com"}')
+            raise AssertionError(exchange.url)
+
+        account = self._swap_account(transport, origin=contract["publicOrigin"])
+        account.settings.setValue("auth/sessionToken", old)
+        account.show_signed_in("old@example.com")
+        try:
+            account.refresh()
+            self.assertTrue(refresh_started.wait(2))
+            account.settings.setValue("auth/pendingVerifier", verifier)
+            account.settings.setValue("auth/pendingVerifierAt", int(time.time()))
+            dialog = SignInDialog(account, self.app.win)
+            dialog.link_edit.setText(contract["wrongVerifier"])
+            dialog.complete()
+            self.assertTrue(dialog_started.wait(2))
+            self.assertFalse(dialog.complete_button.isEnabled())
+            self._settle(lambda: refresh_release.set())
+            self.assertEqual(account.session_token(), "")
+            self.assertFalse(dialog.complete_button.isEnabled())
+            self._settle(lambda: dialog_release.set())
+        finally:
+            refresh_release.set()
+            dialog_release.set()
+        self.assertTrue(dialog.complete_button.isEnabled())
+        self.assertEqual(dialog.status_label.text(), SIGN_IN_FAILED)
+        self.assertEqual(account.session_token(), "")
+        self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
+        self.assertNotEqual(dialog.result(), QtWidgets.QDialog.DialogCode.Accepted)
+
+    def test_auth_failure_does_not_print_the_bearer_token(self):
+        secret = self._session_token("secretBearer")
+
+        def boom(exchange):
+            header = exchange.headers.get("Authorization", "")
+            raise RuntimeError("request failed: %s" % header)
+
+        account = self._swap_account(
+            boom, origin=self._contract()["publicOrigin"])
+        account.settings.setValue("auth/sessionToken", secret)
+        account.show_signed_in("singer@example.com")
+        captured = io.StringIO()
+        with contextlib.redirect_stderr(captured):
+            self._settle(lambda: account.refresh())
+        text = captured.getvalue()
+        self.assertNotIn(secret, text)
+        self.assertNotIn("Bearer", text)
+        self.assertNotIn("Authorization", text)
+        self.assertIn("RuntimeError", text)
+        self.assertEqual(account.session_token(), secret)
+
+    def test_sign_in_does_not_stack_dialogs(self):
+        from softchord_auth import SignInDialog
+
+        account = self._swap_account(
+            lambda exchange: (_ for _ in ()).throw(AssertionError("network")),
+            origin=self._contract()["publicOrigin"])
+        created = []
+        original_init = SignInDialog.__init__
+        original_exec = SignInDialog.exec
+
+        def init(dialog, account, parent=None):
+            created.append(dialog)
+            original_init(dialog, account, parent)
+
+        def exec_(dialog):
+            account.sign_in()
+            return QtWidgets.QDialog.DialogCode.Rejected
+
+        SignInDialog.__init__ = init
+        SignInDialog.exec = exec_
+        try:
+            account.sign_in()
+        finally:
+            SignInDialog.__init__ = original_init
+            SignInDialog.exec = original_exec
+        self.assertEqual(len(created), 1)
+        self.assertIsNone(account._dialog)
+
+    def test_reject_and_escape_drop_an_inflight_verify(self):
+        """Esc and reject() finish a verify without saving the session."""
+        from softchord_auth import HttpResult, SignInDialog
+
+        contract = self._contract()
+        verifier = contract["verifier"]["value"]
+        saved = self._session_token("savedSession")
+        origin = contract["publicOrigin"]
+
+        def run_cancel(cancel):
+            started = threading.Event()
+            release = threading.Event()
+            calls = []
+
+            def transport(exchange):
+                calls.append(exchange)
+                started.set()
+                if not release.wait(5):
+                    raise TimeoutError("verify was not released")
+                if exchange.url.endswith("/api/auth/verify"):
+                    return HttpResult(
+                        200, json.dumps({
+                            "token": saved,
+                            "email": "nope@example.com",
+                        }).encode())
+                if exchange.url.endswith("/api/me"):
+                    return HttpResult(
+                        200, b'{"email":"singer@example.com"}')
+                raise AssertionError(exchange.url)
+
+            account = self._swap_account(transport, origin=origin)
+            account.settings.setValue("auth/pendingVerifier", verifier)
+            account.settings.setValue("auth/pendingVerifierAt", int(time.time()))
+            dialog = SignInDialog(account, self.app.win)
+            dialog.link_edit.setText(contract["wrongVerifier"])
+            dialog.show()
+            dialog.complete()
+            self.assertTrue(started.wait(2))
+            began = time.monotonic()
+            cancel(dialog)
+            self.assertLess(time.monotonic() - began, 0.5)
+            self.assertEqual(
+                dialog.result(), QtWidgets.QDialog.DialogCode.Rejected)
+            self._settle(lambda: release.set())
+            self.assertEqual(account.session_token(), "")
+            self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
+            self.assertFalse(self.app.ui.actionSignOut.isVisible())
+            self.assertTrue(any(
+                call.url.endswith("/api/auth/verify") for call in calls))
+            dialog.deleteLater()
+
+        run_cancel(lambda dialog: dialog.reject())
+
+        def escape(dialog):
+            QtWidgets.QApplication.sendEvent(dialog, QtGui.QKeyEvent(
+                QtCore.QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier))
+
+        run_cancel(escape)
+
+    def test_stale_me_401_does_not_clear_a_newer_token(self):
+        from softchord_auth import HttpResult, SignInDialog
+
+        contract = self._contract()
+        verifier = contract["verifier"]["value"]
+        old = self._session_token("oldSession")
+        new = self._session_token("newSession")
+        started = threading.Event()
+        release = threading.Event()
+        calls = []
+
+        def transport(exchange):
+            calls.append(exchange)
+            header = exchange.headers.get("Authorization", "")
+            if exchange.method == "GET" and header == "Bearer %s" % old:
+                started.set()
+                if not release.wait(5):
+                    raise TimeoutError("stale /api/me was not released")
+                return HttpResult(401, b'{"error":"unauthorized"}')
+            if exchange.url.endswith("/api/auth/verify"):
+                return HttpResult(
+                    200, json.dumps({"token": new, "email": "nope@example.com"}).encode())
+            if exchange.method == "GET" and header == "Bearer %s" % new:
+                return HttpResult(200, b'{"email":"singer@example.com"}')
+            raise AssertionError(exchange.url)
+
+        account = self._swap_account(transport, origin=contract["publicOrigin"])
+        account.settings.setValue("auth/sessionToken", old)
+        account.show_signed_in("old@example.com")
+        account.refresh()
+        self.assertTrue(started.wait(2))
+        account.settings.setValue("auth/pendingVerifier", verifier)
+        account.settings.setValue(
+            "auth/pendingVerifierAt", int(time.time()))
+        dialog = SignInDialog(account, self.app.win)
+        dialog.link_edit.setText(contract["wrongVerifier"])
+        self._settle(lambda: dialog.complete())
+        self.assertEqual(account.session_token(), new)
+        self.assertEqual(
+            self.app.ui.signedInEmailLabel.text(), "singer@example.com")
+        self._settle(lambda: release.set())
+        self.assertEqual(account.session_token(), new)
+        self.assertEqual(
+            self.app.ui.signedInEmailLabel.text(), "singer@example.com")
+        self.assertTrue(self.app.ui.actionSignOut.isVisible())
+        self.assertTrue(any(
+            call.headers.get("Authorization") == "Bearer %s" % old
+            for call in calls))
+
+    def test_stale_me_200_after_sign_out_does_not_show_the_email(self):
+        from softchord_auth import HttpResult
+
+        token = self._session_token("stillSession")
+        started = threading.Event()
+        release = threading.Event()
+
+        def transport(exchange):
+            if exchange.method == "GET":
+                started.set()
+                if not release.wait(5):
+                    raise TimeoutError("stale /api/me was not released")
+                return HttpResult(200, b'{"email":"late@example.com"}')
+            if exchange.url.endswith("/api/auth/logout"):
+                return HttpResult(200, b'{"ok":true}')
+            raise AssertionError(exchange.url)
+
+        account = self._swap_account(
+            transport, origin=self._contract()["publicOrigin"])
+        account.settings.setValue("auth/sessionToken", token)
+        account.show_signed_in("singer@example.com")
+        account.refresh()
+        self.assertTrue(started.wait(2))
+        self._settle(lambda: self.app.ui.actionSignOut.trigger())
+        self.assertEqual(account.session_token(), "")
+        self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
+        self._settle(lambda: release.set())
+        self.assertEqual(account.session_token(), "")
+        self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
+        self.assertFalse(self.app.ui.actionSignOut.isVisible())
+        self.assertTrue(self.app.ui.actionSignIn.isVisible())
+
+    def test_quit_does_not_wait_for_pending_requests(self):
+        from softchord_auth import HttpResult, release_thread_pool
+
+        token = self._session_token("quitSession")
+        started = threading.Event()
+        release = threading.Event()
+        pool_started = threading.Event()
+        pool_release = threading.Event()
+
+        def transport(exchange):
+            started.set()
+            if not release.wait(5):
+                raise TimeoutError("quit request was not released")
+            return HttpResult(200, b'{"email":"late@example.com"}')
+
+        class Blocker(QtCore.QRunnable):
+            def run(self):
+                pool_started.set()
+                pool_release.wait(5)
+
+        account = self._swap_account(
+            transport, origin=self._contract()["publicOrigin"])
+        self.app.aboutToQuit.disconnect(account.abandon_pending)
+        self.app.aboutToQuit.connect(account.abandon_pending)
+        account.settings.setValue("auth/sessionToken", token)
+        account.show_signed_in(None)
+        QtCore.QThreadPool.globalInstance().start(Blocker())
+        try:
+            self.assertTrue(pool_started.wait(2))
+            began = time.monotonic()
+            release_thread_pool()
+            self.assertLess(time.monotonic() - began, 0.5)
+            account.refresh()
+            self.assertTrue(started.wait(2))
+            began = time.monotonic()
+            account.abandon_pending()
+            self.assertLess(time.monotonic() - began, 0.5)
+            release.set()
+            QtWidgets.QApplication.processEvents()
+        finally:
+            release.set()
+            pool_release.set()
+        self.assertEqual(account.session_token(), token)
+        self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
+        self.assertFalse(self.app.ui.actionSignOut.isVisible())
+
+    def test_quit_does_not_let_a_worker_emit_during_teardown(self):
+        """A request still running at quit must not segfault Qt teardown."""
+        script = """
+import os, sys, time, threading
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ.pop("SOFTCHORD_API_ORIGIN", None)
+sys.path.insert(0, %r)
+from PyQt6 import QtCore
+import softchord
+from softchord_auth import HttpResult
+
+app = softchord.App([])
+started = threading.Event()
+
+def transport(exchange):
+    started.set()
+    time.sleep(0.4)
+    return HttpResult(200, b'{"email":"late@example.com"}')
+
+account = app.account
+account.transport = transport
+account.env = {"SOFTCHORD_API_ORIGIN": "https://songs.example"}
+account.settings.setValue("auth/sessionToken", "quit-token")
+
+def kick():
+    account.refresh()
+    QtCore.QTimer.singleShot(50, app.quit)
+
+QtCore.QTimer.singleShot(0, kick)
+app.exec()
+time.sleep(0.6)
+print("teardown-ok")
+""" % _HERE
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=_HERE,
+            capture_output=True,
+            timeout=15)
+        self.assertEqual(
+            proc.returncode, 0,
+            proc.stderr.decode("utf-8", "replace")[-800:])
+        self.assertIn(b"teardown-ok", proc.stdout)
 
 
 if __name__ == "__main__":
