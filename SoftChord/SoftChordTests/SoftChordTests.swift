@@ -810,6 +810,85 @@ struct SoftChordTests {
         #expect(deleted.chords.map(\.characterNum) == [7])
     }
 
+    /// The hardware keyboard's Left and Right arrows in Edit chords (SongPage
+    /// nudgeSelectedChord). MIRRORED: test_song.py TestChordRoom
+    /// test_arrows_add_and_take_away_spaces_with_undo_delete_and_save and
+    /// chord_edit.test.js "a chord moves up to 10 letters right of its line".
+    @Test func chordRoomArrowKeys() {
+        var text = "Hi you\nab"
+        var chords = [SongChord.from(text: "G", characterNum: 5), SongChord.from(text: "D", characterNum: 7)]
+        var at = 5
+        func nudge(_ direction: Int) -> Bool {
+            guard let step = SongLyricChords.nudgedWithRoom(chords, in: text, from: at, direction: direction) else {
+                return false
+            }
+            text = step.tidy.text
+            chords = step.tidy.chords
+            at = step.chordAt
+            return true
+        }
+        var moved = nudge(1)
+        #expect(moved)
+        #expect(text == "Hi you \nab")
+        #expect(chords.map(\.characterNum) == [6, 8])
+        for _ in 0..<9 {
+            moved = nudge(1)
+            #expect(moved)
+        }
+        #expect(text == "Hi you" + String(repeating: " ", count: 10) + "\nab")
+        #expect(chords.map(\.characterNum) == [15, 17])
+        moved = nudge(1)
+        #expect(!moved, "no more than 10")
+        for _ in 0..<10 {
+            moved = nudge(-1)
+            #expect(moved)
+        }
+        #expect(text == "Hi you\nab")
+        #expect(chords.map(\.characterNum) == [5, 7])
+        #expect(at == 5)
+        // No chord on the letter, or a line break that way: nothing moves.
+        #expect(SongLyricChords.nudgedWithRoom(chords, in: text, from: 4, direction: 1) == nil)
+        #expect(SongLyricChords.nudgedWithRoom(chords, in: text, from: 7, direction: -1) == nil)
+    }
+
+    /// Positions are Unicode scalars (code points): the emoji is one.
+    /// MIRRORED: test_song.py TestChordRoom
+    /// test_arrows_count_code_points_on_cyrillic_and_emoji and chord_edit.test.js
+    /// "room right of the line counts code points on Cyrillic and emoji".
+    @Test func chordRoomOnCyrillicAndEmoji() {
+        var text = "Да 🎵\nab"
+        var chords = [SongChord.from(text: "G", characterNum: 3), SongChord.from(text: "D", characterNum: 5)]
+        var at = 3
+        func nudge(_ direction: Int) -> Bool {
+            guard let step = SongLyricChords.nudgedWithRoom(chords, in: text, from: at, direction: direction) else {
+                return false
+            }
+            text = step.tidy.text
+            chords = step.tidy.chords
+            at = step.chordAt
+            return true
+        }
+        var moved = nudge(1)
+        #expect(moved)
+        #expect(text == "Да 🎵 \nab")
+        #expect(chords.map(\.characterNum) == [4, 6])
+        for _ in 0..<9 {
+            moved = nudge(1)
+            #expect(moved)
+        }
+        #expect(text == "Да 🎵" + String(repeating: " ", count: 10) + "\nab")
+        #expect(chords.map(\.characterNum) == [13, 15])
+        moved = nudge(1)
+        #expect(!moved, "no more than 10")
+        for _ in 0..<10 {
+            moved = nudge(-1)
+            #expect(moved)
+        }
+        #expect(text == "Да 🎵\nab")
+        #expect(chords.map(\.characterNum) == [3, 5])
+        #expect(at == 3)
+    }
+
     @Test func aChordTypedWhileTransposedIsStoredUntransposed() {
         let text = "Hello there"
         // Stored C and G, shown two steps up as D and A.
