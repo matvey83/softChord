@@ -241,15 +241,15 @@ test("offline disables Sign in and shows Offline", { skip: skip }, async functio
   }
 });
 
-test("with no API origin, Sign in says the server is not configured and does not fetch", { skip: skip }, async function () {
+test("with no API origin, Sign in says it is not available yet and does not fetch", { skip: skip }, async function () {
   var page = await helper.openViewer(SONGS, { html: auth.pageHtml({ origin: "" }) });
   try {
     await page.waitFor("document.getElementById('sign-in').textContent === 'Sign in'", "the signed-out header");
     assert.deepEqual(await page.eval("window.__auth"), []);
     await click(page, "sign-in");
     await page.waitFor("document.getElementById('notice').open", "the not-configured notice");
-    assert.equal(await page.eval("document.getElementById('notice-title').textContent"), "Sign-in isn't available yet");
-    assert.equal(await page.eval("document.getElementById('notice-message').textContent"), "The server is not configured.");
+    assert.equal(await page.eval("document.getElementById('notice-title').textContent"), "Not available yet");
+    assert.equal(await page.eval("document.getElementById('notice-message').textContent"), "Sign-in is coming in a later update.");
     assert.equal(await page.eval("document.getElementById('sign-in-panel').open"), false);
     await page.eval("document.querySelector('#notice button').click()");
     await assertStubs(page);

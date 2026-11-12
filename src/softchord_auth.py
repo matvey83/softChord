@@ -47,7 +47,8 @@ VERIFIER_TTL_SECONDS = 15 * 60
 HTTP_TIMEOUT_SECONDS = 15
 
 CHECK_EMAIL = "Check your email"
-NOT_CONFIGURED = "Sign-in not configured"
+NOT_AVAILABLE_TITLE = "Not available yet"
+NOT_CONFIGURED = "Sign-in is coming in a later update."
 INVALID_EMAIL = "Enter a valid email address."
 SEND_FAILED = "Could not send the link."
 SIGN_IN_FAILED = "Could not sign in."
@@ -464,7 +465,7 @@ class AccountController(QtCore.QObject):
                 self._dialog.activateWindow()
                 return
             if self.origin() is None:
-                self._tell("Sign in", NOT_CONFIGURED)
+                self._tell(NOT_AVAILABLE_TITLE, NOT_CONFIGURED)
                 return
             dialog = SignInDialog(self, self.session.win)
             self._dialog = dialog

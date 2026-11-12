@@ -8,7 +8,7 @@
 - Web. Symptom: when `showModal` is unavailable, leaving a dirty song offers only discard or cancel, and there is no Save. Suspected cause: `askBeforeLeaving` falls back to `window.confirm`, which has only those two answers, and OK runs the leave callback without saving.
 - Web. Symptom: a chord placed past the end of the text in a damaged file is never shown. It used to stay visible until the first edit. Suspected cause: the song is always opened through the normalized draft (`beginDraft` calls `normalizeSong`), so that chord is dropped before the first paint.
 - Web. Symptom: the account menu (the signed-in email) does not move focus into the menu when it opens, has no arrow-key navigation, and Escape closes it without returning focus to the email button. Same gap as the songbook menu. Not fixed here.
-- Web. Symptom: Sign in says the server is not configured and does not call an API. `softChord_web/config.js` leaves the origin empty because there is no SoftChord domain yet. When a server exists, that origin has to be this page's own address. Needs that origin. Not fixed here.
+- Web. Symptom: Sign in says "Not available yet" / "Sign-in is coming in a later update." and does not call an API. `softChord_web/config.js` leaves the origin empty because there is no SoftChord domain yet. When a server exists, that origin has to be this page's own address. Needs that origin. Not fixed here.
 
 
 - iOS: there is no New, Paste, or Import song UI. `SongEditSegment.forOpen` opens an empty new song on Lyrics and everything else on Chords, and that helper is unit-tested, but the app only opens existing songs, so they always start on Chords.
