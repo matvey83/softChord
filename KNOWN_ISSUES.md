@@ -9,3 +9,15 @@
 - Web. Symptom: a chord placed past the end of the text in a damaged file is never shown. It used to stay visible until the first edit. Suspected cause: the song is always opened through the normalized draft (`beginDraft` calls `normalizeSong`), so that chord is dropped before the first paint.
 - Desktop. Symptom: no unit test covers a dirty draft going through `confirmLeaveEdit(keep_open=True)` Save or Discard and then resuming on the same segment. The dirty-switch Save and Don't Save paths were checked only by a QA script. Suspected cause: `test_dirty_leave_cancel_discard_and_save` calls `confirmLeaveEdit()` without `keep_open`, so it never checks `_resumeOpenEdit`.
 - Desktop. Symptom: `test_renumber_stays_on_the_segment` replaces `app.question` and later tests in that process can still see the replacement. Suspected cause: the test assigns `self.app.question = lambda *args, **kwargs: True` and does not restore the previous `question`.
+
+- iOS: there is no New, Paste, or Import song UI. `SongEditSegment.forOpen` opens an empty new song on Lyrics and everything else on Chords, and that helper is unit-tested, but the app only opens existing songs, so they always start on Chords.
+- iOS: title, number, and notes are not editable, so they cannot dirty the draft the way they do on desktop.
+- iOS: the song toolbar wraps onto another row instead of putting overflow items in a "..." menu. `SongShareMenu` can include Chords and Lyrics, but the song page does not present that menu, so the segment can only be changed from the toolbar.
+- iOS: on Lyrics, the zoom buttons scale the lyric font, but a pinch does not zoom, and the sheet does not fit-to-width. Those both work on Chords.
+
+- iOS: swipe-back on a dirty draft needs a device check. The nav bar is hidden, which should disable swipe-back, but that has not been verified on a device. If swipe-back still works, a dirty draft is lost silently.
+- iOS: every keystroke is its own undo step.
+- iOS: `lyricDraftChanged` treats retyping back to a history entry as undo or redo.
+- iOS: tapping Lyrics is ignored while a switch waits for the keyboard.
+- iOS: `commitEdit` can save `steps:0` and lose the key.
+- iOS: Lyrics now zooms with the toolbar buttons, fit-to-width applies on Chords, and Copy and Print use the unsaved draft.
