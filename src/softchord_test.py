@@ -1364,6 +1364,42 @@ class SoftChordEditorTest(unittest.TestCase):
         dialog.email_edit.setText("singer@example.com")
         self._settle(lambda: dialog.send_button.click())
         self.assertEqual(dialog.status_label.text(), SEND_FAILED)
+        # Nothing was emailed: no verifier, and the paste field stays hidden.
+        self.assertEqual(account.pending_verifier(), "")
+        self.assertTrue(dialog.link_edit.isHidden())
+        self.assertTrue(dialog.complete_button.isHidden())
+        self.assertTrue(dialog.send_button.isEnabled())
+
+    def test_a_flight_whose_emit_fails_is_still_dropped(self):
+        """If the worker cannot emit, on_finished never runs; the flight must not leak."""
+        import softchord_auth
+
+        account = self._swap_account(
+            lambda exchange: None, origin=self._contract()["publicOrigin"])
+        emitted = []
+        original_emit = softchord_auth._Flight.emit
+
+        def failing_emit(flight, result):
+            emitted.append(flight)
+            raise RuntimeError("wrapped C/C++ object has been deleted")
+
+        softchord_auth._Flight.emit = failing_emit
+        self.addCleanup(setattr, softchord_auth._Flight, "emit", original_emit)
+        finished = []
+        account._start(lambda: "result", finished.append)
+
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            with softchord_auth._FLIGHTS_LOCK:
+                if emitted and emitted[0] not in softchord_auth._FLIGHTS:
+                    break
+            time.sleep(0.01)
+        self.assertEqual(len(emitted), 1)
+        with softchord_auth._FLIGHTS_LOCK:
+            self.assertNotIn(emitted[0], softchord_auth._FLIGHTS)
+        self.assertIsNone(emitted[0]._signals)
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(finished, [])
 
     def test_sign_out_everywhere_posts_logout_all(self):
         """Logout-all matches the contract: bearer, JSON, and an empty object."""
@@ -1600,7 +1636,7 @@ class SoftChordEditorTest(unittest.TestCase):
 
     def test_superseded_request_link_keeps_its_verifier(self):
         """A 401 that settles first still leaves the emailed link pasteable."""
-        from softchord_auth import HttpResult, SEND_FAILED, SignInDialog
+        from softchord_auth import CHECK_EMAIL, HttpResult, SignInDialog
 
         contract = self._contract()
         verifier = contract["verifier"]["value"]
@@ -1632,6 +1668,7 @@ class SoftChordEditorTest(unittest.TestCase):
             account.refresh()
             self.assertTrue(refresh_started.wait(2))
             dialog = SignInDialog(account, self.app.win)
+            self.assertTrue(dialog.link_edit.isHidden())
             dialog.email_edit.setText("singer@example.com")
             dialog.send_button.click()
             self.assertTrue(dialog_started.wait(2))
@@ -1645,7 +1682,9 @@ class SoftChordEditorTest(unittest.TestCase):
             refresh_release.set()
             dialog_release.set()
         self.assertTrue(dialog.send_button.isEnabled())
-        self.assertEqual(dialog.status_label.text(), SEND_FAILED)
+        self.assertEqual(dialog.status_label.text(), CHECK_EMAIL)
+        self.assertFalse(dialog.link_edit.isHidden())
+        self.assertFalse(dialog.complete_button.isHidden())
         self.assertEqual(account.session_token(), "")
         self.assertEqual(account.pending_verifier(), verifier)
 

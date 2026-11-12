@@ -33,6 +33,57 @@ enum SongSessionEdits {
 
     nonisolated static func reset() {
         copies = [:]
+        published = nil
+    }
+
+    /// Keep a draft for this run. Only what differs from the songbook is kept,
+    /// and a draft that matches the songbook in its own key drops the copy.
+    /// Returns the copy now kept. SongPage Save and the song list's Save use this.
+    @discardableResult
+    nonisolated static func commit(
+        id: Int, text: String, chords: [SongChord], steps: Int, source: SongSource?
+    ) -> Copy? {
+        let sameText = text == source?.text
+        let sameChords = chords == source?.chords
+        if sameText && sameChords && !SongTranspose.changesChords(steps, in: chords) {
+            save(id: id, text: nil, chords: nil, steps: 0)
+        } else {
+            save(id: id, text: sameText ? nil : text, chords: sameChords ? nil : chords, steps: steps)
+        }
+        return copy(for: id)
+    }
+
+    /// A song draft with a change Back would lose. SongPage publishes it while
+    /// the draft is dirty, so the song list knows to ask before it changes
+    /// songbooks, and Save there can keep it.
+    nonisolated struct UnsavedDraft: Equatable {
+        var songId: Int
+        var title: String
+        var text: String
+        var chords: [SongChord]
+        /// The transpose shown, kept with Save.
+        var steps: Int
+        /// The last save. Don't Save goes back to it.
+        var startText: String
+        var startChords: [SongChord]
+        /// The songbook's song, so Save keeps only what differs from it.
+        var source: SongSource
+    }
+
+    nonisolated(unsafe) private static var published: UnsavedDraft?
+
+    nonisolated static var unsavedDraft: UnsavedDraft? {
+        published
+    }
+
+    /// Nil clears the draft only when it belongs to `songId`, so a clean page
+    /// for another song does not drop it.
+    nonisolated static func publish(_ draft: UnsavedDraft?, for songId: Int) {
+        if let draft {
+            published = draft
+        } else if published?.songId == songId {
+            published = nil
+        }
     }
 
     /// The song as it opens: the songbook's, with the copy saved for this run
@@ -234,6 +285,23 @@ struct SongPage: View {
         pinchPercent = SongZoom.clamp(Int((scale * 100).rounded()))
     }
 
+    /// What the song list reads before it changes songbooks. Nil when Back
+    /// would not ask.
+    private var unsavedDraft: SongSessionEdits.UnsavedDraft? {
+        guard let source, hasUnsavedChanges else {
+            return nil
+        }
+        return SongSessionEdits.UnsavedDraft(
+            songId: songId,
+            title: title,
+            text: history.text,
+            chords: history.chords,
+            steps: steps,
+            startText: draftStart.text,
+            startChords: draftStart.chords,
+            source: source)
+    }
+
     var body: some View {
         Group {
             if let errorMessage {
@@ -304,6 +372,11 @@ struct SongPage: View {
                 } message: {
                     Text(SongLeavePrompt.message)
                 }
+        }
+        // Kept current while the draft changes. Opening the song again starts
+        // clean, which drops a draft left on it earlier.
+        .onChange(of: unsavedDraft, initial: true) { _, draft in
+            SongSessionEdits.publish(draft, for: songId)
         }
         .onChange(of: popWhenReady) { _, pop in
             if pop {
@@ -508,12 +581,10 @@ struct SongPage: View {
     /// processKeyPressed.
     private func nudgeSelectedChord(_ direction: Int) {
         guard editingChords, let selected = chordSelection,
-              let nudge = SongLyricChords.nudgedWithRoom(
-                history.chords, in: history.text, from: selected, direction: direction) else {
+              let chordAt = history.nudgeChord(at: selected, direction: direction) else {
             return
         }
-        setChords(nudge.tidy.chords, text: nudge.tidy.text)
-        chordSelection = nudge.chordAt
+        chordSelection = chordAt
     }
 
     private func undoDraftChange() {
@@ -611,18 +682,10 @@ struct SongPage: View {
     }
 
     private func commitEdit() {
-        let sameText = history.text == source?.text
-        let sameChords = history.chords == source?.chords
-        let moved = SongTranspose.changesChords(steps, in: history.chords)
-        if sameText && sameChords && !moved {
-            shownText = nil
-            shownChords = nil
-            SongSessionEdits.save(id: songId, text: nil, chords: nil, steps: 0)
-        } else {
-            shownText = sameText ? nil : history.text
-            shownChords = sameChords ? nil : history.chords
-            SongSessionEdits.save(id: songId, text: shownText, chords: shownChords, steps: savedSteps)
-        }
+        let kept = SongSessionEdits.commit(
+            id: songId, text: history.text, chords: history.chords, steps: savedSteps, source: source)
+        shownText = kept?.text
+        shownChords = kept?.chords
     }
 
     private func backTapped() {
@@ -646,6 +709,8 @@ struct SongPage: View {
             chordSelection = nil
             chordRequest = nil
         }
+        // Back has asked, so the song list does not ask again.
+        SongSessionEdits.publish(nil, for: songId)
         if editing {
             lyricCloseAction = .leaveSong
             closeWhenKeyboardEnds = true
@@ -1747,6 +1812,18 @@ struct SongDraftHistory: Equatable {
         chords = next.chords
     }
 
+    /// One arrow-key nudge of the chord on `selected`: one push, so one undo
+    /// step. Returns where the chord landed, or nil (and no push) when it
+    /// cannot move that way. SongPage.nudgeSelectedChord uses this.
+    mutating func nudgeChord(at selected: Int, direction: Int) -> Int? {
+        guard let nudge = SongLyricChords.nudgedWithRoom(
+            chords, in: text, from: selected, direction: direction) else {
+            return nil
+        }
+        push(SongChordEditState(text: nudge.tidy.text, chords: nudge.tidy.chords))
+        return nudge.chordAt
+    }
+
     mutating func undo() {
         apply(index - 1)
     }
@@ -1848,6 +1925,37 @@ enum SongLeavePrompt {
             draft = SongDraftHistory(text: start.text, chords: start.chords)
         }
         return result
+    }
+
+    /// The same prompt on the song list, before it changes songbooks while
+    /// SongSessionEdits.unsavedDraft is set (a page left without Back asking).
+    /// Cancel returns nil: stay, and the draft stays published. Save keeps the
+    /// draft for this run as Back's Save does, so it is no longer unsaved and
+    /// its published draft is cleared. Don't Save leaves the published draft
+    /// as it is: the draft is dropped only when a songbook actually opens
+    /// (SongbookSession.activate, or a successful openPickedFile, resets the
+    /// session edits). A failed open or a cancelled file picker keeps it, and
+    /// the list asks again next time. Save and Don't Save return `change`.
+    static func resolvingUnsavedDraft(
+        _ action: Action, before change: SongbookChangeRequest
+    ) -> SongbookChangeRequest? {
+        guard let unsaved = SongSessionEdits.unsavedDraft else {
+            return outcome(for: action) == .stay ? nil : change
+        }
+        var draft = SongDraftHistory(text: unsaved.text, chords: unsaved.chords)
+        var start = SongChordEditState(text: unsaved.startText, chords: unsaved.startChords)
+        switch applying(action, to: &draft, start: &start) {
+        case .stay:
+            return nil
+        case .leave(save: true):
+            SongSessionEdits.commit(
+                id: unsaved.songId, text: start.text, chords: start.chords,
+                steps: unsaved.steps, source: unsaved.source)
+            SongSessionEdits.publish(nil, for: unsaved.songId)
+        case .leave(save: false):
+            break
+        }
+        return change
     }
 }
 

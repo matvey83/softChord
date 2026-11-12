@@ -866,6 +866,49 @@ struct SoftChordTests {
         #expect(SongLyricChords.nudgedWithRoom(chords, in: text, from: 7, direction: -1) == nil)
     }
 
+    /// SongPage nudgeSelectedChord goes through SongDraftHistory.nudgeChord:
+    /// each arrow that moves the chord is exactly one push (one undo step),
+    /// and an arrow that cannot move it pushes nothing.
+    @Test func eachChordNudgeIsOneUndoStep() {
+        var draft = SongDraftHistory(
+            text: "Hi you\nab",
+            chords: [SongChord.from(text: "G", characterNum: 5), SongChord.from(text: "D", characterNum: 7)])
+        let start = draft.current
+
+        let first = draft.nudgeChord(at: 5, direction: 1)
+        #expect(first == 6)
+        #expect(draft.states.count == 2)
+        #expect(draft.index == 1)
+        #expect(draft.text == "Hi you \nab")
+        #expect(draft.chords.map(\.characterNum) == [6, 8])
+
+        let second = draft.nudgeChord(at: 6, direction: 1)
+        #expect(second == 7)
+        #expect(draft.states.count == 3)
+        #expect(draft.index == 2)
+        let afterTwo = draft.current
+
+        // No chord on the letter, or a line break that way: no push.
+        #expect(draft.nudgeChord(at: 4, direction: 1) == nil)
+        #expect(draft.nudgeChord(at: 9, direction: -1) == nil)
+        #expect(draft.states.count == 3)
+        #expect(draft.current == afterTwo)
+
+        // One undo per nudge.
+        draft.undo()
+        #expect(draft.text == "Hi you \nab")
+        #expect(draft.chords.map(\.characterNum) == [6, 8])
+        draft.undo()
+        #expect(draft.current == start)
+        #expect(!draft.canUndo)
+
+        // Left from the start position is also one push.
+        #expect(draft.nudgeChord(at: 5, direction: -1) != nil)
+        #expect(draft.states.count == 2)
+        #expect(draft.index == 1)
+        #expect(!draft.canRedo)
+    }
+
     /// Positions are Unicode scalars (code points): the emoji is one.
     /// MIRRORED: test_song.py TestChordRoom
     /// test_arrows_count_code_points_on_cyrillic_and_emoji and chord_edit.test.js

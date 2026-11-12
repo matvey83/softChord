@@ -362,9 +362,9 @@ def _register_worker_silence():
     atexit order relative to Qt teardown is not guaranteed, and the hook
     may run too late or not at all (softchord.main() ends with os._exit,
     which skips atexit). Workers are silenced before teardown by
-    aboutToQuit -> abandon_pending -> _close_flights. This hook covers a
-    worker started after aboutToQuit, or an exit that does not go
-    through QApplication.
+    aboutToQuit -> abandon_pending -> _close_flights; that is the path to
+    rely on. When this hook does run, it is a best-effort last close for a
+    flight that path missed. It guarantees nothing.
     """
     global _SILENCE_REGISTERED
     if _SILENCE_REGISTERED:
@@ -532,7 +532,11 @@ class AccountController(QtCore.QObject):
         self._start(work, done)
 
     def request_link(self, email, done):
-        """POST request-link. done(status) runs on the GUI thread."""
+        """POST request-link. done(status) runs on the GUI thread.
+
+        status is "ok" whenever the link was emailed, including when the
+        session changed while the POST was running.
+        """
         try:
             origin = self.origin()
             if origin is None:
@@ -550,9 +554,10 @@ class AccountController(QtCore.QObject):
                 "verifier_hash": verifier_hash(verifier),
             }
 
-            # Set on the worker when the POST succeeded. A superseded
-            # session reports "error" to the dialog, but the link was
-            # emailed, so its verifier is still saved for a later paste.
+            # Set on the worker when the POST succeeded. _start reports
+            # "error" when the session generation moved on, but the link was
+            # emailed, so its verifier is still saved and the dialog is told
+            # "ok" so it shows the paste field.
             sent = []
 
             def work():
@@ -573,6 +578,8 @@ class AccountController(QtCore.QObject):
                     self.settings.setValue(_VERIFIER_KEY, verifier)
                     self.settings.setValue(_VERIFIER_AT_KEY, issued)
                     self.settings.sync()
+                    done("ok")
+                    return
                 done(status if status else "error")
 
             self._start(work, after, dialog=True)
@@ -783,7 +790,14 @@ class AccountController(QtCore.QObject):
             try:
                 flight.emit(result)
             except Exception as exc:
+                # Usually RuntimeError: the signals object was already
+                # deleted. Nothing was queued, so on_finished will not run
+                # and clean up. Close and drop the flight here so it does not
+                # leak. Both are safe to repeat. settled is not emitted: it
+                # is a GUI-thread signal.
                 _log_failure(exc)
+                flight.close()
+                _drop_flight(flight)
 
         signals.finished.connect(
             on_finished, QtCore.Qt.ConnectionType.QueuedConnection)
