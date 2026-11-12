@@ -86,9 +86,12 @@ schema, not by `user_version`.
 
 Both backups are made with the SQLite backup API before anything changes and
 are never overwritten (a numbered name is used instead). If the file cannot be
-written, the editor opens an upgraded temporary copy titled
-"(converted copy, not saved)" and offers Save As. A read-only file that is
-already current opens read-only.
+written, the editor opens an upgraded temporary copy and offers Save As. The
+desktop window title for that copy stays
+`SoftChord - name (converted copy, not saved)[*]`. A writable songbook is
+`SoftChord - name (Local)[*]`. A current file that cannot be written is
+`SoftChord - name (Read-only)[*]`. A read-only file that is already current
+opens read-only.
 
 To upgrade a file without the editor:
 `python3 tools/upgrade_songbook_v2.py FILE --output NEW_FILE`.

@@ -6491,7 +6491,7 @@ class TestOpeningOldSongbooksInTheEditor(unittest.TestCase):
         self.assertEqual(len(self.messages), 1)
         self.assertIn("read-only", self.messages[0])
         self.assertIn("Save Songbook As", self.messages[0])
-        self.assertIn("read-only", self.app.win.windowTitle())
+        self.assertIn("(Read-only)", self.app.win.windowTitle())
         self.assertIsNone(self.app.songbook_original_path)
 
     def test_new_songbooks_are_version_2(self):
@@ -8487,13 +8487,17 @@ class TestSaveAndDiscard(unittest.TestCase):
         self.app.lyricEditorSelected()
         row = self.app.songs_model.getSongsRow(self.app.current_song)
         self.app.songs_model.getRow(row).number = 9
+        original_question = self.app.question
         self.app.question = lambda *args, **kwargs: True
-        self.app.renumberAllSongs()
-        self.assertTrue(self.app.editing())
-        self.assertTrue(self.app.textEditing())
-        self.assertTrue(self.app.toolbar.isActive(
-            self.app.ui.actionLyricEditorMode))
-        self.assertFalse(self.app.editChanged())
+        try:
+            self.app.renumberAllSongs()
+            self.assertTrue(self.app.editing())
+            self.assertTrue(self.app.textEditing())
+            self.assertTrue(self.app.toolbar.isActive(
+                self.app.ui.actionLyricEditorMode))
+            self.assertFalse(self.app.editChanged())
+        finally:
+            self.app.question = original_question
 
 
 if __name__ == "__main__":
