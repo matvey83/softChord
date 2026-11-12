@@ -725,6 +725,21 @@ struct SoftChordTests {
         #expect(draft.chords == dropChords)
     }
 
+    /// A drag that ends on the letter it started on is not an undo step.
+    @Test func draggingBackToTheStartDoesNotLeaveAnUndoStep() {
+        let startChords = [SongChord.from(text: "G", characterNum: 0)]
+        var draft = SongDraftHistory(text: "Hello", chords: startChords)
+        draft.beginDrag()
+        let away = draft.moveChord(from: 0, to: 4, roomAt: 0)
+        #expect(draft.canUndo)
+        #expect(draft.chords.map(\.characterNum) != [0])
+        _ = draft.moveChord(from: away.moved(4), to: 0, roomAt: away.moved(4))
+        #expect(draft.current == SongChordEditState(text: "Hello", chords: startChords))
+        #expect(!draft.canUndo)
+        #expect(!draft.dragRecorded)
+        #expect(draft.states.count == 1)
+    }
+
     @Test func draggingAChordAttachesItToAnotherLetter() {
         let chord = SongChord(
             characterNum: 0, noteId: 0, chordTypeId: 0, bassNoteId: -1, marker: "", inParentheses: false)
@@ -808,6 +823,85 @@ struct SoftChordTests {
             SongLyricChords.deleted(chords, at: 15), in: text + "  ", touched: [15])
         #expect(deleted.text == "Hi you\nab  ")
         #expect(deleted.chords.map(\.characterNum) == [7])
+    }
+
+    /// The hardware keyboard's Left and Right arrows in Edit chords (SongPage
+    /// nudgeSelectedChord). MIRRORED: test_song.py TestChordRoom
+    /// test_arrows_add_and_take_away_spaces_with_undo_delete_and_save and
+    /// chord_edit.test.js "a chord moves up to 10 letters right of its line".
+    @Test func chordRoomArrowKeys() {
+        var text = "Hi you\nab"
+        var chords = [SongChord.from(text: "G", characterNum: 5), SongChord.from(text: "D", characterNum: 7)]
+        var at = 5
+        func nudge(_ direction: Int) -> Bool {
+            guard let step = SongLyricChords.nudgedWithRoom(chords, in: text, from: at, direction: direction) else {
+                return false
+            }
+            text = step.tidy.text
+            chords = step.tidy.chords
+            at = step.chordAt
+            return true
+        }
+        var moved = nudge(1)
+        #expect(moved)
+        #expect(text == "Hi you \nab")
+        #expect(chords.map(\.characterNum) == [6, 8])
+        for _ in 0..<9 {
+            moved = nudge(1)
+            #expect(moved)
+        }
+        #expect(text == "Hi you" + String(repeating: " ", count: 10) + "\nab")
+        #expect(chords.map(\.characterNum) == [15, 17])
+        moved = nudge(1)
+        #expect(!moved, "no more than 10")
+        for _ in 0..<10 {
+            moved = nudge(-1)
+            #expect(moved)
+        }
+        #expect(text == "Hi you\nab")
+        #expect(chords.map(\.characterNum) == [5, 7])
+        #expect(at == 5)
+        // No chord on the letter, or a line break that way: nothing moves.
+        #expect(SongLyricChords.nudgedWithRoom(chords, in: text, from: 4, direction: 1) == nil)
+        #expect(SongLyricChords.nudgedWithRoom(chords, in: text, from: 7, direction: -1) == nil)
+    }
+
+    /// Positions are Unicode scalars (code points): the emoji is one.
+    /// MIRRORED: test_song.py TestChordRoom
+    /// test_arrows_count_code_points_on_cyrillic_and_emoji and chord_edit.test.js
+    /// "room right of the line counts code points on Cyrillic and emoji".
+    @Test func chordRoomOnCyrillicAndEmoji() {
+        var text = "Да 🎵\nab"
+        var chords = [SongChord.from(text: "G", characterNum: 3), SongChord.from(text: "D", characterNum: 5)]
+        var at = 3
+        func nudge(_ direction: Int) -> Bool {
+            guard let step = SongLyricChords.nudgedWithRoom(chords, in: text, from: at, direction: direction) else {
+                return false
+            }
+            text = step.tidy.text
+            chords = step.tidy.chords
+            at = step.chordAt
+            return true
+        }
+        var moved = nudge(1)
+        #expect(moved)
+        #expect(text == "Да 🎵 \nab")
+        #expect(chords.map(\.characterNum) == [4, 6])
+        for _ in 0..<9 {
+            moved = nudge(1)
+            #expect(moved)
+        }
+        #expect(text == "Да 🎵" + String(repeating: " ", count: 10) + "\nab")
+        #expect(chords.map(\.characterNum) == [13, 15])
+        moved = nudge(1)
+        #expect(!moved, "no more than 10")
+        for _ in 0..<10 {
+            moved = nudge(-1)
+            #expect(moved)
+        }
+        #expect(text == "Да 🎵\nab")
+        #expect(chords.map(\.characterNum) == [3, 5])
+        #expect(at == 3)
     }
 
     @Test func aChordTypedWhileTransposedIsStoredUntransposed() {
@@ -1616,7 +1710,7 @@ private func pixels(of image: UIImage) -> [SIMD3<UInt8>] {
     return colors
 }
 
-private func songbookSchema() throws -> String {
+func songbookSchema() throws -> String {
     let url = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -1625,7 +1719,7 @@ private func songbookSchema() throws -> String {
     return try String(contentsOf: url, encoding: .utf8)
 }
 
-private func withTestDatabase(_ url: URL, _ body: (OpaquePointer) throws -> Void) throws {
+func withTestDatabase(_ url: URL, _ body: (OpaquePointer) throws -> Void) throws {
     var db: OpaquePointer?
     if sqlite3_open(url.path, &db) != SQLITE_OK {
         throw SongbookError.openFailed("Could not open the test songbook.")
@@ -1638,7 +1732,7 @@ private func withTestDatabase(_ url: URL, _ body: (OpaquePointer) throws -> Void
 }
 
 /// `version` is the PRAGMA user_version, 2 unless a test needs another.
-private func writeSongbook(at url: URL, version: Int = 2) throws {
+func writeSongbook(at url: URL, version: Int = 2) throws {
     try? FileManager.default.removeItem(at: url)
     var db: OpaquePointer?
     if sqlite3_open(url.path, &db) != SQLITE_OK {
@@ -1660,7 +1754,7 @@ private func writeSongbook(at url: URL, version: Int = 2) throws {
         """)
 }
 
-private func exec(_ db: OpaquePointer, _ sql: String) throws {
+func exec(_ db: OpaquePointer, _ sql: String) throws {
     var error: UnsafeMutablePointer<CChar>?
     if sqlite3_exec(db, sql, nil, nil, &error) != SQLITE_OK {
         let message = error.map { String(cString: $0) } ?? "Could not write the test songbook."

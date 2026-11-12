@@ -97,20 +97,29 @@ class SetTextAndChordsCommand(QtGui.QUndoCommand):
     # Edits one Song object. The session drops these when another song is shown.
     song_scoped = True
 
-    def __init__(self, song, text, chords, selected):
+    def __init__(self, song, text, chords, selected, selected_nums=None):
         QtGui.QUndoCommand.__init__(self)
         self.song = song
+        # selected_nums, when given, are the marquee-selected chords after
+        # the change; undo puts the selection from before back too.
+        before_nums = None
+        if selected_nums is not None:
+            before_nums = set(getattr(song.session, "selected_chord_nums",
+                                      ()))
+            selected_nums = set(selected_nums)
         self.before = (song.text, list(song._chords),
-                       song.session.selected_char_num)
-        self.after = (text, list(chords), selected)
+                       song.session.selected_char_num, before_nums)
+        self.after = (text, list(chords), selected, selected_nums)
 
     def _put(self, state):
-        text, chords, selected = state
+        text, chords, selected, selected_nums = state
         self.song.text = text
         self.song._chords = list(chords)
         QtDocumentLayout.fill(self.song, self.song.session)
         self.song.updateSharpsOrFlats()
         self.song.session.selected_char_num = selected
+        if selected_nums is not None:
+            self.song.session.selected_chord_nums = set(selected_nums)
         self.song.session.updateChordLineSpacing(self.song)
 
     def undo(self):
@@ -813,9 +822,10 @@ class Song:
         # This is important for undo/redo to move the selection:
         self.session.selected_char_num = chord.character_num
 
-    def setTextAndChords(self, text, chords, selected):
+    def setTextAndChords(self, text, chords, selected, selected_nums=None):
         self.session.pushSongCommand(
-            SetTextAndChordsCommand(self, text, chords, selected))
+            SetTextAndChordsCommand(self, text, chords, selected,
+                                    selected_nums))
 
     def deleteChord(self, chord):
         self.session.pushSongCommand(DeleteChordCommand(self, chord))

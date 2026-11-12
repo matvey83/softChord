@@ -480,6 +480,31 @@ enum SongLyricChords {
         return tidied(moved, in: room.text, touched: [start, to])
     }
 
+    /// The Left (-1) or Right (1) arrow key on the chord on `from`: it goes to the
+    /// next free letter of its line that way, up to `room` letters right of the
+    /// last letter, and the line loses the spaces no chord needs. `chordAt` is
+    /// where the chord is in the result. Nil when there is no chord on `from` or no
+    /// free letter that way (a line break stops it, as on the desktop and web).
+    /// MIRRORED: softchord_session.py processKeyPressed Left/Right,
+    /// softchord_chord_mode.js nudge.
+    nonisolated static func nudgedWithRoom(
+        _ chords: [SongChord], in text: String, from: Int, direction: Int
+    ) -> (tidy: ChordTidy, chordAt: Int)? {
+        guard chords.contains(where: { $0.characterNum == from }) else {
+            return nil
+        }
+        let room = withRoom(chords, in: text, at: from)
+        let start = room.shifted(from)
+        let step = direction < 0 ? -1 : 1
+        let occupied = Set(room.chords.map(\.characterNum)).subtracting([start])
+        guard let to = nextFreeCharacter(
+            in: room.text, target: start + step, direction: step, occupied: occupied) else {
+            return nil
+        }
+        let tidy = movedWithRoom(chords, in: text, from: from, to: to, roomAt: from)
+        return (tidy, tidy.moved(to))
+    }
+
     /// The chord typed for a letter. It replaces the chord there, or is added.
     /// The page shows chords shifted by `steps` but keeps them as stored, so the
     /// typed name is shifted back by the same steps before it is kept.

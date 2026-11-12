@@ -711,6 +711,12 @@ class SongbookIO:
                 else:
                     chords_dict[char_num] = converted_chord
 
+            # rstrip took the spaces a chord past the last letter sat on
+            # (softchord_text.chord_room): give the line its spaces back, so
+            # the chord is on a space of its line, not on the line break.
+            if chords_dict:
+                line_lyrics = line_lyrics.ljust(max(chords_dict) + 1)
+
             song_lines.append((line_lyrics, chords_dict))
 
         for warning_str in tmp_warnings:

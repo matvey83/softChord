@@ -21,6 +21,104 @@ main {
   background: #fff;
 }
 
+/* MIRRORED UI, pending on iOS: SoftChord/SoftChord/ContentView.swift does
+   not have this row yet. It will be the songbook name, ▾, grey "Not saved",
+   and Sign in, with Search below, on the song list only. The name truncates
+   first; the arrow, the indicator and Sign in stay on screen. */
+.songbook-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 2px;
+  min-width: 0;
+}
+
+.songbook-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#songbook-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+
+#songbook-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.songbook-caret { flex: none; }
+
+#songbook-indicator {
+  flex: none;
+  color: #8e8e93;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.sign-in-slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+  min-width: 0;
+  max-width: 46%;
+}
+
+#sign-in-offline {
+  flex: none;
+  color: #8e8e93;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+#sign-in {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  color: #007aff;
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+#sign-in:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#songbook-menu-button:focus-visible,
+#sign-in:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .search-bar {
   display: flex;
   gap: 8px;
@@ -644,6 +742,47 @@ main {
   background: #f2f2f7;
 }
 
+#songbook-menu {
+  z-index: 30;
+  min-width: 260px;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+}
+
+.menu-label {
+  padding: 6px 14px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8e8e93;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #e5e5ea;
+}
+
+.menu button.songbook-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.menu-check {
+  flex: none;
+  width: 1.1em;
+  text-align: center;
+}
+
+.menu-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #notice {
   border: none;
   border-radius: 12px;
@@ -661,6 +800,60 @@ main {
 #notice button {
   font: inherit;
   float: right;
+}
+
+#sign-in-panel {
+  border: none;
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 360px;
+  width: min(360px, calc(100vw - 32px));
+}
+
+#sign-in-panel h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+#sign-in-panel p { margin: 0 0 12px; }
+
+#sign-in-panel label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+#sign-in-email {
+  display: block;
+  width: 100%;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid #c7c7cc;
+  border-radius: 8px;
+  margin: 0 0 12px;
+}
+
+#sign-in-address { overflow-wrap: anywhere; }
+
+#sign-in-panel .error { padding: 0; }
+
+.sign-in-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#sign-in-send,
+#sign-in-resend {
+  background: #007aff;
+  border-color: #007aff;
+  color: #fff;
+  font-weight: 600;
+}
+
+#account-menu {
+  z-index: 30;
+  min-width: 220px;
 }
 
 #leave-confirm {
@@ -709,7 +902,8 @@ main {
     color: #000;
   }
 
-  #list-view, #back, .toolbar-actions, #persist-note, #toast, #menu, #notice, #leave-confirm,
+  #list-view, #songbook-header, #songbook-menu, #account-menu, #back, .toolbar-actions, #persist-note,
+  #toast, #menu, #notice, #sign-in-panel, #leave-confirm,
   #song-error, #sheet-editor, #chord-live, #chord-entry {
     display: none !important;
   }

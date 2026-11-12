@@ -9,14 +9,14 @@ import SwiftUI
 
 @main
 struct SoftChordApp: App {
-    @ObservedObject private var auth = AuthModel.shared
+    init() {
+        // Session copies of files opened last launch do not survive a relaunch.
+        SongbookSession.removeTemporaryFiles()
+    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(auth: auth)
-                .onOpenURL { url in
-                    Task { await auth.open(url: url) }
-                }
+            ContentView()
         }
     }
 }

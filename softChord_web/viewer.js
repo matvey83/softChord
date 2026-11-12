@@ -59,18 +59,78 @@
   var noticeMessage = document.getElementById("notice-message");
 
   // The songbook this page is reading. Defaults to the bundled demo next to
-  // this folder. Open Songbook File will replace this for the session. A
-  // future server replaces Songbook.load.
+  // this folder. Open Songbook File replaces this for the session only.
+  // Songbook bytes stay in memory. Sign-in, when an API origin is configured,
+  // is the only traffic, and it goes to that origin.
   var currentSongbook = {
     displayName: "zvuki_neba",
     url: "../zvuki_neba.songbook",
   };
   var songbookUrl = currentSongbook.url;
+  // Demo plus every file opened this visit, oldest first. Each entry keeps
+  // its bytes so switching reloads the list from memory.
+  var sessionSongbooks = [];
+  var activeSongbook = null;
+  // Bumped when a songbook becomes current. Song addresses include it
+  // (#/e/<epoch>/song/<id>) so Back cannot open that number in a later book.
+  // An untagged #/song/<id> is epoch 0, this first songbook. After a switch,
+  // Back to that address goes to the list.
+  var songbookEpoch = 0;
+  // The address of the song on screen, so a cancelled leave puts the same
+  // address back. Null until a song is shown.
+  var openSongHash = null;
+  // Latest open or switch. A slower file read that finishes later is ignored.
+  var songbookRequest = 0;
+  // Over 50 MB (1024-based) is refused before the file is read.
+  var MAX_SONGBOOK_BYTES = 50 * 1024 * 1024;
+
+  var songbookNameEl = document.getElementById("songbook-name");
+  var songbookIndicator = document.getElementById("songbook-indicator");
+  var songbookMenuButton = document.getElementById("songbook-menu-button");
+  var songbookMenu = document.getElementById("songbook-menu");
+  var songbookMenuList = document.getElementById("songbook-menu-list");
+  var songbookFile = document.getElementById("songbook-file");
+  var signInButton = document.getElementById("sign-in");
+  var signInOffline = document.getElementById("sign-in-offline");
+  var signInPanel = document.getElementById("sign-in-panel");
+  var signInForm = document.getElementById("sign-in-form");
+  var signInEmail = document.getElementById("sign-in-email");
+  var signInError = document.getElementById("sign-in-error");
+  var signInRequest = document.getElementById("sign-in-request");
+  var signInCheck = document.getElementById("sign-in-check");
+  var signInAddress = document.getElementById("sign-in-address");
+  var signInCheckError = document.getElementById("sign-in-check-error");
+  var signInSend = document.getElementById("sign-in-send");
+  var signInResend = document.getElementById("sign-in-resend");
+  var accountMenu = document.getElementById("account-menu");
+
+  // Download, Rename, Delete and Share still need a later update. One OK
+  // button, from the notice dialog. Choosing one does not fetch anything.
+  var NOT_AVAILABLE = {
+    download: ["Not available yet", "Saving songbooks from this app is coming in a later update."],
+    rename: ["Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
+    "delete": ["Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
+    share: ["Sharing isn't available yet", "Sharing needs a softChord account, which is coming in a later update."],
+  };
+  // No API origin (config.js, window.SOFTCHORD_API_ORIGIN, or the meta tag).
+  // Same notice dialog. This path does not fetch.
+  var NOT_CONFIGURED = ["Not available yet", "Sign-in is coming in a later update."];
+  // An origin that is not this page's address. The API has no CORS and its
+  // cookies are host-only, so a different host cannot sign in. No request.
+  var NOT_SAME_ORIGIN = ["Sign-in isn't available yet", "The server must be on the same address as this page."];
+  // The address from GET /api/me. Null until that call says we are signed in.
+  var accountEmail = null;
+  // Bumped so a late /api/me or logout cannot overwrite a newer result.
+  var meRequest = 0;
+  // Bumped so a late request-link cannot reopen Check your email after Cancel.
+  var linkRequest = 0;
+  var pendingEmail = "";
 
   // One place for the songbook name chrome and the persist / "Not saved" note.
-  // Phase 1's header will drive the visible songbook name through this too.
   // pageTitle: document.title (song title while a song is open, else SoftChord).
   // showPersistNote: whether the persist note is shown.
+  // The header name and the grey indicator follow currentSongbook. In Phase 1
+  // the indicator is always "Not saved".
   function updateSongbookChrome(opts) {
     opts = opts || {};
     if (Object.prototype.hasOwnProperty.call(opts, "pageTitle")) {
@@ -79,6 +139,245 @@
     if (Object.prototype.hasOwnProperty.call(opts, "showPersistNote")) {
       persistNote.hidden = !opts.showPersistNote;
     }
+    if (songbookNameEl) {
+      songbookNameEl.textContent = currentSongbook.displayName;
+    }
+    if (songbookIndicator) {
+      songbookIndicator.hidden = false;
+      songbookIndicator.textContent = "Not saved";
+    }
+  }
+
+  function displayNameFromFile(name) {
+    var stripped = String(name || "").replace(/\.songbook$/i, "");
+    return stripped || name || "songbook";
+  }
+
+  function rememberSongbook(displayName, bytes, url) {
+    var entry = { displayName: displayName, bytes: bytes };
+    if (url) {
+      entry.url = url;
+    }
+    sessionSongbooks.push(entry);
+    return entry;
+  }
+
+  function renderSongbookMenu() {
+    if (!songbookMenuList) {
+      return;
+    }
+    songbookMenuList.replaceChildren();
+    sessionSongbooks.forEach(function (entry) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "songbook-menu-item";
+      button.setAttribute("role", "menuitemradio");
+      var open = entry === activeSongbook;
+      button.setAttribute("aria-checked", open ? "true" : "false");
+      var mark = document.createElement("span");
+      mark.className = "menu-check";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = open ? "\u2713" : "";
+      var label = document.createElement("span");
+      label.className = "menu-item-label";
+      label.textContent = entry.displayName;
+      button.appendChild(mark);
+      button.appendChild(label);
+      button.addEventListener("click", function () {
+        if (entry === activeSongbook) {
+          closeSongbookMenu();
+          return;
+        }
+        requestSongbook(entry);
+      });
+      songbookMenuList.appendChild(button);
+    });
+  }
+
+  function closeSongbookMenu() {
+    if (!songbookMenu) {
+      return;
+    }
+    songbookMenu.hidden = true;
+    if (songbookMenuButton) {
+      songbookMenuButton.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function openSongbookMenu() {
+    if (!songbookMenu || !songbookMenuButton) {
+      return;
+    }
+    if (menu) {
+      menu.hidden = true;
+    }
+    songbookMenu.hidden = false;
+    songbookMenuButton.setAttribute("aria-expanded", "true");
+    var rect = songbookMenuButton.getBoundingClientRect();
+    songbookMenu.style.left = Math.max(8, rect.left) + "px";
+    songbookMenu.style.top = (rect.bottom + 4) + "px";
+    var box = songbookMenu.getBoundingClientRect();
+    if (box.right > window.innerWidth - 8) {
+      songbookMenu.style.left = Math.max(8, window.innerWidth - box.width - 8) + "px";
+    }
+    if (box.bottom > window.innerHeight - 8) {
+      songbookMenu.style.top = Math.max(8, rect.top - box.height - 4) + "px";
+    }
+  }
+
+  function beginSongbookRequest() {
+    songbookRequest += 1;
+    return songbookRequest;
+  }
+
+  function songbookRequestCurrent(request) {
+    return request === songbookRequest;
+  }
+
+  // openBuffer already replaced the songs. Put the songbook that is actually
+  // current back when this request lost to a later one. If a newer request
+  // wins while this read is in flight, or the current songbook is no longer
+  // the one whose bytes were read, drop that result and open the current one.
+  function reopenActiveSongbook() {
+    if (!activeSongbook || !activeSongbook.bytes) {
+      return Promise.resolve();
+    }
+    var request = songbookRequest;
+    var entry = activeSongbook;
+    var bytes = entry.bytes.slice(0);
+    function dropped() {
+      return !songbookRequestCurrent(request) || activeSongbook !== entry;
+    }
+    return Songbook.openBuffer(bytes).then(function () {
+      if (dropped()) {
+        return reopenActiveSongbook();
+      }
+    }, function (error) {
+      if (dropped()) {
+        return reopenActiveSongbook();
+      }
+      throw error;
+    });
+  }
+
+  function songHash(id) {
+    return "#/e/" + songbookEpoch + "/song/" + id;
+  }
+
+  function listAddress() {
+    return location.pathname + location.search + "#/";
+  }
+
+  // The list now shows this songbook. Session edits from the previous one are
+  // dropped. Call only after its bytes are already open in Songbook.
+  // The current history entry becomes the list. Older song routes keep their
+  // epoch, so Back does not open that song number in this songbook.
+  function activateSongbook(entry) {
+    toast.hidden = true;
+    clearTimeout(toastTimer);
+    songbookEpoch += 1;
+    activeSongbook = entry;
+    currentSongbook.displayName = entry.displayName;
+    currentSongbook.url = entry.url || "";
+    songbookUrl = currentSongbook.url;
+    keptEdits = {};
+    loadError = null;
+    allTitles = Songbook.titles();
+    dropChanges();
+    if (search) {
+      search.value = "";
+    }
+    updateSongbookChrome({ pageTitle: "SoftChord", showPersistNote: false });
+    renderSongbookMenu();
+    history.replaceState({ epoch: songbookEpoch }, "", listAddress());
+    showFromHash();
+  }
+
+  function applyStoredSongbook(entry) {
+    var request = beginSongbookRequest();
+    Songbook.openBuffer(entry.bytes.slice(0)).then(function () {
+      if (!songbookRequestCurrent(request)) {
+        return reopenActiveSongbook();
+      }
+      activateSongbook(entry);
+    }).catch(function (error) {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
+      showOpenError(entry.displayName, error);
+    });
+  }
+
+  // Save / Don't Save / Cancel, the same dialog as leaving a song. Cancel
+  // leaves this songbook and its draft alone. Save and Don't Save continue.
+  // The Saved toast is cleared on a menu switch because those edits are then
+  // dropped with the songbook.
+  function requestSongbook(entry) {
+    closeSongbookMenu();
+    askBeforeLeaving(function () {
+      toast.hidden = true;
+      clearTimeout(toastTimer);
+      applyStoredSongbook(entry);
+    });
+  }
+
+  function requestOpenSongbookFile() {
+    closeSongbookMenu();
+    askBeforeLeaving(function () {
+      if (!songbookFile) {
+        return;
+      }
+      songbookFile.value = "";
+      songbookFile.click();
+    });
+  }
+
+  function showOpenError(fileName, error) {
+    var message;
+    if (error && error.formatProblem) {
+      message = error.message;
+    } else {
+      message = "\u201c" + fileName + "\u201d isn't a softChord songbook.";
+    }
+    notify("Can't open songbook", message);
+  }
+
+  function openSongbookFile(file) {
+    if (!file) {
+      return;
+    }
+    if (file.size > MAX_SONGBOOK_BYTES) {
+      notify("Can't open songbook",
+        "This songbook is too large to open here. Open it in softChord on your computer.");
+      return;
+    }
+    var request = beginSongbookRequest();
+    var reader = new FileReader();
+    reader.onload = function () {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
+      var opened = new Uint8Array(reader.result);
+      var kept = opened.slice(0);
+      Songbook.openBuffer(opened).then(function () {
+        if (!songbookRequestCurrent(request)) {
+          return reopenActiveSongbook();
+        }
+        activateSongbook(rememberSongbook(displayNameFromFile(file.name), kept));
+      }).catch(function (error) {
+        if (!songbookRequestCurrent(request)) {
+          return;
+        }
+        showOpenError(file.name, error);
+      });
+    };
+    reader.onerror = function () {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
+      showOpenError(file.name);
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   var allTitles = [];
@@ -1234,18 +1533,58 @@
     fitToWidth();
   });
 
+  function taggedSongHash() {
+    return /^#\/e\/(\d+)\/song\/(\d+)$/.exec(location.hash);
+  }
+
+  function untaggedSongHash() {
+    return /^#\/song\/(\d+)$/.exec(location.hash);
+  }
+
+  // A song route from an earlier songbook. Untagged #/song/<id> is epoch 0.
+  function staleSongHash() {
+    var tagged = taggedSongHash();
+    if (tagged) {
+      return Number(tagged[1]) !== songbookEpoch;
+    }
+    return !!(untaggedSongHash() && songbookEpoch !== 0);
+  }
+
   function songIdFromHash() {
-    var match = /^#\/song\/(\d+)$/.exec(location.hash);
-    return match ? Number(match[1]) : null;
+    var tagged = taggedSongHash();
+    if (tagged) {
+      if (Number(tagged[1]) !== songbookEpoch) {
+        return null;
+      }
+      return Number(tagged[2]);
+    }
+    var match = untaggedSongHash();
+    if (match && songbookEpoch === 0) {
+      return Number(match[1]);
+    }
+    return null;
   }
 
   function showFromHash() {
+    if (staleSongHash()) {
+      if (draftChanged()) {
+        var wantedList = listAddress();
+        history.replaceState(null, "", location.pathname + location.search + (openSongHash || ("#/song/" + openId)));
+        askBeforeLeaving(function () {
+          dropChanges();
+          history.replaceState({ epoch: songbookEpoch }, "", wantedList);
+          showFromHash();
+        });
+        return;
+      }
+      history.replaceState({ epoch: songbookEpoch }, "", listAddress());
+    }
     var id = songIdFromHash();
     if (draftChanged() && id !== openId) {
       // The address already changed (the browser's Back or Forward, or a typed
       // address), so put it back, and go there only if the edits are discarded.
       var wanted = location.hash;
-      history.replaceState(null, "", location.pathname + location.search + "#/song/" + openId);
+      history.replaceState(null, "", location.pathname + location.search + (openSongHash || ("#/song/" + openId)));
       askBeforeLeaving(function () {
         dropChanges();
         location.hash = wanted;
@@ -1253,6 +1592,7 @@
       return;
     }
     menu.hidden = true;
+    closeSongbookMenu();
     if (id == null) {
       openId = null;
       steps = 0;
@@ -1263,6 +1603,7 @@
       paintList();
       return;
     }
+    openSongHash = location.hash;
     if (openId !== id) {
       openId = id;
       var kept = keptEdits[id];
@@ -1299,7 +1640,7 @@
     if (!button) {
       return;
     }
-    location.hash = "#/song/" + button.dataset.id;
+    location.hash = songHash(button.dataset.id);
   });
 
   // TODO: Open this menu on a long press. The open song has toolbar buttons.
@@ -1343,7 +1684,515 @@
     if (!menu.hidden && !menu.contains(event.target)) {
       menu.hidden = true;
     }
+    if (songbookMenu && !songbookMenu.hidden && !songbookMenu.contains(event.target)) {
+      closeSongbookMenu();
+    }
+    if (accountMenu && !accountMenu.hidden && !accountMenu.contains(event.target)) {
+      closeAccountMenu();
+    }
   });
+
+  if (songbookMenuButton) {
+    songbookMenuButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      closeAccountMenu();
+      if (songbookMenu.hidden) {
+        openSongbookMenu();
+      } else {
+        closeSongbookMenu();
+      }
+    });
+  }
+
+  if (songbookMenu) {
+    songbookMenu.addEventListener("click", function (event) {
+      var button = event.target.closest("button");
+      if (!button || !button.dataset.action) {
+        return;
+      }
+      if (button.dataset.action === "open-file") {
+        requestOpenSongbookFile();
+        return;
+      }
+      var note = NOT_AVAILABLE[button.dataset.action];
+      if (!note) {
+        return;
+      }
+      closeSongbookMenu();
+      notify(note[0], note[1]);
+    });
+  }
+
+  // API origin: window.SOFTCHORD_API_ORIGIN when it is non-empty, otherwise
+  // <meta name="softchord-api-origin">. config.js leaves the window value
+  // empty so a meta tag can still set it. The value is used only when it
+  // equals location.origin. Anything else makes no auth request.
+  function readConfiguredOrigin() {
+    if (location.protocol === "file:") {
+      return "";
+    }
+    var raw = "";
+    if (typeof window.SOFTCHORD_API_ORIGIN === "string" && window.SOFTCHORD_API_ORIGIN.trim()) {
+      raw = window.SOFTCHORD_API_ORIGIN.trim();
+    } else {
+      var meta = document.querySelector('meta[name="softchord-api-origin"]');
+      if (meta && meta.content && meta.content.trim()) {
+        raw = meta.content.trim();
+      }
+    }
+    if (!raw) {
+      return "";
+    }
+    try {
+      var url = new URL(raw);
+      if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
+        return "";
+      }
+      return url.origin;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function configuredApiOrigin() {
+    var origin = readConfiguredOrigin();
+    if (!origin || origin !== location.origin) {
+      return "";
+    }
+    return origin;
+  }
+
+  // Null when sign-in may call the API. Otherwise the notice to show, and
+  // the caller must not fetch.
+  function signInBlockedNotice() {
+    var origin = readConfiguredOrigin();
+    if (!origin) {
+      return NOT_CONFIGURED;
+    }
+    if (origin !== location.origin) {
+      return NOT_SAME_ORIGIN;
+    }
+    return null;
+  }
+
+  function normalizeEmail(value) {
+    var email = String(value || "").trim().toLowerCase();
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) {
+      return "";
+    }
+    return email;
+  }
+
+  function showAuthError(el, text) {
+    if (!el) {
+      return;
+    }
+    el.textContent = text || "";
+    el.hidden = !text;
+  }
+
+  function verifierPair() {
+    var bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    var binary = "";
+    for (var i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    var verifier = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)).then(function (digest) {
+      var hashBytes = new Uint8Array(digest);
+      var hash = "";
+      for (var j = 0; j < hashBytes.length; j++) {
+        hash += hashBytes[j].toString(16).padStart(2, "0");
+      }
+      return { verifier: verifier, hash: hash };
+    });
+  }
+
+  function closeAccountMenu() {
+    if (accountMenu) {
+      accountMenu.hidden = true;
+    }
+    if (signInButton && accountEmail) {
+      signInButton.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function openAccountMenu() {
+    if (!accountMenu || !signInButton) {
+      return;
+    }
+    closeSongbookMenu();
+    if (menu) {
+      menu.hidden = true;
+    }
+    accountMenu.hidden = false;
+    signInButton.setAttribute("aria-expanded", "true");
+    var rect = signInButton.getBoundingClientRect();
+    accountMenu.style.top = (rect.bottom + 4) + "px";
+    accountMenu.style.left = "0px";
+    var box = accountMenu.getBoundingClientRect();
+    var left = rect.right - box.width;
+    accountMenu.style.left = Math.max(8, Math.min(left, window.innerWidth - box.width - 8)) + "px";
+    box = accountMenu.getBoundingClientRect();
+    if (box.bottom > window.innerHeight - 8) {
+      accountMenu.style.top = Math.max(8, rect.top - box.height - 4) + "px";
+    }
+  }
+
+  function renderAccount() {
+    var offline = navigator.onLine === false;
+    var signedIn = !!accountEmail;
+    if (signInOffline) {
+      signInOffline.hidden = signedIn || !offline;
+    }
+    if (!signInButton) {
+      return;
+    }
+    if (signedIn) {
+      signInButton.disabled = false;
+      signInButton.textContent = accountEmail;
+      signInButton.title = accountEmail;
+      signInButton.setAttribute("aria-haspopup", "menu");
+      signInButton.setAttribute("aria-controls", "account-menu");
+      if (!signInButton.hasAttribute("aria-expanded")) {
+        signInButton.setAttribute("aria-expanded", "false");
+      }
+      signInButton.removeAttribute("aria-describedby");
+      return;
+    }
+    closeAccountMenu();
+    signInButton.textContent = "Sign in";
+    signInButton.removeAttribute("title");
+    signInButton.removeAttribute("aria-haspopup");
+    signInButton.removeAttribute("aria-controls");
+    signInButton.removeAttribute("aria-expanded");
+    signInButton.disabled = offline;
+    if (offline && signInOffline) {
+      signInButton.setAttribute("aria-describedby", "sign-in-offline");
+    } else {
+      signInButton.removeAttribute("aria-describedby");
+    }
+  }
+
+  function resetSignInPanel() {
+    if (signInRequest) {
+      signInRequest.hidden = false;
+    }
+    if (signInCheck) {
+      signInCheck.hidden = true;
+    }
+    showAuthError(signInError, "");
+    showAuthError(signInCheckError, "");
+    if (signInPanel) {
+      signInPanel.setAttribute("aria-labelledby", "sign-in-title");
+    }
+    if (signInSend) {
+      signInSend.disabled = navigator.onLine === false;
+    }
+    if (signInResend) {
+      signInResend.disabled = navigator.onLine === false;
+    }
+  }
+
+  function showCheckEmail(email) {
+    pendingEmail = email;
+    if (signInAddress) {
+      signInAddress.textContent = email;
+    }
+    if (signInRequest) {
+      signInRequest.hidden = true;
+    }
+    if (signInCheck) {
+      signInCheck.hidden = false;
+    }
+    showAuthError(signInCheckError, "");
+    if (signInPanel) {
+      signInPanel.setAttribute("aria-labelledby", "sign-in-check-title");
+    }
+    if (signInResend) {
+      signInResend.disabled = navigator.onLine === false;
+    }
+  }
+
+  function openSignInPanel() {
+    if (!signInPanel || typeof signInPanel.showModal !== "function") {
+      notify(NOT_CONFIGURED[0], NOT_CONFIGURED[1]);
+      return;
+    }
+    closeSongbookMenu();
+    closeAccountMenu();
+    resetSignInPanel();
+    if (!signInPanel.open) {
+      signInPanel.showModal();
+    }
+    if (signInEmail) {
+      signInEmail.focus();
+    }
+  }
+
+  function postLink(email, errorEl, button) {
+    var blocked = signInBlockedNotice();
+    if (blocked) {
+      if (signInPanel && signInPanel.open) {
+        signInPanel.close();
+      }
+      notify(blocked[0], blocked[1]);
+      return;
+    }
+    if (navigator.onLine === false) {
+      showAuthError(errorEl, "Offline");
+      return;
+    }
+    var origin = configuredApiOrigin();
+    var ticket = ++linkRequest;
+    if (button) {
+      button.disabled = true;
+    }
+    showAuthError(errorEl, "");
+    verifierPair().then(function (pair) {
+      return fetch(origin + "/api/auth/request-link", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: email,
+          client: "web",
+          verifier: pair.verifier,
+          verifier_hash: pair.hash,
+        }),
+      });
+    }).then(function (response) {
+      if (ticket !== linkRequest) {
+        return;
+      }
+      if (response.status === 200) {
+        showCheckEmail(email);
+        return;
+      }
+      showAuthError(errorEl, response.status === 400
+        ? "That email address is not valid."
+        : "Could not sign in.");
+    }).catch(function () {
+      if (ticket !== linkRequest) {
+        return;
+      }
+      showAuthError(errorEl, "Could not reach the server.");
+    }).then(function () {
+      if (button && ticket === linkRequest) {
+        button.disabled = navigator.onLine === false;
+      }
+    });
+  }
+
+  function submitSignInEmail() {
+    var email = normalizeEmail(signInEmail && signInEmail.value);
+    if (!email) {
+      showAuthError(signInError, "That email address is not valid.");
+      return;
+    }
+    postLink(email, signInError, signInSend);
+  }
+
+  function applySignedOut() {
+    meRequest += 1;
+    accountEmail = null;
+    closeAccountMenu();
+    renderAccount();
+  }
+
+  var lastVisibleRefresh = 0;
+
+  function refreshMe() {
+    var origin = configuredApiOrigin();
+    if (!origin) {
+      return;
+    }
+    var ticket = ++meRequest;
+    fetch(origin + "/api/me", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    }).then(function (response) {
+      if (ticket !== meRequest) {
+        return null;
+      }
+      if (response.status !== 200) {
+        accountEmail = null;
+        renderAccount();
+        return null;
+      }
+      return response.json();
+    }).then(function (body) {
+      if (!body || ticket !== meRequest) {
+        return;
+      }
+      if (typeof body.email === "string" && body.email) {
+        accountEmail = body.email;
+        if (signInPanel && signInPanel.open) {
+          signInPanel.close();
+        }
+      } else {
+        accountEmail = null;
+      }
+      renderAccount();
+    }).catch(function () {
+      if (ticket !== meRequest) {
+        return;
+      }
+      renderAccount();
+    });
+  }
+
+  function signOutMessage(status) {
+    if (status === 400) {
+      return "The sign-out request was not accepted.";
+    }
+    if (status === 403) {
+      return "Sign-out was refused.";
+    }
+    if (status >= 400 && status < 500) {
+      return "The server rejected sign-out.";
+    }
+    if (status >= 500) {
+      return "The server had an error.";
+    }
+    return "The server could not be reached.";
+  }
+
+  // Focus and visibility can fire together. Share one check, at most every 5 seconds.
+  function refreshMeIfVisible() {
+    var now = Date.now();
+    if (now - lastVisibleRefresh < 5000) {
+      return;
+    }
+    lastVisibleRefresh = now;
+    refreshMe();
+  }
+
+  function signOut(path) {
+    var origin = configuredApiOrigin();
+    closeAccountMenu();
+    if (!origin) {
+      applySignedOut();
+      return;
+    }
+    fetch(origin + path, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    }).then(function (response) {
+      if (response.status === 200 || response.status === 401) {
+        applySignedOut();
+        return;
+      }
+      notify("Could not sign out", signOutMessage(response.status));
+    }).catch(function () {
+      notify("Could not sign out", "The server could not be reached.");
+    });
+  }
+
+  if (signInButton) {
+    signInButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      if (accountEmail) {
+        if (accountMenu && !accountMenu.hidden) {
+          closeAccountMenu();
+        } else {
+          openAccountMenu();
+        }
+        return;
+      }
+      var blocked = signInBlockedNotice();
+      if (blocked) {
+        notify(blocked[0], blocked[1]);
+        return;
+      }
+      if (navigator.onLine === false || signInButton.disabled) {
+        return;
+      }
+      openSignInPanel();
+    });
+  }
+
+  if (signInForm) {
+    signInForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      submitSignInEmail();
+    });
+  }
+
+  if (signInPanel) {
+    // A real close() removes open before the event. Ignore a close event that
+    // arrives while the dialog is still open; it would wipe Check your email.
+    signInPanel.addEventListener("close", function () {
+      if (signInPanel.open) {
+        return;
+      }
+      linkRequest += 1;
+      resetSignInPanel();
+    });
+    var signInCancel = document.getElementById("sign-in-cancel");
+    var signInCheckCancel = document.getElementById("sign-in-check-cancel");
+    if (signInCancel) {
+      signInCancel.addEventListener("click", function () {
+        signInPanel.close();
+      });
+    }
+    if (signInCheckCancel) {
+      signInCheckCancel.addEventListener("click", function () {
+        signInPanel.close();
+      });
+    }
+  }
+
+  if (signInResend) {
+    signInResend.addEventListener("click", function () {
+      if (!pendingEmail) {
+        return;
+      }
+      postLink(pendingEmail, signInCheckError, signInResend);
+    });
+  }
+
+  if (accountMenu) {
+    accountMenu.addEventListener("click", function (event) {
+      var button = event.target.closest("button");
+      if (button && button.id === "sign-out") {
+        signOut("/api/auth/logout");
+      } else if (button && button.id === "sign-out-all") {
+        if (!window.confirm("Sign out of SoftChord on all your devices?")) {
+          return;
+        }
+        signOut("/api/auth/logout-all");
+      }
+    });
+  }
+
+  window.addEventListener("offline", renderAccount);
+  window.addEventListener("online", function () {
+    renderAccount();
+    refreshMe();
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") {
+      refreshMeIfVisible();
+    }
+  });
+  window.addEventListener("focus", refreshMeIfVisible);
+  renderAccount();
+  refreshMe();
+
+  if (songbookFile) {
+    songbookFile.addEventListener("change", function () {
+      var file = songbookFile.files && songbookFile.files[0];
+      songbookFile.value = "";
+      openSongbookFile(file);
+    });
+  }
 
   document.getElementById("back").addEventListener("click", function () {
     askBeforeLeaving(function () {
@@ -1435,7 +2284,15 @@
     }
     // Escape closes the notice dialog itself. It must not also change the song.
     // The same for the dialog that asks before leaving: Escape is Cancel.
-    if (event.defaultPrevented || notice.open || leaveDialog.open) {
+    if (event.defaultPrevented || notice.open || leaveDialog.open || (signInPanel && signInPanel.open)) {
+      return;
+    }
+    if (accountMenu && !accountMenu.hidden) {
+      closeAccountMenu();
+      return;
+    }
+    if (songbookMenu && !songbookMenu.hidden) {
+      closeSongbookMenu();
       return;
     }
     if (!menu.hidden) {
@@ -1462,10 +2319,13 @@
   applyZoom();
   window.addEventListener("hashchange", showFromHash);
   showListMessage("Opening songbook…", false);
-  Songbook.load(currentSongbook.url).then(function () {
+  Songbook.load(currentSongbook.url).then(function (bytes) {
+    activeSongbook = rememberSongbook(currentSongbook.displayName, bytes, currentSongbook.url);
     allTitles = Songbook.titles();
     loadError = null;
     showListMessage("", false);
+    updateSongbookChrome();
+    renderSongbookMenu();
     showFromHash();
     if (songIdFromHash() == null) {
       search.focus();

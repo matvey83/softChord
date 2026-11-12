@@ -498,7 +498,12 @@ def main():
 
     app.restoreOverrideCursor()
 
-    sys.exit(app.exec())
+    code = app.exec()
+    # Qt's offscreen teardown SIGSEGVs after a normal return. The event
+    # loop has already finished, so skip the static destructors.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0 if code is None else int(code))
 
 
 if __name__ == "__main__":
