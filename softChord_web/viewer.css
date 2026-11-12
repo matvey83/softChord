@@ -21,6 +21,77 @@ main {
   background: #fff;
 }
 
+/* MIRRORED UI, pending on iOS: SoftChord/SoftChord/ContentView.swift does
+   not have this row yet. It will be the songbook name, ▾, grey "Not saved",
+   and Sign in, with Search below, on the song list only. The name truncates
+   first; the arrow, the indicator and Sign in stay on screen. */
+.songbook-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 2px;
+  min-width: 0;
+}
+
+.songbook-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#songbook-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+
+#songbook-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.songbook-caret { flex: none; }
+
+#songbook-indicator {
+  flex: none;
+  color: #8e8e93;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+#sign-in {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  color: #007aff;
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+#songbook-menu-button:focus-visible,
+#sign-in:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .search-bar {
   display: flex;
   gap: 8px;
@@ -164,21 +235,21 @@ main {
    the button sizes, gaps, groups or the wrapping rules below is made in all
    three apps.
 
-   viewer.js layoutToolbar measures the buttons of every mode (viewing, Edit
-   Text, Edit Chords, each with what it hides, and with Save and Discard) and
-   takes the widest, so the rows do not move when the mode changes:
-   - One row (no class): Back, the title and the buttons share one row when the
-     widest mode's buttons fit next to Back and a short title.
+   viewer.js layoutToolbar measures the widest segment (Chords, with
+   Transpose, the chord buttons, and Discard and Save) so the rows do not
+   move when the segment changes:
+   - One row (no class): Back, the title and the buttons share one row when
+     that segment's buttons fit next to Back and a short title.
    - .narrow: otherwise Back and the title share the first row and the buttons
      get rows of their own below, with smaller buttons and no separators. When
-     the widest mode's buttons fit on one row there, they are on one row in
-     every mode.
-   - .narrow.edit-row: when they do not, the edit groups (Edit Text and Edit
-     Chords, the chord buttons, Discard and Save) start the next row in every
-     mode. The groups before them, and the edit groups among themselves, wrap
-     whole onto the next row when they do not fit, so every button stays inside
-     the window and never scrolls off it.
-   Edit text stays on small screens: the editor is a plain textarea and works
+     the widest segment's buttons fit on one row there, they are on one row
+     in every segment.
+   - .narrow.edit-row: when they do not, the Chords/Lyrics switch and the
+     groups after it (chord buttons, Undo and Redo, Discard and Save) start
+     the next row in every segment. The groups before them, and those groups
+     among themselves, wrap whole onto the next row when they do not fit, so
+     every button stays inside the window and never scrolls off it.
+   Lyrics stays on small screens: the editor is a plain textarea and works
    there. */
 .tool-break { display: none; }
 
@@ -204,6 +275,7 @@ main {
 .toolbar.narrow .tool-group { gap: 0; flex: none; }
 .toolbar.narrow #edit-actions { margin-left: 0; gap: 6px; }
 .toolbar.narrow .tool { width: 34px; height: 34px; }
+.toolbar.narrow .segment-btn { height: 34px; }
 /* A line of its own with no height: what follows starts the next row. */
 .toolbar.narrow.edit-row .tool-break {
   display: block;
@@ -214,12 +286,15 @@ main {
 
 @media (max-width: 360px) {
   .toolbar.narrow .tool { width: 30px; height: 30px; }
+  .toolbar.narrow .segment-btn { height: 30px; padding: 0 8px; }
   .toolbar.narrow .toolbar-actions { column-gap: 8px; }
 }
 
-/* While viewer.js measures the groups: every group shows, on one line. */
+/* While viewer.js measures the groups: every group shows, on one line,
+   including ones the open segment hides (Transpose on Lyrics). */
 .toolbar.measuring .toolbar-actions { flex-wrap: nowrap; width: max-content; }
 .toolbar.measuring .toolbar-actions > .tool-group[hidden] { display: flex !important; }
+.toolbar.measuring:not(.narrow) .tool-sep[hidden] { display: block !important; }
 
 #toast {
   position: fixed;
@@ -500,6 +575,40 @@ main {
   #sheet-wrap.entry-open { margin-bottom: 45vh; }
 }
 
+#segment-switch { gap: 0; }
+
+.segment-btn {
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #c7c7cc;
+  background: #fff;
+  color: #1c1c1e;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#segment-chords { border-radius: 8px 0 0 8px; }
+
+#segment-lyrics { border-radius: 0 8px 8px 0; border-left-width: 0; }
+
+.segment-btn[aria-pressed="true"] {
+  background: #007aff;
+  border-color: #007aff;
+  color: #fff;
+  font-weight: 600;
+}
+
+#segment-lyrics[aria-pressed="true"] { border-left-width: 1px; }
+
+.segment-btn:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 1px;
+  position: relative;
+  z-index: 1;
+}
+
 .tool-text {
   height: 34px;
   padding: 0 12px;
@@ -606,6 +715,47 @@ main {
   background: #f2f2f7;
 }
 
+#songbook-menu {
+  z-index: 30;
+  min-width: 260px;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+}
+
+.menu-label {
+  padding: 6px 14px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8e8e93;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #e5e5ea;
+}
+
+.menu button.songbook-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.menu-check {
+  flex: none;
+  width: 1.1em;
+  text-align: center;
+}
+
+.menu-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #notice {
   border: none;
   border-radius: 12px;
@@ -671,7 +821,8 @@ main {
     color: #000;
   }
 
-  #list-view, #back, .toolbar-actions, #persist-note, #toast, #menu, #notice, #leave-confirm,
+  #list-view, #songbook-header, #songbook-menu, #back, .toolbar-actions, #persist-note,
+  #toast, #menu, #notice, #leave-confirm,
   #song-error, #sheet-editor, #chord-live, #chord-entry {
     display: none !important;
   }

@@ -1,9 +1,9 @@
 // Song list and chord sheet.
-// The open song is kept in memory. Transpose draws a shifted copy and does
-// not write the songbook. Like an edit, a transpose is a change to Save or
-// Discard (see savedSteps). Edit text changes the copy kept here (see the Edit
-// text section below) and does not write the songbook either. Edit chords does
-// the same with the chords (see the Edit chords section).
+// A song opens already editing, like the desktop app: one draft, shown as
+// Chords or Lyrics. Nothing is written to the songbook. Save keeps the draft
+// in memory for this page visit (the "Changes do not persist" note stays when
+// that copy differs from the file). Discard reloads the last save and stays
+// in edit. Transpose dirties the same draft.
 
 (function () {
   var listView = document.getElementById("list-view");
@@ -27,11 +27,11 @@
   var transposeUp = optional("transpose-up");
   var transposeReset = optional("transpose-reset");
   var toolbarActions = document.querySelector(".toolbar-actions") || document.createElement("div");
-  // MIRRORED UI: the iOS app mirrors these toolbar buttons (planned in
-  // softChord Viewer/softChord Viewer/SongToolbar.swift), and the desktop editor
-  // will later. A change to a button, its order, icon or when it shows or is
-  // dimmed (applyZoom, paintSong, setEditing, chord mode's updateButtons) is
-  // made in both apps.
+  // MIRRORED UI: the desktop toolbar (src/softchord_toolbar.py) is the same
+  // Chords / Lyrics switch. The iOS app still has Edit Text and Edit Chords.
+  // A change to a button, its order, icon or when it shows or is dimmed
+  // (applyZoom, paintSong, setEditingState, chord mode's updateButtons) is
+  // made in the desktop app too. The desktop alone has the font buttons.
   var copyTextButton = optional("copy-text");
   var copyChordsButton = optional("copy-chords");
   var copyImageButton = optional("copy-image");
@@ -39,13 +39,14 @@
   var printButton = optional("print");
   var zoomResetButton = optional("zoom-reset");
   var zoomInButton = optional("zoom-in");
-  var editButton = optional("edit-text");
-  var editChordsButton = optional("edit-chords");
+  var segmentChords = optional("segment-chords");
+  var segmentLyrics = optional("segment-lyrics");
   var copyActions = optional("copy-actions");
   var copySeparator = optional("copy-sep");
   var transposeActions = optional("transpose-actions");
   var transposeSeparator = optional("transpose-sep");
   var chordActions = optional("chord-actions");
+  var undoActions = optional("undo-actions");
   var chordLive = optional("chord-live");
   var editActions = optional("edit-actions");
   var saveButton = optional("edit-save");
@@ -58,18 +59,54 @@
   var noticeMessage = document.getElementById("notice-message");
 
   // The songbook this page is reading. Defaults to the bundled demo next to
-  // this folder. Open Songbook File will replace this for the session. A
-  // future server replaces Songbook.load.
+  // this folder. Open Songbook File replaces this for the session only. A
+  // future server replaces Songbook.load. Nothing here is written to disk or
+  // sent over the network.
   var currentSongbook = {
     displayName: "zvuki_neba",
     url: "../zvuki_neba.songbook",
   };
   var songbookUrl = currentSongbook.url;
+  // Demo plus every file opened this visit, oldest first. Each entry keeps
+  // its bytes so switching reloads the list from memory.
+  var sessionSongbooks = [];
+  var activeSongbook = null;
+  // Bumped when a songbook becomes current. Song addresses include it
+  // (#/e/<epoch>/song/<id>) so Back cannot open that number in a later book.
+  // An untagged #/song/<id> is epoch 0, this first songbook. After a switch,
+  // Back to that address goes to the list.
+  var songbookEpoch = 0;
+  // The address of the song on screen, so a cancelled leave puts the same
+  // address back. Null until a song is shown.
+  var openSongHash = null;
+  // Latest open or switch. A slower file read that finishes later is ignored.
+  var songbookRequest = 0;
+  // Over 50 MB (1024-based) is refused before the file is read.
+  var MAX_SONGBOOK_BYTES = 50 * 1024 * 1024;
+
+  var songbookNameEl = document.getElementById("songbook-name");
+  var songbookIndicator = document.getElementById("songbook-indicator");
+  var songbookMenuButton = document.getElementById("songbook-menu-button");
+  var songbookMenu = document.getElementById("songbook-menu");
+  var songbookMenuList = document.getElementById("songbook-menu-list");
+  var songbookFile = document.getElementById("songbook-file");
+  var signInButton = document.getElementById("sign-in");
+
+  // Titles and messages for items that need an account or a server. One OK
+  // button, from the notice dialog. Choosing one does not fetch anything.
+  var NOT_AVAILABLE = {
+    "sign-in": ["Sign-in isn't available yet", "softChord accounts are coming in a later update."],
+    download: ["Not available yet", "Saving songbooks from this app is coming in a later update."],
+    rename: ["Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
+    "delete": ["Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
+    share: ["Sharing isn't available yet", "Sharing needs a softChord account, which is coming in a later update."],
+  };
 
   // One place for the songbook name chrome and the persist / "Not saved" note.
-  // Phase 1's header will drive the visible songbook name through this too.
   // pageTitle: document.title (song title while a song is open, else SoftChord).
   // showPersistNote: whether the persist note is shown.
+  // The header name and the grey indicator follow currentSongbook. In Phase 1
+  // the indicator is always "Not saved".
   function updateSongbookChrome(opts) {
     opts = opts || {};
     if (Object.prototype.hasOwnProperty.call(opts, "pageTitle")) {
@@ -78,6 +115,245 @@
     if (Object.prototype.hasOwnProperty.call(opts, "showPersistNote")) {
       persistNote.hidden = !opts.showPersistNote;
     }
+    if (songbookNameEl) {
+      songbookNameEl.textContent = currentSongbook.displayName;
+    }
+    if (songbookIndicator) {
+      songbookIndicator.hidden = false;
+      songbookIndicator.textContent = "Not saved";
+    }
+  }
+
+  function displayNameFromFile(name) {
+    var stripped = String(name || "").replace(/\.songbook$/i, "");
+    return stripped || name || "songbook";
+  }
+
+  function rememberSongbook(displayName, bytes, url) {
+    var entry = { displayName: displayName, bytes: bytes };
+    if (url) {
+      entry.url = url;
+    }
+    sessionSongbooks.push(entry);
+    return entry;
+  }
+
+  function renderSongbookMenu() {
+    if (!songbookMenuList) {
+      return;
+    }
+    songbookMenuList.replaceChildren();
+    sessionSongbooks.forEach(function (entry) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "songbook-menu-item";
+      button.setAttribute("role", "menuitemradio");
+      var open = entry === activeSongbook;
+      button.setAttribute("aria-checked", open ? "true" : "false");
+      var mark = document.createElement("span");
+      mark.className = "menu-check";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = open ? "\u2713" : "";
+      var label = document.createElement("span");
+      label.className = "menu-item-label";
+      label.textContent = entry.displayName;
+      button.appendChild(mark);
+      button.appendChild(label);
+      button.addEventListener("click", function () {
+        if (entry === activeSongbook) {
+          closeSongbookMenu();
+          return;
+        }
+        requestSongbook(entry);
+      });
+      songbookMenuList.appendChild(button);
+    });
+  }
+
+  function closeSongbookMenu() {
+    if (!songbookMenu) {
+      return;
+    }
+    songbookMenu.hidden = true;
+    if (songbookMenuButton) {
+      songbookMenuButton.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function openSongbookMenu() {
+    if (!songbookMenu || !songbookMenuButton) {
+      return;
+    }
+    if (menu) {
+      menu.hidden = true;
+    }
+    songbookMenu.hidden = false;
+    songbookMenuButton.setAttribute("aria-expanded", "true");
+    var rect = songbookMenuButton.getBoundingClientRect();
+    songbookMenu.style.left = Math.max(8, rect.left) + "px";
+    songbookMenu.style.top = (rect.bottom + 4) + "px";
+    var box = songbookMenu.getBoundingClientRect();
+    if (box.right > window.innerWidth - 8) {
+      songbookMenu.style.left = Math.max(8, window.innerWidth - box.width - 8) + "px";
+    }
+    if (box.bottom > window.innerHeight - 8) {
+      songbookMenu.style.top = Math.max(8, rect.top - box.height - 4) + "px";
+    }
+  }
+
+  function beginSongbookRequest() {
+    songbookRequest += 1;
+    return songbookRequest;
+  }
+
+  function songbookRequestCurrent(request) {
+    return request === songbookRequest;
+  }
+
+  // openBuffer already replaced the songs. Put the songbook that is actually
+  // current back when this request lost to a later one. If a newer request
+  // wins while this read is in flight, or the current songbook is no longer
+  // the one whose bytes were read, drop that result and open the current one.
+  function reopenActiveSongbook() {
+    if (!activeSongbook || !activeSongbook.bytes) {
+      return Promise.resolve();
+    }
+    var request = songbookRequest;
+    var entry = activeSongbook;
+    var bytes = entry.bytes.slice(0);
+    function dropped() {
+      return !songbookRequestCurrent(request) || activeSongbook !== entry;
+    }
+    return Songbook.openBuffer(bytes).then(function () {
+      if (dropped()) {
+        return reopenActiveSongbook();
+      }
+    }, function (error) {
+      if (dropped()) {
+        return reopenActiveSongbook();
+      }
+      throw error;
+    });
+  }
+
+  function songHash(id) {
+    return "#/e/" + songbookEpoch + "/song/" + id;
+  }
+
+  function listAddress() {
+    return location.pathname + location.search + "#/";
+  }
+
+  // The list now shows this songbook. Session edits from the previous one are
+  // dropped. Call only after its bytes are already open in Songbook.
+  // The current history entry becomes the list. Older song routes keep their
+  // epoch, so Back does not open that song number in this songbook.
+  function activateSongbook(entry) {
+    toast.hidden = true;
+    clearTimeout(toastTimer);
+    songbookEpoch += 1;
+    activeSongbook = entry;
+    currentSongbook.displayName = entry.displayName;
+    currentSongbook.url = entry.url || "";
+    songbookUrl = currentSongbook.url;
+    keptEdits = {};
+    loadError = null;
+    allTitles = Songbook.titles();
+    dropChanges();
+    if (search) {
+      search.value = "";
+    }
+    updateSongbookChrome({ pageTitle: "SoftChord", showPersistNote: false });
+    renderSongbookMenu();
+    history.replaceState({ epoch: songbookEpoch }, "", listAddress());
+    showFromHash();
+  }
+
+  function applyStoredSongbook(entry) {
+    var request = beginSongbookRequest();
+    Songbook.openBuffer(entry.bytes.slice(0)).then(function () {
+      if (!songbookRequestCurrent(request)) {
+        return reopenActiveSongbook();
+      }
+      activateSongbook(entry);
+    }).catch(function (error) {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
+      showOpenError(entry.displayName, error);
+    });
+  }
+
+  // Save / Don't Save / Cancel, the same dialog as leaving a song. Cancel
+  // leaves this songbook and its draft alone. Save and Don't Save continue.
+  // The Saved toast is cleared on a menu switch because those edits are then
+  // dropped with the songbook.
+  function requestSongbook(entry) {
+    closeSongbookMenu();
+    askBeforeLeaving(function () {
+      toast.hidden = true;
+      clearTimeout(toastTimer);
+      applyStoredSongbook(entry);
+    });
+  }
+
+  function requestOpenSongbookFile() {
+    closeSongbookMenu();
+    askBeforeLeaving(function () {
+      if (!songbookFile) {
+        return;
+      }
+      songbookFile.value = "";
+      songbookFile.click();
+    });
+  }
+
+  function showOpenError(fileName, error) {
+    var message;
+    if (error && error.formatProblem) {
+      message = error.message;
+    } else {
+      message = "\u201c" + fileName + "\u201d isn't a softChord songbook.";
+    }
+    notify("Can't open songbook", message);
+  }
+
+  function openSongbookFile(file) {
+    if (!file) {
+      return;
+    }
+    if (file.size > MAX_SONGBOOK_BYTES) {
+      notify("Can't open songbook",
+        "This songbook is too large to open here. Open it in softChord on your computer.");
+      return;
+    }
+    var request = beginSongbookRequest();
+    var reader = new FileReader();
+    reader.onload = function () {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
+      var opened = new Uint8Array(reader.result);
+      var kept = opened.slice(0);
+      Songbook.openBuffer(opened).then(function () {
+        if (!songbookRequestCurrent(request)) {
+          return reopenActiveSongbook();
+        }
+        activateSongbook(rememberSongbook(displayNameFromFile(file.name), kept));
+      }).catch(function (error) {
+        if (!songbookRequestCurrent(request)) {
+          return;
+        }
+        showOpenError(file.name, error);
+      });
+    };
+    reader.onerror = function () {
+      if (!songbookRequestCurrent(request)) {
+        return;
+      }
+      showOpenError(file.name);
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   var allTitles = [];
@@ -87,9 +363,9 @@
   // Opening a song always starts at 0, so 0 is the key the song had when it
   // was loaded in this session, and Reset transpose goes back to it.
   var steps = 0;
-  // The transpose kept with Save, for the open song only, like savedEdit.
-  // steps different from it (by more than whole octaves, see changesChords) is
-  // a change: Save and Discard show, and leaving the song asks first.
+  // The transpose kept with Save, for the open song. steps different from it
+  // (by more than whole octaves, see changesChords) dirties the draft: Save
+  // and Discard show, and leaving the song asks first.
   var savedSteps = 0;
   // Song area zoom in percent. It stays when another song is opened and is
   // remembered in this browser. It never touches the toolbar or the copied image.
@@ -109,12 +385,13 @@
   var songZoomed = false;
   var menuSongId = null;
   var toastTimer = null;
-  // Edit text and Edit chords. savedEdit is the text and chords the user kept
-  // with Save, for the open song only (the songbook is not written), and draft is
-  // the edit in progress ({mode: "text" or "chords", ...}). Both are thrown away
-  // when the page leaves the song. Chords in both are not transposed: they are
-  // shown shifted by steps, like the iPhone app.
-  var savedEdit = null;
+  // One draft for the open song ({mode: "chords" or "text", text, chords,
+  // start, history, index}). Chords and Lyrics are two views of it. keptEdits
+  // is what Save stored for this page visit, by song id (the songbook file is
+  // not written). Chords are not transposed: they are shown shifted by steps.
+  // An empty new song would open on Lyrics; pasted, imported and existing
+  // songs open on Chords. This page opens existing songs.
+  var keptEdits = {};
   var draft = null;
   var composing = false;
 
@@ -176,7 +453,8 @@
   // The chords are not transposed.
   function openSource() {
     var source = Songbook.source(openId);
-    if (savedEdit && savedEdit.id === openId) {
+    var savedEdit = keptEdits[openId];
+    if (savedEdit) {
       source.text = savedEdit.text;
       source.chords = savedEdit.chords.map(function (chord) {
         return Object.assign({}, chord);
@@ -185,13 +463,24 @@
     return source;
   }
 
+  // "new" and an empty text start on Lyrics. Pasted, imported and existing
+  // songs start on Chords, including an existing song whose text is empty.
+  function segmentForOpen(source, origin) {
+    var text = source && source.text ? source.text : "";
+    if (origin === "new" && text.length === 0) {
+      return "text";
+    }
+    return "chords";
+  }
+
   // True when the song is shown in another key than the one kept (see savedSteps).
   function stepsChanged() {
     if (openId == null || steps === savedSteps) {
       return false;
     }
     try {
-      return SongTranspose.changesChords(openSource().chords, steps - savedSteps);
+      var chords = draft ? draft.chords : openSource().chords;
+      return SongTranspose.changesChords(chords, steps - savedSteps);
     } catch (error) {
       return false;
     }
@@ -200,10 +489,12 @@
   // The open song as shown now: its text and chords at the current transpose.
   function shownSong() {
     var source = openSource();
+    var text = draft ? draft.text : source.text;
+    var chords = draft ? draft.chords : source.chords;
     return {
       title: source.title,
-      text: source.text,
-      chords: SongTranspose.shifted(source.chords, steps),
+      text: text,
+      chords: SongTranspose.shifted(chords, steps),
     };
   }
 
@@ -344,7 +635,7 @@
   // of every letter and chord follows the font size, so the zoom that fits is
   // the shown zoom times the room over the width the song takes now.
   function fitToWidth() {
-    if (songZoomed || draft || songView.hidden || !sheet.firstChild) {
+    if (songZoomed || songView.hidden || !sheet.firstChild) {
       return;
     }
     var style = getComputedStyle(sheet);
@@ -597,7 +888,7 @@
       songError.textContent = String(error.message || error);
       sheet.replaceChildren();
       toolbarActions.hidden = true;
-      leaveEditing();
+      clearDraft();
       transposeReset.disabled = true;
       updateSongbookChrome({ pageTitle: "SoftChord", showPersistNote: false });
       return;
@@ -608,22 +899,16 @@
       layoutToolbar();
     }
     songTitle.textContent = source.title;
-    var chords = SongTranspose.shifted(source.chords, steps);
-    paintSheet(SongText.sheet(source.text, chords));
-    // The note and Reset follow the same rule: a whole octave (12) shows the
-    // same chords, so it counts as not transposed. So does a song with no chord
-    // that can move (text that is not a chord stays as it is).
-    var transposed = SongTranspose.changesChords(source.chords, steps);
-    updateSongbookChrome({
-      pageTitle: source.title,
-      showPersistNote: !!(transposed || savedEdit),
-    });
-    // While viewing, Save and Discard show only for a transpose not yet kept.
-    editActions.hidden = !(draft || stepsChanged());
-    // Dimmed until the song has been transposed. Up then down by the same
-    // amount brings steps back to 0, which dims it again, and so does a whole
-    // octave (12), which shows the same chords.
-    transposeReset.disabled = !transposed;
+    if (!draft) {
+      beginDraft(segmentForOpen(source, "existing"));
+      return;
+    }
+    var chords = SongTranspose.shifted(draft.chords, steps);
+    paintSheet(SongText.sheet(draft.text, chords));
+    if (draft.mode === "chords") {
+      chordMode.afterPaint();
+    }
+    refreshChrome();
     fitToWidth();
   }
 
@@ -701,24 +986,44 @@
       cancel: document.getElementById("chord-entry-cancel"),
     },
     draft: function () { return draft && draft.mode === "chords" ? draft : null; },
+    songDraft: function () { return draft; },
     steps: function () { return steps; },
-    repaint: function () { paintDraft(draft.text, draft.chords); },
+    repaint: function () {
+      if (!draft) {
+        return;
+      }
+      paintDraft(draft.text, draft.chords);
+      // Toolbar Undo changes the draft under the textarea. Setting the value
+      // does not fire input, so the draft's own history stays put.
+      if (draft.mode === "text" && editor.value !== draft.text) {
+        var at = Math.min(editor.selectionStart, draft.text.length);
+        editor.value = draft.text;
+        editor.setSelectionRange(at, at);
+      }
+      refreshChrome();
+    },
+    focusEditing: function () {
+      if (!draft) {
+        return;
+      }
+      (draft.mode === "text" ? editor : sheet).focus({ preventScroll: true });
+    },
   });
 
-  // Copy, Print and Transpose need the song as it is on disk or in the viewer,
-  // so they wait until Save or Discard: the Copy and Print group and the
-  // Transpose group are hidden, each with the separator after it (Transpose is
-  // also disabled, so nothing can change the key under the draft). Zoom is not
-  // among them: the textarea is sized in em from the same --zoom as the sheet,
-  // so it scales together with it.
+  // Copy, Print, Zoom, Undo and Redo stay shown. Transpose is shown on Chords
+  // and hidden on Lyrics (the group and the separator after it). Chord Add and
+  // Delete are shown only on Chords. Discard and Save are shown only when the
+  // draft is dirty (refreshChrome). Zoom sizes the textarea in em from the
+  // same --zoom as the sheet.
   // mode is "text" or "chords" (only looked at when on is true).
   function setEditingState(on, mode) {
     var chords = on && mode === "chords";
-    // While the text is edited, the textarea holds the same words as the sheet
-    // under it, and has the label "Song text". A screen reader would read the
-    // song twice, so only the textarea is left for it. While chords are edited
-    // the sheet is what is used, so it stays, and can be reached with the Tab key.
-    if (on && !chords) {
+    var lyrics = on && !chords;
+    // While the lyrics are edited, the textarea holds the same words as the
+    // sheet under it, and has the label "Song text". A screen reader would
+    // read the song twice, so only the textarea is left for it. On Chords the
+    // sheet is what is used, so it stays, and can be reached with the Tab key.
+    if (lyrics) {
       sheet.setAttribute("aria-hidden", "true");
     } else {
       sheet.removeAttribute("aria-hidden");
@@ -732,42 +1037,30 @@
       sheet.removeAttribute("role");
       sheet.removeAttribute("aria-label");
     }
-    // MIRRORED UI: the iOS and desktop toolbars hide Copy and Print and
-    // Transpose while editing too, and dim and show the same buttons.
-    copyActions.hidden = on;
-    copySeparator.hidden = on;
-    transposeActions.hidden = on;
-    transposeSeparator.hidden = on;
-    [transposeDown, transposeUp, transposeReset].forEach(function (button) {
-      button.disabled = on;
-    });
-    // The other edit button stays on: it switches the same edit to that mode.
-    editButton.disabled = on && !chords;
-    editChordsButton.disabled = chords;
-    editActions.hidden = !on;
+    copyActions.hidden = false;
+    copySeparator.hidden = false;
+    transposeActions.hidden = !chords;
+    transposeSeparator.hidden = !chords;
+    transposeDown.disabled = !on;
+    transposeUp.disabled = !on;
+    segmentChords.setAttribute("aria-pressed", chords ? "true" : "false");
+    segmentLyrics.setAttribute("aria-pressed", lyrics ? "true" : "false");
     chordActions.hidden = !chords;
-    sheetWrap.classList.toggle("editing", on);
+    undoActions.hidden = false;
+    sheetWrap.classList.toggle("editing", !!on);
     sheetWrap.classList.toggle("chord-mode", chords);
-    editor.hidden = !(on && !chords);
+    editor.hidden = !lyrics;
+    layoutToolbar();
   }
 
-  // MIRRORED UI: SongToolbar.swift (SongToolbarMetrics) and
-  // softchord_toolbar.py (rowWidth, widestRowWidth, _FlowLayout) wrap the same
-  // way; viewer.css describes the three layouts. The width of a mode's buttons
-  // on one row is measured with every group shown, so it does not depend on the
-  // open mode and switching modes does not move the rows.
+  // MIRRORED UI: softchord_toolbar.py (rowWidth, widestRowWidth) wraps the
+  // same way; viewer.css describes the layouts. The width is the widest
+  // segment with every group shown, so it does not depend on the open
+  // segment and switching does not move the rows.
   var TOOLBAR_TITLE_MIN = 60; // the title keeps at least this next to the buttons
   var toolbarModes = [
-    // Viewing with Save and Discard (a transpose not yet kept) is the widest.
-    function (el) { return el !== chordActions; },
-    function (el) {
-      return el !== copyActions && el !== copySeparator && el !== transposeActions &&
-        el !== transposeSeparator && el !== chordActions;
-    },
-    function (el) {
-      return el !== copyActions && el !== copySeparator && el !== transposeActions &&
-        el !== transposeSeparator;
-    },
+    // Chords with Transpose, chord buttons, and Discard and Save: every button.
+    function () { return true; },
   ];
 
   // The widest mode's buttons on one row, in the layout the class names give.
@@ -877,14 +1170,12 @@
     return offset;
   }
 
-  // mode is "text" (the whole text of the song, in the textarea) or "chords"
-  // (the chords on the sheet, the text as it is).
-  function startEditing(mode) {
-    if (draft && draft.mode !== mode && !composing) {
-      switchEditing(mode);
-      return;
-    }
-    if (draft || openId == null) {
+  // The note and Reset follow the same rule: a whole octave (12) shows the
+  // same chords, so it counts as not transposed. Save and Discard show only
+  // while the draft differs from the last save. The note stays when this page
+  // is holding a copy the file does not have, and while the draft is dirty.
+  function refreshChrome() {
+    if (openId == null) {
       return;
     }
     var source;
@@ -893,40 +1184,21 @@
     } catch (error) {
       return;
     }
-    var normal = SongTextEdit.normalizeSong(source.text, source.chords);
-    draft = {
-      mode: mode,
-      text: normal.text,
-      chords: normal.chords,
-      // What the edit started from: leaving with the draft different from this asks
-      // first (see draftChanged).
-      start: { text: normal.text, chords: cloneChords(normal.chords) },
-      history: [{ text: normal.text, chords: cloneChords(normal.chords) }],
-      index: 0,
-    };
-    composing = false;
-    var anchor = topLine();
-    // Nothing is written anywhere, so say so before the first key is typed, not
-    // only after Save. Save, Discard and paintSong set the note again from what
-    // is really kept.
-    updateSongbookChrome({ showPersistNote: true });
-    showDraft(mode, anchor);
-  }
-
-  // MIRRORED UI: the iOS song page (SongPage.swift switchEditing) and the desktop
-  // editor (softchord_session.py startEdit) switch the same way.
-  // Edit Text while editing chords, or Edit Chords while editing the text: the
-  // draft (text and chords) goes on in the other mode without asking, and one
-  // Save or Discard keeps or drops all of it. Undo starts over from here.
-  function switchEditing(mode) {
-    var anchor = topLine();
-    if (draft.mode === "chords") {
-      chordMode.leave();
+    var chordList = draft ? draft.chords : source.chords;
+    var transposed = SongTranspose.changesChords(chordList, steps);
+    var savedEdit = keptEdits[openId];
+    var dirty = draftChanged();
+    updateSongbookChrome({
+      pageTitle: source.title,
+      showPersistNote: !!(transposed || savedEdit || dirty),
+    });
+    transposeReset.disabled = !transposed;
+    var finishHidden = !dirty;
+    if (editActions.hidden !== finishHidden) {
+      editActions.hidden = finishHidden;
+      layoutToolbar();
     }
-    draft.mode = mode;
-    draft.history = [{ text: draft.text, chords: cloneChords(draft.chords) }];
-    draft.index = 0;
-    showDraft(mode, anchor);
+    chordMode.updateButtons();
   }
 
   function showDraft(mode, anchor) {
@@ -947,100 +1219,146 @@
     scrollToLine(anchor);
   }
 
-  // Leaves the editing screen without saving. paintSong draws the song after it.
-  function leaveEditing() {
-    if (!draft) {
+  function beginDraft(mode) {
+    var source = openSource();
+    var normal = SongTextEdit.normalizeSong(source.text, source.chords);
+    draft = {
+      mode: mode === "text" ? "text" : "chords",
+      text: normal.text,
+      chords: normal.chords,
+      // What the edit started from. Differing from this, or from savedSteps, asks
+      // before the song is left (see draftChanged).
+      start: { text: normal.text, chords: cloneChords(normal.chords) },
+      history: [{ text: normal.text, chords: cloneChords(normal.chords) }],
+      index: 0,
+    };
+    composing = false;
+    showDraft(draft.mode, null);
+    refreshChrome();
+    fitToWidth();
+  }
+
+  // Chords and Lyrics are one draft. Flipping does not ask and does not drop
+  // Undo. Clicking the segment that is already open only puts the keyboard there.
+  function selectSegment(mode) {
+    if (mode !== "text" && mode !== "chords") {
+      mode = "chords";
+    }
+    if (openId == null) {
       return;
     }
+    if (!draft) {
+      beginDraft(mode);
+      return;
+    }
+    if (draft.mode === mode) {
+      (mode === "text" ? editor : sheet).focus({ preventScroll: true });
+      return;
+    }
+    var anchor = topLine();
+    if (draft.mode === "chords") {
+      chordMode.leave();
+    }
+    draft.mode = mode;
+    showDraft(mode, anchor);
+    refreshChrome();
+  }
+
+  function clearDraft() {
     draft = null;
     composing = false;
     chordMode.leave();
-    setEditingState(false);
+    setEditingState(false, null);
     editor.value = "";
   }
 
-  function finishEditing(save) {
+  // Save writes the draft into this page's memory and stays in edit, on Chords.
+  // The songbook file is not written.
+  function saveDraft() {
+    if (!draft || openId == null) {
+      return;
+    }
+    var wasDirty = draftChanged();
+    var anchor = topLine();
+    var original = Songbook.source(openId);
+    var normal = SongTextEdit.normalizeSong(original.text, original.chords);
+    // A chord past the end of the text is dropped by the first edit (see
+    // SongTextEdit.moveChords). Typing a letter and deleting it again still
+    // differs from the file, so the note stays. That is as it should be.
+    var textSame = draft.text === normal.text && sameChords(draft.chords, normal.chords);
+    var moved = steps !== 0 && SongTranspose.changesChords(draft.chords, steps);
+    if (textSame && !moved) {
+      delete keptEdits[openId];
+    } else {
+      keptEdits[openId] = {
+        text: draft.text,
+        chords: cloneChords(draft.chords),
+        steps: steps,
+      };
+    }
+    savedSteps = steps;
+    draft.start = { text: draft.text, chords: cloneChords(draft.chords) };
+    draft.history = [{ text: draft.text, chords: cloneChords(draft.chords) }];
+    draft.index = 0;
+    if (draft.mode === "chords") {
+      chordMode.leave();
+    }
+    draft.mode = "chords";
+    showDraft("chords", anchor);
+    refreshChrome();
+    if (wasDirty) {
+      showToast("Saved");
+    }
+  }
+
+  // Discard reloads the last save and stays in edit, on the same segment.
+  function discardDraft() {
     if (!draft) {
       return;
     }
-    var kept = draft;
+    var mode = draft.mode === "text" ? "text" : "chords";
     var anchor = topLine();
-    var moved = stepsChanged();
-    leaveEditing();
-    // A transpose made before the edit is part of it: kept or put back with it.
-    if (save) {
-      savedSteps = steps;
-    } else {
-      steps = savedSteps;
+    steps = savedSteps;
+    draft.text = draft.start.text;
+    draft.chords = cloneChords(draft.start.chords);
+    draft.history = [{ text: draft.text, chords: cloneChords(draft.chords) }];
+    draft.index = 0;
+    draft.mode = mode;
+    if (mode === "chords") {
+      chordMode.leave();
     }
-    if (save) {
-      var original = Songbook.source(openId);
-      var normal = SongTextEdit.normalizeSong(original.text, original.chords);
-      // Nothing was changed: there is nothing that would not persist. The chords are
-      // compared too. A song with a chord that has no letter (past the end of the
-      // text, from a damaged songbook) loses it with the first edit (see
-      // SongTextEdit.moveChords), so typing a letter and deleting it again is a change
-      // here: the text is the same but a chord is gone, and the note is shown. That
-      // is as it should be.
-      if (kept.text === normal.text && sameChords(kept.chords, normal.chords)) {
-        savedEdit = null;
-      } else {
-        savedEdit = { id: openId, text: kept.text, chords: kept.chords };
-      }
-    }
-    paintSong();
-    scrollToLine(anchor);
-    // The button that was clicked is gone from the screen, so the keyboard would
-    // otherwise be left on the page itself. The button that began the edit is
-    // where the user was.
-    (kept.mode === "chords" ? editChordsButton : editButton).focus({ preventScroll: true });
-    if (save && (savedEdit || moved)) {
-      showToast("Saved");
-    }
-  }
-
-  // Save or Discard while viewing: keeps the transpose, or goes back to the
-  // key that was kept.
-  function finishTranspose(save) {
-    if (save) {
-      savedSteps = steps;
-    } else {
-      steps = savedSteps;
-    }
-    paintSong();
-    transposeUp.focus({ preventScroll: true });
-    if (save) {
-      showToast("Saved");
-    }
+    showDraft(mode, anchor);
+    refreshChrome();
   }
 
   function finish(save) {
-    if (draft) {
-      finishEditing(save);
-    } else if (stepsChanged()) {
-      finishTranspose(save);
+    if (save) {
+      saveDraft();
+    } else {
+      discardDraft();
     }
   }
 
-  // True when the draft is not what the edit started from, or the song is
-  // transposed from the key that was kept: leaving would lose something that
-  // nothing keeps.
+  // True when the draft is not the last save, or the song is transposed from
+  // the key that was kept. Undoing back to that baseline is not a change.
   function draftChanged() {
     return stepsChanged() ||
       (!!draft && (draft.text !== draft.start.text || !sameChords(draft.chords, draft.start.chords)));
   }
 
-  // Leaving the song after asking: the edit and the transpose not kept go.
+  // Leaving the song after asking: the unsaved draft goes. A Save already
+  // stored in keptEdits stays for this page visit.
   function dropChanges() {
-    leaveEditing();
     steps = savedSteps;
+    clearDraft();
   }
 
   var leaveDialog = document.getElementById("leave-confirm");
   var leaveProceed = null;
 
-  // Runs proceed now, or, when there are edits that would be lost, after asking.
-  // Keep editing (also Escape) leaves everything as it is.
+  // Runs proceed now, or, when the draft is dirty, after asking.
+  // Cancel (also Escape) leaves the draft as it is. Escape outside this
+  // dialog never discards and never leaves the song.
   function askBeforeLeaving(proceed) {
     if (!draftChanged()) {
       proceed();
@@ -1096,10 +1414,9 @@
     }
   });
 
-  function forgetEdits() {
-    savedEdit = null;
+  function forgetOpenSong() {
     savedSteps = 0;
-    leaveEditing();
+    clearDraft();
   }
 
   // The index of the snapshot with this text, nearest to the current one and
@@ -1137,6 +1454,7 @@
     draft.text = text;
     draft.chords = chords;
     paintDraft(text, chords);
+    refreshChrome();
   }
 
   editor.addEventListener("input", function (event) {
@@ -1162,8 +1480,19 @@
     commitEdit("insertCompositionText");
   });
 
-  editButton.addEventListener("click", function () { startEditing("text"); });
-  editChordsButton.addEventListener("click", function () { startEditing("chords"); });
+  // On a Mac the shortcut is shown as ⌘K / ⌘L. Ctrl+K and Ctrl+L are kept in
+  // the title everywhere else. The keys are handled below and preventDefault
+  // while a song is open, so the browser's own use of them is skipped when
+  // the page receives the key.
+  if (/Mac|iPhone|iPad/.test(navigator.platform || "") || /Mac|iPhone|iPad/.test(navigator.userAgent)) {
+    [segmentChords, segmentLyrics].forEach(function (button) {
+      if (button.title) {
+        button.title = button.title.replace("Ctrl+", "\u2318");
+      }
+    });
+  }
+  segmentLyrics.addEventListener("click", function () { selectSegment("text"); });
+  segmentChords.addEventListener("click", function () { selectSegment("chords"); });
   saveButton.addEventListener("click", function () { finish(true); });
   discardButton.addEventListener("click", function () { finish(false); });
   window.addEventListener("resize", function () {
@@ -1173,25 +1502,65 @@
     }
     // Turning a phone or resizing the window: fit the song again, from the
     // zoom the user chose, so it can also grow back.
-    if (!songZoomed && !draft && fitPercent !== null) {
+    if (!songZoomed && fitPercent !== null) {
       fitPercent = null;
       applyZoom();
     }
     fitToWidth();
   });
 
+  function taggedSongHash() {
+    return /^#\/e\/(\d+)\/song\/(\d+)$/.exec(location.hash);
+  }
+
+  function untaggedSongHash() {
+    return /^#\/song\/(\d+)$/.exec(location.hash);
+  }
+
+  // A song route from an earlier songbook. Untagged #/song/<id> is epoch 0.
+  function staleSongHash() {
+    var tagged = taggedSongHash();
+    if (tagged) {
+      return Number(tagged[1]) !== songbookEpoch;
+    }
+    return !!(untaggedSongHash() && songbookEpoch !== 0);
+  }
+
   function songIdFromHash() {
-    var match = /^#\/song\/(\d+)$/.exec(location.hash);
-    return match ? Number(match[1]) : null;
+    var tagged = taggedSongHash();
+    if (tagged) {
+      if (Number(tagged[1]) !== songbookEpoch) {
+        return null;
+      }
+      return Number(tagged[2]);
+    }
+    var match = untaggedSongHash();
+    if (match && songbookEpoch === 0) {
+      return Number(match[1]);
+    }
+    return null;
   }
 
   function showFromHash() {
+    if (staleSongHash()) {
+      if (draftChanged()) {
+        var wantedList = listAddress();
+        history.replaceState(null, "", location.pathname + location.search + (openSongHash || ("#/song/" + openId)));
+        askBeforeLeaving(function () {
+          dropChanges();
+          history.replaceState({ epoch: songbookEpoch }, "", wantedList);
+          showFromHash();
+        });
+        return;
+      }
+      history.replaceState({ epoch: songbookEpoch }, "", listAddress());
+    }
     var id = songIdFromHash();
     if (draftChanged() && id !== openId) {
       // The address already changed (the browser's Back or Forward, or a typed
       // address), so put it back, and go there only if the edits are discarded.
       var wanted = location.hash;
-      history.replaceState(null, "", location.pathname + location.search + "#/song/" + openId);
+      history.replaceState(null, "", location.pathname + location.search + (openSongHash || ("#/song/" + openId)));
       askBeforeLeaving(function () {
         dropChanges();
         location.hash = wanted;
@@ -1199,23 +1568,27 @@
       return;
     }
     menu.hidden = true;
+    closeSongbookMenu();
     if (id == null) {
       openId = null;
       steps = 0;
-      forgetEdits();
+      forgetOpenSong();
       listView.hidden = false;
       songView.hidden = true;
       updateSongbookChrome({ pageTitle: "SoftChord" });
       paintList();
       return;
     }
+    openSongHash = location.hash;
     if (openId !== id) {
       openId = id;
-      steps = 0;
+      var kept = keptEdits[id];
+      steps = kept ? kept.steps : 0;
+      savedSteps = steps;
       songZoomed = false;
       fitPercent = null;
       applyZoom();
-      forgetEdits();
+      clearDraft();
       sheetScroll.scrollTop = 0;
       sheetScroll.scrollLeft = 0;
     }
@@ -1243,7 +1616,7 @@
     if (!button) {
       return;
     }
-    location.hash = "#/song/" + button.dataset.id;
+    location.hash = songHash(button.dataset.id);
   });
 
   // TODO: Open this menu on a long press. The open song has toolbar buttons.
@@ -1274,7 +1647,7 @@
     menu.hidden = true;
     var done;
     try {
-      done = copyText(Songbook.songText(menuSongId, action.dataset.action === "chords"));
+      done = copyText(textForSong(menuSongId, action.dataset.action === "chords"));
     } catch (error) {
       done = Promise.reject(error);
     }
@@ -1287,7 +1660,55 @@
     if (!menu.hidden && !menu.contains(event.target)) {
       menu.hidden = true;
     }
+    if (songbookMenu && !songbookMenu.hidden && !songbookMenu.contains(event.target)) {
+      closeSongbookMenu();
+    }
   });
+
+  if (songbookMenuButton) {
+    songbookMenuButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      if (songbookMenu.hidden) {
+        openSongbookMenu();
+      } else {
+        closeSongbookMenu();
+      }
+    });
+  }
+
+  if (songbookMenu) {
+    songbookMenu.addEventListener("click", function (event) {
+      var button = event.target.closest("button");
+      if (!button || !button.dataset.action) {
+        return;
+      }
+      if (button.dataset.action === "open-file") {
+        requestOpenSongbookFile();
+        return;
+      }
+      var note = NOT_AVAILABLE[button.dataset.action];
+      if (!note) {
+        return;
+      }
+      closeSongbookMenu();
+      notify(note[0], note[1]);
+    });
+  }
+
+  if (signInButton) {
+    signInButton.addEventListener("click", function () {
+      var note = NOT_AVAILABLE["sign-in"];
+      notify(note[0], note[1]);
+    });
+  }
+
+  if (songbookFile) {
+    songbookFile.addEventListener("change", function () {
+      var file = songbookFile.files && songbookFile.files[0];
+      songbookFile.value = "";
+      openSongbookFile(file);
+    });
+  }
 
   document.getElementById("back").addEventListener("click", function () {
     askBeforeLeaving(function () {
@@ -1339,42 +1760,84 @@
     showToast("Transpose reset");
   });
 
+  function textForSong(id, includeChords) {
+    if (id === openId && draft) {
+      return SongText.render(draft.text, SongTranspose.shifted(draft.chords, steps), includeChords);
+    }
+    var kept = keptEdits[id];
+    if (kept) {
+      return SongText.render(kept.text, SongTranspose.shifted(kept.chords, kept.steps || 0), includeChords);
+    }
+    return Songbook.songText(id, includeChords);
+  }
+
+  function chordEntryOpen() {
+    var entry = document.getElementById("chord-entry");
+    return !!(entry && !entry.hidden);
+  }
+
   document.addEventListener("keydown", function (event) {
-    if (event.key !== "Escape") {
+    var key = event.key;
+    // Ctrl/Cmd+K and Ctrl/Cmd+L select the segment. They are also browser
+    // shortcuts (search field, address bar). preventDefault while a song is
+    // open, which is when this page can receive the key. On the song list
+    // they are left to the browser.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey &&
+        !notice.open && !leaveDialog.open && !chordEntryOpen() && !songView.hidden && openId != null) {
+      if (key === "k" || key === "K") {
+        event.preventDefault();
+        selectSegment("chords");
+        return;
+      }
+      if (key === "l" || key === "L") {
+        event.preventDefault();
+        selectSegment("text");
+        return;
+      }
+    }
+    if (key !== "Escape") {
       return;
     }
-    // Escape closes the notice dialog itself. It must not also leave the song.
-    // The same for the dialog that asks before leaving.
+    // Escape closes the notice dialog itself. It must not also change the song.
+    // The same for the dialog that asks before leaving: Escape is Cancel.
     if (event.defaultPrevented || notice.open || leaveDialog.open) {
       return;
     }
-    // Escape does nothing while the text is edited, so that a stray press does
-    // not throw the edit away. Save or Discard finishes it, and so does Back.
-    if (draft) {
+    if (songbookMenu && !songbookMenu.hidden) {
+      closeSongbookMenu();
       return;
     }
     if (!menu.hidden) {
       menu.hidden = true;
       return;
     }
-    if (!songView.hidden) {
-      // A transpose not kept is asked about first, as with Back. The dialog
-      // opens from this key press, so its Escape must not also close it.
-      event.preventDefault();
-      askBeforeLeaving(function () {
-        dropChanges();
-        location.hash = "#/";
-      });
+    if (songView.hidden || !draft) {
+      return;
+    }
+    // Clears a text selection, or on Chords cancels a drag else clears the
+    // chord selection. It never discards the draft and never leaves the song.
+    event.preventDefault();
+    if (draft.mode === "chords") {
+      chordMode.onEscape();
+      return;
+    }
+    if (editor.selectionStart !== editor.selectionEnd) {
+      var at = editor.selectionEnd;
+      editor.setSelectionRange(at, at);
     }
   });
 
+  window.segmentForOpen = segmentForOpen;
   applyZoom();
   window.addEventListener("hashchange", showFromHash);
   showListMessage("Opening songbook…", false);
-  Songbook.load(currentSongbook.url).then(function () {
+  Songbook.load(currentSongbook.url).then(function (bytes) {
+    activeSongbook = rememberSongbook(currentSongbook.displayName, bytes, currentSongbook.url);
     allTitles = Songbook.titles();
     loadError = null;
     showListMessage("", false);
+    updateSongbookChrome();
+    renderSongbookMenu();
     showFromHash();
     if (songIdFromHash() == null) {
       search.focus();
