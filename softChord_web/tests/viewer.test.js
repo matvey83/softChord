@@ -600,7 +600,7 @@ test("the song toolbar has a labelled button for every action", function () {
     ["<button id=\"copy-text\"", "<button id=\"copy-chords\"", "<button id=\"copy-image\"", "<button id=\"print\""]);
   assert.ok(!html.includes("aria-label=\"Print\">"), "no Print group of its own");
   // The Transpose group and the separator after it have ids: both are hidden
-  // while editing, like the Copy and print group.
+  // on Lyrics. Copy and Print stay shown.
   var transpose = /<div id="transpose-actions" class="tool-group" role="group" aria-label="Transpose">([\s\S]*?)<\/div>\s*<span id="transpose-sep" class="tool-sep"/.exec(html);
   assert.ok(transpose, "the Transpose group and its separator");
   assert.deepEqual(transpose[1].match(/<button id="[^"]+"/g),
@@ -743,7 +743,8 @@ test("print styles keep only the song, in black on white, at a fixed size", func
   var print = css.slice(at);
   // The chrome around the song is not printed.
   var hide = /([^{}]*)\{\s*display: none !important;\s*\}/.exec(print)[1];
-  ["#back", ".toolbar-actions", "#persist-note", "#toast", "#menu", "#notice"].forEach(function (sel) {
+  ["#back", ".toolbar-actions", "#persist-note", "#toast", "#menu", "#notice",
+    "#songbook-header", "#songbook-menu"].forEach(function (sel) {
     assert.ok(hide.includes(sel), sel + " is hidden when printing");
   });
   assert.equal(hide.includes("#song-title"), false, "the title is printed");
@@ -768,15 +769,16 @@ test("Reset transpose is wired to the transpose state in viewer.js", function ()
   // Starts dimmed in the page, then follows the steps after every paint.
   assert.ok(/id="transpose-reset"[^>]* disabled>/.test(html));
   assert.ok(html.indexOf("id=\"transpose-up\"") < html.indexOf("id=\"transpose-reset\""));
-  assert.ok(/var transposed = SongTranspose\.changesChords\(source\.chords, steps\);/.test(code));
+  assert.ok(/var transposed = SongTranspose\.changesChords\(chordList, steps\);/.test(code));
   assert.ok(/transposeReset\.disabled = !transposed/.test(code));
-  // The note also stays after Save (savedEdit), see the Edit text tests.
+  // The note stays after Save (keptEdits, as savedEdit) and while the draft is dirty.
   // Routed through updateSongbookChrome so Phase 1's header can share it.
   assert.ok(/function updateSongbookChrome\(/.test(code));
-  assert.ok(/showPersistNote:\s*!!\(transposed \|\| savedEdit\)/.test(code));
+  assert.ok(/showPersistNote:\s*!!\(transposed \|\| savedEdit \|\| dirty\)/.test(code));
   assert.ok(/transposeReset\.addEventListener\("click"[\s\S]*?steps = 0;[\s\S]*?paintSong\(\)/.test(code));
-  // Opening a song starts from 0 again, so "original" means as opened.
-  assert.ok(/openId = id;\s*steps = 0;/.test(code));
+  // A song with nothing saved in this visit opens at 0. A saved transpose
+  // opens at the steps that were kept.
+  assert.ok(/steps = kept \? kept\.steps : 0;/.test(code));
 });
 
 test("a whole octave of steps shows exactly the chords as opened", function () {
@@ -924,4 +926,28 @@ test("every chord row is read as it is, also the same chord twice on one letter"
   assert.deepEqual(Songbook.source(1).chords.map(function (c) { return c.characterNum; }), [0, 0, 6, 0]);
   assert.equal(Songbook.source(2).chords.length, 2);
   assert.equal(Songbook.sheet(2)[0].chords.length, 2);
+});
+
+test("a failed SQLite load is not reused for the next songbook", async function () {
+  var previous = globalThis.initSqlJs;
+  var calls = 0;
+  globalThis.initSqlJs = function () {
+    calls += 1;
+    return Promise.reject(new Error("wasm failed"));
+  };
+  try {
+    await assert.rejects(function () { return Songbook.openBuffer(new Uint8Array([1])); }, /wasm failed/);
+    assert.equal(calls, 1);
+    globalThis.initSqlJs = function (options) {
+      calls += 1;
+      return initSqlJs(options);
+    };
+    await assert.rejects(function () { return Songbook.openBuffer(new Uint8Array([1, 2, 3])); }, function (error) {
+      assert.equal(calls, 2, "the failed load was tried again");
+      assert.equal(/wasm failed/.test(error.message), false);
+      return true;
+    });
+  } finally {
+    globalThis.initSqlJs = previous;
+  }
 });

@@ -2,7 +2,7 @@
 // Writes the song toolbar icons out of softChord_web/index.html, where they are
 // drawn inline, into the files the other apps use:
 //   softChord_web/icons/toolbar/<button id>.svg   (shared: iOS now, desktop later)
-//   softChord Viewer/softChord Viewer/Assets.xcassets/Toolbar/<button id>.imageset
+//   SoftChord/SoftChord/Assets.xcassets/Toolbar/<button id>.imageset
 // MIRRORED UI: index.html is the source. Change an icon there, run
 //   node tools/export_toolbar_icons.js
 // and commit the files it writes. softChord_web/tests/toolbar_mirror.test.js
@@ -43,7 +43,7 @@ function imagesetJson(id) {
 function expectedFiles() {
   var html = fs.readFileSync(path.join(root, "softChord_web", "index.html"), "utf8");
   var files = {};
-  var catalog = path.join(root, "softChord Viewer", "softChord Viewer", "Assets.xcassets", "Toolbar");
+  var catalog = path.join(root, "SoftChord", "SoftChord", "Assets.xcassets", "Toolbar");
   files[path.join(catalog, "Contents.json")] =
     JSON.stringify({ info: { author: "xcode", version: 1 } }, null, 2) + "\n";
   toolbarIcons(html).forEach(function (icon) {

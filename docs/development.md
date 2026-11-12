@@ -50,7 +50,7 @@ cd softChord_web
 node --test
 ```
 
-The tests of the Edit text and Edit chords modes and the layout drive the real page in headless Chrome. Chrome is found in the usual places, or set `CHROME_BIN` to its path. Without Chrome those tests are **skipped, not passed**: the run prints a `WARNING ... did NOT run` message and reports them as skipped. To make a missing Chrome a failure (for a CI that must test the browser), run with `SOFTCHORD_REQUIRE_BROWSER=1 node --test`.
+The tests of the Chords and Lyrics editor and the layout drive the real page in headless Chrome. Chrome is found in the usual places, or set `CHROME_BIN` to its path. Without Chrome those tests are **skipped, not passed**: the run prints a `WARNING ... did NOT run` message and reports them as skipped. To make a missing Chrome a failure (for a CI that must test the browser), run with `SOFTCHORD_REQUIRE_BROWSER=1 node --test`.
 
 ### iOS
 
@@ -118,18 +118,21 @@ apps; change all of them together. The main places:
 - Desktop: `src/softchord_toolbar.py`. Its header comment lists the intended
   desktop differences (for example the desktop-only Fonts group).
 
-The toolbar wraps the same way in all three, measured rather than at a fixed
-width: the width of the buttons on one row is worked out for every mode
-(viewing, Edit Text, Edit Chords, each with what it hides) and the widest
-decides (it is viewing with Save and Discard showing). When it fits, every
-mode is one row; when it does not, the edit groups (Edit, the chord buttons,
-Undo and Redo, Discard and Save) start the next row in every mode, so the
-rows do not move when the mode changes. On the web and iOS only the buttons
-are measured: one row holds Back, the title (at least 60 px) and the 38 px
-buttons; else Back and the title sit above the 34 px buttons, which follow
-the rule above. See `layoutToolbar` (viewer.js), `SongToolbarMetrics`
-(SongToolbar.swift) and `rowWidth` (softchord_toolbar.py).
-
+The toolbar wraps by measuring buttons rather than at a fixed width. In all
+three apps a song is already being edited, so the width is worked out for
+every mode (Chords with Discard and Save, Lyrics with Discard and Save, and
+clean Chords, each with what it hides) and the widest decides: the Chords
+segment with every button shown (Transpose, chord Add and Delete, Undo and
+Redo, Discard and Save). It does not depend on which segment is open. When
+that row fits beside Back and the title, the toolbar is one row. When it
+does not, Back and the title sit above the buttons, and if the buttons
+themselves do not fit, the edit groups (the Chords/Lyrics switch, then the
+chord buttons, Undo and Redo, Discard and Save) start the next row in every
+segment, so the rows do not move when the segment changes. On the web and
+iOS only the buttons are measured: one row holds Back, the title (at least
+60 px) and the 38 px buttons; else Back and the title sit above the 34 px
+buttons, which follow the rule above. See `layoutToolbar` (viewer.js),
+`SongToolbarMetrics` (SongToolbar.swift) and `rowWidth` (softchord_toolbar.py).
 The icons are drawn inline in `softChord_web/index.html`, which is the source.
 After changing one there, run
 
@@ -142,6 +145,13 @@ by the desktop, bundled by `softchord.spec`) and the iOS imagesets.
 `softChord_web/tests/toolbar_mirror.test.js` fails while they differ. The
 desktop-only `font-lyrics.svg` and `font-chords.svg` live in the same folder
 but are not drawn in `index.html`, so the script neither writes nor checks them.
+
+The song list header is the same kind of shared row, and it is pending on iOS.
+On the web (`softChord_web/index.html` `#songbook-header`, and
+`softChord_web/viewer.css`) the list shows the songbook name and ▾, the grey
+"Not saved" indicator, and Sign in, with Search below. The song page has no
+songbook header. iOS (`SoftChord/SoftChord/ContentView.swift`) does not have
+this row yet. Desktop keeps its own window title.
 
 ## Packaging and releases
 
