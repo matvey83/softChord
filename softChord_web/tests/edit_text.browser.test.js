@@ -31,34 +31,40 @@ const {
 } = require("./edit_helpers");
 
 
-test("the Edit text button opens the editor over the sheet and locks what must wait", { skip: skip }, function () {
+test("Lyrics opens the editor over the sheet, and Transpose is hidden there", { skip: skip }, function () {
   return inEditor([HELLO], async function (page) {
-    assert.equal(await page.eval("document.getElementById('edit-text').title"), "Edit Text…");
-    assert.equal(await page.eval("document.getElementById('edit-text').getAttribute('aria-label')"), "Edit Text…");
+    var lyrics = await page.eval("(function () { var b = document.getElementById('segment-lyrics');" +
+      "return { label: b.getAttribute('aria-label'), title: b.title }; })()");
+    assert.equal(lyrics.label, "Lyrics");
+    assert.ok(lyrics.title.indexOf("Lyrics") === 0, lyrics.title);
+    assert.ok(lyrics.title.indexOf("Edit Text") < 0, lyrics.title);
+    assert.ok(lyrics.title.indexOf("chords follow their letters") > 0, lyrics.title);
+    // An existing song opens on Chords, already editing, with a clean draft.
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), true);
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
     assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('segment-chords').getAttribute('aria-pressed')"), "true");
     await startEditing(page);
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), false);
     assert.equal(await editorValue(page), HELLO.text);
-    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), false);
-    // Copy and Print, and Transpose, are hidden (each whole group, and the
-    // separator after it). Transpose is disabled too.
-    for (var group of ["copy-actions", "copy-sep", "transpose-actions", "transpose-sep"]) {
-      assert.equal(await page.eval("document.getElementById('" + group + "').hidden"), true, group);
-    }
-    for (var id of ["print", "transpose-up"]) {
-      assert.equal(await page.eval("document.getElementById('" + id + "').offsetParent"), null, id);
-    }
-    for (id of ["transpose-down", "transpose-up", "transpose-reset", "edit-text"]) {
-      assert.equal(await disabled(page, id), true, id + " waits until Save or Discard");
-    }
+    assert.equal(await page.eval("document.getElementById('segment-lyrics').getAttribute('aria-pressed')"), "true");
+    // A clean flip is not a change: Save and Discard stay hidden.
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
+    // Copy and Print stay. Transpose is hidden on Lyrics (the group and the
+    // separator after it).
+    assert.equal(await page.eval("document.getElementById('copy-actions').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('transpose-sep').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('transpose-up').offsetParent"), null);
+    assert.equal(await page.eval("document.getElementById('print').offsetParent !== null"), true);
+    assert.equal(await page.eval("document.getElementById('chord-undo').offsetParent !== null"), true);
     // Zoom still works: the textarea is sized in em from the same variable as the sheet.
-    for (id of ["zoom-in", "zoom-out"]) {
-      assert.equal(await disabled(page, id), false, id + " stays on");
+    for (var id of ["zoom-in", "zoom-out", "chord-undo", "chord-redo"]) {
+      assert.equal(await page.eval("document.getElementById('" + id + "').offsetParent !== null"), true, id + " stays shown");
     }
     assert.equal(await page.eval("document.getElementById('edit-save').textContent"), "Save");
     assert.equal(await page.eval("document.getElementById('edit-discard').textContent"), "Discard");
-    // Discard comes first, then Save, as in the desktop and iPhone apps.
+    // Discard comes first, then Save, as in the desktop app.
     assert.equal(await page.eval("document.getElementById('edit-discard').nextElementSibling.id"), "edit-save");
     // Spelling help, and a visible caret.
     assert.equal(await page.eval("document.getElementById('sheet-editor').spellcheck"), false);
@@ -198,6 +204,9 @@ test("Save keeps the edited text and chords, shows the note, and later reads use
     await select(page, 5, 5);
     await page.insertText(" there");
     await click(page, "edit-save");
+    // Save stays in edit and switches to Chords. The draft is clean, so Save
+    // and Discard hide. The note stays: the file was not written.
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), true);
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
     assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
     assert.equal(await sheetText(page), "Hello there world\nSecond line\nThird");
@@ -205,13 +214,9 @@ test("Save keeps the edited text and chords, shows the note, and later reads use
       ["HC", "wAm", "SG", "TF"]);
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false);
     assert.equal(await page.eval("document.getElementById('persist-note').textContent"), "Changes do not persist");
-    // The buttons that waited are back (Reset transpose has nothing to reset).
     assert.equal(await page.eval("document.getElementById('copy-actions').hidden"), false);
-    assert.equal(await page.eval("document.getElementById('copy-sep').hidden"), false);
     assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), false);
-    assert.equal(await page.eval("document.getElementById('transpose-sep').hidden"), false);
-    for (var id of ["print", "copy-text", "copy-chords", "copy-image", "transpose-down", "transpose-up",
-      "edit-text"]) {
+    for (var id of ["print", "copy-text", "copy-chords", "copy-image", "transpose-down", "transpose-up"]) {
       assert.equal(await disabled(page, id), false, id);
     }
     assert.equal(await disabled(page, "transpose-reset"), true);
@@ -220,11 +225,13 @@ test("Save keeps the edited text and chords, shows the note, and later reads use
     var copied = await page.eval("window.__copied[0]");
     assert.ok(copied.includes("Hello there world"), copied);
     assert.ok(copied.split("\r\n")[0].startsWith("C"));
-    // Edit again: the editor opens on the saved text.
+    // Lyrics again: the editor opens on the saved text. Discard of a clean
+    // draft stays on Lyrics and keeps that text. The note stays.
     await startEditing(page);
     assert.equal(await editorValue(page), "Hello there world\nSecond line\nThird");
     await click(page, "edit-discard");
-    // Saved text is still the shown text, and the note too.
+    assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), false);
+    assert.equal(await editorValue(page), "Hello there world\nSecond line\nThird");
     assert.equal(await sheetText(page), "Hello there world\nSecond line\nThird");
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false);
   });
@@ -243,11 +250,13 @@ test("Save with nothing changed shows no note, and Discard throws the edit away"
     await page.insertText("ZZZ");
     assert.equal((await sheetText(page)).startsWith("ZZZHello"), true);
     await click(page, "edit-discard");
+    // Discard stays on Lyrics and reloads the last save.
+    assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('segment-lyrics').getAttribute('aria-pressed')"), "true");
+    assert.equal(await editorValue(page), HELLO.text, "the discarded text is gone");
     assert.equal(await sheetText(page), original);
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
-    assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
-    await startEditing(page);
-    assert.equal(await editorValue(page), HELLO.text, "the discarded text is gone");
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
   });
 });
 
@@ -276,8 +285,7 @@ test("Escape does not leave the song while editing, and Back and other songs ask
     await page.pressKey("Escape");
     assert.equal(await page.eval(asking), false);
     assert.equal(await page.eval("document.getElementById('song-view').hidden"), false);
-    // Save ends the edit as the toolbar's Save does, and goes back to the list.
-    // (This app keeps a saved edit only while its song stays open.)
+    // Save keeps the edit in this page visit, then goes back to the list.
     await click(page, "back");
     await click(page, "leave-confirm-save");
     await page.waitFor("document.getElementById('song-view').hidden", "the list after Save");
@@ -293,9 +301,12 @@ test("Escape does not leave the song while editing, and Back and other songs ask
     await page.eval("location.hash = '#/song/1'");
     await page.waitFor("!document.getElementById('song-view').hidden", "the song");
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
-    assert.equal(await sheetText(page), HELLO.text);
-    // A saved edit is lost without asking (it was kept on purpose, with its note), and
-    // so is it when another song opens.
+    assert.equal((await sheetText(page)).startsWith("Q"), true, "Don't Save drops only the unsaved letter");
+    assert.equal((await sheetText(page)).startsWith("QQ"), false);
+    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false,
+      "the earlier Save is still only in this page");
+    // A saved edit is kept for this page visit. Opening another song does not
+    // ask, because the draft was saved, and coming back shows it.
     await startEditing(page);
     await page.insertText("Q");
     await click(page, "edit-save");
@@ -304,6 +315,8 @@ test("Escape does not leave the song while editing, and Back and other songs ask
     await page.waitFor("document.getElementById('song-title').textContent === 'Звуки неба'", "song 2");
     assert.equal(await page.eval(asking), false);
     assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), true,
+      "the next song opens on Chords");
     // Another song with an edit in the draft: the address goes back and asks.
     await startEditing(page);
     await page.insertText("W");
@@ -319,8 +332,9 @@ test("Escape does not leave the song while editing, and Back and other songs ask
     await page.waitFor("document.getElementById('song-title').textContent === 'Hello'", "song 1");
     assert.equal(await page.eval("location.hash"), "#/song/1");
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
-    assert.equal(await sheetText(page), HELLO.text);
-    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('sheet-wrap').classList.contains('chord-mode')"), true);
+    assert.equal((await sheetText(page)).startsWith("QQ"), true, "the saved edit is still in this visit");
+    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false);
     // The same song's address in another form is not leaving.
     await startEditing(page);
     await page.insertText("E");
@@ -329,8 +343,11 @@ test("Escape does not leave the song while editing, and Back and other songs ask
     assert.equal(await page.eval(asking), false);
     assert.equal((await editorValue(page)).startsWith("E"), true);
     await click(page, "edit-discard");
-    // Escape with no edit still leaves the song, as before.
+    // Escape never leaves the song. Back does, once the draft is clean.
     await page.pressKey("Escape");
+    assert.equal(await page.eval("document.getElementById('song-view').hidden"), false);
+    assert.equal(await page.eval(asking), false);
+    await click(page, "back");
     await page.waitFor("document.getElementById('song-view').hidden", "leaving the song");
   });
 });
@@ -581,7 +598,7 @@ test("painting only the lines that changed gives the same sheet as painting all 
   try {
     await page.eval("location.hash = '#/song/1'");
     await page.waitFor("!document.getElementById('song-view').hidden", "the song page");
-    await click(page, "edit-text");
+    await click(page, "segment-lyrics");
     await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor");
     var again = await page.eval("document.getElementById('sheet').innerHTML");
     assert.equal(again, edited.html);
@@ -590,28 +607,99 @@ test("painting only the lines that changed gives the same sheet as painting all 
   }
 });
 
-// MIRRORED UI: the iOS app and the desktop editor switch modes the same way.
-test("Edit Chords while editing the text, and back, keeps the draft and does not ask", { skip: skip }, function () {
+// One draft: flipping Chords and Lyrics does not ask, and Discard drops both.
+test("Chords while editing the lyrics, and back, keeps the draft and does not ask", { skip: skip }, function () {
   return inEditor([HELLO], async function (page) {
     var asking = "document.getElementById('leave-confirm').open";
     await startEditing(page);
     await page.insertText("Q");
-    assert.equal(await page.eval("document.getElementById('edit-text').disabled"), true);
-    assert.equal(await page.eval("document.getElementById('edit-chords').disabled"), false);
-    await click(page, "edit-chords");
+    assert.equal(await page.eval("document.getElementById('segment-lyrics').getAttribute('aria-pressed')"), "true");
+    assert.equal(await page.eval("document.getElementById('segment-chords').disabled"), false);
+    await click(page, "segment-chords");
     assert.equal(await page.eval(asking), false);
     await page.waitFor("!document.getElementById('chord-actions').hidden", "the chord buttons");
     assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
     assert.equal((await sheetText(page)).startsWith("Q"), true, "the typed letter is in the chord view");
-    assert.equal(await page.eval("document.getElementById('edit-text').disabled"), false);
-    assert.equal(await page.eval("document.getElementById('edit-chords').disabled"), true);
+    assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), false);
     assert.equal(await page.eval("document.getElementById('edit-save').offsetParent !== null"), true);
-    await click(page, "edit-text");
+    await click(page, "segment-lyrics");
     await page.waitFor("document.activeElement.id === 'sheet-editor'", "the editor again");
     assert.equal((await editorValue(page)).startsWith("Q"), true);
+    assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), true);
     assert.equal(await page.eval(asking), false);
-    // Discard drops the edit made in both modes.
+    // Discard drops the edit made in both segments and stays on Lyrics.
     await click(page, "edit-discard");
     assert.equal(await sheetText(page), HELLO.text);
+    assert.equal(await page.eval("document.getElementById('segment-lyrics').getAttribute('aria-pressed')"), "true");
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true);
+  });
+});
+
+// Empty new songs start on Lyrics. Everything else, including an empty existing
+// song, starts on Chords. The page has no new, paste or import button.
+test("segmentForOpen starts an empty new song on Lyrics and every other song on Chords", { skip: skip }, function () {
+  return inEditor([HELLO], async function (page) {
+    var got = await page.eval("JSON.stringify({" +
+      "emptyNew: segmentForOpen({ text: '' }, 'new')," +
+      "emptyExisting: segmentForOpen({ text: '' }, 'existing')," +
+      "emptyPaste: segmentForOpen({ text: '' }, 'paste')," +
+      "emptyImport: segmentForOpen({ text: '' }, 'import')," +
+      "textNew: segmentForOpen({ text: 'Hi' }, 'new')," +
+      "missing: segmentForOpen(null, 'new')" +
+      "})");
+    assert.deepEqual(JSON.parse(got), {
+      emptyNew: "text",
+      emptyExisting: "chords",
+      emptyPaste: "chords",
+      emptyImport: "chords",
+      textNew: "chords",
+      missing: "text",
+    });
+  });
+});
+
+test("Ctrl or Cmd+K selects Chords and Ctrl or Cmd+L selects Lyrics", { skip: skip }, function () {
+  return inEditor([HELLO], async function (page) {
+    await page.type("l", 2);
+    await page.waitFor("document.activeElement.id === 'sheet-editor'", "Lyrics from Ctrl+L");
+    assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), true);
+    await page.type("k", 2);
+    await page.waitFor("document.getElementById('segment-chords').getAttribute('aria-pressed') === 'true'", "Chords from Ctrl+K");
+    assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('transpose-actions').hidden"), false);
+    await page.type("l", 4);
+    await page.waitFor("document.activeElement.id === 'sheet-editor'", "Lyrics from Cmd+L");
+    await page.type("k", 4);
+    await page.waitFor("document.getElementById('sheet-wrap').classList.contains('chord-mode')", "Chords from Cmd+K");
+    assert.equal(await page.eval("location.hash"), "#/song/1");
+  });
+});
+
+test("Undo back to the saved text clears dirty and stays in edit", { skip: skip }, function () {
+  return inEditor([HELLO], async function (page) {
+    await startEditing(page);
+    await page.insertText("Z");
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), false);
+    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), false);
+    await page.undo();
+    assert.equal(await editorValue(page), HELLO.text);
+    assert.equal(await page.eval("document.getElementById('edit-actions').hidden"), true, "clean again");
+    assert.equal(await page.eval("document.getElementById('persist-note').hidden"), true);
+    assert.equal(await page.eval("document.getElementById('segment-lyrics').getAttribute('aria-pressed')"), "true");
+    assert.equal(await page.eval("document.getElementById('sheet-editor').hidden"), false);
+  });
+});
+
+test("Escape collapses a lyric selection and does not discard", { skip: skip }, function () {
+  return inEditor([HELLO], async function (page) {
+    await startEditing(page);
+    await select(page, 0, 5);
+    await page.pressKey("Escape");
+    var caret = await page.eval("(function () { var e = document.getElementById('sheet-editor');" +
+      "return [e.selectionStart, e.selectionEnd]; })()");
+    assert.deepEqual(caret, [5, 5]);
+    assert.equal(await editorValue(page), HELLO.text);
+    assert.equal(await page.eval("location.hash"), "#/song/1");
+    assert.equal(await page.eval("document.getElementById('leave-confirm').open"), false);
   });
 });

@@ -118,17 +118,19 @@ apps; change all of them together. The main places:
 - Desktop: `src/softchord_toolbar.py`. Its header comment lists the intended
   desktop differences (for example the desktop-only Fonts group).
 
-The toolbar wraps the same way in all three, measured rather than at a fixed
-width: the width of the buttons on one row is worked out for every mode
-(viewing, Edit Text, Edit Chords, each with what it hides) and the widest
-decides (it is viewing with Save and Discard showing). When it fits, every
-mode is one row; when it does not, the edit groups (Edit, the chord buttons,
-Undo and Redo, Discard and Save) start the next row in every mode, so the
-rows do not move when the mode changes. On the web and iOS only the buttons
-are measured: one row holds Back, the title (at least 60 px) and the 38 px
-buttons; else Back and the title sit above the 34 px buttons, which follow
-the rule above. See `layoutToolbar` (viewer.js), `SongToolbarMetrics`
-(SongToolbar.swift) and `rowWidth` (softchord_toolbar.py).
+The toolbar wraps by measuring buttons rather than at a fixed width. On the
+desktop and the web a song is already being edited, so the width is the Chords
+segment with every button shown (Transpose, chord Add and Delete, Undo and
+Redo, Discard and Save). It does not depend on which segment is open. On iOS
+the width is still worked out for every mode (viewing, Edit Text, Edit Chords,
+each with what it hides) and the widest decides. When that row fits beside
+Back and the title, the toolbar is one row. When it does not, Back and the
+title sit above the buttons, and if the buttons themselves do not fit, the
+edit groups (the Chords/Lyrics switch, or on iOS the Edit buttons, then the
+chord buttons, Undo and Redo, Discard and Save) start the next row in every
+segment, so the rows do not move when the segment changes. On the web the
+title keeps at least 60 px. See `layoutToolbar` (viewer.js),
+`SongToolbarMetrics` (SongToolbar.swift) and `rowWidth` (softchord_toolbar.py).
 
 The icons are drawn inline in `softChord_web/index.html`, which is the source.
 After changing one there, run
