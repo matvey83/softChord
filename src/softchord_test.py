@@ -1598,6 +1598,57 @@ class SoftChordEditorTest(unittest.TestCase):
         self.assertEqual(self.app.ui.signedInEmailLabel.text(), "")
         self.assertNotEqual(dialog.result(), QtWidgets.QDialog.DialogCode.Accepted)
 
+    def test_superseded_request_link_keeps_its_verifier(self):
+        """A 401 that settles first still leaves the emailed link pasteable."""
+        from softchord_auth import HttpResult, SEND_FAILED, SignInDialog
+
+        contract = self._contract()
+        verifier = contract["verifier"]["value"]
+        old = "stale-session-token"
+        refresh_started = threading.Event()
+        refresh_release = threading.Event()
+        dialog_started = threading.Event()
+        dialog_release = threading.Event()
+
+        def transport(exchange):
+            header = exchange.headers.get("Authorization", "")
+            if exchange.method == "GET" and header == "Bearer %s" % old:
+                refresh_started.set()
+                if not refresh_release.wait(5):
+                    raise TimeoutError("refresh was not released")
+                return HttpResult(401, b'{"error":"unauthorized"}')
+            if exchange.url.endswith("/api/auth/request-link"):
+                dialog_started.set()
+                if not dialog_release.wait(5):
+                    raise TimeoutError("request-link was not released")
+                return HttpResult(200, b'{"ok":true}')
+            raise AssertionError(exchange.url)
+
+        account = self._swap_account(
+            transport, origin=contract["publicOrigin"], verifier=verifier)
+        account.settings.setValue("auth/sessionToken", old)
+        account.show_signed_in("old@example.com")
+        try:
+            account.refresh()
+            self.assertTrue(refresh_started.wait(2))
+            dialog = SignInDialog(account, self.app.win)
+            dialog.email_edit.setText("singer@example.com")
+            dialog.send_button.click()
+            self.assertTrue(dialog_started.wait(2))
+            self.assertFalse(dialog.send_button.isEnabled())
+            self._settle(lambda: refresh_release.set())
+            self.assertEqual(account.session_token(), "")
+            self.assertEqual(account.pending_verifier(), "")
+            self.assertFalse(dialog.send_button.isEnabled())
+            self._settle(lambda: dialog_release.set())
+        finally:
+            refresh_release.set()
+            dialog_release.set()
+        self.assertTrue(dialog.send_button.isEnabled())
+        self.assertEqual(dialog.status_label.text(), SEND_FAILED)
+        self.assertEqual(account.session_token(), "")
+        self.assertEqual(account.pending_verifier(), verifier)
+
     def test_auth_failure_does_not_print_the_bearer_token(self):
         secret = self._session_token("secretBearer")
 

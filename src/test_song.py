@@ -5825,13 +5825,13 @@ class TestAppShutdown(unittest.TestCase):
             text=True,
             env=env,
         )
-        # Qt offscreen teardown can SIGSEGV after the child has already
-        # printed ok. os._exit skips that. If it still happens, the pass
-        # stands only because the expected output was seen.
+        # The child flushes and calls os._exit, skipping Qt offscreen
+        # teardown, so anything other than exit 0 is a real failure.
         self.assertIn("ok", result.stdout)
         self.assertNotIn("second app was constructed", result.stderr)
-        if result.returncode not in (0, -11, 139):
-            self.fail("child exit %s\n%s" % (result.returncode, result.stderr))
+        self.assertEqual(
+            result.returncode, 0,
+            "child exit %s\n%s" % (result.returncode, result.stderr))
 
 
 
