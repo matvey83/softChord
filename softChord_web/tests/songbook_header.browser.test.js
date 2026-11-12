@@ -589,7 +589,7 @@ test("Sign in and the account items explain that they are not available, and do 
   try {
     await armNetwork(page);
     var cases = [
-      ["sign-in", "Sign-in isn't available yet", "softChord accounts are coming in a later update."],
+      ["sign-in", "Sign-in isn't available yet", "The server is not configured."],
       ["download", "Not available yet", "Saving songbooks from this app is coming in a later update."],
       ["rename", "Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
       ["delete", "Not available yet", "Renaming and deleting songbooks comes with softChord accounts in a later update."],
