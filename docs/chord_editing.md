@@ -1,19 +1,25 @@
 # Web: Edit chords
 
-The button next to the pencil (title "Edit Chords…") opens the chord editor of
-the web viewer. It is a second editing mode beside Edit text: only one of them is
-open at a time, and the other one's button is disabled until Save or Discard.
+A song opens already on Chords, ready to edit. The toolbar's **Chords** and
+**Lyrics** switch (Ctrl/Cmd+K and Ctrl/Cmd+L) chooses which part of the same
+draft is edited. An empty new song starts on Lyrics. A pasted, imported or
+existing song starts on Chords, including an existing song whose text is empty.
+The web viewer has no new, paste or import button, so a song opened from the
+list is the existing-song path (`segmentForOpen`).
 
-Like Edit text it edits a draft of the song for this page visit only. "Changes do
-not persist" is shown as soon as the mode opens. **Save** keeps the draft as the
-song's chords (Viewer, Copy and Print use them afterwards), **Discard** throws it
-away. The songbook is never written. While the mode is open the three Copy buttons
-and Print (one group) and Transpose down/up and Reset transpose (another group)
-are hidden, and Edit text is disabled, so the key cannot
-change under the draft (a song opened at +2 is edited at +2; chords are stored
-untransposed, as in [lyric_editing.md](lyric_editing.md)). A transpose made
-before the mode opened is part of the edit: Save keeps it, Discard puts it back (a
-transpose while viewing shows Save and Discard as well, see lyric_editing.md).
+The draft is for this page visit only. "Changes do not persist" is shown when
+the draft differs from the last save, or when this page is holding a copy the
+file does not have. A clean open shows no note. **Save** writes the draft into
+this page's memory, stays in edit, and switches to Chords. **Discard** reloads
+the last save and stays on the same segment. Neither asks. The songbook file is
+never written. Copy, Print, Zoom, Undo and Redo stay shown. Transpose, and chord
+Add and Delete, are shown on Chords and hidden on Lyrics. Discard and Save are
+shown only when the draft is dirty. Undoing back to the last save hides them
+and stays in edit. Transpose, like a text or chord edit, dirties that same
+draft (a song opened at +2 is edited at +2; chords are stored untransposed, as
+in [lyric_editing.md](lyric_editing.md)). Save keeps the key for this page
+visit. Discard puts it back. Transposing back to the kept key, or a whole
+octave away, is no change.
 
 ## Mouse and touch
 
@@ -67,13 +73,18 @@ like "Hx" counts as a chord when it starts with a known note.
 
 ## Leaving with changes
 
-Back, another song's address, or the browser's Back button with a draft that differs
-from the song as opened ask "Discard changes?" (Keep editing is the default, Escape
-keeps editing). This is the same for Edit text. A draft that was changed and undone
-back to the start does not ask. A page reload or closing the tab does not ask yet
-(no `beforeunload`). Because `hashchange` comes after the address changed, the
-address is put back while the question is open and set again on Discard, which
-leaves one extra history entry.
+Back, another song's address, or the browser's Back button with a dirty draft
+ask "Do you want to save the changes you made to “title”?" with **Save** (the
+default), **Don't Save** and **Cancel**. This is the same on Lyrics. Escape in
+that dialog is Cancel. Escape anywhere else clears a lyric selection, or on
+Chords cancels a drag else clears the chord selection. It never discards and
+never leaves the song. Save keeps the edit for this page visit and then leaves;
+the next song opens on Chords. Don't Save drops the unsaved draft (a Save
+already stored for this visit stays) and leaves. Cancel stays. A draft undone
+back to the last save does not ask. A page reload or closing the tab does not
+ask yet (no `beforeunload`) and loses this page's edits. Because `hashchange`
+comes after the address changed, the address is put back while the question is
+open and set again on Don't Save or Save, which leaves one extra history entry.
 
 ## Not built (yet)
 

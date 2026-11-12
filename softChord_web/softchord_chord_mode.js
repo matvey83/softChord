@@ -12,8 +12,10 @@
 //   live                              a status element read out by screen readers
 //   entry {root, field, note, ok, cancel}  the chord entry (one text field)
 //   draft()                           the draft while chords are edited, else null
+//   songDraft()                       the one draft in either segment (Undo and Redo)
 //   steps()                           half steps the song is shown transposed by
 //   repaint()                         paints the sheet again from the draft
+//   focusEditing()                    puts the keyboard back on the open segment
 
 (function (root) {
   function create(host) {
@@ -152,10 +154,16 @@
 
     // Undo, Redo, and the buttons that need a selected letter or chord.
     // MIRRORED UI: the iOS toolbar (planned SongToolbar.swift) enables them the same way.
+    // Undo and Redo follow the one draft. Add and Delete need Chords.
+    function historyDraft() {
+      return host.songDraft ? host.songDraft() : host.draft();
+    }
+
     function updateButtons() {
+      var hist = historyDraft();
+      buttons.undo.disabled = !hist || hist.index <= 0;
+      buttons.redo.disabled = !hist || hist.index >= hist.history.length - 1;
       var d = host.draft();
-      buttons.undo.disabled = !d || d.index <= 0;
-      buttons.redo.disabled = !d || d.index >= d.history.length - 1;
       var has = !!chordOnSelection();
       buttons.edit.disabled = !d || selected === null;
       buttons.edit.title = has ? "Edit chord" : "Add chord";
@@ -182,7 +190,7 @@
     }
 
     function goTo(index, message) {
-      var d = host.draft();
+      var d = historyDraft();
       if (!d || index < 0 || index >= d.history.length) {
         return;
       }
@@ -194,16 +202,34 @@
     }
 
     function undo() {
-      var d = host.draft();
+      var d = historyDraft();
       if (d) {
         goTo(d.index - 1, "Undone");
       }
     }
 
     function redo() {
-      var d = host.draft();
+      var d = historyDraft();
       if (d) {
         goTo(d.index + 1, "Redone");
+      }
+    }
+
+    function focusEditing() {
+      if (host.focusEditing) {
+        host.focusEditing();
+      } else {
+        host.sheet.focus({ preventScroll: true });
+      }
+    }
+
+    // Escape cancels a drag, else clears the selection. It never discards.
+    function onEscape() {
+      if (cancelDrag()) {
+        return;
+      }
+      if (selected !== null) {
+        select(null);
       }
     }
 
@@ -664,9 +690,9 @@
         return;
       }
       if (event.key === "Escape") {
-        if (!cancelDrag() && selected !== null) {
-          select(null);
-        }
+        onEscape();
+        event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (drag && drag.active) {
@@ -723,11 +749,11 @@
     // The keyboard goes on working after a click on the toolbar.
     buttons.undo.addEventListener("click", function () {
       undo();
-      host.sheet.focus({ preventScroll: true });
+      focusEditing();
     });
     buttons.redo.addEventListener("click", function () {
       redo();
-      host.sheet.focus({ preventScroll: true });
+      focusEditing();
     });
 
     return {
@@ -737,6 +763,7 @@
       commit: commit,
       undo: undo,
       redo: redo,
+      onEscape: onEscape,
       announce: announce,
       select: select,
       selected: function () { return selected; },

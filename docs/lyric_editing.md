@@ -48,18 +48,19 @@ letter.
 
 ## Web: Edit text
 
-The pencil button above the song (title "Edit Text…") makes the whole song text
-editable over the sheet. It works best on a large screen (laptop or desktop). On a
-phone the toolbar wraps onto more rows (Save and Discard stay on screen at 320px and
-up), and the textarea is never under 16px (see below), but it has been tried only in
-a desktop browser with a phone-sized window, not on a real phone.
+**Lyrics** on the Chords / Lyrics switch (Ctrl/Cmd+L) makes the whole song text
+editable over the sheet. The song is already open for editing: an existing song
+starts on Chords, and Lyrics is the same draft. It works best on a large screen
+(laptop or desktop). On a phone the toolbar wraps onto more rows (Save and
+Discard, once the draft is dirty, stay on screen at 320px and up), and the
+textarea is never under 16px (see below), but it has been tried only in a
+desktop browser with a phone-sized window, not on a real phone.
 
 - The sheet is drawn as always. A see-through textarea lies exactly over it, with
   the same font, size and line height. Only its caret and selection show, so the
   chords stay visible and move while you type.
-- While editing, every line keeps room for chords, so lines do not jump when a
-  chord appears or goes. This makes the lines a little further apart than in the
-  viewer.
+- While a song is open, every line keeps room for chords, so lines do not jump
+  when a chord appears or goes.
 - The song is edited as one text. Line endings are normalised to `\n` when the
   text is loaded or pasted (`\r\n` and `\r` become `\n`). Spaces and tabs are kept
   as they are.
@@ -73,15 +74,15 @@ a desktop browser with a phone-sized window, not on a real phone.
   sheet, like one letter in the textarea. Chords are still numbered by code point,
   so a chord stored on the accent or on a joiner is drawn over the whole letter.
   This needs `Intl.Segmenter`; without it every code point is a box, as before.
-- Opening or leaving the editor keeps the song line that was at the top of the
-  screen where it was, and the caret starts on that line, so a long song does not
-  jump back to the first line. (Lines get room for chords while editing, so their
-  heights change.) After Save or Discard the keyboard focus goes to the Edit button.
+- Switching between Chords and Lyrics keeps the song line that was at the top of
+  the screen where it was. On Lyrics the caret starts on that line, so a long
+  song does not jump back to the first line. Save stays in edit, switches to
+  Chords and focuses the sheet. Discard stays on the open segment and focuses it.
 - Opening the address of the song that is being edited again does nothing to the
   edit. The sheet and the textarea always show the same draft.
-- A screen reader would read the song twice (the sheet and the textarea under it),
-  so while editing the sheet has `aria-hidden="true"` and the textarea is labelled
-  "Song text".
+- A screen reader would read the song twice (the sheet and the textarea over it),
+  so on Lyrics the sheet has `aria-hidden="true"` and the textarea is labelled
+  "Song text". On Chords the sheet is what is read.
 - Typing stays fast on a long song (about 13 ms a keystroke at 24 000 letters, 316 ms
   before): a chord finds its line by search, the key detection that spells the
   chords is remembered while the chords' roots and types do not change, and only the
@@ -100,26 +101,23 @@ a desktop browser with a phone-sized window, not on a real phone.
   place and are not brought along to the new one. This is the same in the desktop and
   iPhone editors, because the rule only compares the text before and after. Move the
   chords again by hand afterwards if they should go with the letters.
-- "Changes do not persist" is shown as soon as the editor opens, before anything is
-  typed. When the editor closes it goes again, unless something is kept (see Save)
-  or the song is transposed. So Discard, and Save with nothing changed, show no note.
-- The buttons are **Discard** then **Save**, the same names and order as in the
-  desktop and iPhone apps. Those apps use a Chords or Lyrics switch rather than
-  separate Edit Text… and Edit Chords… buttons. Save and Discard show when the
-  draft is dirty. On iPhone, Back asks Save, Don't Save, or Cancel, and Undo
-  works in both modes.
+- "Changes do not persist" is hidden on a clean song. It is shown when the draft
+  differs from the last save, and it stays after Save, because the file is not
+  written. Discard back to the file hides it. Discard of a later edit leaves it
+  when an earlier Save is still only in this page.
+- **Discard** then **Save** use the same names and order as the desktop and
+  iPhone apps. They are shown only when the draft is dirty.
 - **Save** keeps the edited text and chords as the song's text for this page
-  visit. Viewer, Copy and Print use them afterwards, and "Changes do not
-  persist" stays shown. The songbook is never written. **Discard** throws the edit
-  away without asking. Going back to the list or opening another song (also with
-  the browser's Back button) while the draft differs from the song as opened asks
-  "Discard changes?" first; Keep editing is the default. A reload does not ask, and
-  loses the edit. See [chord_editing.md](chord_editing.md) for the details, which
-  are the same for Edit chords.
-- While editing, the three Copy buttons and Print (one group) and Transpose
-  down/up and Reset transpose (another group) are hidden, and Edit text is
-  disabled. Zoom stays on, because the textarea and the sheet take their size
-  from the same variable.
+  visit, stays in edit and switches to Chords. Viewer, Copy and Print use them
+  afterwards, and "Changes do not persist" stays shown. The songbook is never
+  written. **Discard** reloads the last save without asking and stays on the
+  same segment. Going back to the list or opening another song (also with the
+  browser's Back button) while the draft is dirty asks "Do you want to save the
+  changes…?" with Save, Don't Save and Cancel. A reload does not ask, and loses
+  the edit. See [chord_editing.md](chord_editing.md).
+- Copy, Print, Zoom, Undo and Redo stay shown. Transpose is hidden on Lyrics
+  and shown on Chords. Zoom stays on, because the textarea and the sheet take
+  their size from the same variable.
 - The textarea's font is never smaller than 16px. iPhone Safari zooms the whole
   page when a text field under 16px gets focus. The sheet is under 16px below 80%
   zoom (50%, 60%, 70%), so there the textarea is laid out with a 16px font and
@@ -128,20 +126,21 @@ a desktop browser with a phone-sized window, not on a real phone.
   browser rounds ascent and line height to whole pixels for each font size on its
   own, below 80% a letter of the textarea can sit up to about 1.2px above or below
   the sheet's (it is within 0.33px at 80% and up). Not tried on a real iPhone.
-- Escape does nothing while editing (it would otherwise leave the song and lose the
-  text). Use Save, Discard or Back.
+- Escape collapses the selection on Lyrics. On Chords it cancels a drag, or
+  clears the chord selection. It never discards the draft and never leaves the
+  song. Use Save, Discard or Back.
 - Transposition: the text does not depend on the key. The chords of the draft are
   kept as they are stored (not transposed) and shown shifted by the current
   transposition, as on iOS. So a song opened at +2 is edited at +2, and Save
   does not change the key.
-- **A transpose is a change too.** Transposing while viewing shows Save and Discard
-  (the edit buttons stay as they are). Save keeps the key for this page visit, like
-  a saved edit; Discard goes back to the key that was kept. Transposing back to that
-  key, or a whole octave away, is no change and the buttons go again. Leaving the
-  song (Back, the list, another song, Escape) with a transpose that was not saved
-  asks "Discard changes?" first. Edit text or Edit chords opened after a transpose
-  takes it into the edit: Save keeps both, Discard puts both back. Reset transpose
-  goes to the songbook's key, so after Save it is a change again.
+- **A transpose dirties the same draft.** Save and Discard appear, on whichever
+  segment is open (Transpose itself is hidden on Lyrics; the buttons still
+  change the draft). Save keeps the key for this page visit and switches to
+  Chords. Discard goes back to the key that was kept and stays on the open
+  segment. Transposing back to that key, or a whole octave away, is no change
+  and the buttons go again. Leaving the song (Back, the list, another song)
+  with a transpose that was not saved asks first. Escape does not. Reset
+  transpose goes to the songbook's key, so after Save it is a change again.
 
 ### What was and was not checked
 
