@@ -357,7 +357,15 @@ def _close_flights():
 
 
 def _register_worker_silence():
-    """Run before Qt's own atexit handlers, so workers stop emitting first."""
+    """Register _close_flights with atexit as a fallback only.
+
+    atexit order relative to Qt teardown is not guaranteed, and the hook
+    may run too late or not at all (softchord.main() ends with os._exit,
+    which skips atexit). Workers are silenced before teardown by
+    aboutToQuit -> abandon_pending -> _close_flights. This hook covers a
+    worker started after aboutToQuit, or an exit that does not go
+    through QApplication.
+    """
     global _SILENCE_REGISTERED
     if _SILENCE_REGISTERED:
         return
@@ -542,6 +550,11 @@ class AccountController(QtCore.QObject):
                 "verifier_hash": verifier_hash(verifier),
             }
 
+            # Set on the worker when the POST succeeded. A superseded
+            # session reports "error" to the dialog, but the link was
+            # emailed, so its verifier is still saved for a later paste.
+            sent = []
+
             def work():
                 try:
                     result = self._send(origin, "POST", REQUEST_LINK_PATH, body)
@@ -551,11 +564,12 @@ class AccountController(QtCore.QObject):
                 payload = _read_json(result)
                 if (result.status == 200 and isinstance(payload, dict)
                         and payload.get("ok") is True):
+                    sent.append(True)
                     return "ok"
                 return "error"
 
             def after(status):
-                if status == "ok":
+                if sent:
                     self.settings.setValue(_VERIFIER_KEY, verifier)
                     self.settings.setValue(_VERIFIER_AT_KEY, issued)
                     self.settings.sync()
@@ -766,7 +780,10 @@ class AccountController(QtCore.QObject):
             except Exception as exc:
                 _log_failure(exc)
                 result = None
-            flight.emit(result)
+            try:
+                flight.emit(result)
+            except Exception as exc:
+                _log_failure(exc)
 
         signals.finished.connect(
             on_finished, QtCore.Qt.ConnectionType.QueuedConnection)
