@@ -1,0 +1,49 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Local development only. No account_id, no routes, no secrets, and no deploy.
+  // database_id and namespace_id are placeholders, not real Cloudflare resources.
+  "name": "softchord",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "ENVIRONMENT": "development",
+    "MAILER": "recording",
+    "PUBLIC_ORIGIN": "http://localhost:8787",
+    "SESSION_COOKIE_NAME": "sc_session",
+    "VERIFIER_COOKIE_NAME": "sc_verifier",
+    "COOKIE_SECURE": "false",
+    "APP_URL": ""
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "softchord",
+      "database_id": "11111111-1111-4111-8111-111111111111",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "IP_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ]
+}

@@ -178,7 +178,7 @@ private struct SongRowMenuInstaller: UIViewRepresentable {
             let songId = self.songId
             let report = self.report
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-                SongShareMenu.menu(songId: { songId }, report: report, onEdit: nil)
+                SongShareMenu.menu(songId: { songId }, report: report)
             }
         }
 
@@ -230,8 +230,7 @@ enum SongShareMenu {
     static func menu(
         songId: @escaping () -> Int,
         report: @escaping (String, String) -> Void,
-        onEdit: (() -> Void)?,
-        onEditChords: (() -> Void)? = nil,
+        onSelectSegment: ((SongEditSegment) -> Void)? = nil,
         shown: (() -> SongSource?)? = nil
     ) -> UIMenu {
         let song: () throws -> SongSource = {
@@ -252,16 +251,15 @@ enum SongShareMenu {
             },
             // TODO: re-add Add to Photos to the toolbar (and this menu): addSongToPhotos below.
         ]
-        if let onEdit {
-            // Mirror: softchord_session.py lyricEditorSelected.
-            children.append(UIAction(title: "Edit Text…") { _ in
-                onEdit()
+        // The Chords/Lyrics switch also lives in this menu, when the song
+        // page provides it (the list menu does not). Mirror: the desktop and
+        // web overflow menus, which flip the same draft segment.
+        if let onSelectSegment {
+            children.append(UIAction(title: "Chords") { _ in
+                onSelectSegment(.chords)
             })
-        }
-        if let onEditChords {
-            // Mirror: softchord_session.py chordEditorSelected.
-            children.append(UIAction(title: "Edit Chords…") { _ in
-                onEditChords()
+            children.append(UIAction(title: "Lyrics") { _ in
+                onSelectSegment(.lyrics)
             })
         }
         return UIMenu(children: children)

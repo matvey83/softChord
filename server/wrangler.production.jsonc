@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Not a deploy target. There is no account_id, no D1 database, and no mail provider.
+  // MAILER must not be "recording": the worker refuses that binding in production.
+  "name": "softchord",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "ENVIRONMENT": "production",
+    "MAILER": "unconfigured",
+    "PUBLIC_ORIGIN": "https://example.invalid",
+    "SESSION_COOKIE_NAME": "__Host-sc_session",
+    "VERIFIER_COOKIE_NAME": "__Host-sc_verifier",
+    "COOKIE_SECURE": "true",
+    "APP_URL": ""
+  }
+}
