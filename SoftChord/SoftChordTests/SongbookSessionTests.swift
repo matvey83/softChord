@@ -311,14 +311,16 @@ struct SongbookSessionTests {
 
         // Don't Save, then a bad file: still this songbook, draft still there.
         #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .openFile) == .openFile)
-        #expect(session.openPickedFile(invalid) != nil)
+        let invalidFailure = session.openPickedFile(invalid)
+        #expect(invalidFailure != nil)
         #expect(session.displayName == "zvuki_neba")
         #expect(SongSessionEdits.unsavedDraft == draft)
         #expect(listRequest(.openFile) == .askToLeave(.openFile))
 
         // Don't Save, then a file that opens: the draft is dropped.
         #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .openFile) == .openFile)
-        #expect(session.openPickedFile(other) == nil)
+        let openedOther = session.openPickedFile(other)
+        #expect(openedOther == nil)
         #expect(session.displayName == "other")
         #expect(SongSessionEdits.unsavedDraft == nil)
         #expect(SongSessionEdits.copy(for: songId) == nil)
@@ -329,7 +331,8 @@ struct SongbookSessionTests {
         #expect(SongLeavePrompt.resolvingUnsavedDraft(.dontSave, before: .switchTo(demoId))
             == .switchTo(demoId))
         #expect(SongSessionEdits.unsavedDraft == draft)
-        #expect(session.activate(id: demoId))
+        let activated = session.activate(id: demoId)
+        #expect(activated)
         #expect(session.displayName == "zvuki_neba")
         #expect(SongSessionEdits.unsavedDraft == nil)
 
@@ -337,11 +340,13 @@ struct SongbookSessionTests {
         SongSessionEdits.publish(draft, for: songId)
         #expect(SongLeavePrompt.resolvingUnsavedDraft(.save, before: .openFile) == .openFile)
         #expect(SongSessionEdits.unsavedDraft == nil)
-        #expect(session.openPickedFile(invalid) != nil)
+        let invalidAfterSave = session.openPickedFile(invalid)
+        #expect(invalidAfterSave != nil)
         #expect(SongSessionEdits.copy(for: songId)?.text == "Hello you")
         #expect(listRequest(.openFile) == .proceed(.openFile))
         // The switch then drops those session edits with the old songbook.
-        #expect(session.openPickedFile(other) == nil)
+        let openedAfterSave = session.openPickedFile(other)
+        #expect(openedAfterSave == nil)
         #expect(SongSessionEdits.copy(for: songId) == nil)
     }
 
@@ -356,27 +361,35 @@ struct SongbookSessionTests {
         var gate = SongbookImporterGate()
 
         // Cancel or a system dismissal: nothing was resolved, nothing opens.
-        #expect(!gate.alertDismissed())
+        let cancelled = gate.alertDismissed()
+        #expect(!cancelled)
 
-        #expect(gate.next(after: .switchTo(other), alertAlreadyGone: false)
-            == .perform(.switchTo(other)))
+        let switched = gate.next(after: .switchTo(other), alertAlreadyGone: false)
+        #expect(switched == .perform(.switchTo(other)))
         #expect(!gate.waitingForAlert)
-        #expect(!gate.alertDismissed())
+        let dismissedAfterSwitch = gate.alertDismissed()
+        #expect(!dismissedAfterSwitch)
 
         // Usual order: resolved first, then onChange after pendingLeave is cleared.
-        #expect(gate.next(after: .openFile, alertAlreadyGone: false) == nil)
+        let waiting = gate.next(after: .openFile, alertAlreadyGone: false)
+        #expect(waiting == nil)
         #expect(gate.waitingForAlert)
-        #expect(gate.alertDismissed())
+        let shouldPresent = gate.alertDismissed()
+        #expect(shouldPresent)
         // Only once: a later dismissal (a Cancel) does not open it again.
         #expect(!gate.waitingForAlert)
-        #expect(!gate.alertDismissed())
+        let presentedAgain = gate.alertDismissed()
+        #expect(!presentedAgain)
 
         // Early dismiss: onChange ran before resolved. next still presents once.
         var early = SongbookImporterGate()
-        #expect(!early.alertDismissed())
-        #expect(early.next(after: .openFile, alertAlreadyGone: true) == .presentImporter)
+        let earlyDismiss = early.alertDismissed()
+        #expect(!earlyDismiss)
+        let earlyNext = early.next(after: .openFile, alertAlreadyGone: true)
+        #expect(earlyNext == .presentImporter)
         #expect(!early.waitingForAlert)
-        #expect(!early.alertDismissed())
+        let earlyAgain = early.alertDismissed()
+        #expect(!earlyAgain)
     }
 
     /// Save keeps only what differs from the songbook; a draft equal to it in
