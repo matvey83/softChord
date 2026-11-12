@@ -166,7 +166,7 @@ struct SongPage: View {
     /// MIRRORED UI: viewer.js persistNote. Shown while editing, and while the
     /// song shows a saved edit or another key than the songbook's.
     private var bannerText: String? {
-        guard let source else {
+        guard source != nil else {
             return nil
         }
         let kept = shownText != nil || shownChords != nil
@@ -1818,7 +1818,8 @@ enum SongLeavePrompt {
         "Do you want to save the changes you made to \u{201C}\(songTitle)\u{201D}?"
     }
 
-    static func shouldAsk(dirty: Bool) -> Bool {
+    /// nonisolated: also asked by SongbookSession before changing songbooks.
+    nonisolated static func shouldAsk(dirty: Bool) -> Bool {
         dirty
     }
 
