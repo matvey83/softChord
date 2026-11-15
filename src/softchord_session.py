@@ -1260,6 +1260,42 @@ class _SongSheetClipboardTypes(_UtiMimeConverter):
         return data[0]
 
 
+class _Utf8PlainTextClipboardType(_UtiMimeConverter):
+    """UTF-8 plain text on the Mac clipboard, ahead of Qt's own text types.
+
+    Qt (qcocoamimetypes.mm) writes text/plain first as
+    com.apple.traditional-mac-plain-text via QString::toLatin1(), so
+    Cyrillic and emoji become '?', and it never writes
+    public.utf8-plain-text. Apps such as Messages then read the Latin-1
+    copy. A converter made later is asked first, so this one puts real
+    UTF-8 on the clipboard under the type macOS apps read as text.
+    """
+
+    _mime = "text/plain"
+    _uti = "public.utf8-plain-text"
+
+    def utiForMime(self, mime):
+        return self._uti if mime == self._mime else ""
+
+    def mimeForUti(self, uti):
+        return self._mime if uti == self._uti else ""
+
+    def convertFromMime(self, mime, data, uti):
+        if mime != self._mime or uti != self._uti:
+            return []
+        if isinstance(data, str):
+            return [QtCore.QByteArray(data.encode("utf-8"))]
+        try:
+            return [QtCore.QByteArray(bytes(data))]
+        except TypeError:
+            return []
+
+    def convertToMime(self, mime, data, uti):
+        if mime != self._mime or uti != self._uti or not data:
+            return None
+        return bytes(data[0]).decode("utf-8", errors="replace")
+
+
 class SongbookSession(SongbookIO, QtCore.QObject):
     """
     Open songbook, current song, undo stack, and editor commands.
@@ -1421,6 +1457,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
         # names from the Mac clipboard.
         if sys.platform == "darwin":
             self._song_sheet_clipboard_types = _SongSheetClipboardTypes()
+            self._utf8_text_clipboard_type = _Utf8PlainTextClipboardType()
 
         self.ignore_song_text_changed = False
         # Chords that belong with the lyrics at each text-editor undo step.

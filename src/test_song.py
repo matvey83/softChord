@@ -16,6 +16,7 @@ import unittest
 from unittest import mock
 import sqlite3
 import copy
+import json
 import os
 import shutil
 import subprocess
@@ -43,6 +44,7 @@ from softchord_io import (
 )
 from softchord_session import (
     SOFTCHORD_LYRICS_MIME,
+    _Utf8PlainTextClipboardType,
     fit_scale_ratio,
     scale_message,
     song_document_size,
@@ -3493,6 +3495,94 @@ class TestMoreAppOperations(unittest.TestCase):
         finally:
             self.app.editor.copy = original
         self.assertEqual(calls, [1])
+
+    _UNICODE_LYRICS = "Last time: Привет, мир (unison)\ncafé naïve Ünïcödé 🎸🙂"
+
+    def _assert_text_flavors_are_utf8(self, mime, text):
+        """Every text flavor holds UTF-8 bytes that read back as text."""
+        self.assertIn("text/plain", mime.formats())
+        for fmt in mime.formats():
+            if fmt == "application/vnd.oasis.opendocument.text":
+                continue  # A zip, not text.
+            decoded = bytes(mime.data(fmt)).decode("utf-8")
+            if fmt == "text/html":
+                self.assertIn('<meta charset="utf-8"', decoded.lower())
+                doc = QtGui.QTextDocument()
+                doc.setHtml(decoded)
+                self.assertEqual(doc.toPlainText(), text, fmt)
+            elif fmt == SOFTCHORD_LYRICS_MIME:
+                self.assertTrue(fmt.startswith("application/x-"))
+                self.assertEqual(json.loads(decoded)["text"], text)
+            elif fmt == "text/markdown":
+                self.assertEqual(decoded.strip(), text.strip().replace(
+                    "\n", "\n\n"))
+            else:
+                self.assertEqual(decoded, text, fmt)
+
+    def test_edit_text_copy_is_utf8_in_every_flavor_and_pastes_back(self):
+        text = self._UNICODE_LYRICS
+        song = self._start_text_edit_with(text, [(11, 0), (34, 5)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End,
+                            QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.app.editor.setTextCursor(cursor)
+        self.app.copySelected()
+        mime = QtWidgets.QApplication.clipboard().mimeData()
+        self.assertEqual(mime.text(), text)
+        self._assert_text_flavors_are_utf8(mime, text)
+
+        end = len(self.app.editor.toPlainText().encode("utf-16-le")) // 2
+        cursor.setPosition(end)
+        self.app.editor.setTextCursor(cursor)
+        self.app.pasteSelected()
+        self.assertEqual(self.app.editor.toPlainText(), text + text)
+        self.assertEqual(song.getChordAtPosition(end + 11).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(end + 34).note_id, 5)
+
+    def test_edit_chords_copy_is_utf8_and_pastes_the_chord(self):
+        text = self._UNICODE_LYRICS
+        song = self._song_ready_for_lyric_edit(text, [(11, 0)])
+        self.app.chordEditorSelected()
+        self.assertTrue(self.app.chordEditing())
+        # Lyrics selected in the editor still copy as UTF-8.
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End,
+                            QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.app.editor.setTextCursor(cursor)
+        self._assert_text_flavors_are_utf8(
+            self.app.editor.createMimeDataFromSelection(), text)
+
+        self.app.selected_char_num = 11
+        self.app.copySelected()
+        clipboard = QtWidgets.QApplication.clipboard()
+        chord_text = song.getChordAtPosition(11).getChordText()
+        self.assertEqual(clipboard.text(), chord_text)
+        self._assert_text_flavors_are_utf8(clipboard.mimeData(), chord_text)
+
+        self.app.selected_char_num = 20
+        self.app.pasteSelected()
+        self.assertEqual(song.getChordAtPosition(20).getChordText(),
+                         chord_text)
+
+    def test_mac_plain_text_type_is_utf8(self):
+        types = _Utf8PlainTextClipboardType()
+        uti = "public.utf8-plain-text"
+        text = self._UNICODE_LYRICS
+        self.assertEqual(types.utiForMime("text/plain"), uti)
+        self.assertEqual(types.mimeForUti(uti), "text/plain")
+        self.assertEqual(types.utiForMime("text/html"), "")
+        for data in (text, QtCore.QByteArray(text.encode("utf-8"))):
+            (out,) = types.convertFromMime("text/plain", data, uti)
+            self.assertEqual(bytes(out).decode("utf-8"), text)
+        self.assertEqual(
+            types.convertToMime("text/plain",
+                                [QtCore.QByteArray(text.encode("utf-8"))],
+                                uti),
+            text)
+        self.assertEqual(types.convertFromMime(
+            "text/plain", text, "com.apple.traditional-mac-plain-text"), [])
 
     def test_line_boxes_span_the_editor_width_and_empty_last_line(self):
         song = self._start_text_edit_with("Hello\n", [(0, 0)])
