@@ -52,7 +52,9 @@ struct Utf8Tests {
             let expected = SongText.render(text: source.text, chords: source.chords, includeChords: includeChords)
             #expect(pasteboard.string == expected)
             let data = try #require(pasteboard.data(forPasteboardType: UTType.utf8PlainText.identifier))
-            #expect(String(data: data, encoding: .utf8) == expected)
+            let decoded = try #require(String(data: data, encoding: .utf8))
+            #expect(decoded == expected)
+            #expect(!decoded.contains("?"))
         }
     }
 

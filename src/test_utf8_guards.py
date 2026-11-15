@@ -440,6 +440,17 @@ _SWIFT_NON_UTF8_TEXT_TYPE = re.compile(
     r"\"public\.(plain-text|text|utf16-plain-text|utf16-external-plain-text)\""
     r"|kUTType(PlainText|Text|UTF16PlainText)\b|"
     r"\"com\.apple\.traditional-mac-plain-text\")")
+# Pasteboard writes whose whole call (it may span lines) is scanned.
+_SWIFT_PASTEBOARD_WRITE = re.compile(
+    r"\b(setItems|setData|setValue|setObjects|addItems|"
+    r"registerDataRepresentation|registerItem)\s*\(")
+# plain-text is allowed only beside UTF-8 bytes in the same write, so that
+# .string reads keep working.
+_SWIFT_PLAIN_TEXT_TYPE = re.compile(
+    r"^(UTType\.plainText|\"public\.plain-text\")$")
+_SWIFT_UTF8_TEXT_TYPE = re.compile(
+    r"(UTType\.utf8PlainText\b|\"public\.utf8-plain-text\")")
+_SWIFT_UTF8_DATA = re.compile(r"\bData\s*\([^()]*\.utf8\s*\)")
 
 
 def _strip_swift_comment(line):
@@ -452,9 +463,30 @@ def _strip_swift_comment(line):
 def scan_swift_source(source, filename):
     findings = []
     lines = [_strip_swift_comment(line) for line in source.split("\n")]
+    code = "\n".join(lines)
+    line_starts = [0]
+    for line in lines[:-1]:
+        line_starts.append(line_starts[-1] + len(line) + 1)
+    flagged_types = set()
 
     def add(index, problem, fix):
         findings.append(_finding(filename, index + 1, problem, fix))
+
+    def check_pasteboard_types(start, text):
+        """Flag text types in a pasteboard write, at the line they are on."""
+        allow_plain = bool(_SWIFT_UTF8_TEXT_TYPE.search(text)
+                           and _SWIFT_UTF8_DATA.search(text))
+        for match in _SWIFT_NON_UTF8_TEXT_TYPE.finditer(text):
+            offset = start + match.start()
+            if offset in flagged_types:
+                continue
+            flagged_types.add(offset)
+            if allow_plain and _SWIFT_PLAIN_TEXT_TYPE.match(match.group(0)):
+                continue
+            add(code.count("\n", 0, offset),
+                "pasteboard text type %s does not say UTF-8" % match.group(0),
+                "write Data(text.utf8) as UTType.utf8PlainText (plainText "
+                "is allowed only beside it in the same setItems item)")
 
     for index, line in enumerate(lines):
         for match in _SWIFT_ENCODING.finditer(line):
@@ -475,12 +507,11 @@ def scan_swift_source(source, filename):
             if "encoding:" not in call:
                 add(index, "%s(contentsOf:) guesses the encoding"
                     % match.group(1), "pass encoding: .utf8")
-        if _SWIFT_PASTEBOARD.search(line) and \
-                _SWIFT_NON_UTF8_TEXT_TYPE.search(line):
-            add(index, "pasteboard text type %s does not say UTF-8"
-                % _SWIFT_NON_UTF8_TEXT_TYPE.search(line).group(0),
-                "set .string, or use UTType.utf8PlainText with "
-                "Data(text.utf8)")
+        for match in _SWIFT_PASTEBOARD_WRITE.finditer(line):
+            start = line_starts[index] + match.start()
+            check_pasteboard_types(start, _call_text(code, start))
+        if _SWIFT_PASTEBOARD.search(line):
+            check_pasteboard_types(line_starts[index], line)
         header = re.search(r"\"([^\"]*)\"\s*,\s*forHTTPHeaderField\s*:\s*"
                            r"\"Content-Type\"", line, re.I)
         if header and header.group(1).lower().startswith("text/") and \
@@ -728,11 +759,41 @@ class TestIosUtf8Guard(_GuardCase):
         self.assertFlags(self.scan(
             "pasteboard.setItems([[\"public.utf16-plain-text\": data]])\n"),
             "Bad.swift", 1, "utf16-plain-text")
+        # plainText alone, across lines, is still flagged.
+        self.assertFlags(self.scan(
+            "pasteboard.setItems([[\n"
+            "    UTType.plainText.identifier: text,\n"
+            "]])\n"), "Bad.swift", 2, "plainText")
+        self.assertFlags(self.scan(
+            "pasteboard.setItems([[\"public.plain-text\": text]])\n"),
+            "Bad.swift", 1, "public.plain-text")
+        # Naming utf8PlainText without UTF-8 bytes does not excuse plainText.
+        self.assertFlags(self.scan(
+            "pasteboard.setItems([[\n"
+            "    UTType.utf8PlainText.identifier: data,\n"
+            "    UTType.plainText.identifier: text,\n"
+            "]])\n"), "Bad.swift", 3, "plainText")
+        # UTF-8 bytes beside utf16 or traditional-mac text do not excuse them.
+        self.assertFlags(self.scan(
+            "pasteboard.setItems([[\n"
+            "    UTType.utf8PlainText.identifier: Data(text.utf8),\n"
+            "    UTType.utf16PlainText.identifier: text,\n"
+            "]])\n"), "Bad.swift", 3, "utf16PlainText")
+        self.assertFlags(self.scan(
+            "pasteboard.setItems([[\"public.utf8-plain-text\": "
+            "Data(text.utf8), \"com.apple.traditional-mac-plain-text\": "
+            "text]])\n"), "Bad.swift", 1, "traditional-mac")
         self.assertEqual(self.scan(
             "UIPasteboard.general.string = text\n"
             "pasteboard.setItems([[UTType.png.identifier: data]])\n"
             "pasteboard.setData(Data(text.utf8), forPasteboardType: "
-            "UTType.utf8PlainText.identifier)\n"), [])
+            "UTType.utf8PlainText.identifier)\n"
+            "pasteboard.setItems([[\n"
+            "    UTType.utf8PlainText.identifier: Data(text.utf8),\n"
+            "    UTType.plainText.identifier: text,\n"
+            "]])\n"
+            "pasteboard.setItems([[\"public.utf8-plain-text\": "
+            "Data(text.utf8), \"public.plain-text\": text]])\n"), [])
 
     def test_flags_text_content_type_without_charset(self):
         self.assertFlags(self.scan(
