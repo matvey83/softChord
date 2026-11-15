@@ -1453,11 +1453,7 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.clipboard = QtWidgets.QApplication.clipboard()
         self.clipboard.dataChanged.connect(self.clipboardChanged)
-        # Kept alive for the session. Dropping it removes the PNG and SVG
-        # names from the Mac clipboard.
-        if sys.platform == "darwin":
-            self._song_sheet_clipboard_types = _SongSheetClipboardTypes()
-            self._utf8_text_clipboard_type = _Utf8PlainTextClipboardType()
+        self._registerMacClipboardTypes()
 
         self.ignore_song_text_changed = False
         # Chords that belong with the lyrics at each text-editor undo step.
@@ -1518,6 +1514,16 @@ class SongbookSession(SongbookIO, QtCore.QObject):
 
         self.win.show()
         self.win.raise_()
+
+    def _registerMacClipboardTypes(self):
+        """On macOS, add the PNG/SVG sheet types and UTF-8 plain text.
+
+        Kept alive for the session: dropping one removes its types from the
+        Mac clipboard (and text/plain falls back to Qt's Latin-1 copy).
+        """
+        if sys.platform == "darwin":
+            self._song_sheet_clipboard_types = _SongSheetClipboardTypes()
+            self._utf8_text_clipboard_type = _Utf8PlainTextClipboardType()
 
     def songFilterEdited(self, new_text):
         """Show only the songs that match the filter text.

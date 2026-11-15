@@ -23,6 +23,10 @@ import subprocess
 import sys
 import tempfile
 import random
+import html
+import inspect
+import re
+import types
 
 from PyQt6 import QtCore, QtGui, QtWidgets, QtPrintSupport
 from PyQt6.QtCore import Qt
@@ -30,6 +34,7 @@ from PyQt6.QtTest import QTest
 
 import softchord
 import softchord_chords
+import softchord_session
 from softchord_text import (chord_drag_direction, lyric_renumber_map,
                             next_free_character)
 from softchord_layout import QtDocumentLayout, SongLayout
@@ -84,6 +89,13 @@ from softchord import (
     SONGS_TABLE_SQL,
     SONG_CHORD_LINK_TABLE_SQL,
 )
+# Source scans that fail when new code writes text without UTF-8. Imported
+# here so this suite runs them.
+from test_utf8_guards import *  # noqa: F401,F403
+
+# Cyrillic, accented Latin and emoji. The same sample is used by the web
+# (softChord_web/tests/utf8*.test.js) and iPhone (Utf8Tests.swift) tests.
+UTF8_SAMPLE = "Привет café 🎵"
 
 # ---------------------------------------------------------------------------
 # Minimal Test Harness
@@ -3583,6 +3595,40 @@ class TestMoreAppOperations(unittest.TestCase):
             text)
         self.assertEqual(types.convertFromMime(
             "text/plain", text, "com.apple.traditional-mac-plain-text"), [])
+
+    def test_editor_copies_round_trip_the_shared_utf8_sample(self):
+        """Edit Text and Edit Chords selections copy the sample as UTF-8."""
+        text = UTF8_SAMPLE + "\n" + UTF8_SAMPLE
+        song = self._start_text_edit_with(text, [(0, 0), (7, 5)])
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End,
+                            QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.app.editor.setTextCursor(cursor)
+        self.app.copySelected()
+        mime = QtWidgets.QApplication.clipboard().mimeData()
+        self._assert_text_flavors_are_utf8(mime, text)
+        payload = json.loads(bytes(mime.data(SOFTCHORD_LYRICS_MIME)))
+        self.assertEqual(payload["text"], text)
+
+        # Paste at the end: the letters and both chords come back.
+        end = len(text.encode("utf-16-le")) // 2
+        cursor.setPosition(end)
+        self.app.editor.setTextCursor(cursor)
+        self.app.pasteSelected()
+        self.assertEqual(self.app.editor.toPlainText(), text + text)
+        self.assertEqual(song.getChordAtPosition(end).note_id, 0)
+        self.assertEqual(song.getChordAtPosition(end + 7).note_id, 5)
+
+        self.app.chordEditorSelected()
+        self.assertTrue(self.app.chordEditing())
+        cursor = self.app.editor.textCursor()
+        cursor.setPosition(0)
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End,
+                            QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.app.editor.setTextCursor(cursor)
+        self._assert_text_flavors_are_utf8(
+            self.app.editor.createMimeDataFromSelection(), text + text)
 
     def test_line_boxes_span_the_editor_width_and_empty_last_line(self):
         song = self._start_text_edit_with("Hello\n", [(0, 0)])
@@ -8784,6 +8830,192 @@ class TestSaveAndDiscard(unittest.TestCase):
             self.assertFalse(self.app.editChanged())
         finally:
             self.app.question = original_question
+
+
+class TestUtf8CopyAndExport(unittest.TestCase):
+    """Every copy and export path keeps UTF8_SAMPLE as UTF-8 and reads back."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not QtWidgets.QApplication.instance():
+            cls.qapp = QtWidgets.QApplication([])
+        else:
+            cls.qapp = QtWidgets.QApplication.instance()
+
+    def setUp(self):
+        self.app = test_app()
+        self.errors = []
+        self.app.info = lambda text: None
+        self.app.warning = lambda text: self.errors.append(text)
+        self.app.error = lambda text: self.errors.append(text)
+        self.app.question = lambda *a, **k: True
+        self.dir = open_empty_temp_songbook(self.app)
+        self.lyrics = UTF8_SAMPLE + "\n" + UTF8_SAMPLE
+        self.app.curs.execute(
+            "INSERT INTO songs (id, number, title, subtitle, text, uuid, "
+            "updated_at) VALUES (0, 1, ?, '', ?, lower(hex(randomblob(16))), "
+            "1700000000)", (UTF8_SAMPLE, self.lyrics))
+        # A chord on the first letter of each word of the first line.
+        for character_num, chord in ((0, "Am"), (7, "C")):
+            self.app.curs.execute(
+                "INSERT INTO song_chord_link (song_id, character_num, chord) "
+                "VALUES (0, ?, ?)", (character_num, chord))
+        self.app.curs.commit()
+        self.app.songs_model.updateFromDatabase()
+        self.app.ui.songs_view.selectRow(0)
+        self.assertEqual(self.app.current_song.title, UTF8_SAMPLE)
+        self.assertEqual(len(list(self.app.current_song.iterateAllChords())),
+                         2)
+
+    def tearDown(self):
+        self.assertEqual(self.errors, [])
+
+    def _last_song(self):
+        """(title, text, [(character_num, chord)]) of the newest song.
+
+        Line ends are compared as \\n: copies and exports use \\r\\n, and
+        importing them keeps a \\r and adds a last \\n. That is not about
+        the encoding, which is what these tests check.
+        """
+        song_id, title, text = self.app.curs.execute(
+            "SELECT id, title, text FROM songs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        chords = self.app.curs.execute(
+            "SELECT character_num, chord FROM song_chord_link "
+            "WHERE song_id = ? ORDER BY character_num", (song_id, )).fetchall()
+        return title, text.replace("\r\n", "\n").rstrip("\n"), chords
+
+    def _clipboard_text_bytes(self):
+        mime = QtWidgets.QApplication.clipboard().mimeData()
+        self.assertIn("text/plain", mime.formats())
+        return bytes(mime.data("text/plain"))
+
+    def test_copy_song_text_round_trips(self):
+        self.app.copySongText()
+        expected = self.app.current_song.getAsText(include_chords=False)
+        self.assertIn(UTF8_SAMPLE, expected)
+        self.assertEqual(self._clipboard_text_bytes().decode("utf-8"), expected)
+        self.app.pasteAsNewSong()
+        _title, text, chords = self._last_song()
+        self.assertEqual(text, self.lyrics)
+        self.assertEqual(chords, [])
+
+    def test_copy_song_text_with_chords_round_trips(self):
+        self.app.copySongTextWithChords()
+        expected = self.app.current_song.getAsText()
+        self.assertTrue(expected.startswith("Am"), expected)
+        self.assertEqual(self._clipboard_text_bytes().decode("utf-8"), expected)
+        self.app.pasteAsNewSong()
+        _title, text, chords = self._last_song()
+        self.assertEqual(text, self.lyrics)
+        self.assertEqual(chords, [(0, "Am"), (7, "C")])
+
+    def test_copy_song_as_image_svg_is_utf8(self):
+        self.app.copySongAsImage()
+        svg = bytes(QtWidgets.QApplication.clipboard().mimeData().data(
+            "image/svg+xml"))
+        self.assertTrue(svg.startswith(b'<?xml version="1.0" encoding="UTF-8"'),
+                        svg[:80])
+        words = re.findall(r"<text\b[^>]*>([^<]*)</text>", svg.decode("utf-8"))
+        self.assertIn(UTF8_SAMPLE, html.unescape("".join(words)))
+
+    def test_export_text_round_trips(self):
+        path = os.path.join(self.dir, UTF8_SAMPLE + ".txt")
+        self.app.exportToText(path)
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        # UTF-8 with a BOM, so Windows Notepad reads it as UTF-8 too.
+        self.assertTrue(raw.startswith(b"\xef\xbb\xbf"))
+        expected = self.app.current_song.getAsText()
+        self.assertEqual(raw.decode("utf-8-sig"), expected)
+        self.assertEqual(read_import_text_file(path), expected)
+        self.app.importTextFiles([path])
+        self.assertEqual(self._last_song(),
+                         (UTF8_SAMPLE, self.lyrics, [(0, "Am"), (7, "C")]))
+
+    def test_export_chordpro_round_trips(self):
+        path = os.path.join(self.dir, UTF8_SAMPLE + ".chordpro")
+        self.app.exportToChordPro(path)
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        self.assertTrue(raw.startswith(b"\xef\xbb\xbf"))
+        text = raw.decode("utf-8-sig")
+        self.assertIn("{title:%s}" % UTF8_SAMPLE, text)
+        self.assertIn("[Am]Привет [C]café 🎵\r\n", text)
+        self.app.importFromChordPro(path)
+        self.assertEqual(self._last_song(),
+                         (UTF8_SAMPLE, self.lyrics, [(0, "Am"), (7, "C")]))
+
+    def test_import_reads_utf8_with_and_without_bom(self):
+        for prefix in (b"", b"\xef\xbb\xbf"):
+            path = os.path.join(self.dir, "in.txt")
+            with open(path, "wb") as fh:
+                fh.write(prefix + self.lyrics.encode("utf-8"))
+            self.assertEqual(read_import_text_file(path), self.lyrics)
+
+    def test_save_songbook_as_stores_utf8(self):
+        dest = os.path.join(self.dir, UTF8_SAMPLE + ".songbook")
+        with mock.patch.object(QtWidgets.QFileDialog, "getSaveFileName",
+                               return_value=(dest, "")):
+            self.app.saveSongbook()
+        self.assertEqual(self.app.current_songbook_filename, dest)
+        conn = sqlite3.connect(dest)
+        try:
+            self.assertEqual(
+                conn.execute("PRAGMA encoding").fetchone()[0], "UTF-8")
+            title, text, raw = conn.execute(
+                "SELECT title, text, CAST(text AS BLOB) FROM songs").fetchone()
+        finally:
+            conn.close()
+        self.assertEqual((title, text), (UTF8_SAMPLE, self.lyrics))
+        self.assertEqual(raw, self.lyrics.encode("utf-8"))
+
+    def _pdf_text(self, path):
+        from PyQt6.QtPdf import QPdfDocument
+        doc = QPdfDocument(None)
+        self.assertEqual(doc.load(path), QPdfDocument.Error.None_)
+        try:
+            return "".join(doc.getAllText(page).text()
+                           for page in range(doc.pageCount()))
+        finally:
+            doc.close()
+
+    # The emoji is not checked in PDFs: it is drawn from a color bitmap font
+    # (where one is installed), which has no text to extract.
+    def test_export_single_pdf_keeps_unicode_text(self):
+        path = os.path.join(self.dir, UTF8_SAMPLE + ".pdf")
+        self.app.exportToSinglePdf(path)
+        self.assertIn("Привет café", self._pdf_text(path))
+
+    def test_export_multiple_pdfs_keeps_unicode_text_and_name(self):
+        out = tempfile.mkdtemp()
+        with mock.patch.object(softchord_session.PdfDialog, "display",
+                               return_value=True), \
+                mock.patch.object(QtWidgets.QFileDialog,
+                                  "getExistingDirectory", return_value=out):
+            self.app.exportToMultiplePdfs()
+        self.assertEqual(os.listdir(out), [UTF8_SAMPLE + ".pdf"])
+        self.assertIn("Привет café",
+                      self._pdf_text(os.path.join(out, UTF8_SAMPLE + ".pdf")))
+
+    def test_mac_utf8_clipboard_converter_is_registered_only_on_macos(self):
+        register = softchord_session.SongbookSession._registerMacClipboardTypes
+        self.assertIn("self._registerMacClipboardTypes()",
+                      inspect.getsource(softchord_session.SongbookSession.__init__))
+        for platform, registered in (("darwin", True), ("linux", False),
+                                     ("win32", False)):
+            owner = types.SimpleNamespace()
+            with mock.patch.object(sys, "platform", platform):
+                register(owner)
+            converter = getattr(owner, "_utf8_text_clipboard_type", None)
+            self.assertEqual(converter is not None, registered, platform)
+            if registered:
+                self.assertIsInstance(converter, _Utf8PlainTextClipboardType)
+                self.assertEqual(converter.utiForMime("text/plain"),
+                                 "public.utf8-plain-text")
+                (out, ) = converter.convertFromMime(
+                    "text/plain", UTF8_SAMPLE, "public.utf8-plain-text")
+                self.assertEqual(bytes(out), UTF8_SAMPLE.encode("utf-8"))
 
 
 if __name__ == "__main__":

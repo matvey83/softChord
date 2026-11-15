@@ -496,10 +496,17 @@ func addSongToPhotos(_ song: () throws -> SongSource, report: @escaping (String,
     }
 }
 
-func songShareCopy(_ song: () throws -> SongSource, includeChords: Bool, report: @escaping (String, String) -> Void) {
+/// The text goes on as a String, which UIKit offers as public.utf8-plain-text.
+/// Tests pass their own pasteboard.
+func songShareCopy(
+    _ song: () throws -> SongSource,
+    includeChords: Bool,
+    report: @escaping (String, String) -> Void,
+    pasteboard: UIPasteboard = .general
+) {
     do {
         let shown = try song()
-        UIPasteboard.general.string = SongText.render(text: shown.text, chords: shown.chords, includeChords: includeChords)
+        pasteboard.string = SongText.render(text: shown.text, chords: shown.chords, includeChords: includeChords)
     } catch {
         report("Could not copy the song", String(describing: error))
     }
