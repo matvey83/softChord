@@ -291,7 +291,7 @@ def _configure_frozen_stdio():
                       errors="replace",
                       buffering=1)
     except Exception:
-        log_fp = open(os.devnull, "w")
+        log_fp = open(os.devnull, "w", encoding="utf-8", errors="replace")
     if sys.stdout is None:
         sys.stdout = log_fp
     if sys.stderr is None:
@@ -381,7 +381,7 @@ def register_linux_file_association(appimage=None, data_home=None,
         mimeapps = os.path.join(config, "mimeapps.list")
         if shutil.which("xdg-mime") and not os.path.exists(mimeapps):
             os.makedirs(config, exist_ok=True)
-            open(mimeapps, "a").close()
+            open(mimeapps, "a", encoding="utf-8").close()
         for cmd in (["update-mime-database", mime],
                     ["update-desktop-database", apps],
                     ["xdg-mime", "default", LINUX_DESKTOP_ID,

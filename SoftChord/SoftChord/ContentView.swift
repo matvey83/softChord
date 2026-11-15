@@ -496,10 +496,23 @@ func addSongToPhotos(_ song: () throws -> SongSource, report: @escaping (String,
     }
 }
 
-func songShareCopy(_ song: () throws -> SongSource, includeChords: Bool, report: @escaping (String, String) -> Void) {
+/// Setting .string alone did not publish public.utf8-plain-text (iOS 26
+/// simulator), so the text goes on explicitly: UTF-8 bytes as
+/// public.utf8-plain-text, plus the String as public.plain-text so .string
+/// reads still work. Tests pass their own pasteboard.
+func songShareCopy(
+    _ song: () throws -> SongSource,
+    includeChords: Bool,
+    report: @escaping (String, String) -> Void,
+    pasteboard: UIPasteboard = .general
+) {
     do {
         let shown = try song()
-        UIPasteboard.general.string = SongText.render(text: shown.text, chords: shown.chords, includeChords: includeChords)
+        let text = SongText.render(text: shown.text, chords: shown.chords, includeChords: includeChords)
+        pasteboard.setItems([[
+            UTType.utf8PlainText.identifier: Data(text.utf8),
+            UTType.plainText.identifier: text,
+        ]])
     } catch {
         report("Could not copy the song", String(describing: error))
     }

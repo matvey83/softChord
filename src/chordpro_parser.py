@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import codecs
+import sys
 
 chord_types_list = [
     (0, u"Major", u""),
@@ -123,9 +123,10 @@ def convert_chord(chord_str):
 if __name__ == "__main__":
 
     song_title = None
-    filename = sys.argv[1].decode('utf-8')
+    filename = sys.argv[1]
 
-    song_text = codecs.open(filename, 'rU', encoding='utf_8_sig').readlines()
+    with open(filename, encoding='utf-8-sig') as fh:
+        song_text = fh.readlines()
 
     tmp_warnings = []
     song_lines = []

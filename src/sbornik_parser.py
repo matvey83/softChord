@@ -140,9 +140,9 @@ song_title = None
 song_text = []
 
 lines = []
-for line in open(sbornik_file):
-    # Decode UTF-8 into Unicode:
-    lines.append(line.decode('utf-8'))
+with open(sbornik_file, encoding="utf-8-sig") as sbornik_fh:
+    # Read as UTF-8 (a BOM, if any, is dropped):
+    lines.extend(sbornik_fh)
 
 for linenum, line in enumerate(lines):
 

@@ -12,7 +12,7 @@ print('Folder path:', folder_path)
 
 print('')
 
-fh = open(output_file, 'w')
+fh = open(output_file, 'w', encoding='utf-8', newline='')
 writer = csv.writer(fh)
 
 header = ["Song name", "Download link"]
